@@ -3,9 +3,45 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
         WindowStartupLocation="Manual" Width="420" Height="620"
-        Background="#FF16181D" Title="TimeSink">
-    <Grid>
-        <TextBlock Text="TimeSink flyout (spike)" Foreground="#FFE8EAF0" FontSize="18"
-                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-    </Grid>
+        Background="{DynamicResource Brush.Surface}" Title="{DynamicResource Str.AppName}">
+    <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="{DynamicResource Thickness.Border}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header: app dot, wordmark, settings -->
+            <Grid Grid.Row="0" Margin="16,12,10,4">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="10" Height="10" Fill="{DynamicResource Brush.Accent}" Margin="0,0,8,0"/>
+                    <TextBlock Style="{StaticResource Wordmark}" Text="{DynamicResource Str.AppName}"/>
+                </StackPanel>
+                <Button Style="{StaticResource LinkButton}" HorizontalAlignment="Right"
+                        Content="{DynamicResource Str.Settings}"/>
+            </Grid>
+
+            <!-- Tab bar -->
+            <Border Grid.Row="1" BorderBrush="{DynamicResource Brush.BorderSoft}" BorderThickness="0,0,0,1" Margin="8,0">
+                <UniformGrid x:Name="TabBar" Rows="1">
+                    <RadioButton Style="{StaticResource TabButton}" Tag="Today" Content="{DynamicResource Str.TabToday}"/>
+                    <RadioButton Style="{StaticResource TabButton}" Tag="Week" Content="{DynamicResource Str.TabWeek}"/>
+                    <RadioButton Style="{StaticResource TabButton}" Tag="Month" Content="{DynamicResource Str.TabMonth}"/>
+                    <RadioButton Style="{StaticResource TabButton}" Tag="Year" Content="{DynamicResource Str.TabYear}"/>
+                    <RadioButton Style="{StaticResource TabButton}" Tag="All" Content="{DynamicResource Str.TabAll}"/>
+                </UniformGrid>
+            </Border>
+
+            <!-- Tab body: built lazily, one tab at a time -->
+            <ContentPresenter x:Name="Body" Grid.Row="2"/>
+
+            <!-- Footer -->
+            <Border Grid.Row="3" BorderBrush="{DynamicResource Brush.BorderSoft}" BorderThickness="0,1,0,0" Padding="10,6">
+                <Button Style="{StaticResource LinkButton}" HorizontalAlignment="Left"
+                        Foreground="{DynamicResource Brush.Accent}" Content="{DynamicResource Str.AddApp}"/>
+            </Border>
+        </Grid>
+    </Border>
 </Window>

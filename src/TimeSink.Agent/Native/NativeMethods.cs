@@ -105,6 +105,7 @@ internal static partial class NativeMethods
     public const uint WM_CLOSE = 0x0010;
     public const uint WM_COMMAND = 0x0111;
     public const uint WM_APP = 0x8000;
+    public const uint WM_MOUSEMOVE = 0x0200;
     public const uint WM_LBUTTONUP = 0x0202;
     public const uint WM_RBUTTONUP = 0x0205;
     public const uint WM_CONTEXTMENU = 0x007B;

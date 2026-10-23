@@ -13,6 +13,12 @@ public readonly record struct FlyoutLaunchArgs(PxRect Anchor, PxRect Monitor, Px
         "--dpi", Dpi.ToString(CultureInfo.InvariantCulture),
     ];
 
+    /// <summary>Same tokens as <see cref="ToArgs"/>, one per line, for the Agent to hand to a standby UI via a file.</summary>
+    public string ToFileText() => string.Join('\n', ToArgs());
+
+    public static bool TryParseFileText(string text, out FlyoutLaunchArgs result)
+        => TryParse(text.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries), out result);
+
     public static bool TryParse(string[] args, out FlyoutLaunchArgs result)
     {
         result = default;

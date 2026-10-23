@@ -12,6 +12,7 @@ internal static class Program
     private static nint s_icon;
     private static Db? s_db;
     private static TrackingHost? s_tracking;
+    private static string s_dbPath = "";
     private static readonly FlyoutToggle s_toggle = new();
     private static Process? s_ui;
     private const string CloseEventName = @"Local\TimeSink.UI.Close";
@@ -34,6 +35,7 @@ internal static class Program
         // `--db <path>` overrides the database location (testing).
         var dbPath = args.Length == 2 && args[0] == "--db" ? args[1] : Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeSink", "timesink.db");
+        s_dbPath = dbPath;
         s_db = Db.Open(dbPath);
 
         LowerPower();
@@ -139,37 +141,110 @@ internal static class Program
         else if (command == IdQuit) NativeMethods.DestroyWindow(s_hwnd);
     }
 
+    // UI process state. A "standby" UI is started (hover or ui.instantOpen) and renders off-screen; it counts as
+    // not shown until the Show signal. Touched from the message loop and from Process.Exited, hence the lock.
+    private static readonly object s_gate = new();
+    private static bool s_uiShown;
+    private static DateTime s_lastStandbyStart = DateTime.MinValue;
+    private static EventWaitHandle? s_showEvent;
+    private const string ShowEventName = @"Local\TimeSink.UI.Show";
+    private static readonly TimeSpan HoverCooldown = TimeSpan.FromSeconds(15);
+
     /// <summary>Tray left-click or "Open" menu item: toggle the flyout.</summary>
     private static void ToggleFlyout()
     {
-        var ui = s_ui;
-        var running = false;
-        try { running = ui is { HasExited: false }; } catch (InvalidOperationException) { }
-
-        switch (s_toggle.OnTrayClick(DateTime.UtcNow, running))
+        lock (s_gate)
         {
-            case FlyoutAction.Open: OpenUi(); break;
-            case FlyoutAction.Close:
-                try { using var ev = EventWaitHandle.OpenExisting(CloseEventName); ev.Set(); }
-                catch (WaitHandleCannotBeOpenedException) { }
-                break;
+            var alive = false;
+            try { alive = s_ui is { HasExited: false }; } catch (InvalidOperationException) { }
+
+            switch (s_toggle.OnTrayClick(DateTime.UtcNow, alive && s_uiShown))
+            {
+                case FlyoutAction.Open:
+                    if (alive) ShowStandby(); else OpenUi();
+                    break;
+                case FlyoutAction.Close:
+                    try { using var ev = EventWaitHandle.OpenExisting(CloseEventName); ev.Set(); }
+                    catch (WaitHandleCannotBeOpenedException) { }
+                    break;
+            }
         }
     }
 
+    /// <summary>Cold start: the UI shows itself as soon as it can.</summary>
     private static void OpenUi()
     {
+        if (StartUi(ComputeLaunchArgs().ToArgs()) is not null) s_uiShown = true;
+    }
+
+    /// <summary>Hand the launch geometry to a running standby UI and wake it.</summary>
+    private static void ShowStandby()
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeSink");
+        File.WriteAllText(Path.Combine(dir, "flyout.args"), ComputeLaunchArgs().ToFileText());
+        s_showEvent ??= new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+        s_showEvent.Set();
+        s_uiShown = true;
+    }
+
+    /// <summary>Start the UI hidden so a following click is near-instant. Idle standbys exit on their own.</summary>
+    private static void StartStandby(bool keep)
+    {
+        lock (s_gate)
+        {
+            if (s_ui is { HasExited: false }) return;
+            s_lastStandbyStart = DateTime.UtcNow;
+            s_showEvent ??= new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+            s_showEvent.Reset(); // drop a stale signal from an earlier standby
+            if (StartUi(keep ? ["--standby", "--keep"] : ["--standby"]) is not null) s_uiShown = false;
+        }
+    }
+
+    private static Process? StartUi(string[] args)
+    {
         var exe = Path.Combine(AppContext.BaseDirectory, "TimeSink.UI.exe");
-        if (!File.Exists(exe)) return;
+        if (!File.Exists(exe)) return null;
 
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false };
-        foreach (var a in ComputeLaunchArgs().ToArgs()) psi.ArgumentList.Add(a);
+        foreach (var a in args) psi.ArgumentList.Add(a);
 
         var p = Process.Start(psi);
-        if (p is null) return;
+        if (p is null) return null;
         NativeMethods.AllowSetForegroundWindow((uint)p.Id);
         p.EnableRaisingEvents = true;
-        p.Exited += (_, _) => s_toggle.OnUiExited(DateTime.UtcNow);
+        p.Exited += (_, _) => OnUiExited(p);
         s_ui = p;
+        return p;
+    }
+
+    private static void OnUiExited(Process p)
+    {
+        lock (s_gate)
+        {
+            if (!ReferenceEquals(s_ui, p)) return;
+            s_toggle.OnUiExited(DateTime.UtcNow);
+            s_ui = null;
+            s_uiShown = false;
+            // ui.instantOpen: keep a warm UI ready at all times (about 40 MB, opt-in).
+            if (InstantOpen()) StartStandby(keep: true);
+        }
+    }
+
+    private static bool InstantOpen()
+    {
+        var v = SettingsStore.Get(s_dbPath, "ui.instantOpen");
+        return v is not null && (v.Equals("true", StringComparison.OrdinalIgnoreCase) || v == "1");
+    }
+
+    /// <summary>Mouse over the tray icon: a click is likely, so warm the UI up (at most once per cooldown).</summary>
+    private static void OnTrayHover()
+    {
+        lock (s_gate)
+        {
+            if (s_ui is not null) return;
+            if (DateTime.UtcNow - s_lastStandbyStart < HoverCooldown) return;
+        }
+        StartStandby(keep: false);
     }
 
     private static FlyoutLaunchArgs ComputeLaunchArgs()
@@ -209,6 +284,7 @@ internal static class Program
                 var ev = (uint)(lParam & 0xFFFF);
                 if (ev == NativeMethods.WM_RBUTTONUP || ev == NativeMethods.WM_CONTEXTMENU) ShowMenu();
                 else if (ev == NativeMethods.WM_LBUTTONUP) ToggleFlyout();
+                else if (ev == NativeMethods.WM_MOUSEMOVE) OnTrayHover();
                 return 0;
             case NativeMethods.WM_DESTROY:
                 s_tracking?.Stop();
