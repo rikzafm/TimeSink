@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -7,8 +7,11 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using TimeSink.Core.Data;
 using TimeSink.Core.Flyout;
+using TimeSink.Core.Ipc;
 using TimeSink.Core.Theming;
+using TimeSink.UI.Services;
 using TimeSink.UI.Theming;
+using TimeSink.UI.Views;
 
 namespace TimeSink.UI;
 
@@ -19,6 +22,8 @@ public partial class FlyoutWindow : Window
     private IntPtr _hwnd;
     private bool _placed;
     private bool _revealed;
+    private bool _rendered;
+    private LiveState? _live;
 
     private readonly ThemeService _themes;
     private readonly string _dbPath;
@@ -52,13 +57,19 @@ public partial class FlyoutWindow : Window
             b.Checked += (_, _) => Select(tab, persist: true);
         }
         Select(initialTab, persist: false);
+        Closed += (_, _) => _live?.Dispose();
     }
+
+    /// <summary>False while a warm standby UI is still off-screen.</summary>
+    public bool IsRevealed => _revealed;
 
     private void Select(ShellTab tab, bool persist)
     {
         if (!_bodies.TryGetValue(tab, out var body))
             _bodies[tab] = body = CreateBody(tab);
         Body.Content = body;
+        foreach (var other in _bodies.Values) if (other is TodayView t && !ReferenceEquals(t, body)) t.Stop();
+        if (_rendered && body is TodayView today) today.Start(); // before first render, OnContentRendered starts it
         if (persist)
         {
             var path = _dbPath;
@@ -68,8 +79,13 @@ public partial class FlyoutWindow : Window
     }
 
     // Stub bodies; real views arrive with later tickets. Built on first visit only.
-    private static UIElement CreateBody(ShellTab tab)
+    private UIElement CreateBody(ShellTab tab)
     {
+        if (tab == ShellTab.Today)
+        {
+            _live ??= new LiveState(PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB")));
+            return new TodayView(_dbPath, _themes, _live);
+        }
         var text = new TextBlock { Style = (Style)Application.Current.FindResource("Caption"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Tag = tab };
         text.SetResourceReference(TextBlock.TextProperty, "Str." + char.ToUpperInvariant(StringKeys.StubComingSoon[0]) + StringKeys.StubComingSoon[1..]);
         return text;
@@ -109,6 +125,7 @@ public partial class FlyoutWindow : Window
         _revealed = true;
         Place();
         Activate();
+        (Body.Content as TodayView)?.Refresh(); // data went stale while waiting off-screen
         // Report once the move has been processed and the frame is idle.
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, () =>
             StartupTrace.FlushRevealed((DateTime.Now - signalled).TotalMilliseconds));
@@ -134,6 +151,9 @@ public partial class FlyoutWindow : Window
 
     private void OnContentRendered(object? sender, EventArgs e)
     {
+        _rendered = true;
+        // Data loading starts only after the first frame is on screen, so it never delays first paint.
+        if (Body.Content is TodayView today) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, today.Start);
         if (!_revealed)
         {
             StartupTrace.FlushStandbyReady();

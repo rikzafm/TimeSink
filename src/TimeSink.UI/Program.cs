@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Runtime.InteropServices;
 using TimeSink.Core.Data;
 using TimeSink.Core.Theming;
@@ -30,7 +30,9 @@ internal static class Program
 
     private static Prepared PrepareStartup()
     {
-        var dbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeSink", "timesink.db");
+        // TIMESINK_DB: scratch database set by `Agent --db` (testing); never set in normal use.
+        var dbPath = Environment.GetEnvironmentVariable("TIMESINK_DB") is { Length: > 0 } scratch ? scratch : Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeSink", "timesink.db");
         var shift = (GetAsyncKeyState(0x10) & 0x8000) != 0; // Shift forces pulse-dark for this session
         var id = shift ? ThemeLoader.DefaultId : ThemeService.IdFor(SettingsStore.Get(dbPath, "ui.theme"), ThemeService.SystemIsLight());
         var theme = ThemeService.Load(id);

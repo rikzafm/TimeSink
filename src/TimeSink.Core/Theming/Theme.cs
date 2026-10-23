@@ -25,8 +25,36 @@ public static class StringKeys
     public const string AddApp = "addApp";
     public const string StubComingSoon = "stubComingSoon";
 
+    // Today view. Values with {0} are composed by the view (string.Format).
+    public const string TodayCaption = "todayCaption";
+    public const string TodayEarlyCaption = "todayEarlyCaption";
+    public const string TodayEarlyHint = "todayEarlyHint";
+    public const string TodayEmpty = "todayEmpty";
+    public const string RunningPill = "runningPill";
+    public const string LegendAppsOpen = "legendAppsOpen";
+    public const string LegendTypical = "legendTypical";
+    public const string LegendAsleep = "legendAsleep";
+    public const string TileFirstApp = "tileFirstApp";
+    public const string TileLongest = "tileLongest";
+    public const string TileVsYesterday = "tileVsYesterday";
+    public const string TileNone = "tileNone";
+    public const string TileLongestValue = "tileLongestValue";
+    public const string TileVsYesterdayValue = "tileVsYesterdayValue";
+    public const string StatusRunning = "statusRunning";
+    public const string StatusClosed = "statusClosed";
+    public const string SessionsToday = "sessionsToday";
+    public const string SessionLine = "sessionLine";
+    public const string SessionNow = "sessionNow";
+    public const string VsAverage = "vsAverage";
+    public const string VsAverageNone = "vsAverageNone";
+
     public static readonly IReadOnlyList<string> All =
-        [AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, StubComingSoon];
+    [
+        AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, StubComingSoon,
+        TodayCaption, TodayEarlyCaption, TodayEarlyHint, TodayEmpty, RunningPill, LegendAppsOpen, LegendTypical,
+        LegendAsleep, TileFirstApp, TileLongest, TileVsYesterday, TileNone, TileLongestValue, TileVsYesterdayValue,
+        StatusRunning, StatusClosed, SessionsToday, SessionLine, SessionNow, VsAverage, VsAverageNone,
+    ];
 }
 
 /// <summary>The complete list of colour token keys; the UI maps each to a <c>Brush.*</c> resource.</summary>
@@ -39,7 +67,7 @@ public static class TokenCatalog
     ];
 
     public static readonly IReadOnlyList<string> FontKeys = ["ui", "numbers"];
-    public static readonly IReadOnlyList<string> SizeKeys = ["small", "body", "title"];
+    public static readonly IReadOnlyList<string> SizeKeys = ["small", "body", "title", "display"];
     public const int HeatSteps = 5;
 }
 

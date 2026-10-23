@@ -20,6 +20,9 @@ public sealed class ThemeService
 
     public Theme Current { get; private set; } = null!;
 
+    /// <summary>Raised after a theme swap so views that compose text in code can redraw.</summary>
+    public event Action? Applied;
+
     public static string IdFor(string? setting, bool systemIsLight) => setting switch
     {
         "Light" => "pulse-light",
@@ -50,6 +53,7 @@ public sealed class ThemeService
         merged.Insert(0, dict);
         _current = dict;
         Current = theme;
+        Applied?.Invoke();
     }
 
     private static ResourceDictionary Build(Theme t)

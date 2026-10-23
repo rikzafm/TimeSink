@@ -12,7 +12,7 @@
     "heat": ["#1b2116", "#2d3d1c", "#46691f", "#75a826", "#c6f26b"],
     "apps": ["#8fd3ff", "#c6f26b", "#ffb86b", "#d3a6ff", "#ff9fb4", "#ffe08a"]
   },
-  "type": { "ui": "Segoe UI Variable Text", "numbers": "Segoe UI Variable Text", "sizes": { "small": 11, "body": 13, "title": 15 } },
+  "type": { "ui": "Segoe UI Variable Text", "numbers": "Segoe UI Variable Text", "sizes": { "small": 11, "body": 13, "title": 15, "display": 34 } },
   "shape": { "radius": [8, 10, 12], "border": 1 },
   "layout": "pulse",
   "strings": {
@@ -24,6 +24,27 @@
     "tabYear": "Year",
     "tabAll": "All",
     "addApp": "+ Add app",
-    "stubComingSoon": "Coming soon"
+    "stubComingSoon": "Coming soon",
+    "todayCaption": "{0} · combined app time",
+    "todayEarlyCaption": "Good morning · tracking since you signed in at {0}",
+    "todayEarlyHint": "The dotted typical-day line fills in as the day goes on.",
+    "todayEmpty": "No tracked app has run today yet.",
+    "runningPill": "{0} running",
+    "legendAppsOpen": "Apps open",
+    "legendTypical": "Typical day",
+    "legendAsleep": "PC asleep · paused",
+    "tileFirstApp": "FIRST APP",
+    "tileLongest": "LONGEST",
+    "tileVsYesterday": "VS YESTERDAY",
+    "tileNone": "—",
+    "tileLongestValue": "{0} · {1}",
+    "tileVsYesterdayValue": "{0} by now",
+    "statusRunning": "Running · {0} session",
+    "statusClosed": "Closed {0}",
+    "sessionsToday": "SESSIONS TODAY",
+    "sessionLine": "{0} → {1}",
+    "sessionNow": "now",
+    "vsAverage": "{0} vs your 7-day average",
+    "vsAverageNone": "No 7-day average yet"
   }
 }
