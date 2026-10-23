@@ -1,5 +1,6 @@
 using TimeSink.Agent.Native;
 using TimeSink.Core.Data;
+using TimeSink.Core.Ipc;
 using TimeSink.Core.Tracking;
 
 namespace TimeSink.Agent;
@@ -14,11 +15,15 @@ internal sealed class TrackingHost
     private readonly TrackingEngine _engine;
     private readonly WindowPowerEvents _power = new();
     private readonly nint _hwnd;
+    private readonly SqliteSessionStore _store;
+    private readonly Action<StateMessage> _publish;
+    private volatile StateMessage _state = new(false, []);
 
-    public TrackingHost(Db db, nint hwnd)
+    public TrackingHost(Db db, nint hwnd, Action<StateMessage> publish)
     {
         _hwnd = hwnd;
-        var store = new SqliteSessionStore(db);
+        _publish = publish;
+        var store = _store = new SqliteSessionStore(db);
         var provider = new Win32ProcessProvider(store, pid => NativeMethods.PostMessage(hwnd, ExitMessage, (nuint)pid, 0));
         _engine = new TrackingEngine(store, provider, new SystemClock(), new DbTrackingSettings(db), TimeZoneInfo.Local);
         _engine.Attach(_power);
@@ -53,7 +58,21 @@ internal sealed class TrackingHost
     {
         _engine.ReloadTrackedApps(); // picks up apps added or retired directly in the database
         _engine.OnTick(DateTimeOffset.UtcNow);
+        PublishIfChanged();
     });
+
+    /// <summary>Last pushed state; safe to read from any thread (IPC replies to getState with it).</summary>
+    public StateMessage CurrentState => _state;
+
+    /// <summary>Pushes the running-apps list to the UI only when it differs from the last one pushed.</summary>
+    private void PublishIfChanged()
+    {
+        var running = _store.GetOpenSessions().Select(s => new RunningApp(s.AppId, s.StartUtc)).OrderBy(r => r.AppId).ToList();
+        var old = _state.Running;
+        if (old.Count == running.Count && old.SequenceEqual(running)) return;
+        _state = new StateMessage(false, running);
+        _publish(_state);
+    }
 
     private static void Guard(string what, Action a)
     {

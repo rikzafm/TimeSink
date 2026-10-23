@@ -2,6 +2,7 @@
 using TimeSink.Agent.Native;
 using TimeSink.Core.Data;
 using TimeSink.Core.Flyout;
+using TimeSink.Core.Ipc;
 
 namespace TimeSink.Agent;
 
@@ -12,6 +13,8 @@ internal static class Program
     private static nint s_icon;
     private static Db? s_db;
     private static TrackingHost? s_tracking;
+    private static IpcServer? s_ipc;
+    private static string s_pipeName = "";
     private static string s_dbPath = "";
     private static readonly FlyoutToggle s_toggle = new();
     private static Process? s_ui;
@@ -36,6 +39,9 @@ internal static class Program
         var dbPath = args.Length == 2 && args[0] == "--db" ? args[1] : Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeSink", "timesink.db");
         s_dbPath = dbPath;
+        var scratch = args.Length == 2 && args[0] == "--db" ? dbPath : null;
+        if (scratch is not null) Environment.SetEnvironmentVariable("TIMESINK_DB", scratch); // inherited by the UI we spawn
+        s_pipeName = PipeNames.For(scratch);
         s_db = Db.Open(dbPath);
 
         LowerPower();
@@ -82,13 +88,16 @@ internal static class Program
 
         AddTrayIcon();
 
-        s_tracking = new TrackingHost(s_db!, s_hwnd);
+        s_ipc = new IpcServer(s_pipeName, () => s_tracking?.CurrentState ?? new StateMessage(false, []), Log.Error);
+        s_ipc.Start();
+        s_tracking = new TrackingHost(s_db!, s_hwnd, s_ipc.Publish);
         s_tracking.Start();
 
         MSG msg;
         while (NativeMethods.GetMessageW(&msg, 0, 0, 0) > 0)
             NativeMethods.DispatchMessageW(&msg);
 
+        s_ipc?.Dispose();
         s_db?.Dispose();
         return 0;
     }

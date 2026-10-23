@@ -82,6 +82,16 @@ public class IpcPipeTests
 
     [Fact]
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public void A_scratch_database_gets_its_own_pipe_name()
+    {
+        PipeNames.For(null).Should().Be(PipeNames.ForCurrentUser());
+        PipeNames.For(@"C:\Tmp\A.db").Should().NotBe(PipeNames.ForCurrentUser());
+        PipeNames.For(@"C:\Tmp\A.db").Should().Be(PipeNames.For(@"c:\tmp\a.db"));
+        PipeNames.For(@"C:\Tmp\A.db").Should().NotBe(PipeNames.For(@"C:\Tmp\B.db"));
+    }
+
+    [Fact]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public void Pipe_name_is_per_user()
     {
         PipeNames.ForCurrentUser().Should().StartWith("TimeSink.").And.NotBe("TimeSink.");
