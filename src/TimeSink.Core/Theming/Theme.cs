@@ -23,6 +23,7 @@ public static class StringKeys
     public const string TabYear = "tabYear";
     public const string TabAll = "tabAll";
     public const string AddApp = "addApp";
+    public const string Back = "back";
     public const string StubComingSoon = "stubComingSoon";
 
     // Today view. Values with {0} are composed by the view (string.Format).
@@ -50,7 +51,7 @@ public static class StringKeys
 
     public static readonly IReadOnlyList<string> All =
     [
-        AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, StubComingSoon,
+        AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, Back, StubComingSoon,
         TodayCaption, TodayEarlyCaption, TodayEarlyHint, TodayEmpty, RunningPill, LegendAppsOpen, LegendTypical,
         LegendAsleep, TileFirstApp, TileLongest, TileVsYesterday, TileNone, TileLongestValue, TileVsYesterdayValue,
         StatusRunning, StatusClosed, SessionsToday, SessionLine, SessionNow, VsAverage, VsAverageNone,

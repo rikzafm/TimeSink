@@ -19,12 +19,12 @@
                     <Ellipse Width="10" Height="10" Fill="{DynamicResource Brush.Accent}" Margin="0,0,8,0"/>
                     <TextBlock Style="{StaticResource Wordmark}" Text="{DynamicResource Str.AppName}"/>
                 </StackPanel>
-                <Button Style="{StaticResource LinkButton}" HorizontalAlignment="Right"
+                <Button x:Name="SettingsButton" Style="{StaticResource LinkButton}" HorizontalAlignment="Right"
                         Content="{DynamicResource Str.Settings}"/>
             </Grid>
 
             <!-- Tab bar -->
-            <Border Grid.Row="1" BorderBrush="{DynamicResource Brush.BorderSoft}" BorderThickness="0,0,0,1" Margin="8,0">
+            <Border x:Name="TabStrip" Grid.Row="1" BorderBrush="{DynamicResource Brush.BorderSoft}" BorderThickness="0,0,0,1" Margin="8,0">
                 <UniformGrid x:Name="TabBar" Rows="1">
                     <RadioButton Style="{StaticResource TabButton}" Tag="Today" Content="{DynamicResource Str.TabToday}"/>
                     <RadioButton Style="{StaticResource TabButton}" Tag="Week" Content="{DynamicResource Str.TabWeek}"/>

@@ -46,9 +46,8 @@ public partial class FlyoutWindow : Window
         }
         SourceInitialized += OnSourceInitialized;
         ContentRendered += OnContentRendered;
-        Deactivated += (_, _) => { if (_revealed && !KeepOpen) Close(); };
-        // Developer aid until Settings (ticket 16) exists: flip Dark/Light in place.
-        InputBindings.Add(new KeyBinding(new RelayCommand(ToggleTheme), Key.T, ModifierKeys.Control | ModifierKeys.Shift));
+        Deactivated += (_, _) => { if (_revealed && !KeepOpen && !TestKeepOpen) Close(); };
+        SettingsButton.Click += (_, _) => ToggleSettings();
 
         foreach (RadioButton b in TabBar.Children)
         {
@@ -64,13 +63,14 @@ public partial class FlyoutWindow : Window
     public bool IsRevealed => _revealed;
 
     /// <summary>Test aid: TS_KEEPOPEN=1 stops the flyout closing when it loses focus (so it can be screenshotted).</summary>
-    private static readonly bool KeepOpen = Environment.GetEnvironmentVariable("TS_KEEPOPEN") == "1";
+    private static readonly bool TestKeepOpen = Environment.GetEnvironmentVariable("TS_KEEPOPEN") == "1";
 
     private void Select(ShellTab tab, bool persist)
     {
         if (!_bodies.TryGetValue(tab, out var body))
             _bodies[tab] = body = CreateBody(tab);
         Body.Content = body;
+        _current = tab;
         foreach (var other in _bodies.Values) if (other is TodayView t && !ReferenceEquals(t, body)) t.Stop();
         if (_rendered && body is TodayView today) today.Start(); // before first render, OnContentRendered starts it
         if (persist)
@@ -94,14 +94,26 @@ public partial class FlyoutWindow : Window
         return text;
     }
 
-    private void ToggleTheme()
-        => _themes.Apply(_themes.Current.Id == "pulse-dark" ? "pulse-light" : "pulse-dark");
+    /// <summary>Set while a native dialog (file picker) is open so losing activation does not close the flyout.</summary>
+    public bool KeepOpen { get; set; }
 
-    private sealed class RelayCommand(Action run) : ICommand
+    private SettingsView? _settings;
+    private ShellTab _current;
+
+    // The Settings page replaces the tab body (and hides the tab bar); the header button becomes "Back".
+    private void ToggleSettings()
     {
-        public event EventHandler? CanExecuteChanged { add { } remove { } }
-        public bool CanExecute(object? parameter) => true;
-        public void Execute(object? parameter) => run();
+        if (_settings is not null && ReferenceEquals(Body.Content, _settings))
+        {
+            TabStrip.Visibility = Visibility.Visible;
+            Body.Content = _bodies[_current];
+            SettingsButton.SetResourceReference(ContentControl.ContentProperty, "Str.Settings");
+            return;
+        }
+        _settings ??= new SettingsView(_themes, _dbPath);
+        TabStrip.Visibility = Visibility.Collapsed;
+        Body.Content = _settings;
+        SettingsButton.SetResourceReference(ContentControl.ContentProperty, "Str.Back");
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)

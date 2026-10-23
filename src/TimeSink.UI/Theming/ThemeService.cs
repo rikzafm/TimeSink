@@ -45,6 +45,10 @@ public sealed class ThemeService
 
     public void Apply(string themeId) => Apply(Load(themeId));
 
+    /// <summary>Applies the ui.theme (Dark/Light/System) and ui.accent (Lime/Blue/Pink) settings instantly.</summary>
+    public void ApplyPreferences(string? themeSetting, string? accent)
+        => Apply(Accents.Apply(Load(IdFor(themeSetting, SystemIsLight())), accent));
+
     public void Apply(Theme theme)
     {
         var dict = Build(theme);

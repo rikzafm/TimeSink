@@ -93,16 +93,14 @@ public sealed class Db : IDisposable
 
     public void Dispose() => _connection.Dispose();
 
+    /// <summary>The schema version this build writes and understands.</summary>
+    public static int LatestSchemaVersion => Migrator.LatestVersion;
+
     private static void Migrate(SqliteConnection connection)
     {
-        var current = (int)(long)Scalar(connection, "PRAGMA user_version")!;
-        if (current < M001_Initial.Version)
-        {
-            using var tx = connection.BeginTransaction();
-            M001_Initial.Apply(connection);
-            Execute(connection, $"PRAGMA user_version = {M001_Initial.Version}");
-            tx.Commit();
-        }
+        if (Migrator.CurrentVersion(connection) > Migrator.LatestVersion)
+            throw new InvalidOperationException("The database was written by a newer version of TimeSink.");
+        Migrator.Migrate(connection);
     }
 
     private object? Scalar(string sql) => Scalar(_connection, sql);

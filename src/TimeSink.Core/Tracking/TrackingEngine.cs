@@ -130,6 +130,19 @@ public sealed class TrackingEngine
         _stopped = true;
     }
 
+    /// <summary>
+    /// Forgets all in-memory open sessions without touching the database. Used after the database was replaced or
+    /// its history deleted by restore/delete: still-running apps get new sessions starting at <paramref name="now"/>.
+    /// </summary>
+    public void DiscardOpenSessions(DateTimeOffset now)
+    {
+        _open.Clear();
+        _floor = Unix(now);
+        _lastTick = null;
+        _lastHeartbeat = _floor;
+        _apps = _store.GetTrackedApps();
+    }
+
     /// <summary>Re-reads the tracked apps; sessions of apps that are no longer tracked are closed as 'removed'.</summary>
     public void ReloadTrackedApps()
     {

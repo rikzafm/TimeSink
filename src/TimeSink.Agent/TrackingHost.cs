@@ -29,8 +29,17 @@ internal sealed class TrackingHost
         _engine.Attach(_power);
     }
 
+    public const uint ResetMessage = NativeMethods.WM_APP + 3;
+    private EventWaitHandle? _resetEvent;
+    private RegisteredWaitHandle? _resetWait;
+
     public void Start()
     {
+        // The UI sets this after a Replace restore or Delete all history (the database changed underneath us).
+        _resetEvent = new EventWaitHandle(false, EventResetMode.AutoReset, TimeSink.Core.Backup.AgentSignals.ResetEventName);
+        _resetWait = ThreadPool.RegisterWaitForSingleObject(_resetEvent,
+            (_, _) => NativeMethods.PostMessage(_hwnd, ResetMessage, 0, 0), null, Timeout.Infinite, executeOnlyOnce: false);
+
         Guard("recover", () => _engine.RecoverFromCrash(DateTimeOffset.UtcNow));
         NativeMethods.WTSRegisterSessionNotification(_hwnd, 0);
         NativeMethods.SetTimer(_hwnd, TimerId, TickMs, 0);
@@ -42,6 +51,11 @@ internal sealed class TrackingHost
     {
         if (msg == NativeMethods.WM_TIMER && wParam == TimerId) { Tick(); return true; }
         if (msg == ExitMessage) { Tick(); return true; }
+        if (msg == ResetMessage)
+        {
+            Guard("reset", () => { _engine.DiscardOpenSessions(DateTimeOffset.UtcNow); Tick(); });
+            return true;
+        }
         var handled = false;
         Guard("power", () => handled = _power.Handle(msg, wParam, DateTimeOffset.UtcNow));
         return handled;
