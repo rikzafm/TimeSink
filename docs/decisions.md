@@ -32,11 +32,21 @@ Source: `design/pulse-boards.html`, `design/themes/theme-variants.html`; decided
 
 Open/unchanged (2026-10-23 review): Windows 11 primary, Windows 10 22H2 supported without backdrop; name "TimeSink" is a placeholder.
 
+## 2026-10-23 — Ticket 03 (tracking engine) implementation notes
+| # | Decision | Why | Impact |
+|---|---|---|---|
+| 21 | Engine closes an exited app's session at the tick time (`OnTick(now)`), so the Agent should also call `OnTick` immediately when a process-exit wait fires | `OnTick` is the only detection entry point; keeps the engine free of per-process state | Agent ticket wires exit callbacks to `OnTick(now)` |
+| 22 | Invariant: usage accumulated for an open session always covers `[start_utc, last_seen_utc]`; close accumulates `last_seen->end` (signed) and min-session removal subtracts `start->end` | Makes crash recovery and `RebuildAll()` exact (open sessions rebuild up to `last_seen`) | Property test relies on it |
+| 23 | `end_reason` for a backwards clock change is `exit`; tick-gap/suspend/lock use `sleep` | Schema CHECK has no better value | |
+| 24 | `OpenSession` bumps `start_utc` by whole seconds when `(app_id,start_utc)` already exists | Unique index `ux_sessions_app_start`; avoids failures on fast restart or clock rewind | Start may be a few seconds later than the process start |
+| 25 | `daily_usage` rows reaching 0 are deleted; `ITrackingSettings` is read live on each decision | Keeps incremental == rebuild; settings changes apply immediately | |
+| 26 | Unreadable processes (`FullPath == null`) match by image name only if exactly one tracked app has that file name | Spec 6.1 | Win32ProcessProvider must leave `FullPath` null when `OpenProcess` fails |
+
 ## 2026-10-23 - Ticket 02 (flyout spike) implementation notes
 | # | Decision | Why | Impact |
 |---|---|---|---|
-| 21 | Flyout geometry, toggle debounce and launch-arg format live in `Core/Flyout` (`FlyoutPlacement`, `FlyoutToggle`, `FlyoutLaunchArgs`) and are unit-tested; Agent/UI only call Win32 and apply the result | Only logic worth testing; keeps Agent/UI thin | Agent passes `--anchor/--monitor/--work/--dpi` (physical px) to the UI; UI places itself with `SetWindowPos` in physical pixels (re-applied on `WM_DPICHANGED`) |
-| 22 | Agent and UI are both PerMonitorV2 (Agent via `SetProcessDpiAwarenessContext` at start, UI via manifest) | `Shell_NotifyIconGetRect` / monitor rects must be physical pixels for mixed DPI | Do not remove |
-| 23 | Toggle: Agent tracks the UI `Process`; click while running sets named event `Local\TimeSink.UI.Close` (UI closes); `Process.Exited` records the exit time and clicks within 300 ms of it are ignored (implementation.md section 3 rule) | Deactivate-on-click would otherwise reopen the flyout | UI single instance via `Local\TimeSink.UI` mutex; a second launch exits |
-| 24 | `FlyoutShown ms=` is logged to `%LOCALAPPDATA%\TimeSink\logs\ui.log`, measured from OS process creation to `ContentRendered` | No logging infrastructure yet | Replace with the shared logger later |
-| 25 | Measured cold first paint on the dev machine is about 600-700 ms (R2R, TieredPGO off), above the 300 ms budget | Stub window; WPF/runtime cold start dominates (about 200 ms to App init, about 400 ms to first render) | Needs a dedicated optimisation pass before M2 acceptance (options: Agent pre-warm, trimmed startup path, avoid theme dictionary loads) |
+| 27 | Flyout geometry, toggle debounce and launch-arg format live in `Core/Flyout` (`FlyoutPlacement`, `FlyoutToggle`, `FlyoutLaunchArgs`) and are unit-tested; Agent/UI only call Win32 and apply the result | Only logic worth testing; keeps Agent/UI thin | Agent passes `--anchor/--monitor/--work/--dpi` (physical px) to the UI; UI places itself with `SetWindowPos` in physical pixels (re-applied on `WM_DPICHANGED`) |
+| 28 | Agent and UI are both PerMonitorV2 (Agent via `SetProcessDpiAwarenessContext` at start, UI via manifest) | `Shell_NotifyIconGetRect` / monitor rects must be physical pixels for mixed DPI | Do not remove |
+| 29 | Toggle: Agent tracks the UI `Process`; click while running sets named event `Local\TimeSink.UI.Close` (UI closes); `Process.Exited` records the exit time and clicks within 300 ms of it are ignored (implementation.md section 3 rule) | Deactivate-on-click would otherwise reopen the flyout | UI single instance via `Local\TimeSink.UI` mutex; a second launch exits |
+| 30 | `FlyoutShown ms=` is logged to `%LOCALAPPDATA%\TimeSink\logs\ui.log`, measured from OS process creation to `ContentRendered` | No logging infrastructure yet | Replace with the shared logger later |
+| 31 | Measured cold first paint on the dev machine is about 600-700 ms (R2R, TieredPGO off), above the 300 ms budget | Stub window; WPF/runtime cold start dominates (about 200 ms to App init, about 400 ms to first render) | Needs a dedicated optimisation pass before M2 acceptance (options: Agent pre-warm, trimmed startup path, avoid theme dictionary loads) |

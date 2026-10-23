@@ -37,6 +37,8 @@ public sealed class Db : IDisposable
         return new Db(connection);
     }
 
+    internal SqliteConnection Connection => _connection;
+
     public int SchemaVersion => (int)(long)Scalar("PRAGMA user_version")!;
 
     public string JournalMode => (string)Scalar("PRAGMA journal_mode")!;
@@ -49,6 +51,16 @@ public sealed class Db : IDisposable
         cmd.Parameters.AddWithValue("$n", displayName);
         cmd.Parameters.AddWithValue("$t", addedUtc);
         return (long)cmd.ExecuteScalar()!;
+    }
+
+    public void SetAppState(long appId, string state, long utc)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "UPDATE apps SET state = $s, retired_utc = CASE WHEN $s = 'retired' THEN $t ELSE NULL END WHERE id = $id";
+        cmd.Parameters.AddWithValue("$s", state);
+        cmd.Parameters.AddWithValue("$t", utc);
+        cmd.Parameters.AddWithValue("$id", appId);
+        cmd.ExecuteNonQuery();
     }
 
     public IReadOnlyList<AppRow> GetApps()
