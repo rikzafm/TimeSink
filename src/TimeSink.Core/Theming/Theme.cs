@@ -6,7 +6,7 @@ public sealed class StringTable
     private readonly IReadOnlyDictionary<string, string> _values;
     public StringTable(IReadOnlyDictionary<string, string> values) => _values = values;
 
-    internal IEnumerable<KeyValuePair<string, string>> Entries => _values;
+    public IEnumerable<KeyValuePair<string, string>> Entries => _values;
 
     public bool Has(string key) => _values.ContainsKey(key);
     public string Get(string key) => _values.TryGetValue(key, out var v) ? v : $"[{key}]";

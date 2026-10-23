@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace TimeSink.Core.Theming;
 
@@ -29,7 +28,6 @@ public sealed class ThemeLoader(IThemeSource source)
 {
     public const string DefaultId = "pulse-dark";
     private const int MaxDepth = 8;
-    private static readonly Regex Hex = new("^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$", RegexOptions.Compiled);
 
     public Theme Load(string id)
     {
@@ -122,7 +120,15 @@ public sealed class ThemeLoader(IThemeSource source)
     private static string? Str(JsonElement e, string name)
         => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
-    private static string CheckHex(string s) => Hex.IsMatch(s) ? s : throw new ThemeException($"'{s}' is not a hex colour");
+    // #RRGGBB or #RRGGBBAA; hand-rolled because Regex construction is measurable in the UI cold-start budget.
+    private static bool IsHex(string s)
+    {
+        if ((s.Length != 7 && s.Length != 9) || s[0] != '#') return false;
+        for (var i = 1; i < s.Length; i++) if (!Uri.IsHexDigit(s[i])) return false;
+        return true;
+    }
+
+    private static string CheckHex(string s) => IsHex(s) ? s : throw new ThemeException($"'{s}' is not a hex colour");
 
     private static string[] HexList(JsonElement e, int min, int max)
     {

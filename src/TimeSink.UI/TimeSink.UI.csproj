@@ -8,8 +8,13 @@
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <TieredPGO>false</TieredPGO>
+    <StartupObject>TimeSink.UI.Program</StartupObject>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\themes\**\*.json" Link="themes\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\TimeSink.Core\TimeSink.Core.csproj" />
