@@ -46,7 +46,7 @@ public partial class FlyoutWindow : Window
         }
         SourceInitialized += OnSourceInitialized;
         ContentRendered += OnContentRendered;
-        Deactivated += (_, _) => { if (_revealed) Close(); };
+        Deactivated += (_, _) => { if (_revealed && !KeepOpen) Close(); };
         // Developer aid until Settings (ticket 16) exists: flip Dark/Light in place.
         InputBindings.Add(new KeyBinding(new RelayCommand(ToggleTheme), Key.T, ModifierKeys.Control | ModifierKeys.Shift));
 
@@ -62,6 +62,9 @@ public partial class FlyoutWindow : Window
 
     /// <summary>False while a warm standby UI is still off-screen.</summary>
     public bool IsRevealed => _revealed;
+
+    /// <summary>Test aid: TS_KEEPOPEN=1 stops the flyout closing when it loses focus (so it can be screenshotted).</summary>
+    private static readonly bool KeepOpen = Environment.GetEnvironmentVariable("TS_KEEPOPEN") == "1";
 
     private void Select(ShellTab tab, bool persist)
     {

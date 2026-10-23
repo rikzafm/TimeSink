@@ -20,6 +20,7 @@ public partial class TodayView : UserControl
 {
     private const int RefreshEverySeconds = 30;
     private const int EarlyThresholdSeconds = 3600;
+    private static readonly bool ExpandAll = Environment.GetEnvironmentVariable("TS_EXPAND") == "1"; // test aid for screenshots
 
     private readonly string _dbPath;
     private readonly ThemeService _themes;
@@ -166,6 +167,7 @@ public partial class TodayView : UserControl
         Rows.Children.Clear();
         _rowViews.Clear();
         var paletteSize = Math.Max(1, _themes.Current.Apps.Count);
+        if (ExpandAll) foreach (var a in r.Apps) _expanded.Add(a.AppId);
         foreach (var row in r.Apps) Rows.Children.Add(BuildRow(r, row, (int)(row.AppId % paletteSize)));
     }
 
