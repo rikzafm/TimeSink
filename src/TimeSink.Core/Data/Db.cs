@@ -37,6 +37,8 @@ public sealed class Db : IDisposable
         return new Db(connection);
     }
 
+    internal SqliteConnection Connection => _connection;
+
     public int SchemaVersion => (int)(long)Scalar("PRAGMA user_version")!;
 
     public string JournalMode => (string)Scalar("PRAGMA journal_mode")!;
