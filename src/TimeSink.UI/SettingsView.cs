@@ -10,8 +10,9 @@ using TimeSink.UI.Theming;
 namespace TimeSink.UI;
 
 /// <summary>The single grouped Settings page, built entirely from <see cref="SettingsCatalogue"/>.</summary>
-public sealed class SettingsView : ScrollViewer
+public sealed partial class SettingsView : Grid
 {
+    private readonly ScrollViewer _scroll = new();
     private readonly string _dbPath;
     private readonly ThemeService _themes;
     private readonly Autostart? _autostart;
@@ -28,7 +29,7 @@ public sealed class SettingsView : ScrollViewer
         _accent = SettingsCatalogue.Read(dbPath, SettingsCatalogue.Find("accent"));
         _autostart = TryCreateAutostart();
 
-        VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+        _scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         var root = new StackPanel { Margin = new Thickness(16, 8, 16, 16) };
         foreach (var section in SettingsCatalogue.Sections)
         {
@@ -38,9 +39,11 @@ public sealed class SettingsView : ScrollViewer
             root.Children.Add(header);
             foreach (var row in SettingsCatalogue.InSection(section)) root.Children.Add(BuildRow(row));
         }
-        Content = root;
+        _scroll.Content = root;
+        Children.Add(_scroll);
 
         RefreshInfo();
+        RefreshLastBackup();
         Loaded += (_, _) => { RefreshInfo(); _timer.Start(); };
         Unloaded += (_, _) => _timer.Stop();
         _timer.Tick += (_, _) => RefreshInfo();
@@ -63,11 +66,12 @@ public sealed class SettingsView : ScrollViewer
         label.SetResourceReference(TextBlock.StyleProperty, "Caption");
         label.SetResourceReference(TextBlock.ForegroundProperty, row.Danger ? "Brush.Danger" : "Brush.Text");
         text.Children.Add(label);
-        if (row.Description.Length > 0)
+        if (row.Description.Length > 0 || row.Id == "backupNow")
         {
             var desc = new TextBlock { Text = row.Description, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 0) };
             desc.SetResourceReference(TextBlock.StyleProperty, "Caption");
             desc.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+            if (row.Id == "backupNow") _backupDesc = desc;
             text.Children.Add(desc);
         }
         grid.Children.Add(text);
@@ -128,10 +132,16 @@ public sealed class SettingsView : ScrollViewer
 
     private FrameworkElement BuildButton(SettingRow row)
     {
-        // Backup, restore, export and delete land with the backup tickets; the rows exist so the page matches the design.
-        var b = new Button { Content = row.Id switch { "backupNow" => "Back up", "restore" => "Choose file…", "export" => "Export…", _ => "Delete…" }, IsEnabled = false };
+        var b = new Button { Content = row.Id switch { "backupNow" => "Back up", "restore" => "Choose file…", "export" => "Export…", _ => "Delete…" } };
         b.SetResourceReference(StyleProperty, "LinkButton");
-        if (row.Danger) b.SetResourceReference(ForegroundProperty, "Brush.Danger");
+        if (row.Danger) b.SetResourceReference(Control.ForegroundProperty, "Brush.Danger");
+        switch (row.Id)
+        {
+            case "backupNow": b.Click += (_, _) => BackUpNow(b); break;
+            case "restore": b.Click += (_, _) => ChooseRestoreFile(); break;
+            case "export": b.Click += (_, _) => ChooseExport(); break;
+            case "deleteHistory": b.Click += (_, _) => ConfirmDelete(); break;
+        }
         return b;
     }
 

@@ -41,7 +41,7 @@ public partial class FlyoutWindow : Window
         }
         SourceInitialized += OnSourceInitialized;
         ContentRendered += OnContentRendered;
-        Deactivated += (_, _) => { if (_revealed) Close(); };
+        Deactivated += (_, _) => { if (_revealed && !KeepOpen) Close(); };
         SettingsButton.Click += (_, _) => ToggleSettings();
 
         foreach (RadioButton b in TabBar.Children)
@@ -74,6 +74,9 @@ public partial class FlyoutWindow : Window
         text.SetResourceReference(TextBlock.TextProperty, "Str." + char.ToUpperInvariant(StringKeys.StubComingSoon[0]) + StringKeys.StubComingSoon[1..]);
         return text;
     }
+
+    /// <summary>Set while a native dialog (file picker) is open so losing activation does not close the flyout.</summary>
+    public bool KeepOpen { get; set; }
 
     private SettingsView? _settings;
     private ShellTab _current;
