@@ -41,3 +41,12 @@ Open/unchanged (2026-10-23 review): Windows 11 primary, Windows 10 22H2 supporte
 | 24 | `OpenSession` bumps `start_utc` by whole seconds when `(app_id,start_utc)` already exists | Unique index `ux_sessions_app_start`; avoids failures on fast restart or clock rewind | Start may be a few seconds later than the process start |
 | 25 | `daily_usage` rows reaching 0 are deleted; `ITrackingSettings` is read live on each decision | Keeps incremental == rebuild; settings changes apply immediately | |
 | 26 | Unreadable processes (`FullPath == null`) match by image name only if exactly one tracked app has that file name | Spec 6.1 | Win32ProcessProvider must leave `FullPath` null when `OpenProcess` fails |
+
+## 2026-10-23 - Ticket 02 (flyout spike) implementation notes
+| # | Decision | Why | Impact |
+|---|---|---|---|
+| 27 | Flyout geometry, toggle debounce and launch-arg format live in `Core/Flyout` (`FlyoutPlacement`, `FlyoutToggle`, `FlyoutLaunchArgs`) and are unit-tested; Agent/UI only call Win32 and apply the result | Only logic worth testing; keeps Agent/UI thin | Agent passes `--anchor/--monitor/--work/--dpi` (physical px) to the UI; UI places itself with `SetWindowPos` in physical pixels (re-applied on `WM_DPICHANGED`) |
+| 28 | Agent and UI are both PerMonitorV2 (Agent via `SetProcessDpiAwarenessContext` at start, UI via manifest) | `Shell_NotifyIconGetRect` / monitor rects must be physical pixels for mixed DPI | Do not remove |
+| 29 | Toggle: Agent tracks the UI `Process`; click while running sets named event `Local\TimeSink.UI.Close` (UI closes); `Process.Exited` records the exit time and clicks within 300 ms of it are ignored (implementation.md section 3 rule) | Deactivate-on-click would otherwise reopen the flyout | UI single instance via `Local\TimeSink.UI` mutex; a second launch exits |
+| 30 | `FlyoutShown ms=` is logged to `%LOCALAPPDATA%\TimeSink\logs\ui.log`, measured from OS process creation to `ContentRendered` | No logging infrastructure yet | Replace with the shared logger later |
+| 31 | Measured cold first paint on the dev machine is about 600-700 ms (R2R, TieredPGO off), above the 300 ms budget | Stub window; WPF/runtime cold start dominates (about 200 ms to App init, about 400 ms to first render) | Needs a dedicated optimisation pass before M2 acceptance (options: Agent pre-warm, trimmed startup path, avoid theme dictionary loads) |
