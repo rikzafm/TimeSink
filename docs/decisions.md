@@ -31,3 +31,13 @@ Source: `design/pulse-boards.html`, `design/themes/theme-variants.html`; decided
 | 20 | `Agent --smoke <dbPath>` diagnostic opens/migrates a DB and inserts a row | Proves AOT+SQLite headlessly | Dev-only flag |
 
 Open/unchanged (2026-10-23 review): Windows 11 primary, Windows 10 22H2 supported without backdrop; name "TimeSink" is a placeholder.
+
+## 2026-10-23 — Ticket 03 (tracking engine) implementation notes
+| # | Decision | Why | Impact |
+|---|---|---|---|
+| 21 | Engine closes an exited app's session at the tick time (`OnTick(now)`), so the Agent should also call `OnTick` immediately when a process-exit wait fires | `OnTick` is the only detection entry point; keeps the engine free of per-process state | Agent ticket wires exit callbacks to `OnTick(now)` |
+| 22 | Invariant: usage accumulated for an open session always covers `[start_utc, last_seen_utc]`; close accumulates `last_seen->end` (signed) and min-session removal subtracts `start->end` | Makes crash recovery and `RebuildAll()` exact (open sessions rebuild up to `last_seen`) | Property test relies on it |
+| 23 | `end_reason` for a backwards clock change is `exit`; tick-gap/suspend/lock use `sleep` | Schema CHECK has no better value | |
+| 24 | `OpenSession` bumps `start_utc` by whole seconds when `(app_id,start_utc)` already exists | Unique index `ux_sessions_app_start`; avoids failures on fast restart or clock rewind | Start may be a few seconds later than the process start |
+| 25 | `daily_usage` rows reaching 0 are deleted; `ITrackingSettings` is read live on each decision | Keeps incremental == rebuild; settings changes apply immediately | |
+| 26 | Unreadable processes (`FullPath == null`) match by image name only if exactly one tracked app has that file name | Spec 6.1 | Win32ProcessProvider must leave `FullPath` null when `OpenProcess` fails |
