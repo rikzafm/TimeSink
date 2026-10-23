@@ -11,6 +11,7 @@ internal static class Program
     private static nint s_hwnd;
     private static nint s_icon;
     private static Db? s_db;
+    private static TrackingHost? s_tracking;
     private static string s_dbPath = "";
     private static readonly FlyoutToggle s_toggle = new();
     private static Process? s_ui;
@@ -31,12 +32,23 @@ internal static class Program
         using var mutex = new Mutex(true, @"Local\TimeSink.Agent", out var isFirst);
         if (!isFirst) return 0;
 
-        var dbPath = Path.Combine(
+        // `--db <path>` overrides the database location (testing).
+        var dbPath = args.Length == 2 && args[0] == "--db" ? args[1] : Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeSink", "timesink.db");
         s_dbPath = dbPath;
         s_db = Db.Open(dbPath);
 
+        LowerPower();
         return RunMessageLoop();
+    }
+
+    /// <summary>implementation.md 6.6: below-normal priority and EcoQoS.</summary>
+    private static unsafe void LowerPower()
+    {
+        var self = NativeMethods.GetCurrentProcess();
+        NativeMethods.SetPriorityClass(self, NativeMethods.BELOW_NORMAL_PRIORITY_CLASS);
+        var state = new PROCESS_POWER_THROTTLING_STATE { Version = 1, ControlMask = 1, StateMask = 1 };
+        NativeMethods.SetProcessInformation(self, 4, &state, (uint)sizeof(PROCESS_POWER_THROTTLING_STATE));
     }
 
     private static int Smoke(string dbPath)
@@ -69,6 +81,9 @@ internal static class Program
         if (s_hwnd == 0) return 3;
 
         AddTrayIcon();
+
+        s_tracking = new TrackingHost(s_db!, s_hwnd);
+        s_tracking.Start();
 
         MSG msg;
         while (NativeMethods.GetMessageW(&msg, 0, 0, 0) > 0)
@@ -261,6 +276,8 @@ internal static class Program
             AddTrayIcon(); // Explorer restarted: tray icons were wiped.
             return 0;
         }
+        if (s_tracking is { } tracking && tracking.HandleMessage(msg, wParam))
+            return msg == NativeMethods.WM_POWERBROADCAST ? 1 : 0;
         switch (msg)
         {
             case TrayCallback:
@@ -270,6 +287,7 @@ internal static class Program
                 else if (ev == NativeMethods.WM_MOUSEMOVE) OnTrayHover();
                 return 0;
             case NativeMethods.WM_DESTROY:
+                s_tracking?.Stop();
                 RemoveTrayIcon();
                 NativeMethods.PostQuitMessage(0);
                 return 0;

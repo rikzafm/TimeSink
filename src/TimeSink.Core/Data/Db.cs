@@ -74,6 +74,23 @@ public sealed class Db : IDisposable
         return rows;
     }
 
+    public string? GetSetting(string key)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT value FROM settings WHERE key = $k";
+        cmd.Parameters.AddWithValue("$k", key);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    public void SetSetting(string key, string value)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "INSERT INTO settings (key, value) VALUES ($k, $v) ON CONFLICT(key) DO UPDATE SET value = $v";
+        cmd.Parameters.AddWithValue("$k", key);
+        cmd.Parameters.AddWithValue("$v", value);
+        cmd.ExecuteNonQuery();
+    }
+
     public void Dispose() => _connection.Dispose();
 
     private static void Migrate(SqliteConnection connection)
