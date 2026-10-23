@@ -20,4 +20,14 @@ Source: `design/pulse-boards.html`, `design/themes/theme-variants.html`; decided
 | 13 | Month lists top **4** apps (not 3) | Board shows 4 | Matches design |
 | 14 | Footers per design: `+ Add app` on every tab plus per-tab right-side item | Spec said footers vary | See §8.1 |
 
-Open/unchanged: Windows 11 primary, Windows 10 22H2 supported without backdrop; name "TimeSink" is a placeholder.
+## 2026-10-23 — Ticket 01 (M0 spike) implementation notes
+| # | Decision | Why | Impact |
+|---|---|---|---|
+| 15 | **Native AOT + SQLite works**; no trimmed fallback needed. Published Agent ~2.8 MB exe + `e_sqlite3.dll` (2 MB), ~14 MB working set idle | M0 go/no-go passed | Spec §2 Agent stays AOT |
+| 16 | Agent message window is a **hidden top-level window** (never shown), not `HWND_MESSAGE` | Message-only windows do not receive the `TaskbarCreated` broadcast, so the tray icon would not return after an Explorer restart (verified) | §4/§13 wording "message-only window" superseded |
+| 17 | Pinned `SQLitePCLRaw.lib.e_sqlite3` 2.1.14 directly in Core | Default 2.1.11 flagged NU1903 (high severity), fails with TreatWarningsAsErrors | Revisit when `Microsoft.Data.Sqlite` pulls a fixed version |
+| 18 | P/Invoke via hand-written `LibraryImport` in `Agent/Native/NativeMethods.cs`, not CsWin32 | Spike needs ~15 calls; spec allows either | Can switch to CsWin32 later |
+| 19 | Native AOT publish needs `vswhere.exe` on PATH (`%ProgramFiles(x86)%\Microsoft Visual Studio\Installer`) | ILCompiler's vcvars lookup fails otherwise | Build/publish scripts (M7) must add it |
+| 20 | `Agent --smoke <dbPath>` diagnostic opens/migrates a DB and inserts a row | Proves AOT+SQLite headlessly | Dev-only flag |
+
+Open/unchanged (2026-10-23 review): Windows 11 primary, Windows 10 22H2 supported without backdrop; name "TimeSink" is a placeholder.
