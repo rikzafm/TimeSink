@@ -33,6 +33,7 @@ public sealed class Rig : IDisposable
     public const string NotepadPath = @"c:\windows\notepad.exe";
 
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "timesink-tests-" + Guid.NewGuid().ToString("N"));
+    public string DbPath { get; }
     public Db Db { get; }
     public SqliteSessionStore Store { get; }
     public FakeClock Clock { get; } = new() { UtcNow = Base };
@@ -48,7 +49,8 @@ public sealed class Rig : IDisposable
     {
         Zone = zone ?? TimeZoneInfo.Utc;
         Directory.CreateDirectory(_dir);
-        Db = Db.Open(Path.Combine(_dir, "t.db"));
+        DbPath = Path.Combine(_dir, "t.db");
+        Db = Db.Open(DbPath);
         Store = new SqliteSessionStore(Db);
         Usage = new UsageAccumulator(Store, Zone);
         NotepadId = Db.InsertApp(NotepadPath, "Notepad", addedUtc);

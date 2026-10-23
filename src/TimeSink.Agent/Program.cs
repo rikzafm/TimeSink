@@ -12,6 +12,7 @@ internal static class Program
     private static nint s_icon;
     private static Db? s_db;
     private static TrackingHost? s_tracking;
+    private static BackupScheduler? s_backup;
     private static string s_dbPath = "";
     private static readonly FlyoutToggle s_toggle = new();
     private static Process? s_ui;
@@ -84,6 +85,8 @@ internal static class Program
 
         s_tracking = new TrackingHost(s_db!, s_hwnd);
         s_tracking.Start();
+        s_backup = new BackupScheduler(s_dbPath, s_hwnd);
+        s_backup.Start();
 
         MSG msg;
         while (NativeMethods.GetMessageW(&msg, 0, 0, 0) > 0)
@@ -278,6 +281,7 @@ internal static class Program
         }
         if (s_tracking is { } tracking && tracking.HandleMessage(msg, wParam))
             return msg == NativeMethods.WM_POWERBROADCAST ? 1 : 0;
+        if (s_backup is { } backup && backup.HandleMessage(msg, wParam)) return 0;
         switch (msg)
         {
             case TrayCallback:
@@ -287,6 +291,7 @@ internal static class Program
                 else if (ev == NativeMethods.WM_MOUSEMOVE) OnTrayHover();
                 return 0;
             case NativeMethods.WM_DESTROY:
+                s_backup?.Stop();
                 s_tracking?.Stop();
                 RemoveTrayIcon();
                 NativeMethods.PostQuitMessage(0);
