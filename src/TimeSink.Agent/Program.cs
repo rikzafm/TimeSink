@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using TimeSink.Agent.Native;
 using TimeSink.Core.Data;
+using TimeSink.Core.Flyout;
 
 namespace TimeSink.Agent;
 
@@ -10,6 +11,9 @@ internal static class Program
     private static nint s_hwnd;
     private static nint s_icon;
     private static Db? s_db;
+    private static readonly FlyoutToggle s_toggle = new();
+    private static Process? s_ui;
+    private const string CloseEventName = @"Local\TimeSink.UI.Close";
 
     private const uint TrayCallback = NativeMethods.WM_APP + 1;
     private const uint IdOpen = 1, IdQuit = 2;
@@ -20,6 +24,8 @@ internal static class Program
         // Spike/diagnostic: prove AOT + SQLite end to end without a tray. `--smoke <dbPath>`.
         if (args.Length == 2 && args[0] == "--smoke")
             return Smoke(args[1]);
+
+        NativeMethods.SetProcessDpiAwarenessContext(NativeMethods.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
         using var mutex = new Mutex(true, @"Local\TimeSink.Agent", out var isFirst);
         if (!isFirst) return 0;
@@ -114,16 +120,63 @@ internal static class Program
 
     private static void Handle(uint command)
     {
-        if (command == IdOpen) OpenUi();
+        if (command == IdOpen) ToggleFlyout();
         else if (command == IdQuit) NativeMethods.DestroyWindow(s_hwnd);
+    }
+
+    /// <summary>Tray left-click or "Open" menu item: toggle the flyout.</summary>
+    private static void ToggleFlyout()
+    {
+        var ui = s_ui;
+        var running = false;
+        try { running = ui is { HasExited: false }; } catch (InvalidOperationException) { }
+
+        switch (s_toggle.OnTrayClick(DateTime.UtcNow, running))
+        {
+            case FlyoutAction.Open: OpenUi(); break;
+            case FlyoutAction.Close:
+                try { using var ev = EventWaitHandle.OpenExisting(CloseEventName); ev.Set(); }
+                catch (WaitHandleCannotBeOpenedException) { }
+                break;
+        }
     }
 
     private static void OpenUi()
     {
-        // Spike: the UI is a stub. Launch it if present next to the Agent.
-        var ui = Path.Combine(AppContext.BaseDirectory, "TimeSink.UI.exe");
-        if (File.Exists(ui)) Process.Start(new ProcessStartInfo(ui) { UseShellExecute = false });
+        var exe = Path.Combine(AppContext.BaseDirectory, "TimeSink.UI.exe");
+        if (!File.Exists(exe)) return;
+
+        var psi = new ProcessStartInfo(exe) { UseShellExecute = false };
+        foreach (var a in ComputeLaunchArgs().ToArgs()) psi.ArgumentList.Add(a);
+
+        var p = Process.Start(psi);
+        if (p is null) return;
+        NativeMethods.AllowSetForegroundWindow((uint)p.Id);
+        p.EnableRaisingEvents = true;
+        p.Exited += (_, _) => s_toggle.OnUiExited(DateTime.UtcNow);
+        s_ui = p;
     }
+
+    private static FlyoutLaunchArgs ComputeLaunchArgs()
+    {
+        var id = new NOTIFYICONIDENTIFIER { cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NOTIFYICONIDENTIFIER>(), hWnd = s_hwnd, uID = 1 };
+        RECT icon;
+        if (NativeMethods.Shell_NotifyIconGetRect(id, out icon) != 0)
+        {
+            NativeMethods.GetCursorPos(out var pt); // fallback: a 1 px rect at the cursor
+            icon = new RECT { Left = pt.X, Top = pt.Y, Right = pt.X + 1, Bottom = pt.Y + 1 };
+        }
+
+        var monitor = NativeMethods.MonitorFromRect(icon, NativeMethods.MONITOR_DEFAULTTONEAREST);
+        var info = new MONITORINFO { cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
+        NativeMethods.GetMonitorInfo(monitor, ref info);
+        uint dpi = 96;
+        if (NativeMethods.GetDpiForMonitor(monitor, NativeMethods.MDT_EFFECTIVE_DPI, out var dx, out _) == 0) dpi = dx;
+
+        return new FlyoutLaunchArgs(Px(icon), Px(info.rcMonitor), Px(info.rcWork), (int)dpi);
+    }
+
+    private static PxRect Px(RECT r) => new(r.Left, r.Top, r.Right, r.Bottom);
 
     [System.Runtime.InteropServices.UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
     private static nint WndProc(nint hwnd, uint msg, nuint wParam, nint lParam)
@@ -138,7 +191,7 @@ internal static class Program
             case TrayCallback:
                 var ev = (uint)(lParam & 0xFFFF);
                 if (ev == NativeMethods.WM_RBUTTONUP || ev == NativeMethods.WM_CONTEXTMENU) ShowMenu();
-                else if (ev == NativeMethods.WM_LBUTTONUP) OpenUi();
+                else if (ev == NativeMethods.WM_LBUTTONUP) ToggleFlyout();
                 return 0;
             case NativeMethods.WM_DESTROY:
                 RemoveTrayIcon();

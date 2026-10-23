@@ -53,8 +53,54 @@ internal unsafe struct NOTIFYICONDATAW
     public nint hBalloonIcon;
 }
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct RECT { public int Left, Top, Right, Bottom; }
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NOTIFYICONIDENTIFIER
+{
+    public uint cbSize;
+    public nint hWnd;
+    public uint uID;
+    public Guid guidItem;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct MONITORINFO
+{
+    public uint cbSize;
+    public RECT rcMonitor;
+    public RECT rcWork;
+    public uint dwFlags;
+}
+
 internal static partial class NativeMethods
 {
+    public const uint MONITOR_DEFAULTTONEAREST = 2;
+    public const int MDT_EFFECTIVE_DPI = 0;
+    public static readonly nint DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4;
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetProcessDpiAwarenessContext(nint value);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool AllowSetForegroundWindow(uint pid);
+
+    [LibraryImport("shell32.dll")]
+    public static partial int Shell_NotifyIconGetRect(in NOTIFYICONIDENTIFIER id, out RECT rect);
+
+    [LibraryImport("user32.dll")]
+    public static partial nint MonitorFromRect(in RECT rect, uint flags);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetMonitorInfo(nint monitor, ref MONITORINFO info);
+
+    [LibraryImport("shcore.dll")]
+    public static partial int GetDpiForMonitor(nint monitor, int type, out uint dpiX, out uint dpiY);
+
     public const uint WM_DESTROY = 0x0002;
     public const uint WM_CLOSE = 0x0010;
     public const uint WM_COMMAND = 0x0111;
