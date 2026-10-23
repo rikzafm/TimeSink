@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using TimeSink.Core.Data;
+using TimeSink.Core.Settings;
 using TimeSink.Core.Theming;
 using TimeSink.UI.Theming;
 
@@ -30,10 +31,12 @@ internal static class Program
 
     private static Prepared PrepareStartup()
     {
-        var dbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeSink", "timesink.db");
+        var dbPath = Environment.GetEnvironmentVariable("TIMESINK_DB") is { Length: > 0 } over
+            ? over
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeSink", "timesink.db");
         var shift = (GetAsyncKeyState(0x10) & 0x8000) != 0; // Shift forces pulse-dark for this session
         var id = shift ? ThemeLoader.DefaultId : ThemeService.IdFor(SettingsStore.Get(dbPath, "ui.theme"), ThemeService.SystemIsLight());
-        var theme = ThemeService.Load(id);
+        var theme = Accents.Apply(ThemeService.Load(id), SettingsCatalogue.Read(dbPath, SettingsCatalogue.Find("accent")));
         var tab = ShellTabs.Parse(SettingsStore.Get(dbPath, ShellTabs.SettingKey));
         StartupTrace.Mark("prepared");
         return new Prepared(theme, tab, dbPath);

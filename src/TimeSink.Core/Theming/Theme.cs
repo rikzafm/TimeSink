@@ -23,10 +23,11 @@ public static class StringKeys
     public const string TabYear = "tabYear";
     public const string TabAll = "tabAll";
     public const string AddApp = "addApp";
+    public const string Back = "back";
     public const string StubComingSoon = "stubComingSoon";
 
     public static readonly IReadOnlyList<string> All =
-        [AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, StubComingSoon];
+        [AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, Back, StubComingSoon];
 }
 
 /// <summary>The complete list of colour token keys; the UI maps each to a <c>Brush.*</c> resource.</summary>

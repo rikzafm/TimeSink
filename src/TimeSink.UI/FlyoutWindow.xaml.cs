@@ -42,8 +42,7 @@ public partial class FlyoutWindow : Window
         SourceInitialized += OnSourceInitialized;
         ContentRendered += OnContentRendered;
         Deactivated += (_, _) => { if (_revealed) Close(); };
-        // Developer aid until Settings (ticket 16) exists: flip Dark/Light in place.
-        InputBindings.Add(new KeyBinding(new RelayCommand(ToggleTheme), Key.T, ModifierKeys.Control | ModifierKeys.Shift));
+        SettingsButton.Click += (_, _) => ToggleSettings();
 
         foreach (RadioButton b in TabBar.Children)
         {
@@ -59,6 +58,7 @@ public partial class FlyoutWindow : Window
         if (!_bodies.TryGetValue(tab, out var body))
             _bodies[tab] = body = CreateBody(tab);
         Body.Content = body;
+        _current = tab;
         if (persist)
         {
             var path = _dbPath;
@@ -75,14 +75,23 @@ public partial class FlyoutWindow : Window
         return text;
     }
 
-    private void ToggleTheme()
-        => _themes.Apply(_themes.Current.Id == "pulse-dark" ? "pulse-light" : "pulse-dark");
+    private SettingsView? _settings;
+    private ShellTab _current;
 
-    private sealed class RelayCommand(Action run) : ICommand
+    // The Settings page replaces the tab body (and hides the tab bar); the header button becomes "Back".
+    private void ToggleSettings()
     {
-        public event EventHandler? CanExecuteChanged { add { } remove { } }
-        public bool CanExecute(object? parameter) => true;
-        public void Execute(object? parameter) => run();
+        if (_settings is not null && ReferenceEquals(Body.Content, _settings))
+        {
+            TabStrip.Visibility = Visibility.Visible;
+            Body.Content = _bodies[_current];
+            SettingsButton.SetResourceReference(ContentControl.ContentProperty, "Str.Settings");
+            return;
+        }
+        _settings ??= new SettingsView(_themes, _dbPath);
+        TabStrip.Visibility = Visibility.Collapsed;
+        Body.Content = _settings;
+        SettingsButton.SetResourceReference(ContentControl.ContentProperty, "Str.Back");
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
