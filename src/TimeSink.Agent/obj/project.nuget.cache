@@ -1,8 +1,23 @@
 {
   "version": 2,
-  "dgSpecHash": "23+gIUd6jPA=",
+  "dgSpecHash": "VVU1kRYCFjo=",
   "success": true,
   "projectFilePath": "D:\\Documents\\PnD Project\\timesink\\.wt\\worktrees\\agent-a99340b4493a067fe\\src\\TimeSink.Agent\\TimeSink.Agent.csproj",
-  "expectedPackageFiles": [],
+  "expectedPackageFiles": [
+    "C:\\Users\\SNOW\\.nuget\\packages\\microsoft.data.sqlite\\10.0.0\\microsoft.data.sqlite.10.0.0.nupkg.sha512",
+    "C:\\Users\\SNOW\\.nuget\\packages\\microsoft.data.sqlite.core\\10.0.0\\microsoft.data.sqlite.core.10.0.0.nupkg.sha512",
+    "C:\\Users\\SNOW\\.nuget\\packages\\microsoft.dotnet.ilcompiler\\10.0.13\\microsoft.dotnet.ilcompiler.10.0.13.nupkg.sha512",
+    "C:\\Users\\SNOW\\.nuget\\packages\\microsoft.net.illink.tasks\\10.0.13\\microsoft.net.illink.tasks.10.0.13.nupkg.sha512",
+    "C:\\Users\\SNOW\\.nuget\\packages\\runtime.win-x64.microsoft.dotnet.ilcompiler\\10.0.13\\runtime.win-x64.microsoft.dotnet.ilcompiler.10.0.13.nupkg.sha512",
+    "C:\\Users\\SNOW\\.nuget\\packages\\sqlitepclraw.bundle_e_sqlite3\\2.1.11\\sqlitepclraw.bundle_e_sqlite3.2.1.11.nupkg.sha512",
+    "C:\\Users\\SNOW\\.nuget\\packages\\sqlitepclraw.core\\2.1.11\\sqlitepclraw.core.2.1.11.nupkg.sha512",
+    "C:\\Users\\SNOW\\.nuget\\packages\\sqlitepclraw.lib.e_sqlite3\\2.1.14\\sqlitepclraw.lib.e_sqlite3.2.1.14.nupkg.sha512",
+    "C:\\Users\\SNOW\\.nuget\\packages\\sqlitepclraw.provider.e_sqlite3\\2.1.11\\sqlitepclraw.provider.e_sqlite3.2.1.11.nupkg.sha512",
+    "C:\\Users\\SNOW\\.nuget\\packages\\microsoft.netcore.app.runtime.win-x64\\10.0.13\\microsoft.netcore.app.runtime.win-x64.10.0.13.nupkg.sha512",
+    "C:\\Users\\SNOW\\.nuget\\packages\\microsoft.windowsdesktop.app.runtime.win-x64\\10.0.13\\microsoft.windowsdesktop.app.runtime.win-x64.10.0.13.nupkg.sha512",
+    "C:\\Users\\SNOW\\.nuget\\packages\\microsoft.aspnetcore.app.runtime.win-x64\\10.0.13\\microsoft.aspnetcore.app.runtime.win-x64.10.0.13.nupkg.sha512",
+    "C:\\Users\\SNOW\\.nuget\\packages\\microsoft.netcore.app.runtime.nativeaot.win-x64\\10.0.13\\microsoft.netcore.app.runtime.nativeaot.win-x64.10.0.13.nupkg.sha512",
+    "C:\\Users\\SNOW\\.nuget\\packages\\runtime.win-x64.microsoft.dotnet.ilcompiler\\10.0.13\\runtime.win-x64.microsoft.dotnet.ilcompiler.10.0.13.nupkg.sha512"
+  ],
   "logs": []
 }
