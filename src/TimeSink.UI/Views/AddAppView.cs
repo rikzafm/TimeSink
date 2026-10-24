@@ -17,7 +17,7 @@ namespace TimeSink.UI.Views;
 /// text comes from theme resources (<c>Brush.*</c>, <c>Str.*</c>). Tracking writes through <see cref="AppLibrary"/>;
 /// the Agent picks the new app up on its next tick (decision 39).
 /// </summary>
-public sealed class AddAppView : UserControl
+public sealed partial class AddAppView : UserControl
 {
     private sealed class Row
     {
@@ -49,6 +49,9 @@ public sealed class AddAppView : UserControl
     private List<Row> _rows = [];
     private bool _loading;
     private ContentControl _body = null!;
+    private string _tab = "Running";
+    private readonly Dictionary<string, RadioButton> _tabButtons = new();
+    private readonly HashSet<string> _addedElsewhere = new(StringComparer.OrdinalIgnoreCase); // added from Installed/Browse in this visit
 
     public AddAppView(ThemeService themes, string dbPath, Action close)
     {
@@ -94,7 +97,7 @@ public sealed class AddAppView : UserControl
         Grid.SetRow(header, 0);
         root.Children.Add(header);
 
-        // tabs (Installed and Browse arrive with ticket 08)
+        // tabs
         var tabs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 8, 20, 0) };
         var strip = new Border { BorderThickness = new Thickness(0, 0, 0, 1), Child = tabs };
         strip.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
@@ -103,6 +106,7 @@ public sealed class AddAppView : UserControl
             var rb = new RadioButton { Tag = tag, IsChecked = tag == "Running", Margin = new Thickness(0, 0, 18, 0), Style = (Style)FindResource("TabButton") };
             rb.SetResourceReference(ContentControl.ContentProperty, "Str." + char.ToUpperInvariant(key[0]) + key[1..]);
             rb.Checked += (_, _) => ShowTab(tag);
+            _tabButtons[tag] = rb;
             tabs.Children.Add(rb);
         }
         Grid.SetRow(strip, 1);
@@ -137,13 +141,13 @@ public sealed class AddAppView : UserControl
 
     private void ShowTab(string tag)
     {
-        if (tag == "Running") { _body.Content = BuildRunningTab(); Render(); return; }
-        var stub = new TextBlock { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        stub.SetResourceReference(TextBlock.TextProperty, "Str.StubComingSoon");
-        stub.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
-        stub.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
-        stub.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
-        _body.Content = stub;
+        _tab = tag;
+        switch (tag)
+        {
+            case "Running": _body.Content = BuildRunningTab(); Render(); Refresh(); break;
+            case "Installed": _body.Content = BuildInstalledTab(); break;
+            default: _body.Content = BuildBrowseTab(); break;
+        }
     }
 
     private UIElement BuildRunningTab()
@@ -157,7 +161,7 @@ public sealed class AddAppView : UserControl
 
     private void Refresh()
     {
-        if (_loading) return;
+        if (_loading || _tab != "Running") return;
         _loading = true;
         var path = _dbPath;
         var known = _iconCache.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -207,11 +211,25 @@ public sealed class AddAppView : UserControl
         UpdateCount();
     }
 
+    /// <summary>"Not this one": the app joins the ignore list and leaves the list.</summary>
+    private void Dismiss(Row row)
+    {
+        if (row.Done) return;
+        try
+        {
+            using var lib = AppLibrary.Open(_dbPath);
+            lib.Ignore(row.App.ExePath, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        }
+        catch { return; }
+        _rows.Remove(row);
+        Render();
+    }
+
     // ---- rendering ----------------------------------------------------------------------------------------
 
     private void Redraw() { UpdateCount(); Render(); }
 
-    private void UpdateCount() => _count.Text = TimeText.Str(AddAppStrings.AddedCount, _session.Count);
+    private void UpdateCount() => _count.Text = TimeText.Str(AddAppStrings.AddedCount, _session.Keys.Union(_addedElsewhere, StringComparer.OrdinalIgnoreCase).Count());
 
     private void Render()
     {
@@ -252,8 +270,16 @@ public sealed class AddAppView : UserControl
         open.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
         open.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         open.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+        var sub = new StackPanel { Orientation = Orientation.Horizontal };
+        sub.Children.Add(open);
+        var notThis = Text("Str.AddNotThisOne", "Double.FontSize.Small", "Brush.TextMuted");
+        notThis.Margin = new Thickness(10, 0, 0, 0);
+        notThis.TextDecorations = TextDecorations.Underline;
+        notThis.Cursor = System.Windows.Input.Cursors.Hand;
+        notThis.MouseLeftButtonUp += (_, _) => Dismiss(row);
+        sub.Children.Add(notThis);
         texts.Children.Add(name);
-        texts.Children.Add(open);
+        texts.Children.Add(sub);
 
         var button = new Button { Template = Flat, VerticalAlignment = VerticalAlignment.Center, Height = 32, MinWidth = 76, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(14, 6, 14, 6), Cursor = System.Windows.Input.Cursors.Hand, Focusable = false, FontWeight = FontWeights.Bold };
         button.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
@@ -280,31 +306,39 @@ public sealed class AddAppView : UserControl
         b.IsHitTestVisible = !row.Done;
     }
 
+    private Border IconTile(Row row) => MakeTile(row.App.DisplayName, row.App.ExePath, row.Png);
+
     /// <summary>Cached/extracted icon when there is one, else a letter tile in a palette colour.</summary>
-    private Border IconTile(Row row)
+    private Border MakeTile(string name, string exePath, byte[]? png)
     {
         var tile = new Border { Width = 36, Height = 36, BorderThickness = new Thickness(1) };
         tile.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
         tile.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
-        var bmp = IconService.Decode(row.Png);
+        FillTile(tile, name, exePath, png);
+        return tile;
+    }
+
+    private void FillTile(Border tile, string name, string exePath, byte[]? png)
+    {
+        var bmp = IconService.Decode(png);
         if (bmp is not null)
         {
+            tile.ClearValue(Border.BackgroundProperty);
             tile.Padding = new Thickness(3);
             tile.Child = new Image { Source = bmp, Stretch = Stretch.Uniform };
-            return tile;
+            return;
         }
         tile.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
         var letter = new TextBlock
         {
-            Text = LetterTile.Letter(row.App.DisplayName), FontWeight = FontWeights.Bold,
+            Text = LetterTile.Letter(name), FontWeight = FontWeights.Bold,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
         };
-        var slot = LetterTile.PaletteIndex(LetterTile.KeyFor(row.App.ExePath), Math.Max(1, _themes.Current.Apps.Count));
+        var slot = LetterTile.PaletteIndex(LetterTile.KeyFor(exePath), Math.Max(1, _themes.Current.Apps.Count));
         letter.SetResourceReference(TextBlock.ForegroundProperty, "Brush.App" + slot);
         letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         letter.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Title");
         tile.Child = letter;
-        return tile;
     }
 
     private UIElement BuildHint()
@@ -319,6 +353,8 @@ public sealed class AddAppView : UserControl
         line.Inlines.Add(new Run(TimeText.Str(AddAppStrings.HintBefore)));
         var link = new Run(TimeText.Str(AddAppStrings.HintLink)) { FontWeight = FontWeights.Bold, TextDecorations = TextDecorations.Underline };
         link.SetResourceReference(TextElement.ForegroundProperty, "Brush.Accent");
+        link.Cursor = System.Windows.Input.Cursors.Hand;
+        link.MouseLeftButtonUp += (_, _) => _tabButtons["Installed"].IsChecked = true;
         line.Inlines.Add(link);
         line.Inlines.Add(new Run(TimeText.Str(AddAppStrings.HintAfter)));
         wrap.Children.Add(dashed);
@@ -326,10 +362,10 @@ public sealed class AddAppView : UserControl
         return wrap;
     }
 
-    private TextBlock Text(string strKey, string sizeKey, string brushKey)
+    private TextBlock Text(string? strKey, string sizeKey, string brushKey)
     {
         var t = new TextBlock();
-        t.SetResourceReference(TextBlock.TextProperty, strKey);
+        if (strKey is not null) t.SetResourceReference(TextBlock.TextProperty, strKey);
         t.SetResourceReference(TextBlock.ForegroundProperty, brushKey);
         t.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         t.SetResourceReference(TextBlock.FontSizeProperty, sizeKey);
