@@ -35,6 +35,9 @@ public partial class MonthView : UserControl
     private MonthResult? _result;
     private int _seq;
     private bool _started;
+    private const int MaxBarSegments = 7;
+    private List<(string Name, long Seconds)> _barLabels = new();
+    private string _defaultNote = "";
 
     public MonthView(string dbPath, ThemeService themes, LiveState live, FlyoutWindow? window)
     {
@@ -51,6 +54,8 @@ public partial class MonthView : UserControl
         Next.Click += (_, _) => Navigate(1);
         ExportButton.Click += (_, _) => Export();
         Calendar.DayClicked += d => { _selected = d; Redraw(); };
+        SelBar.HoverChanged += ShowBarNote;
+        SelBar.SegmentClicked += _ => ShowBarNote(-1);
         _timer.Tick += (_, _) => { if (_window is not { IsRevealed: false }) Refresh(); };
         _live.Changed += () => { if (_result?.IsCurrent == true) Refresh(); };
         _themes.Applied += Redraw;
@@ -96,7 +101,7 @@ public partial class MonthView : UserControl
         {
             result = await Task.Run(() =>
                 MonthQuery.Run(path, now, TimeZoneInfo.Local, year, month,
-                    MonthQuery.ParseWeekStart(SettingsStore.Get(path, "week.start")), running));
+                    MonthQuery.ParseWeekStart(SettingsStore.Get(path, "week.start")), running, SignInTime.Cached()));
         }
         catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or IOException) { return; } // no DB yet
         if (seq != _seq || !_started) return;
@@ -190,10 +195,29 @@ public partial class MonthView : UserControl
         SelDate.Text = day.Date.ToString("ddd, d MMM", En);
         SelTotal.Text = DurationFormat.HoursMinutes(day.Seconds);
         var palette = Math.Max(1, _themes.Current.Apps.Count);
-        SelBar.Segments = day.Apps.Select(a => ((double)a.Seconds, Res("Brush.App" + (int)(a.AppId % palette)))).ToList();
-        SelNote.Text = day.Apps.Count > 0
+        var top = day.Apps.OrderByDescending(a => a.Seconds).Take(MaxBarSegments).ToList();
+        _barLabels = top.Select(a => (a.Name, a.Seconds)).ToList();
+        var segments = top.Select(a => ((double)a.Seconds, Res("Brush.App" + (int)(a.AppId % palette)))).ToList();
+        var rest = day.Apps.Sum(a => a.Seconds) - top.Sum(a => a.Seconds);
+        if (rest > 0)
+        {
+            _barLabels.Add(("Other", rest));
+            segments.Add(((double)rest, Res("Brush.TextMuted")));
+        }
+        SelBar.ClearPinned();
+        SelBar.Segments = segments;
+        _defaultNote = day.Apps.Count > 0
             ? Str(StringKeys.MonthMostly, day.Apps[0].Name, DurationFormat.HoursMinutes(day.Apps[0].Seconds))
             : Str(StringKeys.MonthDayEmpty);
+        ShowBarNote(-1);
+    }
+
+    private void ShowBarNote(int index)
+    {
+        if (index < 0) index = SelBar.PinnedIndex;
+        SelNote.Text = index >= 0 && index < _barLabels.Count
+            ? $"{_barLabels[index].Name} · {DurationFormat.HoursMinutes(_barLabels[index].Seconds)}"
+            : _defaultNote;
     }
 
     private void BuildTop(MonthResult r)

@@ -16,6 +16,7 @@ public class SettingsCatalogueTests
     [InlineData("tracking.countWhenLocked", "true")]
     [InlineData("tracking.minSessionSeconds", "15")]
     [InlineData("tracking.suggestApps", "true")]
+    [InlineData("steam.autoTrack", "true")]
     [InlineData("ui.theme", "System")]
     [InlineData("ui.accent", "Lime")]
     [InlineData("ui.compact", "false")]

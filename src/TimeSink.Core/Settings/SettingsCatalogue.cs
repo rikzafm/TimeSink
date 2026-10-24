@@ -40,6 +40,8 @@ public static class SettingsCatalogue
             [new("5", "5s"), new("15", "15s"), new("30", "30s")]),
         new("suggestApps", Tracking, "Suggest apps I use", "Offer running apps you have not added yet.", SettingKind.Switch, "tracking.suggestApps", "true"),
 
+        new("steamAutoTrack", Tracking, "Track Steam games", "Add newly installed Steam games automatically.", SettingKind.Switch, "steam.autoTrack", "true"),
+
         new("theme", Appearance, "Theme", "Follows Windows when set to System.", SettingKind.Segmented, "ui.theme", "System", Opts("Dark", "Light", "System")),
         new("accent", Appearance, "Accent", "The highlight colour used across the app.", SettingKind.Segmented, "ui.accent", "Lime", Opts("Lime", "Blue", "Pink")),
         new("compact", Appearance, "Compact lists", "Tighter rows in app lists.", SettingKind.Switch, "ui.compact", "false"),
@@ -56,6 +58,8 @@ public static class SettingsCatalogue
 
         new("resourceUse", About, "Resource use", "What the tracking Agent costs right now.", SettingKind.Info),
         new("trackingSince", About, "Tracking since", "", SettingKind.Info),
+        new("installFolder", About, "Installed location", "Open the folder TimeSink runs from.", SettingKind.Button),
+        new("uninstall", About, "Uninstall TimeSink", "Removes the app. You choose whether to keep your history.", SettingKind.Button, Danger: true),
     ];
 
     public static SettingRow Find(string id) => Rows.Single(r => r.Id == id);

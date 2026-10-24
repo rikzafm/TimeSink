@@ -19,7 +19,8 @@ public static class TodayQuery
 
 
     /// <param name="forDay">The local day to show; null or any day after today means today (the live day).</param>
-    public static TodayResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null)
+    /// <param name="onSinceUtc">When the PC became usable (sign-in); starts the live day's uptime. Null: first tracked session.</param>
+    public static TodayResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null, long? onSinceUtc = null)
     {
         using var c = new SqliteConnection(new SqliteConnectionStringBuilder
         {
@@ -31,7 +32,7 @@ public static class TodayQuery
             p.CommandText = "PRAGMA busy_timeout=2000";
             p.ExecuteNonQuery();
         }
-        return Run(c, now, zone, running, forDay);
+        return Run(c, now, zone, running, forDay, onSinceUtc);
     }
 
     /// <summary>The local date of the first tracked app, or null when nothing is tracked yet.</summary>
@@ -46,7 +47,7 @@ public static class TodayQuery
         return apps.Count == 0 ? null : LocalDate(apps.Values.Min(a => a.AddedUtc), zone);
     }
 
-    public static TodayResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null)
+    public static TodayResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null, long? onSinceUtc = null)
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
@@ -119,7 +120,7 @@ public static class TodayQuery
 
         LongestSessionTile? longest = null;
         var best = segs.OrderByDescending(s => Overlap(s, d0, d1)).FirstOrDefault();
-        if (best != default && Overlap(best, d0, d1) > 0) longest = new LongestSessionTile(NameOf(apps, best.Group), Overlap(best, d0, d1));
+        if (best != default && Overlap(best, d0, d1) > 0) longest = new LongestSessionTile(best.Group, NameOf(apps, best.Group), Overlap(best, d0, d1));
 
         var total = rows.Sum(r => r.Seconds);
         var y0 = DayStart(date.AddDays(-1), zone);
@@ -128,10 +129,16 @@ public static class TodayQuery
         var cut = isToday ? Math.Min(LocalDays.AtTime(date.AddDays(-1), TimeZoneInfo.ConvertTime(now, zone).TimeOfDay, zone), d0) : d0;
         var yesterdayByNow = segs.Sum(s => Overlap(s, y0, cut));
 
+        // PC uptime: shown from the sign-in time when known, but compared like-for-like (first activity) with yesterday.
+        var dayEnd = isToday ? nowUtc : d1;
+        var uptime = UsageUptime.Seconds(segs, d0, dayEnd, isToday, onSinceUtc);
+        var uptimeVs = UsageUptime.Seconds(segs, d0, dayEnd, isToday, null) - UsageUptime.Seconds(segs, y0, cut, false, null);
+
         var openSegs = isToday ? segs.Where(s => s.Open).ToList() : [];
         return new TodayResult(date, d0, d1, nowUtc, total,
             openSegs.Select(s => s.Group).Distinct().Count(), openSegs.Count,
-            hours, typicalDays > 0, SleepBands(segs, d0, Math.Min(nowUtc, d1)), first, longest, total - yesterdayByNow, rows);
+            hours, typicalDays > 0, UsageUptime.SleepBands(segs, d0, Math.Min(nowUtc, d1)), first, longest, total - yesterdayByNow, rows,
+            uptime, uptimeVs);
     }
 
     private static string NameOf(Dictionary<long, App> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
@@ -154,26 +161,6 @@ public static class TodayQuery
             t = next;
         }
         return sums;
-    }
-
-    /// <summary>From each sleep-close to the next session start of any app (or now), merged and clipped to today.</summary>
-    private static List<SleepBand> SleepBands(List<Seg> segs, long d0, long nowUtc)
-    {
-        var bands = new List<(long S, long E)>();
-        foreach (var s in segs.Where(s => s.Sleep && s.End >= d0 && s.End <= nowUtc))
-        {
-            var next = segs.Where(x => x.Start > s.End).Select(x => x.Start).DefaultIfEmpty(nowUtc).Min();
-            bands.Add((s.End, Math.Min(next, nowUtc)));
-        }
-        var merged = new List<SleepBand>();
-        foreach (var (s, e) in bands.OrderBy(b => b.S))
-        {
-            if (e <= s) continue;
-            if (merged.Count > 0 && s <= merged[^1].EndUtc)
-                merged[^1] = merged[^1] with { EndUtc = Math.Max(merged[^1].EndUtc, e) };
-            else merged.Add(new SleepBand(s, e));
-        }
-        return merged;
     }
 
     private static DateOnly LocalDate(long utc, TimeZoneInfo zone) =>

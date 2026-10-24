@@ -19,8 +19,18 @@
                     <Ellipse Width="10" Height="10" Fill="{DynamicResource Brush.Accent}" Margin="0,0,8,0"/>
                     <TextBlock Style="{StaticResource Wordmark}" Text="{DynamicResource Str.AppName}"/>
                 </StackPanel>
-                <Button x:Name="SettingsButton" Style="{StaticResource LinkButton}" HorizontalAlignment="Right"
-                        Content="{DynamicResource Str.Settings}"/>
+                <Button x:Name="SettingsButton" HorizontalAlignment="Right" ToolTip="{DynamicResource Str.Settings}">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource LinkButton}">
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE713;" FontSize="16"/>
+                </Button>
             </Grid>
 
             <!-- Tab bar -->

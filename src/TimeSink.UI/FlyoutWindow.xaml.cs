@@ -158,13 +158,15 @@ public partial class FlyoutWindow : Window
             if (_settings.TryClosePicker()) return;
             TabStrip.Visibility = Visibility.Visible;
             Body.Content = _bodies[_current];
-            SettingsButton.SetResourceReference(ContentControl.ContentProperty, "Str.Settings");
+            SettingsButton.Content = new TextBlock { FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"), Text = "", FontSize = 16 };
+            SettingsButton.SetResourceReference(FrameworkElement.ToolTipProperty, "Str.Settings");
             return;
         }
         _settings ??= new SettingsView(_themes, _dbPath);
         TabStrip.Visibility = Visibility.Collapsed;
         Body.Content = _settings;
         SettingsButton.SetResourceReference(ContentControl.ContentProperty, "Str.Back");
+        SettingsButton.ToolTip = null;
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)

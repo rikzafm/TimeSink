@@ -184,6 +184,56 @@ public sealed partial class SettingsView
         }
     }
 
+    // ---- Install folder and uninstall -------------------------------------------------------------------
+
+    /// <summary>Where the installer put TimeSink on this PC (its uninstall registry entry, AppId from installer\TimeSink.iss), else the per-user default, else the folder running now.</summary>
+    private static string InstallDir
+    {
+        get
+        {
+            const string key = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\{6F1D2C58-3B7E-4C0A-9A53-71D4E2B8C9A1}_is1";
+            foreach (var hive in new[] { Registry.CurrentUser, Registry.LocalMachine })
+            {
+                using var k = hive.OpenSubKey(key);
+                if (k?.GetValue("InstallLocation") is string dir && Directory.Exists(dir)) return dir.TrimEnd('\\', '/');
+            }
+            var perUser = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "TimeSink");
+            return Directory.Exists(perUser) ? perUser : AppContext.BaseDirectory.TrimEnd('\\', '/');
+        }
+    }
+
+    private void OpenInstallFolder()
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"\"{InstallDir}\"") { UseShellExecute = true }); }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            ShowDialog(Str(SettingsStrings.UninstallTitle), Str(SettingsStrings.OpenFailed, ex.Message), null, (Str(SettingsStrings.Ok), CloseDialog, true, false));
+        }
+    }
+
+    private void ConfirmUninstall()
+    {
+        var uninstaller = Directory.EnumerateFiles(InstallDir, "unins*.exe").FirstOrDefault();
+        if (uninstaller is null)
+        {
+            ShowDialog(Str(SettingsStrings.UninstallTitle), Str(SettingsStrings.UninstallMissing, InstallDir), null, (Str(SettingsStrings.Ok), CloseDialog, true, false));
+            return;
+        }
+        ShowDialog(Str(SettingsStrings.UninstallTitle), Str(SettingsStrings.UninstallBody), null,
+            (Str(SettingsStrings.Cancel), CloseDialog, false, false), (Str(SettingsStrings.UninstallConfirm), () =>
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uninstaller) { UseShellExecute = true });
+                    Application.Current.Shutdown();
+                }
+                catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+                {
+                    ShowDialog(Str(SettingsStrings.UninstallTitle), Str(SettingsStrings.OpenFailed, ex.Message), null, (Str(SettingsStrings.Ok), CloseDialog, true, false));
+                }
+            }, false, true));
+    }
+
     // ---- helpers ---------------------------------------------------------------------------------------
 
     /// <summary>Tells the running Agent that the database changed underneath it (no-op when it is not running).</summary>

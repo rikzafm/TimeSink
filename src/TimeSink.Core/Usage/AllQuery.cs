@@ -23,7 +23,7 @@ public static class AllQuery
         public readonly Dictionary<(int, int), long> Months = [];
     }
 
-    public static AllResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null)
+    public static AllResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
         using var c = new SqliteConnection(new SqliteConnectionStringBuilder
         {
@@ -35,10 +35,10 @@ public static class AllQuery
             p.CommandText = "PRAGMA busy_timeout=2000";
             p.ExecuteNonQuery();
         }
-        return Run(c, now, zone, running);
+        return Run(c, now, zone, running, onSinceUtc);
     }
 
-    public static AllResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null)
+    public static AllResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var groups = new Dictionary<long, Group>();
@@ -87,7 +87,7 @@ public static class AllQuery
 
         // Day sets of the tracked groups for the total's "days used".
         var trackedDays = new HashSet<DateOnly>();
-        long total = 0;
+        long total = 0; // app time summed over tracked apps: the shares' denominator
         foreach (var g in groups.Values.Where(g => !g.Retired))
         {
             total += g.Seconds;
@@ -100,7 +100,11 @@ public static class AllQuery
         var retired = groups.Values.Where(g => g.Retired).OrderByDescending(g => g.RetiredUtc).ThenBy(g => g.Id).Select(g => new AllRetiredRow(
             g.Id, g.Name, g.Seconds, g.Days.Count, Average(g.Seconds, g.Days.Count),
             LocalDays.DateOf(g.RetiredUtc, zone))).ToList();
-        return new AllResult(apps, retired, new AllTotals(total, trackedDays.Count, Average(total, trackedDays.Count)));
+
+        // The footer total is PC uptime, not the app sum.
+        var trackedApps = UsageLoader.LoadApps(c);
+        var uptime = UsageUptime.PerDay(UsageLoader.LoadSegments(c, 0, nowUtc, trackedApps, running), zone, nowUtc, onSinceUtc).Values.Sum();
+        return new AllResult(apps, retired, new AllTotals(uptime, trackedDays.Count, Average(uptime, trackedDays.Count)));
     }
 
     private static double Average(long seconds, int days) => days > 0 ? seconds / (double)days : 0;

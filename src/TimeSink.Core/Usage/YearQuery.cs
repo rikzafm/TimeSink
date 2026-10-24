@@ -16,7 +16,7 @@ public static class YearQuery
     private const int TopApps = 4;
 
 
-    public static YearResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null)
+    public static YearResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
         using var c = new SqliteConnection(new SqliteConnectionStringBuilder
         {
@@ -28,10 +28,10 @@ public static class YearQuery
             p.CommandText = "PRAGMA busy_timeout=2000";
             p.ExecuteNonQuery();
         }
-        return Run(c, now, zone, running);
+        return Run(c, now, zone, running, onSinceUtc);
     }
 
-    public static YearResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null)
+    public static YearResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
@@ -61,7 +61,15 @@ public static class YearQuery
                 g[s.Group] = g.GetValueOrDefault(s.Group) + o;
             }
         }
-        long Secs(int idx) => perMonth.TryGetValue(idx, out var g) ? g.Values.Sum() : 0;
+
+        // Month totals are PC uptime; the per-app shares above only feed each month's top apps.
+        var uptimeByMonth = new Dictionary<int, long>();
+        foreach (var (day, secs) in UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc))
+        {
+            var idx = Idx(day.Year, day.Month);
+            uptimeByMonth[idx] = uptimeByMonth.GetValueOrDefault(idx) + secs;
+        }
+        long Secs(int idx) => uptimeByMonth.GetValueOrDefault(idx);
 
         // Current month projection: seconds / days elapsed since tracking (or month) began * days in month.
         long curSecs = Secs(curIdx);

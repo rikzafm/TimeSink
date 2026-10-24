@@ -2,7 +2,7 @@
 Builds the TimeSink release layout and packages it.
   1. Agent: Native AOT publish (needs the VS C++ Build Tools; vswhere.exe is put on PATH, decisions.md 19).
   2. UI: ReadyToRun, self-contained, no trimming.
-  3. Both go side by side into artifacts\staging\TimeSink (the Agent starts TimeSink.UI.exe from its own folder).
+  3. Agent at the root of artifacts\staging\TimeSink, UI and its runtime in ui\ (the Agent starts ui\TimeSink.UI.exe).
   4. artifacts\TimeSink-portable-win-x64.zip (per-user, no admin, no installer needed).
   5. If Inno Setup's iscc.exe is found (PATH or the usual install folders), artifacts\TimeSink-Setup-<version>.exe.
 Usage: pwsh installer\Build-Package.ps1 [-Version 1.0.0] [-SkipInstaller] [-Test]
@@ -46,7 +46,8 @@ Run 'publish Agent (Native AOT)' {
         -p:PublishAot=true -p:DebugType=None -p:Version=$Version -o $agentOut
 }
 
-Copy-Item "$uiOut\*" $stage -Recurse -Force
+New-Item -ItemType Directory (Join-Path $stage 'ui') -Force | Out-Null
+Copy-Item "$uiOut\*" (Join-Path $stage 'ui') -Recurse -Force   # UI + .NET runtime stay out of the root
 Copy-Item "$agentOut\*" $stage -Recurse -Force
 Get-ChildItem $stage -Recurse -Filter *.pdb | Remove-Item -Force
 Copy-Item "$repo\README.md" $stage -Force

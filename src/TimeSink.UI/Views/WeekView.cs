@@ -171,7 +171,7 @@ public sealed class WeekView : UserControl
         try
         {
             result = await Task.Run(() =>
-                WeekQuery.Run(path, now, TimeZoneInfo.Local, WeekStarts.Parse(SettingsStore.Get(path, WeekStarts.SettingKey)), running));
+                WeekQuery.Run(path, now, TimeZoneInfo.Local, WeekStarts.Parse(SettingsStore.Get(path, WeekStarts.SettingKey)), running, SignInTime.Cached()));
         }
         catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException) { return; } // no DB yet
         if (seq != _seq || !_started) return;

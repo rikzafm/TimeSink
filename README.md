@@ -19,7 +19,7 @@ Requires Windows 11 (Windows 10 22H2 works with flat fallbacks). No admin rights
 * **Installer:** run `TimeSink-Setup-<version>.exe`. It installs per user to `%LocalAppData%\Programs\TimeSink`.
   "Start with Windows" is a setting inside the app (Settings), not an installer option.
 * **Portable:** unzip `TimeSink-portable-win-x64.zip` anywhere you can write to and run `TimeSink.Agent.exe`
-  (the tray app; it starts the UI on demand). Keep `TimeSink.Agent.exe` and `TimeSink.UI.exe` in the same folder.
+  (the tray app; it starts the UI on demand). Keep the `ui` folder next to `TimeSink.Agent.exe`.
   The portable copy still keeps its data in `%LocalAppData%\TimeSink` (a data-beside-the-exe mode is not in v1).
 
 ## Data location

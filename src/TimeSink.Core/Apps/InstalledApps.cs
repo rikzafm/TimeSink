@@ -10,8 +10,12 @@ public sealed record ShortcutEntry(string Name, string TargetPath);
 public sealed record PackagedApp(string Name, string Aumid);
 
 /// <summary>One row of the Installed tab. Packaged apps carry a synthetic <c>shell:AppsFolder\&lt;aumid&gt;</c> path.</summary>
-public sealed record InstalledApp(string Name, string ExePath, string? PackageFamily, string? Aumid, string? Publisher)
+public sealed record InstalledApp(string Name, string ExePath, string? PackageFamily, string? Aumid, string? Publisher, string? Source = null, string? IconFile = null)
 {
+    public const string SteamSource = "Steam";
+
+    public bool IsSteam => Source == SteamSource;
+
     public NewApp ToNewApp() => new(ExePath, Name, PackageFamily);
 }
 
@@ -47,7 +51,7 @@ public static class InstalledCatalog
 {
     private const string Other = "#";
 
-    public static IReadOnlyList<InstalledApp> Build(IEnumerable<ShortcutEntry> shortcuts, IEnumerable<PackagedApp> packaged)
+    public static IReadOnlyList<InstalledApp> Build(IEnumerable<ShortcutEntry> shortcuts, IEnumerable<PackagedApp> packaged, IEnumerable<SteamGame>? steam = null)
     {
         var byTarget = new Dictionary<string, InstalledApp>(StringComparer.OrdinalIgnoreCase);
         foreach (var s in shortcuts)
@@ -64,6 +68,14 @@ public static class InstalledCatalog
             var path = @"shell:AppsFolder\" + p.Aumid;
             if (all.Any(a => string.Equals(a.ExePath, path, StringComparison.OrdinalIgnoreCase))) continue;
             all.Add(new InstalledApp(p.Name, path, family, p.Aumid, null));
+        }
+        // Steam games: the Steam title wins over a shortcut name for the same exe
+        foreach (var g in steam ?? [])
+        {
+            var i = all.FindIndex(a => string.Equals(a.ExePath, g.ExePath, StringComparison.OrdinalIgnoreCase));
+            var game = new InstalledApp(g.Name, g.ExePath, null, null, null, InstalledApp.SteamSource, g.IconFile);
+            if (i >= 0) all[i] = all[i] with { Name = g.Name, Source = InstalledApp.SteamSource, IconFile = g.IconFile };
+            else all.Add(game);
         }
         return all.OrderBy(a => SortKey(a.Name), StringComparer.Ordinal).ToList();
     }

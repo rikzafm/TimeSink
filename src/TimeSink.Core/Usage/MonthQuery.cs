@@ -31,7 +31,7 @@ public static class MonthQuery
     public static DayOfWeek ParseWeekStart(string? value) => WeekStarts.Parse(value).ToDayOfWeek();
 
     public static MonthResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, int year, int month,
-        DayOfWeek weekStart, IReadOnlyCollection<long>? running = null)
+        DayOfWeek weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
         using var c = new SqliteConnection(new SqliteConnectionStringBuilder
         {
@@ -43,11 +43,11 @@ public static class MonthQuery
             p.CommandText = "PRAGMA busy_timeout=2000";
             p.ExecuteNonQuery();
         }
-        return Run(c, now, zone, year, month, weekStart, running);
+        return Run(c, now, zone, year, month, weekStart, running, onSinceUtc);
     }
 
     public static MonthResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, int year, int month,
-        DayOfWeek weekStart, IReadOnlyCollection<long>? running = null)
+        DayOfWeek weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
@@ -63,17 +63,20 @@ public static class MonthQuery
         var apps = UsageLoader.LoadApps(c);
         var segs = UsageLoader.LoadSegments(c, DayStart(prevFirst, zone), nowUtc, apps, running, to: DayStart(first.AddMonths(1), zone));
 
+        // PC uptime per local day: the headline numbers; per-app seconds below feed the day detail and the top apps.
+        var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc);
+
         // group -> seconds, per day of this month and of the comparison window.
         var days = new Dictionary<long, long>[dim];
         for (var d = 0; d < dim; d++) days[d] = DayTotals(segs, first.AddDays(d), zone);
         var prevTotals = new Dictionary<long, long>();
         long prevTotal = 0;
         for (var d = 0; d < prevCounted; d++)
+        {
             foreach (var (g, s) in DayTotals(segs, prevFirst.AddDays(d), zone))
-            {
                 prevTotals[g] = prevTotals.GetValueOrDefault(g) + s;
-                prevTotal += s;
-            }
+            prevTotal += uptime.GetValueOrDefault(prevFirst.AddDays(d));
+        }
 
         var monthDays = new List<MonthDay>(dim);
         var monthTotals = new Dictionary<long, long>();
@@ -85,7 +88,7 @@ public static class MonthQuery
             var amounts = days[d]
                 .Select(kv => new MonthAppAmount(kv.Key, NameOf(apps, kv.Key), kv.Value))
                 .OrderByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
-            var seconds = amounts.Sum(a => a.Seconds);
+            var seconds = uptime.GetValueOrDefault(date);
             foreach (var a in amounts) monthTotals[a.AppId] = monthTotals.GetValueOrDefault(a.AppId) + a.Seconds;
             total += seconds;
             if (seconds > 0 && (best is null || seconds > best.Seconds)) best = new BestDay(date, seconds);

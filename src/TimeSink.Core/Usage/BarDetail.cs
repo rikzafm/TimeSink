@@ -71,7 +71,7 @@ public static class BarDetail
         var lastWeek = TodayQuery.Run(dbPath, now, zone, null, day.AddDays(-7));
         var counted = week.Days.Where(d => !d.IsFuture).ToList();
         var average = counted.Count == 0 ? 0 : counted.Sum(d => d.Seconds) / (double)counted.Count;
-        return Compose(thisDay, average, lastWeek.TotalSeconds);
+        return Compose(thisDay, average, lastWeek.UptimeSeconds);
     }
 
     internal static DayDetail Compose(TodayResult day, double weekAverageSeconds, long sameDayLastWeekSeconds)
@@ -79,11 +79,11 @@ public static class BarDetail
         var apps = day.Apps.Select(a => new BarApp(a.AppId, a.Name, a.Seconds)).ToList();
         long? first = day.Apps.SelectMany(a => a.Sessions).Select(s => (long?)s.StartUtc).Min();
         long? last = day.Apps.SelectMany(a => a.Sessions).Select(s => (long?)s.EndUtc).Max();
-        return new DayDetail(day.Date, day.TotalSeconds, first, last, apps, weekAverageSeconds, sameDayLastWeekSeconds);
+        return new DayDetail(day.Date, day.UptimeSeconds, first, last, apps, weekAverageSeconds, sameDayLastWeekSeconds);
     }
 }
 
-/// <summary>What a Week column shows when clicked. <see cref="TotalSeconds"/> is app-seconds summed over apps.</summary>
+/// <summary>What a Week column shows when clicked. <see cref="TotalSeconds"/> is the day's PC uptime.</summary>
 public sealed record DayDetail(
     DateOnly Date,
     long TotalSeconds,

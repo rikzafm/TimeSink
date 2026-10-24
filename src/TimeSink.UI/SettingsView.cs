@@ -35,7 +35,8 @@ public sealed partial class SettingsView : Grid
         _compact = SettingsCatalogue.Read(dbPath, SettingsCatalogue.Find("compact")) == "true";
         _autostart = TryCreateAutostart();
 
-        _scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+        _scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
+        _scroll.Focusable = false;
         var root = new StackPanel { Margin = new Thickness(16, 8, 16, 16) };
         foreach (var section in SettingsCatalogue.Sections)
         {
@@ -180,7 +181,7 @@ public sealed partial class SettingsView : Grid
 
     private FrameworkElement BuildButton(SettingRow row)
     {
-        var b = new Button { Content = Str(row.Id switch { "backupNow" => SettingsStrings.BackUp, "restore" => SettingsStrings.ChooseFile, "export" => SettingsStrings.ExportButton, _ => SettingsStrings.DeleteButton }) };
+        var b = new Button { Content = Str(row.Id switch { "backupNow" => SettingsStrings.BackUp, "restore" => SettingsStrings.ChooseFile, "export" => SettingsStrings.ExportButton, "installFolder" => SettingsStrings.OpenButton, "uninstall" => SettingsStrings.UninstallButton, _ => SettingsStrings.DeleteButton }) };
         b.SetResourceReference(StyleProperty, "LinkButton");
         if (row.Danger) b.SetResourceReference(Control.ForegroundProperty, "Brush.Danger");
         switch (row.Id)
@@ -189,6 +190,8 @@ public sealed partial class SettingsView : Grid
             case "restore": b.Click += (_, _) => ChooseRestoreFile(); break;
             case "export": b.Click += (_, _) => ChooseExport(); break;
             case "deleteHistory": b.Click += (_, _) => ConfirmDelete(); break;
+            case "installFolder": b.Click += (_, _) => OpenInstallFolder(); break;
+            case "uninstall": b.Click += (_, _) => ConfirmUninstall(); break;
         }
         return b;
     }

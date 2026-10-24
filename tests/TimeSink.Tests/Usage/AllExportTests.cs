@@ -22,7 +22,7 @@ public sealed class AllExportTests : IDisposable
             "\"Zed, \"\"Editor\"\"\",tracked,1800,1,1800,1.0",
             "Mus,tracked,600,1,600,0.3",
             "Old,retired,82800,1,82800,",
-            "Total tracked,total,180000,13,13846,100.0") + "\r\n";
+            "Total uptime,total,242400,13,18646,100.0") + "\r\n";
         AllExport.ToCsv(Result(), AllSort.Default).Should().Be(expected);
     }
 
@@ -30,7 +30,7 @@ public sealed class AllExportTests : IDisposable
     public void Csv_rows_are_in_the_current_sort_order()
     {
         var lines = AllExport.ToCsv(Result(), new AllSort(AllColumn.App, Descending: false)).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
-        lines.Select(l => l.Split(',')[0]).Should().Equal("app", "Chrome", "Code", "Disc", "Mus", "\"Zed", "Old", "Total tracked");
+        lines.Select(l => l.Split(',')[0]).Should().Equal("app", "Chrome", "Code", "Disc", "Mus", "\"Zed", "Old", "Total uptime");
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public sealed class AllExportTests : IDisposable
     {
         _f.Exec("DELETE FROM sessions");
         var csv = AllExport.ToCsv(Result(), AllSort.Default);
-        csv.Should().Contain("Chrome,tracked,0,0,0,0.0\r\n").And.EndWith("Total tracked,total,0,0,0,100.0\r\n");
+        csv.Should().Contain("Chrome,tracked,0,0,0,0.0\r\n").And.EndWith("Total uptime,total,0,0,0,100.0\r\n");
     }
 
     [Fact]

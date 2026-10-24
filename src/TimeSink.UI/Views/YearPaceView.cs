@@ -174,7 +174,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
         var now = DateTimeOffset.UtcNow;
         var running = _live.RunningIds;
         YearResult result;
-        try { result = await Task.Run(() => YearQuery.Run(_dbPath, now, TimeZoneInfo.Local, running)); }
+        try { result = await Task.Run(() => YearQuery.Run(_dbPath, now, TimeZoneInfo.Local, running, SignInTime.Cached())); }
         catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException) { return; }
         if (seq != _seq || !_started) return;
         if (_result is null || _result.Year != result.Year) _selected = -1;

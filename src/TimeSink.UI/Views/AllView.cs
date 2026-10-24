@@ -148,7 +148,7 @@ public sealed class AllView : UserControl
         var running = _live.RunningIds;
         var path = _dbPath;
         AllResult result;
-        try { result = await Task.Run(() => AllQuery.Run(path, now, TimeZoneInfo.Local, running)); }
+        try { result = await Task.Run(() => AllQuery.Run(path, now, TimeZoneInfo.Local, running, SignInTime.Cached())); }
         catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or IOException) { return; } // no DB yet
         if (seq != _seq || !_started) return;
         _result = result;

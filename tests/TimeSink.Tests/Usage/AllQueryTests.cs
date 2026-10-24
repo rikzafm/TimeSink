@@ -9,7 +9,8 @@ namespace TimeSink.Tests.Usage;
 ///   Code   63000 (Feb 7200 + Mar 55800), days Feb 5 + Mar 1,2,3,10 = 5, avg 12600, longest 28800, best Mar, first 2026-02-05
 ///   Disc   16200 (Feb 7200 + Mar 9000), days Feb 3 + Mar 2,10 = 3, avg 5400, longest 7200, best Mar, first 2026-02-03
 ///   Zed 1800 (1 day), Mus 600 (1 day, first 2026-03-11)
-///   Total tracked 180000 over 13 days with any tracked time (Feb 2,3,5,11,12,28; Mar 1,2,3,4,5,10,11), avg 13846.15
+///   Tracked app time 180000 over 13 days with any tracked time (Feb 2,3,5,11,12,28; Mar 1,2,3,4,5,10,11);
+///   the Totals row is PC uptime instead: Feb 75600 + Mar 166800 = 242400, avg 18646.15
 ///   Old (retired 2026-03-01): 82800 over 1 day, not part of the total.
 /// </summary>
 public sealed class AllQueryTests : IDisposable
@@ -58,9 +59,9 @@ public sealed class AllQueryTests : IDisposable
     public void Totals_row_excludes_retired_apps()
     {
         var r = Run();
-        r.Totals.Seconds.Should().Be(180000);
+        r.Totals.Seconds.Should().Be(242400);
         r.Totals.DaysUsed.Should().Be(13);
-        r.Totals.AverageSecondsPerDay.Should().BeApproximately(180000 / 13.0, 1e-9);
+        r.Totals.AverageSecondsPerDay.Should().BeApproximately(242400 / 13.0, 1e-9);
         r.Apps.Sum(a => a.Share).Should().BeApproximately(1.0, 1e-9);
     }
 
@@ -85,7 +86,7 @@ public sealed class AllQueryTests : IDisposable
         r.Apps.Should().NotContain(a => a.Name == "Chrome Beta");
         var chrome = r.Apps.Single(a => a.Name == "Chrome");
         (chrome.Seconds, chrome.DaysUsed).Should().Be((102000, 9));
-        r.Totals.Seconds.Should().Be(183600);
+        r.Totals.Seconds.Should().Be(246000);
         r.Totals.DaysUsed.Should().Be(14);
     }
 

@@ -7,7 +7,7 @@ namespace TimeSink.Core.Usage;
 /// CSV export of the All table (implementation.md 8.3 footer): <c>app,status,seconds,days_used,avg_seconds_per_day,share_percent</c>.
 /// Tracked rows in the table's current sort order, then retired rows (no share), then the tracked total.
 /// RFC 4180: CRLF, fields with commas, quotes or line breaks quoted; UTF-8 without BOM. The total row is labelled
-/// "Total tracked" with status <c>total</c>.
+/// "Total uptime" with status <c>total</c>.
 /// </summary>
 public static class AllExport
 {
@@ -24,7 +24,7 @@ public static class AllExport
         foreach (var r in result.Retired)
             Row(sb, r.Name, "retired", r.Seconds, r.DaysUsed, r.AverageSecondsPerDay, "");
         var t = result.Totals;
-        Row(sb, "Total tracked", "total", t.Seconds, t.DaysUsed, t.AverageSecondsPerDay, "100.0");
+        Row(sb, "Total uptime", "total", t.Seconds, t.DaysUsed, t.AverageSecondsPerDay, "100.0");
         return sb.ToString();
     }
 

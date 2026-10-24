@@ -97,6 +97,29 @@ public sealed class TodayQueryTests : IDisposable
     }
 
     [Fact]
+    public void Uptime_runs_from_the_first_session_to_now_minus_sleep_when_sign_in_is_unknown()
+    {
+        var r = Run();
+        r.UptimeSeconds.Should().Be(U(2026, 3, 11, 14, 20) - U(2026, 3, 11, 0) - 5400); // sleep 9:30-11:00 excluded
+        r.TotalSeconds.Should().NotBe(r.UptimeSeconds); // combined app time is a separate figure
+    }
+
+    [Fact]
+    public void Uptime_starts_at_sign_in_when_known_and_ignores_it_before_midnight()
+    {
+        TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null, null, U(2026, 3, 11, 8)).UptimeSeconds
+            .Should().Be(U(2026, 3, 11, 14, 20) - U(2026, 3, 11, 8) - 5400);
+        TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null, null, U(2026, 3, 9, 8)).UptimeSeconds
+            .Should().Be(U(2026, 3, 11, 14, 20) - U(2026, 3, 11, 0) - 5400);
+    }
+
+    [Fact]
+    public void Longest_tile_carries_the_app_id_for_its_icon()
+    {
+        Run().Longest!.AppId.Should().Be(Run().Apps[0].AppId);
+    }
+
+    [Fact]
     public void Seven_day_average_uses_only_days_since_the_app_was_added()
     {
         var r = Run();

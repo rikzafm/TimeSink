@@ -17,9 +17,9 @@ public sealed class WeekQueryTests : IDisposable
         var r = Run();
         r.WeekStartDate.Should().Be(new DateOnly(2026, 3, 9));
         r.Days.Select(d => d.Date.Day).Should().Equal(9, 10, 11, 12, 13, 14, 15);
-        // Mon Chrome 7200 + Code 3600; Tue Chrome 3600 (retired Old ignored); Wed 1800 + 12000 + 1800 (open session counts to now).
-        r.Days.Select(d => d.Seconds).Should().Equal(10800, 3600, 15600, 0, 0, 0, 0);
-        r.TotalSeconds.Should().Be(30000);
+        // PC uptime: Mon 09:00-14:00; Tue 23:00-24:00 (retired Old ignored); Wed 00:00 (carry-over) to now 14:20.
+        r.Days.Select(d => d.Seconds).Should().Equal(18000, 3600, 51600, 0, 0, 0, 0);
+        r.TotalSeconds.Should().Be(73200);
         r.Days.Select(d => d.IsToday).Should().Equal(false, false, true, false, false, false, false);
         r.Days.Select(d => d.IsFuture).Should().Equal(false, false, false, true, true, true, true);
     }
@@ -28,7 +28,9 @@ public sealed class WeekQueryTests : IDisposable
     public void An_open_session_the_agent_does_not_report_counts_only_to_its_heartbeat()
     {
         var r = Run(running: Array.Empty<long>());
-        r.Days[2].Seconds.Should().Be(1800 + 1800 + (Unix(2026, 3, 11, 14, 19) - Unix(2026, 3, 11, 11)));
+        // Uptime of the live day runs to now whatever the Agent reports; only app time stops at the heartbeat.
+        r.Days[2].Seconds.Should().Be(51600);
+        r.Apps.Single(a => a.Name == "Chrome").Seconds.Should().Be(7200 + 3600 + 1800 + (Unix(2026, 3, 11, 14, 19) - Unix(2026, 3, 11, 11)));
     }
 
     [Fact]
@@ -36,8 +38,8 @@ public sealed class WeekQueryTests : IDisposable
     {
         var r = Run(WeekStart.Sun);
         r.WeekStartDate.Should().Be(new DateOnly(2026, 3, 8));
-        r.Days.Select(d => d.Seconds).Should().Equal(1800, 10800, 3600, 15600, 0, 0, 0);
-        r.TotalSeconds.Should().Be(31800);
+        r.Days.Select(d => d.Seconds).Should().Equal(1800, 18000, 3600, 51600, 0, 0, 0);
+        r.TotalSeconds.Should().Be(75000);
     }
 
     [Fact]
@@ -45,8 +47,8 @@ public sealed class WeekQueryTests : IDisposable
     {
         var r = Run(WeekStart.Sat);
         r.WeekStartDate.Should().Be(new DateOnly(2026, 3, 7));
-        r.Days.Select(d => d.Seconds).Should().Equal(3600, 1800, 10800, 3600, 15600, 0, 0);
-        r.TotalSeconds.Should().Be(35400);
+        r.Days.Select(d => d.Seconds).Should().Equal(3600, 1800, 18000, 3600, 51600, 0, 0);
+        r.TotalSeconds.Should().Be(78600);
     }
 
     [Fact]
@@ -57,8 +59,8 @@ public sealed class WeekQueryTests : IDisposable
         h[0].Date.Should().Be(new DateOnly(2025, 10, 27)); // 19 weeks (133 days) before Mon 2026-03-09
         h[133].Date.Should().Be(new DateOnly(2026, 3, 9));
         h[139].Date.Should().Be(new DateOnly(2026, 3, 15));
-        h.Skip(133).Select(c => c.Seconds).Should().Equal(10800, 3600, 15600, 0, 0, 0, 0);
-        h.Skip(133).Select(c => c.Level).Should().Equal(2, 1, 2, 0, 0, 0, 0); // 3 h, 1 h, 4.33 h
+        h.Skip(133).Select(c => c.Seconds).Should().Equal(18000, 3600, 51600, 0, 0, 0, 0);
+        h.Skip(133).Select(c => c.Level).Should().Equal(3, 1, 4, 0, 0, 0, 0); // 5 h, 1 h, 14.33 h
         h.Skip(133).Select(c => c.IsFuture).Should().Equal(false, false, false, true, true, true, true);
         h[132].Seconds.Should().Be(1800); // Sun 03-08
         h[131].Seconds.Should().Be(3600); // Sat 03-07 (Code)

@@ -15,10 +15,7 @@ public static class WeekQuery
     /// <summary>The streak is looked for this far back (and so tops out at this many days).</summary>
     public const int StreakLookbackDays = 365;
 
-    private sealed record App(long Id, long Group, string Name);
-    private readonly record struct Seg(long Group, long Start, long End);
-
-    public static WeekResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null)
+    public static WeekResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
         using var c = new SqliteConnection(new SqliteConnectionStringBuilder
         {
@@ -30,10 +27,10 @@ public static class WeekQuery
             p.CommandText = "PRAGMA busy_timeout=2000";
             p.ExecuteNonQuery();
         }
-        return Run(c, now, zone, weekStart, running);
+        return Run(c, now, zone, weekStart, running, onSinceUtc);
     }
 
-    public static WeekResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null)
+    public static WeekResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var today = LocalDays.DateOf(nowUtc, zone);
@@ -42,10 +39,12 @@ public static class WeekQuery
         var gridStart = thisWeek.AddDays(-7 * (GridWeeks - 1));
         var lookStart = gridStart < today.AddDays(-StreakLookbackDays) ? gridStart : today.AddDays(-StreakLookbackDays);
 
-        var apps = LoadApps(c, out var names);
-        var segs = LoadSegments(c, LocalDays.StartOf(lookStart, zone), nowUtc, apps, running);
+        var apps = UsageLoader.LoadApps(c);
+        var names = apps.Values.Where(a => a.Id == a.Group).ToDictionary(a => a.Id, a => a.Name);
+        var segs = UsageLoader.LoadSegments(c, LocalDays.StartOf(lookStart, zone), nowUtc, apps, running);
+        var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc);
 
-        // Seconds per local day (all apps) and per (app group, day).
+        // App seconds per local day (all apps, for the streak) and per (app group, day); the columns show PC uptime.
         var perDay = new Dictionary<DateOnly, long>();
         var perGroupDay = new Dictionary<(long, DateOnly), long>();
         foreach (var s in segs)
@@ -70,7 +69,7 @@ public static class WeekQuery
         var days = Enumerable.Range(0, 7).Select(i =>
         {
             var d = thisWeek.AddDays(i);
-            return new WeekDay(d, perDay.GetValueOrDefault(d), d == today, d > today);
+            return new WeekDay(d, uptime.GetValueOrDefault(d), d == today, d > today);
         }).ToList();
 
         var heat = new List<HeatCell>(GridWeeks * 7);
@@ -78,7 +77,7 @@ public static class WeekQuery
         {
             var d = gridStart.AddDays(i);
             var future = d > today;
-            var secs = future ? 0 : perDay.GetValueOrDefault(d);
+            var secs = future ? 0 : uptime.GetValueOrDefault(d);
             heat.Add(new HeatCell(d, secs, future ? 0 : HeatLevel(secs), future));
         }
 
@@ -114,45 +113,4 @@ public static class WeekQuery
         < 7 * 3600 => 3,
         _ => 4,
     };
-
-    private static Dictionary<long, App> LoadApps(SqliteConnection c, out Dictionary<long, string> groupNames)
-    {
-        using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name FROM apps WHERE state = 'tracked'";
-        using var r = cmd.ExecuteReader();
-        var d = new Dictionary<long, App>();
-        while (r.Read()) d[r.GetInt64(0)] = new App(r.GetInt64(0), r.GetInt64(1), r.GetString(2));
-        // A tracked alias whose canonical row is retired/absent still names its own group.
-        foreach (var a in d.Values.ToList())
-            if (!d.ContainsKey(a.Group) && a.Group != a.Id) d[a.Id] = a with { Group = a.Id };
-        groupNames = new Dictionary<long, string>();
-        foreach (var a in d.Values)
-            if (a.Id == a.Group) groupNames[a.Id] = a.Name;
-        return d;
-    }
-
-    private static List<Seg> LoadSegments(SqliteConnection c, long from, long nowUtc, Dictionary<long, App> apps, IReadOnlyCollection<long>? running)
-    {
-        using var cmd = c.CreateCommand();
-        cmd.CommandText = """
-            SELECT app_id, start_utc, end_utc, last_seen_utc FROM sessions
-            WHERE start_utc <= $now AND (end_utc IS NULL OR end_utc >= $from) ORDER BY start_utc
-            """;
-        cmd.Parameters.AddWithValue("$now", nowUtc);
-        cmd.Parameters.AddWithValue("$from", from);
-        using var r = cmd.ExecuteReader();
-        var list = new List<Seg>();
-        while (r.Read())
-        {
-            var appId = r.GetInt64(0);
-            if (!apps.TryGetValue(appId, out var app)) continue; // retired or unknown
-            var start = r.GetInt64(1);
-            long end;
-            if (r.IsDBNull(2))
-                end = running is null || running.Contains(appId) ? Math.Max(nowUtc, start) : Math.Clamp(r.GetInt64(3), start, nowUtc);
-            else end = r.GetInt64(2);
-            list.Add(new Seg(app.Group, start, end));
-        }
-        return list;
-    }
 }

@@ -31,6 +31,12 @@ Name: "startmenu"; Description: "Create a Start Menu shortcut"; Flags: checkedon
 [Files]
 Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
+[InstallDelete]
+; Older versions kept the UI and runtime flat in the root; clear them when upgrading into the ui\ layout.
+Type: files; Name: "{app}\*.dll"
+Type: files; Name: "{app}\TimeSink.UI.*"
+Type: filesandordirs; Name: "{app}\themes"
+
 [Icons]
 Name: "{userprograms}\TimeSink"; Filename: "{app}\TimeSink.Agent.exe"; Tasks: startmenu
 

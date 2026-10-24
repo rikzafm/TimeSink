@@ -128,16 +128,18 @@ public partial class TodayView : UserControl
         TodayResult result;
         try
         {
-            (result, var first) = await Task.Run(() => (TodayQuery.Run(_dbPath, now, TimeZoneInfo.Local, running, day),
-                TodayQuery.FirstDate(_dbPath, TimeZoneInfo.Local)));
+            (result, var first) = await Task.Run(() =>
+            {
+                _signInUtc ??= SignInTime.Get() ?? 0; // uptime starts at sign-in; looked up once, off the UI thread
+                return (TodayQuery.Run(_dbPath, now, TimeZoneInfo.Local, running, day, _signInUtc is > 0 ? _signInUtc : null),
+                    TodayQuery.FirstDate(_dbPath, TimeZoneInfo.Local));
+            });
             _first = first;
         }
         catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException) { return; } // no DB yet: keep the empty state
         if (seq != _seq || !_started) return;
         _result = result;
         Redraw();
-        _signInUtc ??= await Task.Run(SignInTime.Get) ?? 0;
-        if (seq == _seq && _signInUtc > 0) Redraw();
         _untracked.Reload(); // after real data is on screen; icons are extracted off-thread
     }
 
@@ -160,9 +162,10 @@ public partial class TodayView : UserControl
     {
         var r = _result!;
         var elapsed = ElapsedSinceSnapshot;
-        var total = r.TotalSeconds + elapsed * r.OpenSessionCount;
-        TotalMain.Text = DurationFormat.HoursMinutes(total);
-        TotalSeconds.Text = $"{total % 60:00}s";
+        var uptime = r.UptimeSeconds + (_day is null ? elapsed : 0); // the PC is on while the view is live
+        TotalMain.Text = DurationFormat.HoursMinutes(uptime);
+        TotalSeconds.Text = $"{uptime % 60:00}s";
+        CombinedText.Text = Str(StringKeys.TodayCombined, DurationFormat.HoursMinutes(r.TotalSeconds + elapsed * r.OpenSessionCount));
         var nowUtc = r.NowUtc + elapsed;
         Chart.NowFraction = _day is null ? Fraction(r, nowUtc) : 0;
         Chart.NowLabel = Clock(nowUtc);
@@ -182,9 +185,8 @@ public partial class TodayView : UserControl
     private void Redraw()
     {
         if (_result is not { } r) return;
-        var total = r.TotalSeconds;
         var live = _day is null;
-        var early = live && TodayEarly.ShowCaption(total);
+        var early = live && TodayEarly.ShowCaption(r.UptimeSeconds);
         var since = early ? TodayEarly.TrackingSinceUtc(r.DayStartUtc, _signInUtc is > 0 ? _signInUtc : null, r.FirstApp?.StartUtc) : null;
 
         Nav.Configure(Today, _first ?? r.Date, r.Date);
@@ -202,9 +204,15 @@ public partial class TodayView : UserControl
         BuildAxis();
 
         TileFirst.Text = r.FirstApp is { } f ? Clock(f.StartUtc) : Str(StringKeys.TileNone);
-        TileLongest.Text = r.Longest is { } l ? Str(StringKeys.TileLongestValue, DurationFormat.HoursMinutes(l.Seconds), l.AppName) : Str(StringKeys.TileNone);
-        TileVs.Text = Str(StringKeys.TileVsYesterdayValue, DurationFormat.Signed(r.VsYesterdaySeconds));
-        TileVs.SetResourceReference(TextBlock.ForegroundProperty, r.VsYesterdaySeconds >= 0 ? "Brush.Accent" : "Brush.Warning");
+        AppIcons.Load(_dbPath, r.Longest is { } lg ? new[] { lg.AppId } : Array.Empty<long>());
+        var icon = r.Longest is { } li ? AppIcons.Icon(li.AppId, 16) : null;
+        TileLongestIcon.Content = icon;
+        TileLongestIcon.ToolTip = icon is null ? null : r.Longest!.AppName;
+        TileLongest.Text = r.Longest is { } l
+            ? icon is null ? Str(StringKeys.TileLongestValue, DurationFormat.HoursMinutes(l.Seconds), l.AppName) : DurationFormat.HoursMinutes(l.Seconds)
+            : Str(StringKeys.TileNone);
+        TileVs.Text = Str(StringKeys.TileVsYesterdayValue, DurationFormat.Signed(r.UptimeVsYesterdaySeconds));
+        TileVs.SetResourceReference(TextBlock.ForegroundProperty, r.UptimeVsYesterdaySeconds >= 0 ? "Brush.Accent" : "Brush.Warning");
 
         BuildRows(r);
         Empty.Visibility = r.Apps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -257,8 +265,12 @@ public partial class TodayView : UserControl
             compares);
     }
 
-    private void UpdateTrackedHeader() =>
-        TrackedHeader.Visibility = _untracked.HasCard && _result?.Apps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>The "Tracked today" line carries the combined app time; its label only shows under the untracked card.</summary>
+    private void UpdateTrackedHeader()
+    {
+        TrackedHeader.Visibility = _result?.Apps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        TrackedLabel.Visibility = _untracked.HasCard ? Visibility.Visible : Visibility.Collapsed;
+    }
 
     private void BuildAxis()
     {

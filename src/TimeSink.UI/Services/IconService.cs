@@ -31,10 +31,33 @@ internal static class IconService
     private const int SIIGBF_BIGGERSIZEOK = 0x1;
 
     /// <summary>PNG bytes (64 px) of the app's icon, from its Start tile when an AUMID is known, else from the exe; null on failure.</summary>
-    public static byte[]? ExtractPng(string exePath, string? aumid)
+    public static byte[]? ExtractPng(string exePath, string? aumid, string? imageFile = null)
     {
+        if (imageFile is not null && FromImage(imageFile) is { } art) return art;
         if (aumid is not null && Extract(@"shell:AppsFolder\" + aumid) is { } tile) return tile;
         return Extract(exePath);
+    }
+
+    /// <summary>An image file (Steam's cached art) centre-cropped to a square and scaled to 64 px; null when unreadable.</summary>
+    private static byte[]? FromImage(string path)
+    {
+        try
+        {
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.UriSource = new Uri(path);
+            bmp.EndInit();
+            var side = Math.Min(bmp.PixelWidth, bmp.PixelHeight);
+            var crop = new CroppedBitmap(bmp, new Int32Rect((bmp.PixelWidth - side) / 2, (bmp.PixelHeight - side) / 2, side, side));
+            var scaled = new TransformedBitmap(crop, new System.Windows.Media.ScaleTransform(64.0 / side, 64.0 / side));
+            var enc = new PngBitmapEncoder();
+            enc.Frames.Add(BitmapFrame.Create(scaled));
+            using var ms = new MemoryStream();
+            enc.Save(ms);
+            return ms.ToArray();
+        }
+        catch { return null; }
     }
 
     private static byte[]? Extract(string parsingName)

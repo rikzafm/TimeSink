@@ -60,9 +60,10 @@ internal static class InstalledAppsService
         };
         var shortcuts = StartMenuScanner.Scan(roots, ResolveLnk);
         var packaged = ListPackaged();
-        var apps = InstalledCatalog.Build(shortcuts, packaged);
-        return apps.Select(a => a.Aumid is null && a.Publisher is null ? a with { Publisher = Company(a.ExePath) } : a).ToList();
+        var apps = InstalledCatalog.Build(shortcuts, packaged, SteamLibrary.Scan(SteamLibrary.FindRoot()));
+        return apps.Select(a => a.Aumid is null && a.Publisher is null && !a.IsSteam ? a with { Publisher = Company(a.ExePath) } : a).ToList();
     }
+
 
     private static string? Company(string exe)
     {

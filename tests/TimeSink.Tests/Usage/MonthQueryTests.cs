@@ -32,13 +32,13 @@ public sealed class MonthQueryTests : IDisposable
     {
         var r = March();
         Day(r, 1).Seconds.Should().Be(1800);
-        Day(r, 2).Seconds.Should().Be(21600);   // retired Old excluded
-        Day(r, 3).Seconds.Should().Be(36000);   // carry-over past midnight split between the 3rd and 4th
+        Day(r, 2).Seconds.Should().Be(43200);   // uptime 09:00-21:00; retired Old excluded
+        Day(r, 3).Seconds.Should().Be(54000);   // 09:00 to midnight; the carry-over is split between the 3rd and 4th
         Day(r, 4).Seconds.Should().Be(7200);
         Day(r, 5).Seconds.Should().Be(1800);
         Day(r, 6).Seconds.Should().Be(0);
-        Day(r, 10).Seconds.Should().Be(23400);
-        Day(r, 11).Seconds.Should().Be(12600);  // open Chrome session counted to now
+        Day(r, 10).Seconds.Should().Be(36000);
+        Day(r, 11).Seconds.Should().Be(22800);  // 08:00 to now (the live day)
         Day(r, 11).IsToday.Should().BeTrue();
         Day(r, 12).IsFuture.Should().BeTrue();
         Day(r, 12).Seconds.Should().Be(0);
@@ -50,10 +50,10 @@ public sealed class MonthQueryTests : IDisposable
     {
         var r = March();
         Day(r, 1).Heat.Should().Be(0);   // 30 m
-        Day(r, 2).Heat.Should().Be(3);   // 6 h
-        Day(r, 3).Heat.Should().Be(4);   // 10 h
+        Day(r, 2).Heat.Should().Be(4);   // 12 h
+        Day(r, 3).Heat.Should().Be(4);   // 15 h
         Day(r, 4).Heat.Should().Be(1);   // 2 h
-        Day(r, 11).Heat.Should().Be(2);  // 3.5 h
+        Day(r, 11).Heat.Should().Be(3);  // 6.3 h
     }
 
     [Fact]
@@ -62,12 +62,12 @@ public sealed class MonthQueryTests : IDisposable
         var r = March();
         r.IsCurrent.Should().BeTrue();
         r.DaysCounted.Should().Be(11);
-        r.TotalSeconds.Should().Be(104400);
-        r.DailyAverageSeconds.Should().BeApproximately(104400 / 11.0, 1e-9);
-        r.Best.Should().Be(new BestDay(new DateOnly(2026, 3, 3), 36000));
+        r.TotalSeconds.Should().Be(166800);
+        r.DailyAverageSeconds.Should().BeApproximately(166800 / 11.0, 1e-9);
+        r.Best.Should().Be(new BestDay(new DateOnly(2026, 3, 3), 54000));
         r.PreviousSeconds.Should().Be(32400);   // Feb 1-11 only; Feb 12 and 28 are outside the same-days window
-        r.DeltaSeconds.Should().Be(72000);
-        r.DeltaPercent.Should().BeApproximately(72000 / 32400.0, 1e-9);
+        r.DeltaSeconds.Should().Be(134400);
+        r.DeltaPercent.Should().BeApproximately(134400 / 32400.0, 1e-9);
     }
 
     [Fact]
@@ -106,8 +106,8 @@ public sealed class MonthQueryTests : IDisposable
         r.Weeks[0].Days.Select(d => d?.Date.Day).Should().Equal(null, null, null, null, null, null, 1);
         r.Weeks[0].TotalSeconds.Should().Be(1800);
         r.Weeks[1].Days.Select(d => d!.Date.Day).Should().Equal(2, 3, 4, 5, 6, 7, 8);
-        r.Weeks[1].TotalSeconds.Should().Be(21600 + 36000 + 7200 + 1800);
-        r.Weeks[2].TotalSeconds.Should().Be(23400 + 12600);
+        r.Weeks[1].TotalSeconds.Should().Be(43200 + 54000 + 7200 + 1800);
+        r.Weeks[2].TotalSeconds.Should().Be(36000 + 22800);
         r.Weeks[5].Days.Select(d => d?.Date.Day).Should().Equal(30, 31, null, null, null, null, null);
         r.Weeks[5].TotalSeconds.Should().Be(0);
     }
@@ -118,8 +118,8 @@ public sealed class MonthQueryTests : IDisposable
         var r = March(DayOfWeek.Sunday);
         r.Weeks.Should().HaveCount(5);
         r.Weeks[0].Days.Select(d => d!.Date.Day).Should().Equal(1, 2, 3, 4, 5, 6, 7);
-        r.Weeks[0].TotalSeconds.Should().Be(1800 + 21600 + 36000 + 7200 + 1800);
-        r.Weeks[1].TotalSeconds.Should().Be(23400 + 12600);
+        r.Weeks[0].TotalSeconds.Should().Be(1800 + 43200 + 54000 + 7200 + 1800);
+        r.Weeks[1].TotalSeconds.Should().Be(36000 + 22800);
     }
 
     [Fact]
@@ -162,7 +162,8 @@ public sealed class MonthQueryTests : IDisposable
     public void An_open_session_the_agent_does_not_report_counts_only_to_its_heartbeat()
     {
         var r = March(running: Array.Empty<long>());
-        Day(r, 11).Seconds.Should().Be(12600 - 60); // heartbeat 14:19, not now 14:20
+        Day(r, 11).Seconds.Should().Be(22800); // uptime of the live day runs to now regardless
+        Day(r, 11).Apps.Single(a => a.Name == "Chrome").Seconds.Should().Be(12000 - 60); // app time stops at the heartbeat 14:19
     }
 
     [Fact]
@@ -172,7 +173,7 @@ public sealed class MonthQueryTests : IDisposable
         _f.Exec($"INSERT INTO apps(id, exe_path, display_name, added_utc, canonical_id) VALUES({alias}, 'c:\\\\chrome2.exe', 'Chrome2', {U(2026, 1, 1, 0)}, {_f.Chrome})");
         _f.Session(alias, U(2026, 3, 4, 12), U(2026, 3, 4, 13));
         var d = Day(March(), 4);
-        d.Seconds.Should().Be(7200 + 3600);
+        d.Seconds.Should().Be(46800); // uptime 00:00 (carry-over) to 13:00
         d.Apps.Should().ContainSingle().Which.Name.Should().Be("Chrome");
     }
 
@@ -180,7 +181,7 @@ public sealed class MonthQueryTests : IDisposable
     public void Days_follow_the_local_zone()
     {
         var plus10 = TimeZoneInfo.CreateCustomTimeZone("t+10", TimeSpan.FromHours(10), "t", "t");
-        // Local Mar 4 = Mar 3 14:00Z .. Mar 4 14:00Z: Chrome 22:00Z-02:00Z (14400) + Code 14:00Z-17:00Z (10800).
-        Day(March(zone: plus10), 4).Seconds.Should().Be(14400 + 10800);
+        // Local Mar 4 = Mar 3 14:00Z .. Mar 4 14:00Z: uptime from Code 14:00Z to Chrome's end 02:00Z.
+        Day(March(zone: plus10), 4).Seconds.Should().Be(12 * 3600);
     }
 }

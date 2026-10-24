@@ -60,7 +60,7 @@ internal static class AppIcons
                     {
                         apps ??= lib.Library();
                         var app = apps.FirstOrDefault(a => a.Id == id);
-                        if (app is not null && IconService.ExtractPng(app.ExePath, null) is { } extracted)
+                        if (app is not null && IconService.ExtractPng(app.ExePath, null, SteamLibrary.ArtForExe(app.ExePath)) is { } extracted)
                         {
                             lib.PutIcon(id, extracted);
                             png = extracted;

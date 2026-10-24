@@ -19,13 +19,13 @@ $started = @()
 try {
     Expand-Archive -LiteralPath $Zip -DestinationPath $tmp
     $root = if (Test-Path (Join-Path $tmp 'TimeSink.Agent.exe')) { $tmp } else { Join-Path $tmp 'TimeSink' }
-    foreach ($f in 'TimeSink.Agent.exe', 'e_sqlite3.dll', 'TimeSink.UI.exe', 'TimeSink.UI.dll', 'TimeSink.Core.dll',
-                   'TimeSink.UI.runtimeconfig.json', 'themes\pulse-dark\theme.json', 'themes\pulse-light\theme.json', 'README.md') {
+    foreach ($f in 'TimeSink.Agent.exe', 'e_sqlite3.dll', 'ui\TimeSink.UI.exe', 'ui\TimeSink.UI.dll', 'ui\TimeSink.Core.dll',
+                   'ui\TimeSink.UI.runtimeconfig.json', 'ui\themes\pulse-dark\theme.json', 'ui\themes\pulse-light\theme.json', 'README.md') {
         Check (Test-Path (Join-Path $root $f)) "contains $f"
     }
     Check (-not (Get-ChildItem $root -Recurse -Filter *.pdb)) 'no .pdb files'
     Check (-not (Test-Path (Join-Path $root 'portable.flag'))) 'no portable.flag (not implemented in v1)'
-    $rc = Get-Content (Join-Path $root 'TimeSink.UI.runtimeconfig.json') -Raw
+    $rc = Get-Content (Join-Path $root 'ui\TimeSink.UI.runtimeconfig.json') -Raw
     Check ($rc -match 'includedFrameworks') 'UI is self-contained'
 
     if ($Smoke -and $fail.Count -eq 0) {
@@ -36,7 +36,7 @@ try {
         Check (-not $a.HasExited) 'Agent runs with --db scratch'
         Check (Test-Path $db) 'Agent created scratch database'
         $env:TIMESINK_DB = Join-Path $tmp 'ui-test.db'
-        $u = Start-Process (Join-Path $root 'TimeSink.UI.exe') -PassThru
+        $u = Start-Process (Join-Path $root 'ui\TimeSink.UI.exe') -PassThru
         $started += $u
         Start-Sleep -Seconds 6
         Check (-not $u.HasExited) 'UI runs with TIMESINK_DB scratch'

@@ -108,7 +108,10 @@
                 <Border Style="{StaticResource Tile}" Margin="2,0">
                     <StackPanel>
                         <TextBlock Style="{StaticResource Small}" Text="{DynamicResource Str.TileLongest}"/>
-                        <TextBlock x:Name="TileLongest" Style="{StaticResource Number}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                            <ContentControl x:Name="TileLongestIcon" Margin="0,0,6,0" VerticalAlignment="Center" Focusable="False"/>
+                            <TextBlock x:Name="TileLongest" Style="{StaticResource Number}" TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource Tile}" Margin="4,0,0,0">
@@ -122,7 +125,11 @@
             <TextBlock x:Name="Empty" Style="{StaticResource Small}" TextWrapping="Wrap" HorizontalAlignment="Center" Margin="0,16"
                        Text="{DynamicResource Str.TodayEmpty}" Visibility="Collapsed"/>
             <StackPanel x:Name="UntrackedHost"/>
-            <TextBlock x:Name="TrackedHeader" Style="{StaticResource Small}" Margin="0,0,0,4" Text="{DynamicResource Str.TodayTrackedHeader}" Visibility="Collapsed"/>
+            <Grid x:Name="TrackedHeader" Margin="0,0,0,4" Visibility="Collapsed">
+                <TextBlock x:Name="TrackedLabel" Style="{StaticResource Small}" HorizontalAlignment="Left" Text="{DynamicResource Str.TodayTrackedHeader}"/>
+                <TextBlock x:Name="CombinedText" Style="{StaticResource Small}" HorizontalAlignment="Right"
+                           FontFamily="{DynamicResource FontFamily.Numbers}"/>
+            </Grid>
             <StackPanel x:Name="Rows"/>
         </StackPanel>
     </ScrollViewer>

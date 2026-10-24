@@ -35,7 +35,7 @@ public sealed class MonthExportTests : IDisposable
     public void Csv_rows_add_up_to_the_month_total()
     {
         var lines = MonthExport.ToCsv(March()).Split("\r\n", StringSplitOptions.RemoveEmptyEntries).Skip(1);
-        lines.Sum(l => long.Parse(l[(l.LastIndexOf(',') + 1)..])).Should().Be(March().TotalSeconds);
+        lines.Sum(l => long.Parse(l[(l.LastIndexOf(',') + 1)..])).Should().Be(March().Days.Sum(d => d.Apps.Sum(a => a.Seconds))); // app seconds, not uptime
     }
 
     [Fact]

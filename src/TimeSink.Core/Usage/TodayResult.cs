@@ -13,7 +13,7 @@ public sealed record HourBucket(int Hour, long AppSeconds, double TypicalAppSeco
 
 public sealed record FirstAppTile(string AppName, long StartUtc);
 
-public sealed record LongestSessionTile(string AppName, long Seconds);
+public sealed record LongestSessionTile(long AppId, string AppName, long Seconds);
 
 /// <summary>One app row (merged apps are one row under their canonical app).</summary>
 public sealed record TodayAppRow(
@@ -42,4 +42,6 @@ public sealed record TodayResult(
     FirstAppTile? FirstApp,
     LongestSessionTile? Longest,
     long VsYesterdaySeconds,
-    IReadOnlyList<TodayAppRow> Apps);
+    IReadOnlyList<TodayAppRow> Apps,
+    long UptimeSeconds,
+    long UptimeVsYesterdaySeconds);

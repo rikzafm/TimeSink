@@ -108,7 +108,7 @@ public sealed partial class AddAppView
             foreach (var a in todo)
             {
                 byte[]? png;
-                try { png = IconService.ExtractPng(a.ExePath, a.Aumid); } catch { png = null; }
+                try { png = IconService.ExtractPng(a.ExePath, a.Aumid, a.IconFile); } catch { png = null; }
                 Dispatcher.BeginInvoke(() =>
                 {
                     _iconCache[a.ExePath] = png;
@@ -223,7 +223,8 @@ public sealed partial class AddAppView
         n.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         n.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
         texts.Children.Add(n);
-        if (app?.Publisher is { Length: > 0 } pub)
+        var sub = app is { IsSteam: true } ? InstalledApp.SteamSource : app?.Publisher;
+        if (sub is { Length: > 0 } pub)
         {
             var p = new TextBlock { Text = pub, TextTrimming = TextTrimming.CharacterEllipsis };
             p.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
@@ -286,7 +287,7 @@ public sealed partial class AddAppView
     private void TrackInstalled(InstalledApp app)
     {
         var cached = _iconCache.GetValueOrDefault(app.ExePath);
-        Task.Run(() => cached ?? IconService.ExtractPng(app.ExePath, app.Aumid)).ContinueWith(t =>
+        Task.Run(() => cached ?? IconService.ExtractPng(app.ExePath, app.Aumid, app.IconFile)).ContinueWith(t =>
         {
             try
             {

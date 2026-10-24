@@ -46,6 +46,13 @@ public static class SettingsStrings
     public const string ChooseFile = "setChooseFile";
     public const string ExportButton = "setExportButton";
     public const string DeleteButton = "setDeleteButton";
+    public const string OpenButton = "setOpenButton";
+    public const string UninstallButton = "setUninstallButton";
+    public const string UninstallTitle = "setUninstallTitle";
+    public const string UninstallBody = "setUninstallBody";
+    public const string UninstallConfirm = "setUninstallConfirm";
+    public const string UninstallMissing = "setUninstallMissing";
+    public const string OpenFailed = "setOpenFailed";
     public const string IconTitle = "setIconTitle";
     public const string IconSubtitle = "setIconSubtitle";
     public const string IconApply = "setIconApply";
@@ -53,6 +60,6 @@ public static class SettingsStrings
 
     public static readonly IReadOnlyList<string> All =
     [
-        BackingUp, BackupDone, BackupFailedShort, BackupFailed, BackUp, RestoreTitle, RestoreFilter, RestoreCannot, RestoreDetail, RestoreUpgrade, RestoreBody, Cancel, Merge, Replace, Ok, Replacing, Merging, Restoring, Replaced, SafetyCopy, Merged, RestoreFailed, ReplaceFinished, MergeFinished, ExportTitle, ExportBody, Json, Csv, ExportFolderTitle, ExportSavedTwo, ExportJsonTitle, ExportJsonFilter, ExportSaved, ExportFailed, ExportResultTitle, DeleteTitle, DeleteBody, DeleteEverything, DeleteDone, DeleteFailed, ChooseFile, ExportButton, DeleteButton, IconTitle, IconSubtitle, IconApply, IconReset,
+        BackingUp, BackupDone, BackupFailedShort, BackupFailed, BackUp, RestoreTitle, RestoreFilter, RestoreCannot, RestoreDetail, RestoreUpgrade, RestoreBody, Cancel, Merge, Replace, Ok, Replacing, Merging, Restoring, Replaced, SafetyCopy, Merged, RestoreFailed, ReplaceFinished, MergeFinished, ExportTitle, ExportBody, Json, Csv, ExportFolderTitle, ExportSavedTwo, ExportJsonTitle, ExportJsonFilter, ExportSaved, ExportFailed, ExportResultTitle, DeleteTitle, DeleteBody, DeleteEverything, DeleteDone, DeleteFailed, ChooseFile, ExportButton, DeleteButton, OpenButton, UninstallButton, UninstallTitle, UninstallBody, UninstallConfirm, UninstallMissing, OpenFailed, IconTitle, IconSubtitle, IconApply, IconReset,
     ];
 }

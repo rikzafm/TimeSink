@@ -234,11 +234,11 @@ Default theme `pulse-dark`. Tokens (hex): `surface #11140f`, `surfaceAlt #181d13
 ### 8.3 Views (visual reference boards are listed in §14; behaviours are authoritative here)
 
 **Today** (`TodayView`)
-* Header total: combined app time today as `Xh YYm` plus ticking seconds; pill "N running" with a pulsing dot.
+* Header total: **PC uptime** today (decision 125) as `Xh YYm` plus ticking seconds; combined app time shows on the right of the "Tracked today" line; pill "N running" with a pulsing dot.
 * Hourly chart (24 columns, height ∝ number of apps open that hour, max scale 6): current hour in accent; future hours show a dotted "typical day" marker (average of the same weekday over the last 8 weeks); a "now" marker with time label; hatched band for sleep-paused spans.
-* Three stat tiles: First app opened · Longest session (duration + app) · vs yesterday-by-now (delta in minutes).
+* Three stat tiles: First app opened · Longest session (duration + app icon) · vs yesterday-by-now (uptime delta in minutes).
 * App rows (sorted by today's time): icon, name, status line (`Running · 1h 02m session` / `Closed 11:12 am`), today's time, 24-hour mini timeline strip of its sessions. Tap to expand: session list (`8:00 am → 12:09 pm · 4h 09m`) and comparison vs 7-day average.
-* **Early-morning state:** while today's combined time is **< 1 h**, show the "Good morning · tracking since you signed in at H:MM" caption and the hint that the typical-day dotted line fills in as the day goes on.
+* **Early-morning state:** while today's uptime is **< 1 h**, show the "Good morning · tracking since you signed in at H:MM" caption and the hint that the typical-day dotted line fills in as the day goes on.
 * **Untracked-running-apps card** ("N running apps aren't tracked", per-app **Track** buttons that add the app immediately; "Not this one" dismisses) shows **any time** such apps exist and `tracking.suggestApps` is on, above a "Tracked today" list. The footer then reads "Only apps you pick are recorded".
 
 **Week** (`WeekView`, board `PulseWeek`) — per the "C · Pulse" board: caption + total, 7 single-colour columns (Mon-first per `week.start`; the current day in accent) with the axis labels, a **20-week heat grid** (140 cells, heat ramp) with a **N-day streak** label, and per-app rows (letter tile, name, week total, 10-point sparkline). A streak day = any tracked app had time that local day (above `minSessionSeconds`); today does not break the streak until it ends without time. Footer shows "Last backup · N days ago".

@@ -27,7 +27,7 @@ public sealed record AllRetiredRow(
     double AverageSecondsPerDay,
     DateOnly StoppedDate);
 
-/// <summary>Totals over tracked apps only. <see cref="DaysUsed"/> counts days on which any tracked app had time.</summary>
+/// <summary>Totals over tracked apps only. <see cref="Seconds"/> is PC uptime; <see cref="DaysUsed"/> counts days on which any tracked app had time.</summary>
 public sealed record AllTotals(long Seconds, int DaysUsed, double AverageSecondsPerDay);
 
 /// <summary>Everything the All tab shows (rows are unsorted: see <see cref="AllSorting"/>).</summary>

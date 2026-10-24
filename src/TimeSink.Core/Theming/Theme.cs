@@ -28,6 +28,7 @@ public static class StringKeys
 
     // Today view. Values with {0} are composed by the view (string.Format).
     public const string TodayCaption = "todayCaption";
+    public const string TodayCombined = "todayCombined";
     public const string TodayEarlyCaption = "todayEarlyCaption";
     public const string TodayEarlyHint = "todayEarlyHint";
     public const string TodayEmpty = "todayEmpty";
@@ -83,7 +84,7 @@ public static class StringKeys
     public static readonly IReadOnlyList<string> All =
     [
         AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, Back, StubComingSoon,
-        TodayCaption, TodayEarlyCaption, TodayEarlyHint, TodayEmpty, RunningPill, LegendAppsOpen, LegendTypical,
+        TodayCaption, TodayCombined, TodayEarlyCaption,TodayEarlyHint, TodayEmpty, RunningPill, LegendAppsOpen, LegendTypical,
         LegendAsleep, TileFirstApp, TileLongest, TileVsYesterday, TileNone, TileLongestValue, TileVsYesterdayValue,
         StatusRunning, StatusClosed, SessionsToday, SessionLine, SessionNow, VsAverage, VsAverageNone,
         WeekCaption, WeekStreak, WeekStreakSub, WeekGridCaption, WeekEmpty,

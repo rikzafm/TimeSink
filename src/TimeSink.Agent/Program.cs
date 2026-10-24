@@ -18,6 +18,7 @@ internal static class Program
     private static string s_pipeName = "";
     private static BackupScheduler? s_backup;
     private static AlertHost? s_alerts;
+    private static SteamScanHost? s_steam;
     private static string s_dbPath = "";
     private static readonly FlyoutToggle s_toggle = new();
     private static Process? s_ui;
@@ -104,11 +105,14 @@ internal static class Program
         s_backup.Start();
         s_alerts = new AlertHost(s_db!, s_hwnd, ShowBalloon);
         s_alerts.Start();
+        s_steam = new SteamScanHost(s_dbPath);
+        s_steam.Start();
 
         MSG msg;
         while (NativeMethods.GetMessageW(&msg, 0, 0, 0) > 0)
             NativeMethods.DispatchMessageW(&msg);
 
+        s_steam?.Dispose();
         s_ipc?.Dispose();
         s_db?.Dispose();
         return 0;
@@ -260,7 +264,9 @@ internal static class Program
 
     private static Process? StartUi(string[] args)
     {
-        var exe = Path.Combine(AppContext.BaseDirectory, "TimeSink.UI.exe");
+        // Installed layout keeps the UI and its runtime in ui\; dev builds put it beside the Agent.
+        var exe = Path.Combine(AppContext.BaseDirectory, "ui", "TimeSink.UI.exe");
+        if (!File.Exists(exe)) exe = Path.Combine(AppContext.BaseDirectory, "TimeSink.UI.exe");
         if (!File.Exists(exe)) return null;
 
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false };
