@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Windows;
+using TimeSink.Core.Usage;
 
 namespace TimeSink.UI.Services;
 
@@ -16,15 +17,9 @@ internal static class TimeText
     public static DateTime Local(long utcSeconds) =>
         TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(utcSeconds), TimeZoneInfo.Local).DateTime;
 
-    /// <summary>Clock time in the Windows short-time pattern (12 or 24 h), e.g. "1:42 pm" or "13:42".</summary>
-    public static string Clock(long utcSeconds) => Local(utcSeconds).ToString("t", CultureInfo.CurrentCulture).ToLowerInvariant();
+    /// <summary>Clock time in the Windows short-time pattern (12 or 24 h), e.g. "1:42 pm" or "13:42" (see <see cref="ClockFormat"/>).</summary>
+    public static string Clock(long utcSeconds) => ClockFormat.Clock(Local(utcSeconds), CultureInfo.CurrentCulture);
 
     /// <summary>Axis label for a whole hour: "6 am" / "06:00" style, minutes dropped for 12-hour clocks.</summary>
-    public static string Hour(int hour)
-    {
-        var t = new DateTime(2000, 1, 1, hour % 24, 0, 0);
-        var pattern = CultureInfo.CurrentCulture.DateTimeFormat.ShortTimePattern;
-        return pattern.Contains('H') ? t.ToString("HH:mm", CultureInfo.CurrentCulture)
-            : t.ToString(pattern.Replace(":mm", ""), CultureInfo.CurrentCulture).ToLowerInvariant();
-    }
+    public static string Hour(int hour) => ClockFormat.Hour(hour, CultureInfo.CurrentCulture);
 }

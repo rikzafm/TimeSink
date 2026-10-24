@@ -8,6 +8,7 @@ using Microsoft.Win32;
 using TimeSink.Core.Backup;
 using TimeSink.Core.Data;
 using TimeSink.Core.Settings;
+using TimeSink.Core.Usage;
 using static TimeSink.UI.Services.TimeText;
 
 namespace TimeSink.UI;
@@ -72,7 +73,8 @@ public sealed partial class SettingsView
             return;
         }
 
-        var made = info.Manifest.CreatedUtc.ToLocalTime().ToString("d MMM yyyy HH:mm");
+        var madeAt = info.Manifest.CreatedUtc.ToLocalTime().DateTime;
+        var made = madeAt.ToString("d MMM yyyy ", CultureInfo.CurrentCulture) + ClockFormat.Clock(madeAt, CultureInfo.CurrentCulture);
         var detail = Str(SettingsStrings.RestoreDetail, Path.GetFileName(file), made, info.Apps, info.Sessions.ToString("N0", CultureInfo.CurrentCulture)) +
                      (info.NeedsMigration ? Str(SettingsStrings.RestoreUpgrade) : "");
         ShowDialog(Str(SettingsStrings.RestoreTitle), detail + "\n\n" + Str(SettingsStrings.RestoreBody), null,

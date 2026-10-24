@@ -1,7 +1,9 @@
+using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Windows;
 using TimeSink.Core.Flyout;
+using TimeSink.Core.Usage;
 using TimeSink.UI.Theming;
 
 namespace TimeSink.UI;
@@ -27,6 +29,15 @@ public partial class App : Application
     {
         StartupTrace.Mark("onStartup");
         base.OnStartup(e);
+
+        // Story 48: formatting follows the user's Windows regional settings (never overridden, including the 12/24 h
+        // clock). Threads that WPF or tasks create start from the same culture, and XAML text formatting (default en-US)
+        // is told to use it too.
+        var culture = ClockFormat.WindowsCulture();
+        CultureInfo.CurrentCulture = culture;
+        CultureInfo.DefaultThreadCurrentCulture = culture;
+        FrameworkElement.LanguageProperty.OverrideMetadata(typeof(FrameworkElement),
+            new FrameworkPropertyMetadata(System.Windows.Markup.XmlLanguage.GetLanguage(culture.IetfLanguageTag)));
 
         _mutex = new Mutex(true, MutexName, out var isFirst);
         if (!isFirst)
