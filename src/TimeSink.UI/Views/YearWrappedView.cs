@@ -258,7 +258,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         _pager.Index = _index;
         _pager.Count = CardCount;
         _save.Content = Str(WrappedStringKeys.Save);
-        _card.AppBrushes = Enumerable.Range(0, 6).Select(i => Application.Current.TryFindResource("Brush.App" + i) as Brush ?? Brushes.Gray).ToList();
+        _card.AppBrushes = Enumerable.Range(0, 6).Select(i => Application.Current.TryFindResource("Brush.App" + i) as Brush ?? (Brush)Application.Current.FindResource("Brush.TextMuted")).ToList();
         _card.MediumRadius = Application.Current.TryFindResource("CornerRadius.Medium") is CornerRadius mr ? mr.TopLeft : 10;
         _card.LargeRadius = Application.Current.TryFindResource("CornerRadius.Large") is CornerRadius lr ? lr.TopLeft : 12;
         _pager.ButtonRadius = Application.Current.TryFindResource("CornerRadius.Small") is CornerRadius sr ? sr.TopLeft : 8;
