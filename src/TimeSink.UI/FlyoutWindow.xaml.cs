@@ -79,6 +79,8 @@ public partial class FlyoutWindow : Window
         if (_rendered && body is YearView year) year.Start();
         if (_rendered && body is TodayView today) today.Start(); // before first render, OnContentRendered starts it
         if (_rendered && body is WeekView week) week.Start();
+        foreach (var other in _bodies.Values) if (other is MonthView m && !ReferenceEquals(m, body)) m.Stop();
+        if (_rendered && body is MonthView month) month.Start();
         if (persist)
         {
             var path = _dbPath;
@@ -99,6 +101,11 @@ public partial class FlyoutWindow : Window
         {
             _live ??= new LiveState(PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB")));
             return new WeekView(_dbPath, _themes, _live);
+        }
+        if (tab == ShellTab.Month)
+        {
+            _live ??= new LiveState(PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB")));
+            return new MonthView(_dbPath, _themes, _live, this);
         }
         if (tab == ShellTab.Year)
         {
@@ -161,6 +168,7 @@ public partial class FlyoutWindow : Window
         Activate();
         (Body.Content as TodayView)?.Refresh(); // data went stale while waiting off-screen
         (Body.Content as WeekView)?.Refresh();
+        (Body.Content as MonthView)?.Refresh();
         (Body.Content as YearView)?.Refresh();
         // Report once the move has been processed and the frame is idle.
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, () =>
@@ -191,6 +199,7 @@ public partial class FlyoutWindow : Window
         // Data loading starts only after the first frame is on screen, so it never delays first paint.
         if (Body.Content is TodayView today) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, today.Start);
         if (Body.Content is WeekView week) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, week.Start);
+        if (Body.Content is MonthView monthView) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, monthView.Start);
         if (Body.Content is YearView yearBody) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, yearBody.Start);
         if (!_revealed)
         {
