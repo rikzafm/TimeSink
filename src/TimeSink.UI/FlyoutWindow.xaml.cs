@@ -48,6 +48,7 @@ public partial class FlyoutWindow : Window
         ContentRendered += OnContentRendered;
         Deactivated += (_, _) => { if (_revealed && !KeepOpen && !TestKeepOpen) Close(); };
         SettingsButton.Click += (_, _) => ToggleSettings();
+        AddAppButton.Click += (_, _) => ShowAddApp();
 
         foreach (RadioButton b in TabBar.Children)
         {
@@ -96,6 +97,9 @@ public partial class FlyoutWindow : Window
 
     /// <summary>Set while a native dialog (file picker) is open so losing activation does not close the flyout.</summary>
     public bool KeepOpen { get; set; }
+
+    // Add app covers the whole flyout; closing it returns to whatever was underneath.
+    private void ShowAddApp() => Overlay.Content = new AddAppView(_themes, _dbPath, () => Overlay.Content = null);
 
     private SettingsView? _settings;
     private ShellTab _current;

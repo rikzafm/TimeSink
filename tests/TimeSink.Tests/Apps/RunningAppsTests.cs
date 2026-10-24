@@ -49,6 +49,16 @@ public sealed class RunningAppsTests
             ("Old", T0.AddMinutes(-200)), ("New", T0.AddMinutes(-30)));
     }
 
+    [Theory]
+    [InlineData("pulse-dark")]
+    [InlineData("pulse-light")]
+    public void Builtin_themes_define_every_Add_app_string(string id)
+    {
+        var loader = new TimeSink.Core.Theming.ThemeLoader(new TimeSink.Core.Theming.FolderThemeSource(Path.Combine(AppContext.BaseDirectory, "themes")));
+        var t = loader.Load(id);
+        foreach (var key in AddAppStrings.All) t.Strings.Has(key).Should().BeTrue($"string '{key}'");
+    }
+
     [Fact]
     public void Windows_whose_process_path_is_unknown_are_skipped()
     {

@@ -39,9 +39,12 @@
 
             <!-- Footer -->
             <Border Grid.Row="3" BorderBrush="{DynamicResource Brush.BorderSoft}" BorderThickness="0,1,0,0" Padding="10,6">
-                <Button Style="{StaticResource LinkButton}" HorizontalAlignment="Left"
+                <Button x:Name="AddAppButton" Style="{StaticResource LinkButton}" HorizontalAlignment="Left"
                         Foreground="{DynamicResource Brush.Accent}" Content="{DynamicResource Str.AddApp}"/>
             </Border>
+
+            <!-- Full-flyout overlay screens (Add app) -->
+            <ContentPresenter x:Name="Overlay" Grid.RowSpan="4"/>
         </Grid>
     </Border>
 </Window>
