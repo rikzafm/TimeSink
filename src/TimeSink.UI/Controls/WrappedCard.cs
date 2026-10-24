@@ -58,8 +58,8 @@ public sealed class WrappedCard : FrameworkElement
     public static readonly DependencyProperty BodySizeProperty = Reg(nameof(BodySize), 13.0);
     public static readonly DependencyProperty TitleSizeProperty = Reg(nameof(TitleSize), 15.0);
     public static readonly DependencyProperty DisplaySizeProperty = Reg(nameof(DisplaySize), 34.0);
-    public static readonly DependencyProperty MediumRadiusProperty = Reg(nameof(MediumRadius), 10.0);
-    public static readonly DependencyProperty LargeRadiusProperty = Reg(nameof(LargeRadius), 12.0);
+    public static readonly DependencyProperty MediumRadiusProperty = Reg(nameof(MediumRadius), 0.0);
+    public static readonly DependencyProperty LargeRadiusProperty = Reg(nameof(LargeRadius), 0.0);
 
     public WrappedCardModel? Model { get => (WrappedCardModel?)GetValue(ModelProperty); set => SetValue(ModelProperty, value); }
     public Brush? BackBrush { get => (Brush?)GetValue(BackBrushProperty); set => SetValue(BackBrushProperty, value); }
@@ -86,10 +86,8 @@ public sealed class WrappedCard : FrameworkElement
 
     private FormattedText Text(string text, double size, Brush? brush, bool bold = false, bool numbers = false, double maxWidth = 0, int maxLines = 0)
     {
-        var face = (numbers ? NumberFontFace : FontFace) ?? new FontFamily("Segoe UI");
-        var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-            new Typeface(face, FontStyles.Normal, bold ? FontWeights.Bold : FontWeights.Normal, FontStretches.Normal),
-            size, brush ?? Brushes.White, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        var ft = ChartSupport.Text(this, text, numbers ? NumberFontFace : FontFace, size, brush ?? TextBrush,
+            bold ? FontWeights.Bold : FontWeights.Normal);
         if (maxWidth > 0) ft.MaxTextWidth = maxWidth;
         ft.Trimming = TextTrimming.CharacterEllipsis;
         if (maxLines > 0) ft.MaxLineCount = maxLines;

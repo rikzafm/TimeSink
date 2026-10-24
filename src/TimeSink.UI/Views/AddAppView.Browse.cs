@@ -20,7 +20,9 @@ public sealed partial class AddAppView
 
         // drop zone
         var zone = new Grid { AllowDrop = true, Background = Brushes.Transparent };
-        var dashed = new Rectangle { RadiusX = 12, RadiusY = 12, StrokeDashArray = [4, 3], StrokeThickness = 1.5, Fill = Brushes.Transparent };
+        var dashed = new Rectangle { StrokeDashArray = [4, 3], StrokeThickness = 1.5, Fill = Brushes.Transparent };
+        dashed.SetResourceReference(Rectangle.RadiusXProperty, "Double.Radius.Large");
+        dashed.SetResourceReference(Rectangle.RadiusYProperty, "Double.Radius.Large");
         dashed.SetResourceReference(Shape.StrokeProperty, "Brush.Border");
         var inner = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(12, 22, 12, 22) };
         var arrow = new System.Windows.Shapes.Path

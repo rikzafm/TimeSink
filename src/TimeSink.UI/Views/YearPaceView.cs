@@ -290,9 +290,11 @@ public sealed class YearPaceView : UserControl, IYearSubView
             name.FontWeight = FontWeights.SemiBold;
             Grid.SetColumn(name, 1);
             var track = new Grid { Height = 5, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-            var back = new Border { CornerRadius = new CornerRadius(3) };
+            var back = new Border();
+            back.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Tiny");
             back.SetResourceReference(Border.BackgroundProperty, "Brush.Border");
-            var fill = new Border { CornerRadius = new CornerRadius(3), HorizontalAlignment = HorizontalAlignment.Left };
+            var fill = new Border { HorizontalAlignment = HorizontalAlignment.Left };
+            fill.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Tiny");
             fill.SetResourceReference(Border.BackgroundProperty, "Brush.App" + i % 6);
             var fraction = app.Seconds / (double)max;
             track.SizeChanged += (_, e) => fill.Width = Math.Max(2, e.NewSize.Width * fraction);

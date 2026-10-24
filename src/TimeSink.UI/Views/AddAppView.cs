@@ -344,7 +344,9 @@ public sealed partial class AddAppView : UserControl
     private UIElement BuildHint()
     {
         var wrap = new Grid { Margin = new Thickness(8, 12, 8, 12) };
-        var dashed = new Rectangle { RadiusX = 10, RadiusY = 10, StrokeDashArray = [4, 3], StrokeThickness = 1, Fill = Brushes.Transparent };
+        var dashed = new Rectangle { StrokeDashArray = [4, 3], StrokeThickness = 1, Fill = Brushes.Transparent };
+        dashed.SetResourceReference(Rectangle.RadiusXProperty, "Double.Radius.Medium");
+        dashed.SetResourceReference(Rectangle.RadiusYProperty, "Double.Radius.Medium");
         dashed.SetResourceReference(Shape.StrokeProperty, "Brush.Border");
         var line = new TextBlock { Margin = new Thickness(12, 10, 12, 10), TextWrapping = TextWrapping.Wrap };
         line.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");

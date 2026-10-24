@@ -68,7 +68,7 @@ public sealed class PaceBars : FrameworkElement
     {
         var w = ActualWidth;
         var h = ActualHeight;
-        dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, w, h)); // hit-testable
+        ChartSupport.HitArea(dc, w, h);
         if (Months is not { Count: 12 } months || w <= 0) return;
 
         var plotH = Math.Max(1, h - MonthBand);
@@ -76,12 +76,9 @@ public sealed class PaceBars : FrameworkElement
         var col = ColumnWidth;
         var peak = Math.Max(3600.0, Math.Max(months.Max(m => (double)Math.Max(m.Seconds, m.ProjectedSeconds)), AverageSeconds ?? 0));
         double Px(long seconds) => seconds / peak * barArea;
-        var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-        var face = LabelFontFamily ?? new FontFamily("Segoe UI");
 
-        FormattedText Text(string s, Brush? brush, bool bold) => new(s, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-            new Typeface(face, FontStyles.Normal, bold ? FontWeights.Bold : FontWeights.Normal, FontStretches.Normal),
-            LabelFontSize, brush ?? Brushes.Gray, dpi);
+        FormattedText Text(string s, Brush? brush, bool bold) =>
+            ChartSupport.Text(this, s, LabelFontFamily, LabelFontSize, brush, bold ? FontWeights.Bold : FontWeights.Normal);
 
         var dash = new Pen(ProjectedBrush ?? MutedBrush, 1) { DashStyle = new DashStyle(new double[] { 3, 2 }, 0) };
         var hatch = new Pen(ProjectedBrush ?? MutedBrush, 1) { };

@@ -97,7 +97,7 @@ public static class TokenCatalog
     public static readonly IReadOnlyList<string> ColorKeys =
     [
         "surface", "surfaceAlt", "panel", "border", "borderSoft",
-        "text", "textSoft", "textMuted", "accent", "onAccent", "warning", "danger",
+        "text", "textSoft", "textMuted", "accent", "onAccent", "warning", "danger", "scrim",
     ];
 
     public static readonly IReadOnlyList<string> FontKeys = ["ui", "numbers"];

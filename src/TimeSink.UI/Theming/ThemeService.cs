@@ -70,7 +70,19 @@ public sealed class ThemeService
         d["CornerRadius.Small"] = new CornerRadius(t.Radius[0]);
         d["CornerRadius.Medium"] = new CornerRadius(t.Radius[1]);
         d["CornerRadius.Large"] = new CornerRadius(t.Radius[2]);
+        d["CornerRadius.Tiny"] = new CornerRadius(Math.Max(1, t.Radius[0] / 4)); // bar ends, legend swatches, dots
+        d["Double.Radius.Tiny"] = Math.Max(1, t.Radius[0] / 4);
+        d["Double.Radius.Small"] = t.Radius[0];
+        d["Double.Radius.Medium"] = t.Radius[1];
+        d["Double.Radius.Large"] = t.Radius[2];
         d["Thickness.Border"] = new Thickness(t.Border);
+
+        // Opacity tokens (decision 114): fixed ratios shared by every theme.
+        d["Double.Size.Dot"] = 7.0;     // status dot
+        d["Double.Size.Swatch"] = 8.0;  // legend / list colour swatch
+        d["Double.Opacity.Retired"] = 0.7;
+        d["Double.Opacity.Wash"] = 0.14;
+        d["Double.Opacity.Disabled"] = 0.35;
 
         foreach (var (key, name) in t.Fonts) d["FontFamily." + Pascal(key)] = new FontFamily(name);
         foreach (var (key, size) in t.Sizes) d["Double.FontSize." + Pascal(key)] = size;

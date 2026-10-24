@@ -77,7 +77,7 @@ public sealed class MatrixGrid : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
-        dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight)); // hit-testable
+        ChartSupport.HitArea(dc, ActualWidth, ActualHeight);
         if (Rows is not { } rows || MonthLabels is not { } months || HeatBrushes is not { Count: >= 5 } heat || ActualWidth <= 0) return;
         var cw = CellWidth;
 
@@ -127,17 +127,16 @@ public sealed class MatrixGrid : FrameworkElement
         bool center = false, bool right = false, bool middle = false, bool trim = false)
     {
         if (text.Length == 0) return;
-        var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-            new Typeface(LabelFontFamily ?? new FontFamily("Segoe UI"), FontStyles.Normal, weight, FontStretches.Normal),
-            LabelFontSize, brush ?? Brushes.Gray, VisualTreeHelper.GetDpi(this).PixelsPerDip)
-        { MaxLineCount = 1, Trimming = trim ? TextTrimming.CharacterEllipsis : TextTrimming.None };
+        var ft = ChartSupport.Text(this, text, LabelFontFamily, LabelFontSize, brush, weight);
+        ft.MaxLineCount = 1;
+        ft.Trimming = trim ? TextTrimming.CharacterEllipsis : TextTrimming.None;
         if (trim) ft.MaxTextWidth = Math.Max(1, box.Width);
         var x = box.Left + (center ? (box.Width - ft.Width) / 2 : right ? box.Width - ft.Width : 0);
         var y = box.Top + (middle ? (box.Height - ft.Height) / 2 : 0);
         dc.DrawText(ft, new Point(x, y));
     }
 
-    private static Rect Inflate(Rect r, double d) => new(r.Left - d, r.Top - d, Math.Max(0, r.Width + 2 * d), Math.Max(0, r.Height + 2 * d));
+    private static Rect Inflate(Rect r, double d) => ChartSupport.Inflate(r, d);
 
     /// <summary>What is under the point: a month header, an app row (name cell), or nothing.</summary>
     private (int Month, int Row) Hit(Point p)

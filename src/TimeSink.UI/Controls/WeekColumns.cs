@@ -30,7 +30,7 @@ public sealed class WeekColumns : FrameworkElement
     {
         var w = ActualWidth;
         var h = ActualHeight;
-        dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, w, h));
+        ChartSupport.HitArea(dc, w, h);
         if (Days is not { Count: > 0 } days || w <= 0) return;
         var max = Math.Max(1, days.Max(d => d.Seconds));
         var colW = (w - Gap * (days.Count - 1)) / days.Count;

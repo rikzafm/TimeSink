@@ -88,11 +88,15 @@ internal sealed class UntrackedCardView : StackPanel
 
     private UIElement BuildCard(UntrackedCard card)
     {
-        var frame = new Rectangle { RadiusX = 12, RadiusY = 12, StrokeDashArray = [4, 3], StrokeThickness = 1, Fill = Brushes.Transparent, IsHitTestVisible = false };
+        var frame = new Rectangle { StrokeDashArray = [4, 3], StrokeThickness = 1, Fill = Brushes.Transparent, IsHitTestVisible = false };
+        frame.SetResourceReference(Rectangle.RadiusXProperty, "Double.Radius.Large");
+        frame.SetResourceReference(Rectangle.RadiusYProperty, "Double.Radius.Large");
         frame.SetResourceReference(Shape.StrokeProperty, "Brush.Border");
 
         var body = new StackPanel { Margin = new Thickness(12, 10, 12, 6) };
-        var dot = new Ellipse { Width = 7, Height = 7, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        var dot = new Ellipse { Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        dot.SetResourceReference(FrameworkElement.WidthProperty, "Double.Size.Dot");
+        dot.SetResourceReference(FrameworkElement.HeightProperty, "Double.Size.Dot");
         dot.SetResourceReference(Shape.FillProperty, "Brush.Warning");
         var title = Label(card.Count == 1 ? TodayEarlyStrings.UntrackedOne : TodayEarlyStrings.UntrackedMany, card.Count, "Double.FontSize.Small", "Brush.Text", FontWeights.Bold);
         var head = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 2) };
@@ -217,7 +221,7 @@ internal sealed class UntrackedCardView : StackPanel
     private static ControlTemplate MakeTemplate()
     {
         var border = new FrameworkElementFactory(typeof(Border));
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(7));
+        border.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
         border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
         border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
         border.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding("BorderBrush") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });

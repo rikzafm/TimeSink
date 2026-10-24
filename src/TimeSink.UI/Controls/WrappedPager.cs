@@ -19,7 +19,7 @@ public sealed class WrappedPager : FrameworkElement
     public static readonly DependencyProperty IconBrushProperty = Reg<Brush?>(nameof(IconBrush));
     public static readonly DependencyProperty DotBrushProperty = Reg<Brush?>(nameof(DotBrush));
     public static readonly DependencyProperty ActiveBrushProperty = Reg<Brush?>(nameof(ActiveBrush));
-    public static readonly DependencyProperty ButtonRadiusProperty = Reg(nameof(ButtonRadius), 8.0);
+    public static readonly DependencyProperty ButtonRadiusProperty = Reg(nameof(ButtonRadius), 0.0);
 
     public int Count { get => (int)GetValue(CountProperty); set => SetValue(CountProperty, value); }
     public int Index { get => (int)GetValue(IndexProperty); set => SetValue(IndexProperty, value); }
@@ -31,6 +31,8 @@ public sealed class WrappedPager : FrameworkElement
 
     /// <summary>Raised with the requested card index (already clamped and different from <see cref="Index"/>).</summary>
     public event Action<int>? PageRequested;
+
+    private double DisabledOpacity => TryFindResource("Double.Opacity.Disabled") is double d ? d : 1;
 
     public WrappedPager() { Cursor = Cursors.Hand; Focusable = false; }
 
@@ -64,7 +66,7 @@ public sealed class WrappedPager : FrameworkElement
     protected override void OnRender(DrawingContext dc)
     {
         double w = ActualWidth;
-        dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, w, Button));
+        ChartSupport.HitArea(dc, w, Button);
         var pen = new Pen(LineBrush, 1);
         DrawButton(dc, pen, new Rect(0.5, 0.5, Button - 1, Button - 1), left: true, enabled: Index > 0);
         DrawButton(dc, pen, new Rect(w - Button + 0.5, 0.5, Button - 1, Button - 1), left: false, enabled: Index < Count - 1);
@@ -77,7 +79,7 @@ public sealed class WrappedPager : FrameworkElement
 
     private void DrawButton(DrawingContext dc, Pen pen, Rect r, bool left, bool enabled)
     {
-        dc.PushOpacity(enabled ? 1 : 0.35);
+        dc.PushOpacity(enabled ? 1 : DisabledOpacity);
         dc.DrawRoundedRectangle(null, pen, r, ButtonRadius, ButtonRadius);
         var cx = r.X + r.Width / 2;
         var cy = r.Y + r.Height / 2;

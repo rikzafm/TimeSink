@@ -46,7 +46,7 @@ public sealed class HourlyBars : FrameworkElement
     {
         var w = ActualWidth;
         var h = ActualHeight;
-        dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, w, h)); // hit-testable
+        ChartSupport.HitArea(dc, w, h);
         if (Hours is not { Count: 24 } hours || w <= 0) return;
 
         var plotTop = LabelBand;
@@ -92,9 +92,7 @@ public sealed class HourlyBars : FrameworkElement
         {
             var nx = NowFraction * w;
             dc.DrawRectangle(accent, null, new Rect(nx - 0.5, LabelBand - 4, 1, plotH + 4));
-            var text = new FormattedText(NowLabel, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-                new Typeface(LabelFontFamily ?? new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal),
-                LabelFontSize, LabelTextBrush ?? Brushes.Black, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            var text = ChartSupport.Text(this, NowLabel, LabelFontFamily, LabelFontSize, LabelTextBrush, FontWeights.SemiBold);
             var pw = text.Width + 12;
             var px = Math.Clamp(nx - pw / 2, 0, w - pw);
             dc.DrawRoundedRectangle(accent, null, new Rect(px, 0, pw, LabelBand - 5), 4, 4);

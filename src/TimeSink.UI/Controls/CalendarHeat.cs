@@ -66,7 +66,7 @@ public sealed class CalendarHeat : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
-        dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight)); // hit-testable
+        ChartSupport.HitArea(dc, ActualWidth, ActualHeight);
         if (Rows is not { } rows || HeatBrushes is not { Count: >= 5 } heat) return;
         var cw = CellWidth;
 
@@ -118,17 +118,17 @@ public sealed class CalendarHeat : FrameworkElement
 
     private void Text(DrawingContext dc, string text, Brush? brush, FontWeight weight, Rect box, bool center = false, bool right = false, bool middle = false)
     {
-        var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-            new Typeface(LabelFontFamily ?? new FontFamily("Segoe UI"), FontStyles.Normal, weight, FontStretches.Normal),
-            LabelFontSize, brush ?? Brushes.Gray, VisualTreeHelper.GetDpi(this).PixelsPerDip)
-        { MaxTextWidth = Math.Max(1, box.Width), MaxLineCount = 1, Trimming = TextTrimming.None };
+        var ft = ChartSupport.Text(this, text, LabelFontFamily, LabelFontSize, brush, weight);
+        ft.MaxTextWidth = Math.Max(1, box.Width);
+        ft.MaxLineCount = 1;
+        ft.Trimming = TextTrimming.None;
         var x = box.Left + (center ? (box.Width - ft.Width) / 2 : right ? box.Width - ft.Width : 0);
         var y = box.Top + (middle ? (box.Height - ft.Height) / 2 : 0);
         dc.DrawText(ft, new Point(x, y));
     }
 
-    private static Rect Deflate(Rect r, double d) => new(r.Left + d, r.Top + d, Math.Max(0, r.Width - 2 * d), Math.Max(0, r.Height - 2 * d));
-    private static Rect Inflate(Rect r, double d) => new(r.Left - d, r.Top - d, r.Width + 2 * d, r.Height + 2 * d);
+    private static Rect Deflate(Rect r, double d) => ChartSupport.Deflate(r, d);
+    private static Rect Inflate(Rect r, double d) => ChartSupport.Inflate(r, d);
 
     private CalendarCell? HitCell(Point p)
     {

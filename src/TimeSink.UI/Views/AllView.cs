@@ -23,7 +23,6 @@ namespace TimeSink.UI.Views;
 public sealed class AllView : UserControl
 {
     private const int RefreshEverySeconds = 30;
-    private const double RetiredOpacity = 0.7;
     private static readonly CultureInfo En = CultureInfo.InvariantCulture; // English names in v1 (spec 8.1)
     private static readonly AllColumn[] Columns = [AllColumn.App, AllColumn.Hours, AllColumn.DaysUsed, AllColumn.AvgPerDay, AllColumn.Share];
     private static readonly double[] ColumnWidths = [1.7, 0.9, 0.8, 0.9, 1.2];
@@ -235,8 +234,9 @@ public sealed class AllView : UserControl
         // Share: a 30 x 4 bar scaled to the biggest app, then the percentage.
         var track = new Border { Width = 30, Height = 4, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
         track.SetResourceReference(Border.BackgroundProperty, "Brush.BorderSoft");
-        track.CornerRadius = new CornerRadius(2);
-        var fill = new Border { Height = 4, HorizontalAlignment = HorizontalAlignment.Left, Width = maxSeconds > 0 ? 30.0 * a.Seconds / maxSeconds : 0, CornerRadius = new CornerRadius(2) };
+        track.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Tiny");
+        var fill = new Border { Height = 4, HorizontalAlignment = HorizontalAlignment.Left, Width = maxSeconds > 0 ? 30.0 * a.Seconds / maxSeconds : 0 };
+        fill.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Tiny");
         fill.SetResourceReference(Border.BackgroundProperty, AppBrush(a.AppId));
         track.Child = fill;
         var pct = Cell(AllFormat.Share(a.Share), "Brush.TextSoft", "Double.FontSize.Small");
@@ -261,7 +261,7 @@ public sealed class AllView : UserControl
     {
         var grid = Columns2();
         grid.Height = 34;
-        grid.Opacity = RetiredOpacity;
+        grid.SetResourceReference(UIElement.OpacityProperty, "Double.Opacity.Retired");
         grid.Children.Add(NameCell(x.Name, "Brush.TextMuted", dashed: true));
         AddNumber(grid, 1, AllFormat.Hours(x.Seconds), bold: false, "Brush.Text");
         AddNumber(grid, 2, x.DaysUsed.ToString(En), bold: false, "Brush.Text");
@@ -353,7 +353,11 @@ public sealed class AllView : UserControl
 
     private static FrameworkElement NameCell(string name, string brushKey, bool dashed)
     {
-        var dot = new Rectangle { Width = 8, Height = 8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0), RadiusX = 2, RadiusY = 2 };
+        var dot = new Rectangle { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        dot.SetResourceReference(FrameworkElement.WidthProperty, "Double.Size.Swatch");
+        dot.SetResourceReference(FrameworkElement.HeightProperty, "Double.Size.Swatch");
+        dot.SetResourceReference(Rectangle.RadiusXProperty, "Double.Radius.Tiny");
+        dot.SetResourceReference(Rectangle.RadiusYProperty, "Double.Radius.Tiny");
         if (dashed)
         {
             dot.SetResourceReference(Shape.StrokeProperty, brushKey);

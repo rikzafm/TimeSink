@@ -3,9 +3,12 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Globalization;
 using Microsoft.Win32;
 using TimeSink.Core.Backup;
 using TimeSink.Core.Data;
+using TimeSink.Core.Settings;
+using static TimeSink.UI.Services.TimeText;
 
 namespace TimeSink.UI;
 
@@ -34,22 +37,22 @@ public sealed partial class SettingsView
     private async void BackUpNow(Button button)
     {
         button.IsEnabled = false;
-        button.Content = "Backing up…";
+        button.Content = Str(SettingsStrings.BackingUp);
         var path = _dbPath;
         try
         {
             await Task.Run(() => AutoBackup.Now(path, DateTimeOffset.UtcNow, DefaultFolder, Version));
-            button.Content = "Done ✓";
+            button.Content = Str(SettingsStrings.BackupDone);
             RefreshLastBackup();
             await Task.Delay(2500);
         }
         catch (Exception ex) when (ex is IOException or Microsoft.Data.Sqlite.SqliteException or UnauthorizedAccessException)
         {
-            button.Content = "Failed";
-            if (_backupDesc is not null) _backupDesc.Text = "Backup failed: " + ex.Message;
+            button.Content = Str(SettingsStrings.BackupFailedShort);
+            if (_backupDesc is not null) _backupDesc.Text = Str(SettingsStrings.BackupFailed, ex.Message);
             await Task.Delay(2500);
         }
-        button.Content = "Back up";
+        button.Content = Str(SettingsStrings.BackUp);
         button.IsEnabled = true;
     }
 
@@ -57,7 +60,7 @@ public sealed partial class SettingsView
 
     private async void ChooseRestoreFile()
     {
-        var dlg = new OpenFileDialog { Title = "Restore from backup", Filter = "TimeSink backup (*.timesink)|*.timesink|All files|*.*", InitialDirectory = Directory.Exists(DefaultFolder) ? DefaultFolder : "" };
+        var dlg = new OpenFileDialog { Title = Str(SettingsStrings.RestoreTitle), Filter = Str(SettingsStrings.RestoreFilter), InitialDirectory = Directory.Exists(DefaultFolder) ? DefaultFolder : "" };
         if (NativeDialog(() => dlg.ShowDialog(Window.GetWindow(this)) == true) is not true) return;
         var file = dlg.FileName;
 
@@ -65,24 +68,22 @@ public sealed partial class SettingsView
         try { info = await Task.Run(() => RestoreService.Inspect(file)); }
         catch (Exception ex) when (ex is BackupException or Microsoft.Data.Sqlite.SqliteException or IOException)
         {
-            ShowDialog("Cannot restore", ex.Message, null, ("OK", CloseDialog, false, false));
+            ShowDialog(Str(SettingsStrings.RestoreCannot), ex.Message, null, (Str(SettingsStrings.Ok), CloseDialog, false, false));
             return;
         }
 
         var made = info.Manifest.CreatedUtc.ToLocalTime().ToString("d MMM yyyy HH:mm");
-        var detail = $"{Path.GetFileName(file)}\nMade {made} · {info.Apps} apps · {info.Sessions:N0} sessions" +
-                     (info.NeedsMigration ? "\nThis backup is from an older version and will be upgraded first." : "");
-        var body = "Replace swaps your current history for the backup (a safety copy of the current data is saved first). " +
-                   "Merge adds the backup's apps and sessions to your current history; merging the same file twice changes nothing.";
-        ShowDialog("Restore from backup", detail + "\n\n" + body, null,
-            ("Cancel", CloseDialog, false, false),
-            ("Merge", () => RunRestore(file, replace: false), false, false),
-            ("Replace", () => RunRestore(file, replace: true), true, false));
+        var detail = Str(SettingsStrings.RestoreDetail, Path.GetFileName(file), made, info.Apps, info.Sessions.ToString("N0", CultureInfo.CurrentCulture)) +
+                     (info.NeedsMigration ? Str(SettingsStrings.RestoreUpgrade) : "");
+        ShowDialog(Str(SettingsStrings.RestoreTitle), detail + "\n\n" + Str(SettingsStrings.RestoreBody), null,
+            (Str(SettingsStrings.Cancel), CloseDialog, false, false),
+            (Str(SettingsStrings.Merge), () => RunRestore(file, replace: false), false, false),
+            (Str(SettingsStrings.Replace), () => RunRestore(file, replace: true), true, false));
     }
 
     private async void RunRestore(string file, bool replace)
     {
-        ShowDialog(replace ? "Replacing…" : "Merging…", "Restoring your history. This takes a moment.", null);
+        ShowDialog(Str(replace ? SettingsStrings.Replacing : SettingsStrings.Merging), Str(SettingsStrings.Restoring), null);
         var path = _dbPath;
         string summary;
         try
@@ -94,27 +95,27 @@ public sealed partial class SettingsView
                 {
                     var r = RestoreService.Replace(file, path, AutoBackup.Folder(path, DefaultFolder), DateTimeOffset.UtcNow, zone);
                     SignalAgentReset();
-                    return "Your history was replaced." + (r.SafetyCopy is null ? "" : "\nSafety copy: " + Path.GetFileName(r.SafetyCopy));
+                    return Str(SettingsStrings.Replaced) + (r.SafetyCopy is null ? "" : Str(SettingsStrings.SafetyCopy, Path.GetFileName(r.SafetyCopy)));
                 }
                 var m = RestoreService.Merge(file, path, zone);
-                return $"Merged {m.SessionsAdded:N0} new sessions and {m.AppsAdded} new apps ({m.SessionsSkipped:N0} sessions were already there).";
+                return Str(SettingsStrings.Merged, m.SessionsAdded.ToString("N0", CultureInfo.CurrentCulture), m.AppsAdded, m.SessionsSkipped.ToString("N0", CultureInfo.CurrentCulture));
             });
         }
         catch (Exception ex) when (ex is BackupException or Microsoft.Data.Sqlite.SqliteException or IOException)
         {
-            summary = "Restore failed: " + ex.Message;
+            summary = Str(SettingsStrings.RestoreFailed, ex.Message);
         }
-        ShowDialog(replace ? "Replace finished" : "Merge finished", summary, null, ("OK", CloseDialog, true, false));
+        ShowDialog(Str(replace ? SettingsStrings.ReplaceFinished : SettingsStrings.MergeFinished), summary, null, (Str(SettingsStrings.Ok), CloseDialog, true, false));
         RefreshInfo();
     }
 
     // ---- Export ----------------------------------------------------------------------------------------
 
     private void ChooseExport() =>
-        ShowDialog("Export all data", "CSV writes two files (sessions and daily totals) into a folder you choose. JSON writes one file with everything.", null,
-            ("Cancel", CloseDialog, false, false),
-            ("JSON", () => RunExport(csv: false), false, false),
-            ("CSV", () => RunExport(csv: true), true, false));
+        ShowDialog(Str(SettingsStrings.ExportTitle), Str(SettingsStrings.ExportBody), null,
+            (Str(SettingsStrings.Cancel), CloseDialog, false, false),
+            (Str(SettingsStrings.Json), () => RunExport(csv: false), false, false),
+            (Str(SettingsStrings.Csv), () => RunExport(csv: true), true, false));
 
     private async void RunExport(bool csv)
     {
@@ -125,26 +126,26 @@ public sealed partial class SettingsView
         {
             if (csv)
             {
-                var dlg = new OpenFolderDialog { Title = "Export CSV into folder" };
+                var dlg = new OpenFolderDialog { Title = Str(SettingsStrings.ExportFolderTitle) };
                 if (NativeDialog(() => dlg.ShowDialog(Window.GetWindow(this)) == true) is not true) return;
                 var folder = dlg.FolderName;
                 var files = await Task.Run(() => DataExport.ExportCsv(path, folder));
-                result = $"Saved {Path.GetFileName(files.SessionsCsv)} and {Path.GetFileName(files.DailyCsv)} in\n{folder}";
+                result = Str(SettingsStrings.ExportSavedTwo, Path.GetFileName(files.SessionsCsv), Path.GetFileName(files.DailyCsv), folder);
             }
             else
             {
-                var dlg = new SaveFileDialog { Title = "Export JSON", FileName = "timesink-export.json", Filter = "JSON (*.json)|*.json" };
+                var dlg = new SaveFileDialog { Title = Str(SettingsStrings.ExportJsonTitle), FileName = "timesink-export.json", Filter = Str(SettingsStrings.ExportJsonFilter) };
                 if (NativeDialog(() => dlg.ShowDialog(Window.GetWindow(this)) == true) is not true) return;
                 var file = dlg.FileName;
                 await Task.Run(() => DataExport.ExportJson(path, file));
-                result = "Saved " + file;
+                result = Str(SettingsStrings.ExportSaved, file);
             }
         }
         catch (Exception ex) when (ex is IOException or Microsoft.Data.Sqlite.SqliteException or UnauthorizedAccessException)
         {
-            result = "Export failed: " + ex.Message;
+            result = Str(SettingsStrings.ExportFailed, ex.Message);
         }
-        ShowDialog("Export", result, null, ("OK", CloseDialog, true, false));
+        ShowDialog(Str(SettingsStrings.ExportResultTitle), result, null, (Str(SettingsStrings.Ok), CloseDialog, true, false));
     }
 
     // ---- Delete all history ----------------------------------------------------------------------------
@@ -155,9 +156,8 @@ public sealed partial class SettingsView
         box.SetResourceReference(Control.BackgroundProperty, "Brush.SurfaceAlt");
         box.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
         box.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");
-        var buttons = ShowDialog("Delete all history",
-            "This removes every recorded session and the usage totals built from them. Your app list and settings stay. This cannot be undone.\n\nType DELETE to confirm.",
-            box, ("Cancel", CloseDialog, false, false), ("Delete everything", RunDelete, false, true));
+        var buttons = ShowDialog(Str(SettingsStrings.DeleteTitle), Str(SettingsStrings.DeleteBody),
+            box, (Str(SettingsStrings.Cancel), CloseDialog, false, false), (Str(SettingsStrings.DeleteEverything), RunDelete, false, true));
         var delete = buttons[1];
         delete.IsEnabled = false;
         box.TextChanged += (_, _) => delete.IsEnabled = string.Equals(box.Text, HistoryDeleter.Confirmation, StringComparison.Ordinal);
@@ -171,13 +171,13 @@ public sealed partial class SettingsView
             try
             {
                 await Task.Run(() => { HistoryDeleter.DeleteAll(path, typed); SignalAgentReset(); });
-                result = "All history was deleted.";
+                result = Str(SettingsStrings.DeleteDone);
             }
             catch (Exception ex) when (ex is ArgumentException or Microsoft.Data.Sqlite.SqliteException or IOException)
             {
-                result = "Delete failed: " + ex.Message;
+                result = Str(SettingsStrings.DeleteFailed, ex.Message);
             }
-            ShowDialog("Delete all history", result, null, ("OK", CloseDialog, true, false));
+            ShowDialog(Str(SettingsStrings.DeleteTitle), result, null, (Str(SettingsStrings.Ok), CloseDialog, true, false));
             RefreshInfo();
         }
     }
@@ -235,7 +235,8 @@ public sealed partial class SettingsView
         border.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         border.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Large");
 
-        _overlay = new Grid { Background = new SolidColorBrush(Color.FromArgb(160, 0, 0, 0)) };
+        _overlay = new Grid();
+        _overlay.SetResourceReference(Panel.BackgroundProperty, "Brush.Scrim");
         _overlay.Children.Add(border);
         Panel.SetZIndex(_overlay, 10);
         Children.Add(_overlay);

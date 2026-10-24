@@ -156,7 +156,7 @@ public partial class MonthView : UserControl
         var key = pct >= 0 ? "Brush.Accent" : "Brush.Warning";
         Delta.SetResourceReference(TextBlock.ForegroundProperty, key);
         var tint = Res(key).Clone();
-        tint.Opacity = 0.14;
+        tint.Opacity = Application.Current.TryFindResource("Double.Opacity.Wash") is double wash ? wash : 0;
         DeltaPill.Background = tint;
         DeltaPill.BorderBrush = Brushes.Transparent;
     }
@@ -169,8 +169,7 @@ public partial class MonthView : UserControl
         {
             var sw = new Border { Width = 11, Height = 11, Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             sw.SetResourceReference(Border.BackgroundProperty, "Brush.Heat" + i);
-            sw.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
-            sw.CornerRadius = new CornerRadius(3);
+            sw.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Tiny");
             Legend.Children.Add(sw);
         }
         var more = LegendText(StringKeys.MonthMore);
@@ -242,9 +241,11 @@ public partial class MonthView : UserControl
             top.Children.Add(time);
 
             var track = new Grid { Height = 4, Margin = new Thickness(0, 5, 0, 0) };
-            var trackBg = new Border { CornerRadius = new CornerRadius(2) };
+            var trackBg = new Border();
+            trackBg.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Tiny");
             trackBg.SetResourceReference(Border.BackgroundProperty, "Brush.BorderSoft");
-            var fill = new Border { CornerRadius = new CornerRadius(2), HorizontalAlignment = HorizontalAlignment.Left };
+            var fill = new Border { HorizontalAlignment = HorizontalAlignment.Left };
+            fill.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Tiny");
             fill.SetResourceReference(Border.BackgroundProperty, brush);
             var frac = Math.Max(0.02, app.Seconds / (double)max);
             track.SizeChanged += (_, e) => fill.Width = e.NewSize.Width * frac;
