@@ -4,8 +4,12 @@
 
 **Blocked by:** 04, 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Named-pipe state pushes drive the live total
 - [ ] Today numbers match a seeded fixture
 - [ ] Row expand shows sessions and average comparison
+
+## Answer
+
+Implemented and merged on integration/timesink-v1; see docs/decisions.md for deviations. Unchecked acceptance boxes were verified by tests or the implementer's live run, not by hand-tick.

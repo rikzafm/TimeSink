@@ -4,9 +4,13 @@
 
 **Blocked by:** None (can start immediately; needs the .NET 10 SDK and C++ Build Tools installed)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] `dotnet publish` of the Agent with PublishAot succeeds and the exe runs
 - [ ] Tray icon with Open and Quit appears and survives an Explorer restart
 - [ ] Database is created with the initial schema and a row can be inserted
 - [ ] If AOT + SQLite cannot work, the trimmed fallback is recorded in docs/decisions.md
+
+## Answer
+
+Implemented and merged on integration/timesink-v1; see docs/decisions.md for deviations. Unchecked acceptance boxes were verified by tests or the implementer's live run, not by hand-tick.

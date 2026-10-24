@@ -4,9 +4,13 @@
 
 **Blocked by:** 07
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Installed list built from Start Menu shortcuts and packaged apps
 - [ ] Browse shortcuts to common folders work
 - [ ] Not this one adds to the ignore list
 - [ ] Retired apps leave totals and the library but can be restored
+
+## Answer
+
+Implemented and merged on integration/timesink-v1; see docs/decisions.md for deviations. Unchecked acceptance boxes were verified by tests or the implementer's live run, not by hand-tick.

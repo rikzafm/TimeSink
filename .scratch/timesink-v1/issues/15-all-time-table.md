@@ -4,8 +4,12 @@
 
 **Blocked by:** 08
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Header taps sort and flip direction
 - [ ] Retired rows are excluded from totals
 - [ ] Export table produces valid CSV
+
+## Answer
+
+Implemented and merged on integration/timesink-v1; see docs/decisions.md for deviations. Unchecked acceptance boxes were verified by tests or the implementer's live run, not by hand-tick.

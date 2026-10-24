@@ -4,8 +4,12 @@
 
 **Blocked by:** 06
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Projection, average line and banner follow the spec
 - [ ] Selected sub-view is remembered
 - [ ] Months before tracking began render as empty
+
+## Answer
+
+Implemented and merged on integration/timesink-v1; see docs/decisions.md for deviations. Unchecked acceptance boxes were verified by tests or the implementer's live run, not by hand-tick.

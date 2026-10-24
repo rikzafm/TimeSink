@@ -4,9 +4,13 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] All rows render from one settings catalogue and persist
 - [ ] Start with Windows writes and removes the HKCU Run entry
 - [ ] Theme and accent apply instantly
 - [ ] No Check for updates row
+
+## Answer
+
+Implemented and merged on integration/timesink-v1; see docs/decisions.md for deviations. Unchecked acceptance boxes were verified by tests or the implementer's live run, not by hand-tick.
