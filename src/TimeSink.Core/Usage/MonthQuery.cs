@@ -27,12 +27,7 @@ public static class MonthQuery
     }
 
     /// <summary>The <c>week.start</c> setting (Mon / Sun / Sat); anything else is Monday.</summary>
-    public static DayOfWeek ParseWeekStart(string? value) => value switch
-    {
-        "Sun" => DayOfWeek.Sunday,
-        "Sat" => DayOfWeek.Saturday,
-        _ => DayOfWeek.Monday,
-    };
+    public static DayOfWeek ParseWeekStart(string? value) => WeekStarts.Parse(value).ToDayOfWeek();
 
     public static MonthResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, int year, int month,
         DayOfWeek weekStart, IReadOnlyCollection<long>? running = null)
@@ -183,12 +178,5 @@ public static class MonthQuery
         return list;
     }
 
-    /// <summary>UTC unix seconds of local midnight (DST-aware; a skipped midnight moves to the first valid hour).</summary>
-    private static long DayStart(DateOnly date, TimeZoneInfo zone)
-    {
-        var local = date.ToDateTime(TimeOnly.MinValue);
-        while (zone.IsInvalidTime(local)) local = local.AddHours(1);
-        var offset = zone.IsAmbiguousTime(local) ? zone.GetAmbiguousTimeOffsets(local).Max() : zone.GetUtcOffset(local);
-        return new DateTimeOffset(local, offset).ToUnixTimeSeconds();
-    }
+    private static long DayStart(DateOnly date, TimeZoneInfo zone) => LocalDays.StartOf(date, zone);
 }

@@ -62,6 +62,11 @@
     "monthEmpty": "No tracked time this month yet.",
     "monthNewApp": "new",
     "monthExport": "Export month (CSV)",
-    "monthExportDone": "Saved ✓"
+    "monthExportDone": "Saved ✓",
+    "weekCaption": "This week",
+    "weekStreak": "{0}-day streak",
+    "weekStreakSub": "apps open daily",
+    "weekGridCaption": "Last 20 weeks",
+    "weekEmpty": "No tracked app has run this week yet."
   }
 }

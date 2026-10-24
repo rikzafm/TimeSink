@@ -73,12 +73,20 @@ public static class StringKeys
         MonthWeek, MonthLess, MonthMore, MonthMostly, MonthDayEmpty, MonthEmpty, MonthNewApp, MonthExport, MonthExportDone,
     ];
 
+    // Week view.
+    public const string WeekCaption = "weekCaption";
+    public const string WeekStreak = "weekStreak";
+    public const string WeekStreakSub = "weekStreakSub";
+    public const string WeekGridCaption = "weekGridCaption";
+    public const string WeekEmpty = "weekEmpty";
+
     public static readonly IReadOnlyList<string> All =
     [
         AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, Back, StubComingSoon,
         TodayCaption, TodayEarlyCaption, TodayEarlyHint, TodayEmpty, RunningPill, LegendAppsOpen, LegendTypical,
         LegendAsleep, TileFirstApp, TileLongest, TileVsYesterday, TileNone, TileLongestValue, TileVsYesterdayValue,
         StatusRunning, StatusClosed, SessionsToday, SessionLine, SessionNow, VsAverage, VsAverageNone,
+        WeekCaption, WeekStreak, WeekStreakSub, WeekGridCaption, WeekEmpty,
         .. MonthKeys,
     ];
 }
