@@ -54,6 +54,7 @@ public partial class MonthView : UserControl
         _timer.Tick += (_, _) => { if (_window is not { IsRevealed: false }) Refresh(); };
         _live.Changed += () => { if (_result?.IsCurrent == true) Refresh(); };
         _themes.Applied += Redraw;
+        AppIcons.Updated += Redraw;
         Unloaded += (_, _) => Stop();
     }
 
@@ -198,6 +199,7 @@ public partial class MonthView : UserControl
     private void BuildTop(MonthResult r)
     {
         TopApps.Children.Clear();
+        AppIcons.Load(_dbPath, r.TopApps.Select(a => a.AppId));
         var palette = Math.Max(1, _themes.Current.Apps.Count);
         var max = r.TopApps.Count == 0 ? 1 : r.TopApps.Max(a => a.Seconds);
         foreach (var app in r.TopApps)
@@ -216,7 +218,7 @@ public partial class MonthView : UserControl
             letter.SetResourceReference(TextBlock.ForegroundProperty, brush);
             letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
             letter.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
-            tile.Child = letter;
+            if (!AppIcons.TryFill(tile, app.AppId, 3)) tile.Child = letter;
 
             var name = new TextBlock { Text = app.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
             name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");

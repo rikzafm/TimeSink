@@ -50,6 +50,7 @@ public partial class TodayView : UserControl
         _timer.Tick += (_, _) => OnTick();
         _live.Changed += Refresh;
         _themes.Applied += Redraw;
+        AppIcons.Updated += Redraw;
         Unloaded += (_, _) => Stop();
     }
 
@@ -180,6 +181,7 @@ public partial class TodayView : UserControl
 
     private void BuildRows(TodayResult r)
     {
+        AppIcons.Load(_dbPath, r.Apps.Select(a => a.AppId));
         Rows.Children.Clear();
         _rowViews.Clear();
         var paletteSize = Math.Max(1, _themes.Current.Apps.Count);
@@ -210,7 +212,7 @@ public partial class TodayView : UserControl
         letter.SetResourceReference(TextBlock.ForegroundProperty, appBrush);
         letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         letter.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Title");
-        tile.Child = letter;
+        if (!AppIcons.TryFill(tile, row.AppId, 4)) tile.Child = letter;
 
         var name = new TextBlock { Text = row.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
         name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");

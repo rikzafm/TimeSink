@@ -104,6 +104,7 @@ public sealed class WeekView : UserControl
         };
         _live.Changed += Refresh;
         _themes.Applied += Redraw;
+        AppIcons.Updated += Redraw;
         Unloaded += (_, _) => Stop();
     }
 
@@ -162,6 +163,7 @@ public sealed class WeekView : UserControl
         _grid.Cells = r.Heat;
         _empty.Visibility = r.Apps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
+        AppIcons.Load(_dbPath, r.Apps.Select(a => a.AppId));
         _rows.Children.Clear();
         var paletteSize = Math.Max(1, _themes.Current.Apps.Count);
         foreach (var app in r.Apps) _rows.Children.Add(BuildRow(app, (int)(app.AppId % paletteSize)));
@@ -189,7 +191,7 @@ public sealed class WeekView : UserControl
         letter.SetResourceReference(TextBlock.ForegroundProperty, appBrush);
         letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         letter.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
-        tile.Child = letter;
+        if (!AppIcons.TryFill(tile, app.AppId, 3)) tile.Child = letter;
 
         var name = new TextBlock { Text = app.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 8, 0) };
         name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");

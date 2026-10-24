@@ -27,7 +27,6 @@ public sealed class IconPickerView : UserControl
 
     private readonly string _dbPath, _pipeName;
     private readonly Action<string> _applied;
-    private readonly Action _close;
     private readonly SettingRow _row = SettingsCatalogue.Find("appIcon");
     private string _current, _preview;
     private IconStyle _style;
@@ -41,27 +40,19 @@ public sealed class IconPickerView : UserControl
     private readonly WrapPanel _grid = new();
     private readonly Button _apply = new() { Template = Flat, Padding = new Thickness(14, 9, 14, 9), Cursor = Cursors.Hand, Focusable = false, };
 
-    public IconPickerView(string dbPath, string pipeName, Action<string> applied, Action close)
+    public IconPickerView(string dbPath, string pipeName, Action<string> applied)
     {
         _dbPath = dbPath;
         _pipeName = pipeName;
         _applied = applied;
-        _close = close;
         _current = _preview = SettingsCatalogue.Read(dbPath, _row);
         _style = IconCatalogue.Find(_current).Style;
         SetResourceReference(BackgroundProperty, "Brush.Surface");
 
         var root = new StackPanel { Margin = new Thickness(16, 8, 16, 16) };
 
-        var top = new Grid();
-        var title = Text("setIconTitle", "Double.FontSize.Title", "Brush.Text", FontWeights.SemiBold);
-        var back = new Button { Style = (Style)FindResource("LinkButton"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        back.SetResourceReference(ContentControl.ContentProperty, "Str.Back");
-        back.Click += (_, _) => _close();
-        top.Children.Add(title);
-        top.Children.Add(back);
-        root.Children.Add(top);
-        root.Children.Add(Text("setIconSubtitle", "Double.FontSize.Small", "Brush.TextMuted"));
+        root.Children.Add(Text(SettingsStrings.IconTitle, "Double.FontSize.Title", "Brush.Text", FontWeights.SemiBold));
+        root.Children.Add(Text(SettingsStrings.IconSubtitle, "Double.FontSize.Small", "Brush.TextMuted"));
 
         root.Children.Add(BuildPreviewCard());
         root.Children.Add(_chips);
@@ -71,10 +62,10 @@ public sealed class IconPickerView : UserControl
         buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var reset = new Button { Template = Flat, Padding = new Thickness(18, 9, 18, 9), Margin = new Thickness(0, 0, 8, 0), Cursor = Cursors.Hand, Focusable = false, };
-        reset.SetResourceReference(ContentControl.ContentProperty, "Str.setIconReset");
+        reset.SetResourceReference(ContentControl.ContentProperty, "Str." + Pascal(SettingsStrings.IconReset));
         Skin(reset, "Brush.Surface", "Brush.Text", "Brush.Border");
         reset.Click += (_, _) => { _preview = IconCatalogue.DefaultId; _style = IconCatalogue.Find(_preview).Style; Refresh(); };
-        _apply.SetResourceReference(ContentControl.ContentProperty, "Str.setIconApply");
+        _apply.SetResourceReference(ContentControl.ContentProperty, "Str." + Pascal(SettingsStrings.IconApply));
         Skin(_apply, "Brush.Accent", "Brush.OnAccent", "Brush.Accent");
         _apply.Click += (_, _) => Apply();
         Grid.SetColumn(_apply, 1);
@@ -226,10 +217,13 @@ public sealed class IconPickerView : UserControl
         return Frames[key] = frame;
     }
 
+    /// <summary>Theme string resources are registered with an upper-case first letter (ThemeService).</summary>
+    private static string Pascal(string key) => char.ToUpperInvariant(key[0]) + key[1..];
+
     private TextBlock Text(string key, string size, string brush, FontWeight? weight = null)
     {
         var t = new TextBlock { TextWrapping = TextWrapping.Wrap, FontWeight = weight ?? FontWeights.Normal };
-        t.SetResourceReference(TextBlock.TextProperty, "Str." + key);
+        t.SetResourceReference(TextBlock.TextProperty, "Str." + Pascal(key));
         t.SetResourceReference(TextBlock.ForegroundProperty, brush);
         t.SetResourceReference(TextBlock.FontSizeProperty, size);
         t.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");

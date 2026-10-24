@@ -147,6 +147,7 @@ public partial class FlyoutWindow : Window
     {
         if (_settings is not null && ReferenceEquals(Body.Content, _settings))
         {
+            if (_settings.TryClosePicker()) return;
             TabStrip.Visibility = Visibility.Visible;
             Body.Content = _bodies[_current];
             SettingsButton.SetResourceReference(ContentControl.ContentProperty, "Str.Settings");

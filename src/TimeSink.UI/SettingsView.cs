@@ -167,7 +167,15 @@ public sealed partial class SettingsView : Grid
     public void OpenIconPicker()
     {
         var pipe = PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB"));
-        Children.Add(new IconPickerView(_dbPath, pipe, id => _showIcon?.Invoke(id), () => Children.RemoveAt(Children.Count - 1)));
+        Children.Add(new IconPickerView(_dbPath, pipe, id => _showIcon?.Invoke(id)));
+    }
+
+    /// <summary>The flyout's Back button closes the icon picker first, if it is open. False when there was nothing to close.</summary>
+    public bool TryClosePicker()
+    {
+        if (Children.OfType<IconPickerView>().LastOrDefault() is not { } picker) return false;
+        Children.Remove(picker);
+        return true;
     }
 
     private FrameworkElement BuildButton(SettingRow row)
