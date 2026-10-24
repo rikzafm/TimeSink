@@ -72,6 +72,8 @@ public partial class FlyoutWindow : Window
         Body.Content = body;
         _current = tab;
         foreach (var other in _bodies.Values) if (other is TodayView t && !ReferenceEquals(t, body)) t.Stop();
+        foreach (var other in _bodies.Values) if (other is YearView y && !ReferenceEquals(y, body)) y.Stop();
+        if (_rendered && body is YearView year) year.Start();
         if (_rendered && body is TodayView today) today.Start(); // before first render, OnContentRendered starts it
         if (persist)
         {
@@ -88,6 +90,11 @@ public partial class FlyoutWindow : Window
         {
             _live ??= new LiveState(PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB")));
             return new TodayView(_dbPath, _themes, _live);
+        }
+        if (tab == ShellTab.Year)
+        {
+            _live ??= new LiveState(PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB")));
+            return new YearView(_dbPath, _themes, _live);
         }
         var text = new TextBlock { Style = (Style)Application.Current.FindResource("Caption"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Tag = tab };
         text.SetResourceReference(TextBlock.TextProperty, "Str." + char.ToUpperInvariant(StringKeys.StubComingSoon[0]) + StringKeys.StubComingSoon[1..]);
@@ -140,7 +147,8 @@ public partial class FlyoutWindow : Window
         _revealed = true;
         Place();
         Activate();
-        (Body.Content as TodayView)?.Refresh(); // data went stale while waiting off-screen
+        (Body.Content as TodayView)?.Refresh();
+        (Body.Content as YearView)?.Refresh(); // data went stale while waiting off-screen
         // Report once the move has been processed and the frame is idle.
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, () =>
             StartupTrace.FlushRevealed((DateTime.Now - signalled).TotalMilliseconds));
@@ -169,6 +177,7 @@ public partial class FlyoutWindow : Window
         _rendered = true;
         // Data loading starts only after the first frame is on screen, so it never delays first paint.
         if (Body.Content is TodayView today) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, today.Start);
+        if (Body.Content is YearView yearBody) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, yearBody.Start);
         if (!_revealed)
         {
             StartupTrace.FlushStandbyReady();
