@@ -15,7 +15,7 @@ namespace TimeSink.UI.Views;
 /// <summary>
 /// Year > App x month matrix: hours per app per month coloured relative to each app's own best month, row and column
 /// totals, and a tap summary for an app row or a month header. Built in code so the skeleton is cheap; data arrives after
-/// first paint via <see cref="Start"/> (decisions 87-90).
+/// first paint via <see cref="Start"/> (decisions 90-93).
 /// </summary>
 public sealed class YearMatrixView : UserControl, IYearSubView
 {

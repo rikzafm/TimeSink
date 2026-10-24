@@ -99,6 +99,8 @@
 
             <TextBlock x:Name="Empty" Style="{StaticResource Small}" TextWrapping="Wrap" HorizontalAlignment="Center" Margin="0,16"
                        Text="{DynamicResource Str.TodayEmpty}" Visibility="Collapsed"/>
+            <StackPanel x:Name="UntrackedHost"/>
+            <TextBlock x:Name="TrackedHeader" Style="{StaticResource Small}" Margin="0,0,0,4" Text="{DynamicResource Str.TodayTrackedHeader}" Visibility="Collapsed"/>
             <StackPanel x:Name="Rows"/>
         </StackPanel>
     </ScrollViewer>

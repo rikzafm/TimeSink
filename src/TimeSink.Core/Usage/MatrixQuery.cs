@@ -3,7 +3,7 @@ using Microsoft.Data.Sqlite;
 namespace TimeSink.Core.Usage;
 
 /// <summary>
-/// The Year "App x month" matrix (implementation.md 8.4, decisions 87-90), computed from <c>apps</c> and <c>sessions</c>
+/// The Year "App x month" matrix (implementation.md 8.4, decisions 90-93), computed from <c>apps</c> and <c>sessions</c>
 /// with the same rules as <see cref="YearQuery"/>: retired apps excluded, merged apps one row under the canonical app, an
 /// open session counts to <c>now</c> if the Agent reports it running (or <c>running</c> is null), else to its heartbeat.
 /// Columns run from the month tracking began (or January) to the current month.
