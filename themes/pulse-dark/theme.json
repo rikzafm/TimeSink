@@ -46,6 +46,11 @@
     "sessionLine": "{0} → {1}",
     "sessionNow": "now",
     "vsAverage": "{0} vs your 7-day average",
-    "vsAverageNone": "No 7-day average yet"
+    "vsAverageNone": "No 7-day average yet",
+    "weekCaption": "This week",
+    "weekStreak": "{0}-day streak",
+    "weekStreakSub": "apps open daily",
+    "weekGridCaption": "Last 20 weeks",
+    "weekEmpty": "No tracked app has run this week yet."
   }
 }
