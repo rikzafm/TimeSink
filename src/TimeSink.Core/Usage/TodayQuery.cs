@@ -45,7 +45,7 @@ public static class TodayQuery
         var byGroup = segs.ToLookup(s => s.Group);
 
         // Hourly chart + typical day.
-        var todayHours = HourSums(segs, d0, d1);
+        var todayHours = HourSums(segs, d0, d1, zone);
         var firstDate = apps.Count == 0 ? (DateOnly?)null : LocalDate(apps.Values.Min(a => a.AddedUtc), zone);
         var typical = new double[Hours];
         var typicalDays = 0;
@@ -53,7 +53,7 @@ public static class TodayQuery
         {
             var day = date.AddDays(-7 * k);
             if (firstDate is null || day < firstDate) continue;
-            var sums = HourSums(segs, DayStart(day, zone), DayStart(day.AddDays(1), zone));
+            var sums = HourSums(segs, DayStart(day, zone), DayStart(day.AddDays(1), zone), zone);
             for (var h = 0; h < Hours; h++) typical[h] += sums[h];
             typicalDays++;
         }
@@ -108,7 +108,9 @@ public static class TodayQuery
 
         var total = rows.Sum(r => r.Seconds);
         var y0 = DayStart(date.AddDays(-1), zone);
-        var yesterdayByNow = segs.Sum(s => Overlap(s, y0, y0 + (nowUtc - d0)));
+        // Same wall-clock time yesterday (a DST change makes elapsed time differ from clock time).
+        var cut = Math.Min(LocalDays.AtTime(date.AddDays(-1), TimeZoneInfo.ConvertTime(now, zone).TimeOfDay, zone), d0);
+        var yesterdayByNow = segs.Sum(s => Overlap(s, y0, cut));
 
         var openSegs = segs.Where(s => s.Open).ToList();
         return new TodayResult(date, d0, d1, nowUtc, total,
@@ -121,16 +123,19 @@ public static class TodayQuery
 
     private static long Overlap(Seg s, long a, long b) => Math.Max(0, Math.Min(s.End, b) - Math.Max(s.Start, a));
 
-    /// <summary>App-seconds per hour column. Columns are elapsed hours from local midnight; hour 23 absorbs a 25-hour day's extra hour.</summary>
-    private static long[] HourSums(List<Seg> segs, long d0, long d1)
+    /// <summary>
+    /// App-seconds per wall-clock hour column (0-23). The day is cut at every local whole hour, so on a 23 h day the
+    /// skipped hour's column stays empty and on a 25 h day the repeated hour's column holds both passes.
+    /// </summary>
+    private static long[] HourSums(List<Seg> segs, long d0, long d1, TimeZoneInfo zone)
     {
         var sums = new long[Hours];
-        for (var h = 0; h < Hours; h++)
+        for (var t = d0; t < d1;)
         {
-            var a = d0 + 3600L * h;
-            var b = h == Hours - 1 ? d1 : Math.Min(d0 + 3600L * (h + 1), d1);
-            if (a >= b) continue;
-            foreach (var s in segs) sums[h] += Overlap(s, a, b);
+            var local = TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(t), zone);
+            var next = Math.Min(t + 3600 - (local.Minute * 60 + local.Second), d1);
+            foreach (var s in segs) sums[local.Hour] += Overlap(s, t, next);
+            t = next;
         }
         return sums;
     }

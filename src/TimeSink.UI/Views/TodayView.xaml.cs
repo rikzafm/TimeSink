@@ -120,7 +120,9 @@ public partial class TodayView : UserControl
         }
     }
 
-    private static double Fraction(TodayResult r, long utc) => (utc - r.DayStartUtc) / (double)(r.DayEndUtc - r.DayStartUtc);
+    /// <summary>Position in the day as a wall-clock fraction (the hour columns are wall-clock hours, so a DST day is still 24 columns).</summary>
+    private static double Fraction(TodayResult r, long utc) =>
+        Math.Clamp((TimeText.Local(utc) - r.Date.ToDateTime(TimeOnly.MinValue)).TotalSeconds / 86400.0, 0, 1);
 
     /// <summary>Full redraw from the last snapshot (also after a theme swap, since text is composed here).</summary>
     private void Redraw()
@@ -136,7 +138,7 @@ public partial class TodayView : UserControl
         EarlyHint.Visibility = early ? Visibility.Visible : Visibility.Collapsed;
         RunningText.Text = Str(StringKeys.RunningPill, r.RunningCount);
 
-        var nowLocalHour = Math.Min(23, (int)((r.NowUtc - r.DayStartUtc) / 3600));
+        var nowLocalHour = TimeText.Local(r.NowUtc).Hour;
         Chart.Hours = r.Hours;
         Chart.CurrentHour = nowLocalHour;
         Chart.SleepFractions = r.SleepBands.Select(b => (Fraction(r, b.StartUtc), Fraction(r, b.EndUtc))).ToList();
