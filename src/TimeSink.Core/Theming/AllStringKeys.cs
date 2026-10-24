@@ -24,12 +24,14 @@ public static class AllStringKeys
     public const string NoteNone = "allNoteNone";
     public const string Hours = "allHours";
     public const string Empty = "allEmpty";
+    public const string ArrowDesc = "allArrowDesc";
+    public const string ArrowAsc = "allArrowAsc";
     public const string Export = "allExport";
     public const string ExportDone = "allExportDone";
 
     public static readonly IReadOnlyList<string> All =
     [
         Caption, TotalHours, TrackedSuffix, RetiredSuffix, SortedBy, SortBy, ColApp, ColHours, ColDays, ColAvg, ColShare,
-        RetiredHeader, Stopped, TotalRow, Note, NoteNone, Hours, Empty, Export, ExportDone,
+        RetiredHeader, Stopped, TotalRow, Note, NoteNone, Hours, Empty, ArrowDesc, ArrowAsc, Export, ExportDone,
     ];
 }

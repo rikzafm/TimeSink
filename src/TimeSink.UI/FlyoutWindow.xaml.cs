@@ -81,6 +81,8 @@ public partial class FlyoutWindow : Window
         if (_rendered && body is WeekView week) week.Start();
         foreach (var other in _bodies.Values) if (other is MonthView m && !ReferenceEquals(m, body)) m.Stop();
         if (_rendered && body is MonthView month) month.Start();
+        foreach (var other in _bodies.Values) if (other is AllView a && !ReferenceEquals(a, body)) a.Stop();
+        if (_rendered && body is AllView all) all.Start();
         if (persist)
         {
             var path = _dbPath;
@@ -111,6 +113,11 @@ public partial class FlyoutWindow : Window
         {
             _live ??= new LiveState(PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB")));
             return new YearView(_dbPath, _themes, _live);
+        }
+        if (tab == ShellTab.All)
+        {
+            _live ??= new LiveState(PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB")));
+            return new AllView(_dbPath, _themes, _live, this);
         }
         var text = new TextBlock { Style = (Style)Application.Current.FindResource("Caption"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Tag = tab };
         text.SetResourceReference(TextBlock.TextProperty, "Str." + char.ToUpperInvariant(StringKeys.StubComingSoon[0]) + StringKeys.StubComingSoon[1..]);
@@ -170,6 +177,7 @@ public partial class FlyoutWindow : Window
         (Body.Content as WeekView)?.Refresh();
         (Body.Content as MonthView)?.Refresh();
         (Body.Content as YearView)?.Refresh();
+        (Body.Content as AllView)?.Refresh();
         // Report once the move has been processed and the frame is idle.
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, () =>
             StartupTrace.FlushRevealed((DateTime.Now - signalled).TotalMilliseconds));
@@ -201,6 +209,7 @@ public partial class FlyoutWindow : Window
         if (Body.Content is WeekView week) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, week.Start);
         if (Body.Content is MonthView monthView) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, monthView.Start);
         if (Body.Content is YearView yearBody) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, yearBody.Start);
+        if (Body.Content is AllView allBody) Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, allBody.Start);
         if (!_revealed)
         {
             StartupTrace.FlushStandbyReady();
