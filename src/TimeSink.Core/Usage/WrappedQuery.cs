@@ -1,0 +1,167 @@
+using Microsoft.Data.Sqlite;
+
+namespace TimeSink.Core.Usage;
+
+/// <summary>
+/// The Year "Wrapped" numbers (implementation.md 8.3), year to date at <c>now</c>, from <c>apps</c> and <c>sessions</c>.
+/// Same rules as <see cref="YearQuery"/>: retired apps excluded, merged apps one group, an open session counts to
+/// <c>now</c> if the Agent reports it running (or <c>running</c> is null), else to its heartbeat. Sessions are walked in
+/// pieces that never cross a local hour (or day), so days, months, hour-of-day and "before noon" use local time.
+/// (The piece length uses the offset at its start, so a DST change inside an hour is off by at most that hour.)
+/// </summary>
+public static class WrappedQuery
+{
+    private const int PodiumSize = 3;
+    private const int OthersSize = 3;
+
+    private sealed record App(long Id, long Group, string Name, long AddedUtc);
+    private readonly record struct Seg(long Group, long Start, long End);
+
+    public static WrappedResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null)
+    {
+        using var c = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false,
+        }.ToString());
+        c.Open();
+        using (var p = c.CreateCommand())
+        {
+            p.CommandText = "PRAGMA busy_timeout=2000";
+            p.ExecuteNonQuery();
+        }
+        return Run(c, now, zone, running);
+    }
+
+    public static WrappedResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null)
+    {
+        var nowUtc = now.ToUnixTimeSeconds();
+        var today = LocalDays.DateOf(nowUtc, zone);
+        var year = today.Year;
+        var yearStart = LocalDays.StartOf(new DateOnly(year, 1, 1), zone);
+        var windowStart = LocalDays.StartOf(new DateOnly(year - 1, 12, 1), zone); // December feeds January's month delta
+
+        var apps = LoadApps(c);
+        var first = apps.Count == 0 ? (DateOnly?)null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
+        var groups = apps.Values.Select(a => a.Group).Distinct().ToList();
+
+        var perDay = new Dictionary<int, long>();          // local day number -> seconds (this year)
+        var perMonth = new Dictionary<int, long>();        // year * 12 + month - 1 -> seconds (window)
+        var perHour = new long[24];                        // local hour of day -> seconds (this year)
+        var perGroup = new Dictionary<long, long>();       // this year
+        long beforeNoon = 0, total = 0;
+
+        foreach (var s in LoadSegments(c, windowStart, nowUtc, apps, running))
+        {
+            var t = Math.Max(s.Start, windowStart);
+            var end = Math.Min(s.End, nowUtc);
+            while (t < end)
+            {
+                var offset = (long)zone.GetUtcOffset(DateTimeOffset.FromUnixTimeSeconds(t)).TotalSeconds;
+                var localSecs = t + offset;
+                var dayNumber = (int)((localSecs - Mod(localSecs, 86400)) / 86400);
+                var secOfDay = (int)Mod(localSecs, 86400);
+                var step = Math.Min(end - t, 3600 - secOfDay % 3600);
+                var date = DateOnly.FromDayNumber(719162 + dayNumber); // 719162 = day number of 1970-01-01
+                var monthIdx = date.Year * 12 + date.Month - 1;
+                perMonth[monthIdx] = perMonth.GetValueOrDefault(monthIdx) + step;
+                if (t >= yearStart && date.Year == year)
+                {
+                    perDay[dayNumber] = perDay.GetValueOrDefault(dayNumber) + step;
+                    perHour[secOfDay / 3600] += step;
+                    perGroup[s.Group] = perGroup.GetValueOrDefault(s.Group) + step;
+                    if (secOfDay < 12 * 3600) beforeNoon += step;
+                    total += step;
+                }
+                t += step;
+            }
+        }
+
+        var ranked = perGroup.Select(kv => new WrappedApp(kv.Key, NameOf(apps, kv.Key), kv.Value))
+            .OrderByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+
+        // Longest run of consecutive local days with any tracked time (earliest wins a tie).
+        int bestLen = 0, bestStartDay = 0, runLen = 0, runStart = 0, prevDay = int.MinValue;
+        foreach (var day in perDay.Where(kv => kv.Value > 0).Select(kv => kv.Key).OrderBy(d => d))
+        {
+            if (day == prevDay + 1) runLen++;
+            else { runLen = 1; runStart = day; }
+            prevDay = day;
+            if (runLen > bestLen) { bestLen = runLen; bestStartDay = runStart; }
+        }
+
+        int? busiest = null;
+        long busiestSecs = 0;
+        for (var m = 1; m <= 12; m++)
+        {
+            var secs = perMonth.GetValueOrDefault(year * 12 + m - 1);
+            if (secs > busiestSecs) { busiest = m; busiestSecs = secs; }
+        }
+        double? delta = null;
+        if (busiest is { } bm)
+        {
+            var prev = perMonth.GetValueOrDefault(year * 12 + bm - 2);
+            if (prev > 0) delta = (busiestSecs / (double)prev - 1) * 100;
+        }
+
+        int? peak = null;
+        long peakSecs = 0;
+        for (var h = 0; h < 24; h++)
+            if (perHour[h] > peakSecs) { peak = h; peakSecs = perHour[h]; }
+
+        var daysTracked = 0;
+        if (first is { } f)
+        {
+            var from = f > new DateOnly(year, 1, 1) ? f : new DateOnly(year, 1, 1);
+            daysTracked = Math.Max(0, today.DayNumber - from.DayNumber + 1);
+        }
+
+        return new WrappedResult(
+            year, nowUtc, first, total, daysTracked, perDay.Count(kv => kv.Value > 0), groups.Count,
+            ranked.Take(PodiumSize).ToList(), ranked.Skip(PodiumSize).Take(OthersSize).ToList(),
+            bestLen, bestLen == 0 ? null : DateOnly.FromDayNumber(719162 + bestStartDay),
+            bestLen == 0 ? null : DateOnly.FromDayNumber(719162 + bestStartDay + bestLen - 1),
+            busiest, busiestSecs, delta, peak, peakSecs,
+            total == 0 ? 0 : (int)Math.Round(beforeNoon * 100.0 / total, MidpointRounding.AwayFromZero));
+    }
+
+    private static long Mod(long a, long m) => (a % m + m) % m;
+
+    private static string NameOf(Dictionary<long, App> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
+
+    private static Dictionary<long, App> LoadApps(SqliteConnection c)
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name, added_utc FROM apps WHERE state = 'tracked'";
+        using var r = cmd.ExecuteReader();
+        var d = new Dictionary<long, App>();
+        while (r.Read()) d[r.GetInt64(0)] = new App(r.GetInt64(0), r.GetInt64(1), r.GetString(2), r.GetInt64(3));
+        foreach (var a in d.Values.ToList())
+            if (!d.ContainsKey(a.Group) && a.Group != a.Id) d[a.Id] = a with { Group = a.Id };
+        return d;
+    }
+
+    private static List<Seg> LoadSegments(SqliteConnection c, long from, long nowUtc, Dictionary<long, App> apps, IReadOnlyCollection<long>? running)
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            SELECT app_id, start_utc, end_utc, last_seen_utc FROM sessions
+            WHERE start_utc <= $now AND (end_utc IS NULL OR end_utc >= $from) ORDER BY start_utc
+            """;
+        cmd.Parameters.AddWithValue("$now", nowUtc);
+        cmd.Parameters.AddWithValue("$from", from);
+        using var r = cmd.ExecuteReader();
+        var list = new List<Seg>();
+        while (r.Read())
+        {
+            var appId = r.GetInt64(0);
+            if (!apps.TryGetValue(appId, out var app)) continue; // retired or unknown
+            var start = r.GetInt64(1);
+            long end;
+            if (r.IsDBNull(2))
+                end = running is null || running.Contains(appId) ? Math.Max(nowUtc, start) : Math.Clamp(r.GetInt64(3), start, nowUtc);
+            else end = r.GetInt64(2);
+            list.Add(new Seg(app.Group, start, end));
+        }
+        return list;
+    }
+}
