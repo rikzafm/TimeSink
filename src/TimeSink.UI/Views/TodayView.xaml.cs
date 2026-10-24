@@ -2,6 +2,7 @@
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using TimeSink.Core.Apps;
 using TimeSink.Core.Theming;
 using TimeSink.Core.Usage;
 using TimeSink.UI.Controls;
@@ -19,7 +20,6 @@ namespace TimeSink.UI.Views;
 public partial class TodayView : UserControl
 {
     private const int RefreshEverySeconds = 30;
-    private const int EarlyThresholdSeconds = 3600;
     private static readonly bool ExpandAll = Environment.GetEnvironmentVariable("TS_EXPAND") == "1"; // test aid for screenshots
 
     private readonly string _dbPath;
@@ -29,6 +29,8 @@ public partial class TodayView : UserControl
     private readonly HashSet<long> _expanded = new();
     private readonly Dictionary<long, (TextBlock Time, TextBlock Status, TodayAppRow Row)> _rowViews = new();
 
+    private readonly UntrackedCardView _untracked;
+    private long? _signInUtc;
     private TodayResult? _result;
     private int _seq;
     private int _sinceRefresh;
@@ -40,6 +42,9 @@ public partial class TodayView : UserControl
         _themes = themes;
         _live = live;
         InitializeComponent();
+        _untracked = new UntrackedCardView(dbPath, themes, Refresh);
+        _untracked.Rendered += UpdateTrackedHeader;
+        UntrackedHost.Children.Add(_untracked);
         _timer.Tick += (_, _) => OnTick();
         _live.Changed += Refresh;
         _themes.Applied += Redraw;
@@ -75,6 +80,9 @@ public partial class TodayView : UserControl
         if (seq != _seq || !_started) return;
         _result = result;
         Redraw();
+        _signInUtc ??= await Task.Run(SignInTime.Get) ?? 0;
+        if (seq == _seq && _signInUtc > 0) Redraw();
+        _untracked.Reload(); // after real data is on screen; icons are extracted off-thread
     }
 
     private void OnTick()
@@ -117,11 +125,11 @@ public partial class TodayView : UserControl
     {
         if (_result is not { } r) return;
         var total = r.TotalSeconds;
-        var early = total < EarlyThresholdSeconds;
-        var firstStart = r.FirstApp?.StartUtc;
+        var early = TodayEarly.ShowCaption(total);
+        var since = early ? TodayEarly.TrackingSinceUtc(r.DayStartUtc, _signInUtc is > 0 ? _signInUtc : null, r.FirstApp?.StartUtc) : null;
 
-        Caption.Text = early && firstStart is not null
-            ? Str(StringKeys.TodayEarlyCaption, Clock(firstStart.Value))
+        Caption.Text = since is not null
+            ? Str(StringKeys.TodayEarlyCaption, Clock(since.Value))
             : Str(StringKeys.TodayCaption, TimeText.Local(r.NowUtc).ToString("dddd, d MMM", System.Globalization.CultureInfo.CurrentCulture));
         EarlyHint.Visibility = early ? Visibility.Visible : Visibility.Collapsed;
         RunningText.Text = Str(StringKeys.RunningPill, r.RunningCount);
@@ -139,8 +147,12 @@ public partial class TodayView : UserControl
 
         BuildRows(r);
         Empty.Visibility = r.Apps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateTrackedHeader();
         UpdateLive();
     }
+
+    private void UpdateTrackedHeader() =>
+        TrackedHeader.Visibility = _untracked.HasCard && _result?.Apps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     private void BuildAxis()
     {
