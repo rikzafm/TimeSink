@@ -43,9 +43,12 @@ public static class SettingsStrings
     public const string DeleteEverything = "setDeleteEverything";
     public const string DeleteDone = "setDeleteDone";
     public const string DeleteFailed = "setDeleteFailed";
+    public const string ChooseFile = "setChooseFile";
+    public const string ExportButton = "setExportButton";
+    public const string DeleteButton = "setDeleteButton";
 
     public static readonly IReadOnlyList<string> All =
     [
-        BackingUp, BackupDone, BackupFailedShort, BackupFailed, BackUp, RestoreTitle, RestoreFilter, RestoreCannot, RestoreDetail, RestoreUpgrade, RestoreBody, Cancel, Merge, Replace, Ok, Replacing, Merging, Restoring, Replaced, SafetyCopy, Merged, RestoreFailed, ReplaceFinished, MergeFinished, ExportTitle, ExportBody, Json, Csv, ExportFolderTitle, ExportSavedTwo, ExportJsonTitle, ExportJsonFilter, ExportSaved, ExportFailed, ExportResultTitle, DeleteTitle, DeleteBody, DeleteEverything, DeleteDone, DeleteFailed,
+        BackingUp, BackupDone, BackupFailedShort, BackupFailed, BackUp, RestoreTitle, RestoreFilter, RestoreCannot, RestoreDetail, RestoreUpgrade, RestoreBody, Cancel, Merge, Replace, Ok, Replacing, Merging, Restoring, Replaced, SafetyCopy, Merged, RestoreFailed, ReplaceFinished, MergeFinished, ExportTitle, ExportBody, Json, Csv, ExportFolderTitle, ExportSavedTwo, ExportJsonTitle, ExportJsonFilter, ExportSaved, ExportFailed, ExportResultTitle, DeleteTitle, DeleteBody, DeleteEverything, DeleteDone, DeleteFailed, ChooseFile, ExportButton, DeleteButton,
     ];
 }

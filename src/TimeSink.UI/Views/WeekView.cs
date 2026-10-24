@@ -173,7 +173,9 @@ public sealed class WeekView : UserControl
     {
         var appBrush = "Brush.App" + paletteIndex;
 
-        var tile = new Border { Width = 28, Height = 28 };
+        var tile = new Border();
+        tile.SetResourceReference(FrameworkElement.WidthProperty, "Double.Row.TileSmall");
+        tile.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.TileSmall");
         tile.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
         tile.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         tile.SetResourceReference(Border.BorderThicknessProperty, "Thickness.Border");
@@ -202,7 +204,8 @@ public sealed class WeekView : UserControl
         time.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
         time.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
 
-        var grid = new Grid { Margin = new Thickness(0, 6, 0, 6) };
+        var grid = new Grid();
+        grid.SetResourceReference(FrameworkElement.MarginProperty, "Thickness.RowList");
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition());
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

@@ -213,7 +213,7 @@ public sealed partial class AddAppView
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var tile = MakeTile(name, exePath, _iconCache.GetValueOrDefault(exePath));
-        tile.Margin = new Thickness(8, 6, 12, 6);
+        tile.SetResourceReference(FrameworkElement.MarginProperty, "Thickness.RowTileTight");
         if (!_tiles.TryGetValue(exePath, out var list)) _tiles[exePath] = list = [];
         list.Add((tile, name));
 
@@ -269,7 +269,8 @@ public sealed partial class AddAppView
 
     private Button Pill(string strKey, PillStyle style)
     {
-        var b = new Button { Template = Flat, Height = 32, MinWidth = 64, Padding = new Thickness(12, 6, 12, 6), Cursor = System.Windows.Input.Cursors.Hand, Focusable = false, FontWeight = FontWeights.Bold };
+        var b = new Button { Template = Flat, MinWidth = 64, Padding = new Thickness(12, 6, 12, 6), Cursor = System.Windows.Input.Cursors.Hand, Focusable = false, FontWeight = FontWeights.Bold };
+        b.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.Button");
         b.SetResourceReference(ContentControl.ContentProperty, strKey);
         b.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
         b.SetResourceReference(Control.FontSizeProperty, "Double.FontSize.Body");

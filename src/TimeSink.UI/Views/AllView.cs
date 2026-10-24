@@ -76,7 +76,7 @@ public sealed class AllView : UserControl
         var headLine = Line("Brush.Border", bottom: true);
         headLine.Child = _head;
         var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = _rows };
-        _totals.Height = 38;
+        _totals.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.TableTotals");
         var totalsBox = Line("Brush.Border", bottom: false);
         totalsBox.BorderThickness = new Thickness(0, 1, 0, 0);
         totalsBox.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
@@ -212,7 +212,8 @@ public sealed class AllView : UserControl
             var text = new TextBlock { Text = label, FontWeight = FontWeights.Bold, HorizontalAlignment = i == 0 ? HorizontalAlignment.Left : HorizontalAlignment.Right, Margin = new Thickness(-6, 0, -6, 0) };
             text.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
             text.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
-            var b = new Button { Content = text, Height = 34, HorizontalAlignment = HorizontalAlignment.Stretch };
+            var b = new Button { Content = text, HorizontalAlignment = HorizontalAlignment.Stretch };
+            b.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.TableHead");
             b.SetResourceReference(StyleProperty, "LinkButton");
             b.SetResourceReference(Control.ForegroundProperty, active ? "Brush.Accent" : "Brush.TextMuted");
             System.Windows.Automation.AutomationProperties.SetName(b, Str(AllStringKeys.SortBy, ColumnName(col)));
@@ -225,7 +226,7 @@ public sealed class AllView : UserControl
     private FrameworkElement AppRow(AllAppRow a, int index, bool selected, long maxSeconds)
     {
         var grid = Columns2();
-        grid.Height = 40;
+        grid.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.Table");
         grid.Children.Add(NameCell(a.Name, AppBrush(a.AppId), dashed: false));
         AddNumber(grid, 1, AllFormat.Hours(a.Seconds), bold: true, "Brush.Text");
         AddNumber(grid, 2, a.DaysUsed.ToString(En), bold: false, "Brush.TextSoft");
@@ -260,7 +261,7 @@ public sealed class AllView : UserControl
     private FrameworkElement RetiredRow(AllRetiredRow x)
     {
         var grid = Columns2();
-        grid.Height = 34;
+        grid.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.TableRetired");
         grid.SetResourceReference(UIElement.OpacityProperty, "Double.Opacity.Retired");
         grid.Children.Add(NameCell(x.Name, "Brush.TextMuted", dashed: true));
         AddNumber(grid, 1, AllFormat.Hours(x.Seconds), bold: false, "Brush.Text");

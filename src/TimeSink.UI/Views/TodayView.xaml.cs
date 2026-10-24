@@ -194,7 +194,9 @@ public partial class TodayView : UserControl
         var appBrush = "Brush.App" + paletteIndex;
         var elapsed = ElapsedSinceSnapshot;
 
-        var tile = new Border { Width = 34, Height = 34, VerticalAlignment = VerticalAlignment.Top };
+        var tile = new Border { VerticalAlignment = VerticalAlignment.Top };
+        tile.SetResourceReference(FrameworkElement.WidthProperty, "Double.Row.Tile");
+        tile.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.Tile");
         tile.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
         tile.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         tile.SetResourceReference(Border.BorderThicknessProperty, "Thickness.Border");
@@ -255,7 +257,8 @@ public partial class TodayView : UserControl
         stack.Children.Add(strip);
         stack.Children.Add(details);
 
-        var card = new Border { Padding = new Thickness(8, 9, 8, 9), Margin = new Thickness(-8, 0, -8, 0), Background = System.Windows.Media.Brushes.Transparent, Cursor = Cursors.Hand, Child = stack };
+        var card = new Border { Margin = new Thickness(-8, 0, -8, 0), Background = System.Windows.Media.Brushes.Transparent, Cursor = Cursors.Hand, Child = stack };
+        card.SetResourceReference(Border.PaddingProperty, "Thickness.RowCard");
         card.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
         card.MouseLeftButtonUp += (_, _) =>
         {

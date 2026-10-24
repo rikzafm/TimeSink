@@ -258,7 +258,7 @@ public sealed partial class AddAppView : UserControl
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var tile = IconTile(row);
-        tile.Margin = new Thickness(8, 8, 12, 8);
+        tile.SetResourceReference(FrameworkElement.MarginProperty, "Thickness.RowTile");
         row.Tile = tile;
 
         var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
@@ -281,7 +281,8 @@ public sealed partial class AddAppView : UserControl
         texts.Children.Add(name);
         texts.Children.Add(sub);
 
-        var button = new Button { Template = Flat, VerticalAlignment = VerticalAlignment.Center, Height = 32, MinWidth = 76, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(14, 6, 14, 6), Cursor = System.Windows.Input.Cursors.Hand, Focusable = false, FontWeight = FontWeights.Bold };
+        var button = new Button { Template = Flat, VerticalAlignment = VerticalAlignment.Center, MinWidth = 76, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(14, 6, 14, 6), Cursor = System.Windows.Input.Cursors.Hand, Focusable = false, FontWeight = FontWeights.Bold };
+        button.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.Button");
         button.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
         button.SetResourceReference(Control.FontSizeProperty, "Double.FontSize.Body");
         button.Click += (_, _) => Track(row);
@@ -311,7 +312,9 @@ public sealed partial class AddAppView : UserControl
     /// <summary>Cached/extracted icon when there is one, else a letter tile in a palette colour.</summary>
     private Border MakeTile(string name, string exePath, byte[]? png)
     {
-        var tile = new Border { Width = 36, Height = 36, BorderThickness = new Thickness(1) };
+        var tile = new Border { BorderThickness = new Thickness(1) };
+        tile.SetResourceReference(FrameworkElement.WidthProperty, "Double.Row.TileLarge");
+        tile.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.TileLarge");
         tile.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
         tile.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         FillTile(tile, name, exePath, png);

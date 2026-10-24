@@ -6,6 +6,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
 using TimeSink.Core.Settings;
 using TimeSink.UI.Theming;
+using static TimeSink.UI.Services.TimeText;
 
 namespace TimeSink.UI;
 
@@ -20,6 +21,7 @@ public sealed partial class SettingsView : Grid
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly AgentSampler _sampler = new();
     private string _theme, _accent;
+    private bool _compact;
 
     public SettingsView(ThemeService themes, string dbPath)
     {
@@ -27,6 +29,7 @@ public sealed partial class SettingsView : Grid
         _dbPath = dbPath;
         _theme = SettingsCatalogue.Read(dbPath, SettingsCatalogue.Find("theme"));
         _accent = SettingsCatalogue.Read(dbPath, SettingsCatalogue.Find("accent"));
+        _compact = SettingsCatalogue.Read(dbPath, SettingsCatalogue.Find("compact")) == "true";
         _autostart = TryCreateAutostart();
 
         _scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
@@ -105,6 +108,7 @@ public sealed partial class SettingsView : Grid
                 { toggle.IsChecked = _autostart.IsEnabled; return; }
             }
             Persist(row, value ? "true" : "false");
+            ApplyAppearance(row, value ? "true" : "false");
         };
         return toggle;
     }
@@ -132,7 +136,7 @@ public sealed partial class SettingsView : Grid
 
     private FrameworkElement BuildButton(SettingRow row)
     {
-        var b = new Button { Content = row.Id switch { "backupNow" => "Back up", "restore" => "Choose file…", "export" => "Export…", _ => "Delete…" } };
+        var b = new Button { Content = Str(row.Id switch { "backupNow" => SettingsStrings.BackUp, "restore" => SettingsStrings.ChooseFile, "export" => SettingsStrings.ExportButton, _ => SettingsStrings.DeleteButton }) };
         b.SetResourceReference(StyleProperty, "LinkButton");
         if (row.Danger) b.SetResourceReference(Control.ForegroundProperty, "Brush.Danger");
         switch (row.Id)
@@ -164,8 +168,9 @@ public sealed partial class SettingsView : Grid
     {
         if (row.Id == "theme") _theme = value;
         else if (row.Id == "accent") _accent = value;
+        else if (row.Id == "compact") _compact = value == "true";
         else return;
-        _themes.ApplyPreferences(_theme, _accent);
+        _themes.ApplyPreferences(_theme, _accent, _compact);
     }
 
     private void RefreshInfo()

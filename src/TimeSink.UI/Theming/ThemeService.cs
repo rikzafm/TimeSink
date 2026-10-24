@@ -15,6 +15,9 @@ public sealed class ThemeService
     private static readonly ThemeLoader Loader = new(new FolderThemeSource(Path.Combine(AppContext.BaseDirectory, "themes")));
     private ResourceDictionary? _current;
 
+    /// <summary>List density (ui.compact): re-applied with the next theme build; <see cref="ApplyPreferences"/> sets it.</summary>
+    public bool Compact { get; set; }
+
     /// <summary>Thread-safe: reads and resolves a theme without touching WPF.</summary>
     public static Theme Load(string themeId) => Loader.Load(themeId);
 
@@ -46,12 +49,15 @@ public sealed class ThemeService
     public void Apply(string themeId) => Apply(Load(themeId));
 
     /// <summary>Applies the ui.theme (Dark/Light/System) and ui.accent (Lime/Blue/Pink) settings instantly.</summary>
-    public void ApplyPreferences(string? themeSetting, string? accent)
-        => Apply(Accents.Apply(Load(IdFor(themeSetting, SystemIsLight())), accent));
+    public void ApplyPreferences(string? themeSetting, string? accent, bool compact)
+    {
+        Compact = compact;
+        Apply(Accents.Apply(Load(IdFor(themeSetting, SystemIsLight())), accent));
+    }
 
     public void Apply(Theme theme)
     {
-        var dict = Build(theme);
+        var dict = Build(theme, Compact);
         var merged = Application.Current.Resources.MergedDictionaries;
         if (_current is not null) merged.Remove(_current);
         merged.Insert(0, dict);
@@ -60,7 +66,7 @@ public sealed class ThemeService
         Applied?.Invoke();
     }
 
-    private static ResourceDictionary Build(Theme t)
+    private static ResourceDictionary Build(Theme t, bool compact)
     {
         var d = new ResourceDictionary();
         foreach (var (key, hex) in t.Colors) d["Brush." + Pascal(key)] = Brush(hex);
@@ -76,6 +82,21 @@ public sealed class ThemeService
         d["Double.Radius.Medium"] = t.Radius[1];
         d["Double.Radius.Large"] = t.Radius[2];
         d["Thickness.Border"] = new Thickness(t.Border);
+
+        // Row density (ui.compact): lists size their rows from these.
+        var row = Density.For(compact);
+        d["Double.Row.Tile"] = row.Tile;
+        d["Double.Row.TileSmall"] = row.TileSmall;
+        d["Double.Row.TileLarge"] = row.TileLarge;
+        d["Double.Row.Button"] = row.Button;
+        d["Double.Row.Table"] = row.TableRow;
+        d["Double.Row.TableRetired"] = row.TableRetiredRow;
+        d["Double.Row.TableHead"] = row.TableHead;
+        d["Double.Row.TableTotals"] = row.TableTotals;
+        d["Thickness.RowCard"] = new Thickness(8, row.CardPadY, 8, row.CardPadY);
+        d["Thickness.RowList"] = new Thickness(0, row.ListGapY, 0, row.ListGapY);
+        d["Thickness.RowTile"] = new Thickness(8, row.AddTileGapY, 12, row.AddTileGapY);
+        d["Thickness.RowTileTight"] = new Thickness(8, row.AddTileGapYTight, 12, row.AddTileGapYTight);
 
         // Opacity tokens (decision 114): fixed ratios shared by every theme.
         d["Double.Size.Dot"] = 7.0;     // status dot

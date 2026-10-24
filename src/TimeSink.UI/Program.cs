@@ -8,7 +8,7 @@ using TimeSink.UI.Theming;
 namespace TimeSink.UI;
 
 /// <summary>What the first window needs, computed off the UI thread while WPF itself starts up.</summary>
-internal sealed record Prepared(Theme Theme, ShellTab Tab, string DbPath);
+internal sealed record Prepared(Theme Theme, ShellTab Tab, string DbPath, bool Compact);
 
 internal static class Program
 {
@@ -39,7 +39,7 @@ internal static class Program
         var theme = Accents.Apply(ThemeService.Load(id), SettingsCatalogue.Read(dbPath, SettingsCatalogue.Find("accent")));
         var tab = ShellTabs.Parse(SettingsStore.Get(dbPath, ShellTabs.SettingKey));
         StartupTrace.Mark("prepared");
-        return new Prepared(theme, tab, dbPath);
+        return new Prepared(theme, tab, dbPath, SettingsCatalogue.Read(dbPath, SettingsCatalogue.Find("compact")) == "true");
     }
 
     [DllImport("user32.dll")]

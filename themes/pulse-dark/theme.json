@@ -246,6 +246,9 @@
     "setDeleteBody": "This removes every recorded session and the usage totals built from them. Your app list and settings stay. This cannot be undone.\n\nType DELETE to confirm.",
     "setDeleteEverything": "Delete everything",
     "setDeleteDone": "All history was deleted.",
-    "setDeleteFailed": "Delete failed: {0}"
+    "setDeleteFailed": "Delete failed: {0}",
+    "setChooseFile": "Choose file…",
+    "setExportButton": "Export…",
+    "setDeleteButton": "Delete…"
   }
 }

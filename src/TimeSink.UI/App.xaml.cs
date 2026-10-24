@@ -61,7 +61,7 @@ public partial class App : Application
         }
 
         var prepared = Program.Prepare.GetAwaiter().GetResult();
-        var themes = new ThemeService();
+        var themes = new ThemeService { Compact = prepared.Compact };
         themes.Apply(prepared.Theme);
         StartupTrace.Mark("themed");
 
