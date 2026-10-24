@@ -1,5 +1,8 @@
 using Microsoft.Data.Sqlite;
 
+using App = TimeSink.Core.Usage.UsageApp;
+using Seg = TimeSink.Core.Usage.UsageSeg;
+
 namespace TimeSink.Core.Usage;
 
 /// <summary>
@@ -14,8 +17,6 @@ public static class TodayQuery
     private const int AverageDays = 7;
     private const int Hours = 24;
 
-    private sealed record App(long Id, long Group, string Name, long AddedUtc);
-    private readonly record struct Seg(long Group, long AppId, long Start, long End, bool Open, bool Sleep);
 
     public static TodayResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null)
     {
@@ -39,8 +40,8 @@ public static class TodayQuery
         var d0 = DayStart(date, zone);
         var d1 = DayStart(date.AddDays(1), zone);
 
-        var apps = LoadApps(c);
-        var segs = LoadSegments(c, DayStart(date.AddDays(-TypicalWeeks * 7), zone), nowUtc, apps, running);
+        var apps = UsageLoader.LoadApps(c);
+        var segs = UsageLoader.LoadSegments(c, DayStart(date.AddDays(-TypicalWeeks * 7), zone), nowUtc, apps, running);
         var byGroup = segs.ToLookup(s => s.Group);
 
         // Hourly chart + typical day.
@@ -117,48 +118,6 @@ public static class TodayQuery
 
     private static string NameOf(Dictionary<long, App> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
 
-    private static Dictionary<long, App> LoadApps(SqliteConnection c)
-    {
-        using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name, added_utc FROM apps WHERE state = 'tracked'";
-        using var r = cmd.ExecuteReader();
-        var d = new Dictionary<long, App>();
-        while (r.Read()) d[r.GetInt64(0)] = new App(r.GetInt64(0), r.GetInt64(1), r.GetString(2), r.GetInt64(3));
-        // A tracked alias whose canonical row is retired/absent still names its own group.
-        foreach (var a in d.Values.ToList())
-            if (!d.ContainsKey(a.Group) && a.Group != a.Id) d[a.Id] = a with { Group = a.Id };
-        return d;
-    }
-
-    private static List<Seg> LoadSegments(SqliteConnection c, long from, long nowUtc, Dictionary<long, App> apps, IReadOnlyCollection<long>? running)
-    {
-        using var cmd = c.CreateCommand();
-        cmd.CommandText = """
-            SELECT app_id, start_utc, end_utc, last_seen_utc, end_reason FROM sessions
-            WHERE start_utc <= $now AND (end_utc IS NULL OR end_utc >= $from) ORDER BY start_utc
-            """;
-        cmd.Parameters.AddWithValue("$now", nowUtc);
-        cmd.Parameters.AddWithValue("$from", from);
-        using var r = cmd.ExecuteReader();
-        var list = new List<Seg>();
-        while (r.Read())
-        {
-            var appId = r.GetInt64(0);
-            if (!apps.TryGetValue(appId, out var app)) continue; // retired or unknown
-            var start = r.GetInt64(1);
-            long end;
-            var open = r.IsDBNull(2);
-            if (open)
-            {
-                if (running is null || running.Contains(appId)) end = Math.Max(nowUtc, start);
-                else { end = Math.Clamp(r.GetInt64(3), start, nowUtc); open = false; }
-            }
-            else end = r.GetInt64(2);
-            var sleep = !r.IsDBNull(4) && r.GetString(4) == "sleep";
-            list.Add(new Seg(app.Group, appId, start, end, open, sleep && !open));
-        }
-        return list;
-    }
 
     private static long Overlap(Seg s, long a, long b) => Math.Max(0, Math.Min(s.End, b) - Math.Max(s.Start, a));
 

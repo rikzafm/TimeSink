@@ -1,5 +1,8 @@
 using Microsoft.Data.Sqlite;
 
+using App = TimeSink.Core.Usage.UsageApp;
+using Seg = TimeSink.Core.Usage.UsageSeg;
+
 namespace TimeSink.Core.Usage;
 
 /// <summary>
@@ -14,8 +17,6 @@ public static class WrappedQuery
     private const int PodiumSize = 3;
     private const int OthersSize = 3;
 
-    private sealed record App(long Id, long Group, string Name, long AddedUtc);
-    private readonly record struct Seg(long Group, long Start, long End);
 
     public static WrappedResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null)
     {
@@ -40,7 +41,7 @@ public static class WrappedQuery
         var yearStart = LocalDays.StartOf(new DateOnly(year, 1, 1), zone);
         var windowStart = LocalDays.StartOf(new DateOnly(year - 1, 12, 1), zone); // December feeds January's month delta
 
-        var apps = LoadApps(c);
+        var apps = UsageLoader.LoadApps(c);
         var first = apps.Count == 0 ? (DateOnly?)null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
         var groups = apps.Values.Select(a => a.Group).Distinct().ToList();
 
@@ -50,7 +51,7 @@ public static class WrappedQuery
         var perGroup = new Dictionary<long, long>();       // this year
         long beforeNoon = 0, total = 0;
 
-        foreach (var s in LoadSegments(c, windowStart, nowUtc, apps, running))
+        foreach (var s in UsageLoader.LoadSegments(c, windowStart, nowUtc, apps, running))
         {
             var t = Math.Max(s.Start, windowStart);
             var end = Math.Min(s.End, nowUtc);
@@ -128,40 +129,4 @@ public static class WrappedQuery
 
     private static string NameOf(Dictionary<long, App> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
 
-    private static Dictionary<long, App> LoadApps(SqliteConnection c)
-    {
-        using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name, added_utc FROM apps WHERE state = 'tracked'";
-        using var r = cmd.ExecuteReader();
-        var d = new Dictionary<long, App>();
-        while (r.Read()) d[r.GetInt64(0)] = new App(r.GetInt64(0), r.GetInt64(1), r.GetString(2), r.GetInt64(3));
-        foreach (var a in d.Values.ToList())
-            if (!d.ContainsKey(a.Group) && a.Group != a.Id) d[a.Id] = a with { Group = a.Id };
-        return d;
-    }
-
-    private static List<Seg> LoadSegments(SqliteConnection c, long from, long nowUtc, Dictionary<long, App> apps, IReadOnlyCollection<long>? running)
-    {
-        using var cmd = c.CreateCommand();
-        cmd.CommandText = """
-            SELECT app_id, start_utc, end_utc, last_seen_utc FROM sessions
-            WHERE start_utc <= $now AND (end_utc IS NULL OR end_utc >= $from) ORDER BY start_utc
-            """;
-        cmd.Parameters.AddWithValue("$now", nowUtc);
-        cmd.Parameters.AddWithValue("$from", from);
-        using var r = cmd.ExecuteReader();
-        var list = new List<Seg>();
-        while (r.Read())
-        {
-            var appId = r.GetInt64(0);
-            if (!apps.TryGetValue(appId, out var app)) continue; // retired or unknown
-            var start = r.GetInt64(1);
-            long end;
-            if (r.IsDBNull(2))
-                end = running is null || running.Contains(appId) ? Math.Max(nowUtc, start) : Math.Clamp(r.GetInt64(3), start, nowUtc);
-            else end = r.GetInt64(2);
-            list.Add(new Seg(app.Group, start, end));
-        }
-        return list;
-    }
 }

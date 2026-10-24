@@ -1,5 +1,8 @@
 using Microsoft.Data.Sqlite;
 
+using App = TimeSink.Core.Usage.UsageApp;
+using Seg = TimeSink.Core.Usage.UsageSeg;
+
 namespace TimeSink.Core.Usage;
 
 /// <summary>
@@ -15,8 +18,6 @@ public static class MonthQuery
     private const int TopCount = 4;
     private static readonly long[] HeatSeconds = [3600, 3 * 3600, 5 * 3600, 7 * 3600];
 
-    private sealed record App(long Id, long Group, string Name);
-    private readonly record struct Seg(long Group, long Start, long End);
 
     /// <summary>Heat step 0-4 for a day total: under 1 h, 3 h, 5 h, 7 h, otherwise 7 h or more.</summary>
     public static int HeatLevel(long seconds)
@@ -59,8 +60,8 @@ public static class MonthQuery
         var prevDim = DateTime.DaysInMonth(prevFirst.Year, prevFirst.Month);
         var prevCounted = Math.Min(counted, prevDim);
 
-        var apps = LoadApps(c);
-        var segs = LoadSegments(c, DayStart(prevFirst, zone), DayStart(first.AddMonths(1), zone), nowUtc, apps, running);
+        var apps = UsageLoader.LoadApps(c);
+        var segs = UsageLoader.LoadSegments(c, DayStart(prevFirst, zone), nowUtc, apps, running, to: DayStart(first.AddMonths(1), zone));
 
         // group -> seconds, per day of this month and of the comparison window.
         var days = new Dictionary<long, long>[dim];
@@ -135,48 +136,6 @@ public static class MonthQuery
 
     private static string NameOf(Dictionary<long, App> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
 
-    private static Dictionary<long, App> LoadApps(SqliteConnection c)
-    {
-        using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name FROM apps WHERE state = 'tracked'";
-        using var r = cmd.ExecuteReader();
-        var d = new Dictionary<long, App>();
-        while (r.Read()) d[r.GetInt64(0)] = new App(r.GetInt64(0), r.GetInt64(1), r.GetString(2));
-        // A tracked alias whose canonical row is retired/absent still names its own group.
-        foreach (var a in d.Values.ToList())
-            if (!d.ContainsKey(a.Group) && a.Group != a.Id) d[a.Id] = a with { Group = a.Id };
-        return d;
-    }
-
-    private static List<Seg> LoadSegments(SqliteConnection c, long from, long to, long nowUtc, Dictionary<long, App> apps,
-        IReadOnlyCollection<long>? running)
-    {
-        using var cmd = c.CreateCommand();
-        cmd.CommandText = """
-            SELECT app_id, start_utc, end_utc, last_seen_utc FROM sessions
-            WHERE start_utc <= $now AND start_utc < $to AND (end_utc IS NULL OR end_utc >= $from) ORDER BY start_utc
-            """;
-        cmd.Parameters.AddWithValue("$now", nowUtc);
-        cmd.Parameters.AddWithValue("$to", to);
-        cmd.Parameters.AddWithValue("$from", from);
-        using var r = cmd.ExecuteReader();
-        var list = new List<Seg>();
-        while (r.Read())
-        {
-            var appId = r.GetInt64(0);
-            if (!apps.TryGetValue(appId, out var app)) continue; // retired or unknown
-            var start = r.GetInt64(1);
-            long end;
-            if (r.IsDBNull(2))
-            {
-                if (running is null || running.Contains(appId)) end = Math.Max(nowUtc, start);
-                else end = Math.Clamp(r.GetInt64(3), start, nowUtc);
-            }
-            else end = r.GetInt64(2);
-            list.Add(new Seg(app.Group, start, end));
-        }
-        return list;
-    }
 
     private static long DayStart(DateOnly date, TimeZoneInfo zone) => LocalDays.StartOf(date, zone);
 }

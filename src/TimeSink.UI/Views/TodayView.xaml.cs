@@ -20,7 +20,11 @@ namespace TimeSink.UI.Views;
 public partial class TodayView : UserControl
 {
     private const int RefreshEverySeconds = 30;
-    private static readonly bool ExpandAll = Environment.GetEnvironmentVariable("TS_EXPAND") == "1"; // test aid for screenshots
+#if DEBUG
+    private static readonly bool ExpandAll = Environment.GetEnvironmentVariable("TS_EXPAND") == "1"; // test aid for screenshots (decision 115)
+#else
+    private const bool ExpandAll = false;
+#endif
 
     private readonly string _dbPath;
     private readonly ThemeService _themes;

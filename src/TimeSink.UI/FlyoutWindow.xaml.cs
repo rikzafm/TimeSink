@@ -24,6 +24,7 @@ public partial class FlyoutWindow : Window
     private bool _revealed;
     private bool _rendered;
     private LiveState? _live;
+    private LiveState Live => _live ??= new LiveState(PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB")));
 
     private readonly ThemeService _themes;
     private readonly string _dbPath;
@@ -58,14 +59,20 @@ public partial class FlyoutWindow : Window
         }
         Select(initialTab, persist: false);
         Closed += (_, _) => _live?.Dispose();
-        if (Environment.GetEnvironmentVariable("TS_OPENADD") == "1") Loaded += (_, _) => ShowAddApp(); // test aid
+#if DEBUG
+        if (Environment.GetEnvironmentVariable("TS_OPENADD") == "1") Loaded += (_, _) => ShowAddApp(); // test aid (decision 115)
+#endif
     }
 
     /// <summary>False while a warm standby UI is still off-screen.</summary>
     public bool IsRevealed => _revealed;
 
     /// <summary>Test aid: TS_KEEPOPEN=1 stops the flyout closing when it loses focus (so it can be screenshotted).</summary>
+#if DEBUG
     private static readonly bool TestKeepOpen = Environment.GetEnvironmentVariable("TS_KEEPOPEN") == "1";
+#else
+    private const bool TestKeepOpen = false;
+#endif
 
     private void Select(ShellTab tab, bool persist)
     {
@@ -96,28 +103,23 @@ public partial class FlyoutWindow : Window
     {
         if (tab == ShellTab.Today)
         {
-            _live ??= new LiveState(PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB")));
-            return new TodayView(_dbPath, _themes, _live);
+            return new TodayView(_dbPath, _themes, Live);
         }
         if (tab == ShellTab.Week)
         {
-            _live ??= new LiveState(PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB")));
-            return new WeekView(_dbPath, _themes, _live);
+            return new WeekView(_dbPath, _themes, Live);
         }
         if (tab == ShellTab.Month)
         {
-            _live ??= new LiveState(PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB")));
-            return new MonthView(_dbPath, _themes, _live, this);
+            return new MonthView(_dbPath, _themes, Live, this);
         }
         if (tab == ShellTab.Year)
         {
-            _live ??= new LiveState(PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB")));
-            return new YearView(_dbPath, _themes, _live);
+            return new YearView(_dbPath, _themes, Live);
         }
         if (tab == ShellTab.All)
         {
-            _live ??= new LiveState(PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB")));
-            return new AllView(_dbPath, _themes, _live, this);
+            return new AllView(_dbPath, _themes, Live, this);
         }
         var text = new TextBlock { Style = (Style)Application.Current.FindResource("Caption"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Tag = tab };
         text.SetResourceReference(TextBlock.TextProperty, "Str." + char.ToUpperInvariant(StringKeys.StubComingSoon[0]) + StringKeys.StubComingSoon[1..]);

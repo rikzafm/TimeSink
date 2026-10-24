@@ -47,7 +47,9 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
-        if (int.TryParse(Environment.GetEnvironmentVariable("TS_WRAPPED_CARD"), out var start)) _index = Math.Clamp(start - 1, 0, CardCount - 1); // test aid
+#if DEBUG
+        if (int.TryParse(Environment.GetEnvironmentVariable("TS_WRAPPED_CARD"), out var start)) _index = Math.Clamp(start - 1, 0, CardCount - 1); // test aid (decision 115)
+#endif
 
         Bind(_card, WrappedCard.BackBrushProperty, "Brush.SurfaceAlt");
         Bind(_card, WrappedCard.TileBackBrushProperty, "Brush.Surface");
@@ -153,9 +155,11 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         if (seq != _seq || !_started) return;
         _result = result;
         Redraw();
-        var auto = Environment.GetEnvironmentVariable("TS_WRAPPED_SAVETO"); // test aid: write the visible card, no dialog
+#if DEBUG
+        var auto = Environment.GetEnvironmentVariable("TS_WRAPPED_SAVETO"); // test aid: write the visible card, no dialog (decision 115)
         if (!string.IsNullOrEmpty(auto))
             _ = Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () => { try { CardImage.Write(_card, auto); } catch (IOException) { } });
+#endif
     }
 
     // ---- text -------------------------------------------------------------------------------------------------------
