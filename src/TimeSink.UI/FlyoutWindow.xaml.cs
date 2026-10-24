@@ -58,6 +58,7 @@ public partial class FlyoutWindow : Window
         }
         Select(initialTab, persist: false);
         Closed += (_, _) => _live?.Dispose();
+        if (Environment.GetEnvironmentVariable("TS_OPENADD") == "1") Loaded += (_, _) => ShowAddApp(); // test aid
     }
 
     /// <summary>False while a warm standby UI is still off-screen.</summary>

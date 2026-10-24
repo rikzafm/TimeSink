@@ -255,7 +255,7 @@ public sealed class AddAppView : UserControl
         texts.Children.Add(name);
         texts.Children.Add(open);
 
-        var button = new Button { Template = Flat, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(14, 6, 14, 6), Cursor = System.Windows.Input.Cursors.Hand, Focusable = false, FontWeight = FontWeights.Bold };
+        var button = new Button { Template = Flat, VerticalAlignment = VerticalAlignment.Center, Height = 32, MinWidth = 76, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(14, 6, 14, 6), Cursor = System.Windows.Input.Cursors.Hand, Focusable = false, FontWeight = FontWeights.Bold };
         button.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
         button.SetResourceReference(Control.FontSizeProperty, "Double.FontSize.Body");
         button.Click += (_, _) => Track(row);
