@@ -37,6 +37,11 @@ public partial class TodayView : UserControl
     private int _seq;
     private int _sinceRefresh;
     private bool _started;
+    private DateOnly? _day;   // null = the live day; otherwise a past day being browsed
+    private DateOnly? _first; // first tracked day, the earliest the picker allows
+    private readonly ToolTip _tip = new();
+
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
 
     public TodayView(string dbPath, ThemeService themes, LiveState live)
     {
@@ -44,9 +49,30 @@ public partial class TodayView : UserControl
         _themes = themes;
         _live = live;
         InitializeComponent();
-        _untracked = new UntrackedCardView(dbPath, themes, Refresh);
+        // WPF doesn't clamp CornerRadius like CSS does, so a huge value draws an oval: use half the height.
+        RunningPill.SizeChanged += (_, e) => RunningPill.CornerRadius = new CornerRadius(e.NewSize.Height / 2);
+        _untracked =new UntrackedCardView(dbPath, themes, Refresh);
         _untracked.Rendered += UpdateTrackedHeader;
         UntrackedHost.Children.Add(_untracked);
+        _tip.SetResourceReference(Control.BackgroundProperty, "Brush.Panel");
+        _tip.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
+        _tip.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");
+        _tip.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
+        Chart.ToolTip = _tip;
+        ToolTipService.SetInitialShowDelay(Chart, 80);
+        ToolTipService.SetPlacement(Chart, System.Windows.Controls.Primitives.PlacementMode.Top);
+        Chart.HourHovered += OnHourHovered;
+        Chart.HourClicked += OnHourClicked;
+        Chart.SetResourceReference(HourlyBars.SelectedBrushProperty, "Brush.Accent");
+        Panel.CloseRequested += () => Chart.SelectedHour = -1;
+        Nav.DateChosen += d => ShowDay(d);
+        Focusable = true;
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Escape || Panel.Visibility != Visibility.Visible) return;
+            ClosePanel();
+            e.Handled = true;
+        };
         _timer.Tick += (_, _) => OnTick();
         _live.Changed += Refresh;
         _themes.Applied += Redraw;
@@ -61,7 +87,7 @@ public partial class TodayView : UserControl
         _started = true;
         _live.Start();
         _timer.Start();
-        Refresh();
+        Load();
     }
 
     public void Stop()
@@ -70,15 +96,42 @@ public partial class TodayView : UserControl
         _timer.Stop();
     }
 
-    public async void Refresh()
+    /// <summary>Live-state refresh: a past day is static, so pipe changes and the timer leave it alone.</summary>
+    public void Refresh()
+    {
+        if (_day is null) Load();
+    }
+
+    /// <summary>Show a given local day (today or earlier); today goes back to the live view.</summary>
+    public void ShowDay(DateOnly day)
+    {
+        _day = day >= Today ? null : day;
+        ClosePanel();
+        Load();
+    }
+
+    /// <summary>Back to the live day with nothing selected (the flyout opens on today).</summary>
+    public void ResetToToday()
+    {
+        if (_day is null && Panel.Visibility != Visibility.Visible) return;
+        ShowDay(Today);
+    }
+
+    private async void Load()
     {
         if (!_started) return;
         var seq = ++_seq;
         _sinceRefresh = 0;
         var now = DateTimeOffset.UtcNow;
         var running = _live.RunningIds;
+        var day = _day;
         TodayResult result;
-        try { result = await Task.Run(() => TodayQuery.Run(_dbPath, now, TimeZoneInfo.Local, running)); }
+        try
+        {
+            (result, var first) = await Task.Run(() => (TodayQuery.Run(_dbPath, now, TimeZoneInfo.Local, running, day),
+                TodayQuery.FirstDate(_dbPath, TimeZoneInfo.Local)));
+            _first = first;
+        }
         catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException) { return; } // no DB yet: keep the empty state
         if (seq != _seq || !_started) return;
         _result = result;
@@ -91,10 +144,10 @@ public partial class TodayView : UserControl
     private void OnTick()
     {
         if (Window.GetWindow(this) is FlyoutWindow { IsRevealed: false }) return; // warm standby: stay idle
-        if (_result is null) return;
-        if (++_sinceRefresh >= RefreshEverySeconds || DateOnly.FromDateTime(DateTime.Now) != _result.Date)
+        if (_result is null || _day is not null) return; // a past day does not tick
+        if (++_sinceRefresh >= RefreshEverySeconds || Today != _result.Date)
         {
-            Refresh();
+            Load();
             return;
         }
         UpdateLive();
@@ -111,7 +164,7 @@ public partial class TodayView : UserControl
         TotalMain.Text = DurationFormat.HoursMinutes(total);
         TotalSeconds.Text = $"{total % 60:00}s";
         var nowUtc = r.NowUtc + elapsed;
-        Chart.NowFraction = Fraction(r, nowUtc);
+        Chart.NowFraction = _day is null ? Fraction(r, nowUtc) : 0;
         Chart.NowLabel = Clock(nowUtc);
         foreach (var (_, (time, status, row)) in _rowViews)
         {
@@ -130,16 +183,19 @@ public partial class TodayView : UserControl
     {
         if (_result is not { } r) return;
         var total = r.TotalSeconds;
-        var early = TodayEarly.ShowCaption(total);
+        var live = _day is null;
+        var early = live && TodayEarly.ShowCaption(total);
         var since = early ? TodayEarly.TrackingSinceUtc(r.DayStartUtc, _signInUtc is > 0 ? _signInUtc : null, r.FirstApp?.StartUtc) : null;
 
-        Caption.Text = since is not null
+        Nav.Configure(Today, _first ?? r.Date, r.Date);
+        Nav.CaptionText = since is not null
             ? Str(StringKeys.TodayEarlyCaption, Clock(since.Value))
-            : Str(StringKeys.TodayCaption, TimeText.Local(r.NowUtc).ToString("dddd, d MMM", System.Globalization.CultureInfo.CurrentCulture));
+            : Str(StringKeys.TodayCaption, r.Date.ToString("dddd, d MMM", System.Globalization.CultureInfo.CurrentCulture));
         EarlyHint.Visibility = early ? Visibility.Visible : Visibility.Collapsed;
         RunningText.Text = Str(StringKeys.RunningPill, r.RunningCount);
+        RunningPill.Visibility = live ? Visibility.Visible : Visibility.Collapsed;
 
-        var nowLocalHour = TimeText.Local(r.NowUtc).Hour;
+        var nowLocalHour = live ? TimeText.Local(r.NowUtc).Hour : -1;
         Chart.Hours = r.Hours;
         Chart.CurrentHour = nowLocalHour;
         Chart.SleepFractions = r.SleepBands.Select(b => (Fraction(r, b.StartUtc), Fraction(r, b.EndUtc))).ToList();
@@ -154,6 +210,51 @@ public partial class TodayView : UserControl
         Empty.Visibility = r.Apps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         UpdateTrackedHeader();
         UpdateLive();
+        if (Chart.SelectedHour >= 0) ShowHourPanel(Chart.SelectedHour);
+    }
+
+    private void ClosePanel()
+    {
+        Chart.SelectedHour = -1;
+        Panel.Hide();
+    }
+
+    private string HourRange(int h) => $"{Hour(h)} – {Hour((h + 1) % 24)}";
+
+    private void OnHourHovered(int h, Point _)
+    {
+        if (h < 0 || _result is not { } r) { _tip.IsOpen = false; return; }
+        var d = BarDetail.ForHour(r, h, TimeZoneInfo.Local);
+        var lines = new List<string> { $"{HourRange(h)} · " + (d.AppSeconds > 0 ? DurationFormat.HoursMinutes(d.AppSeconds) : "no activity") };
+        lines.AddRange(d.Apps.Take(3).Select(a => $"{a.Name} {DurationFormat.HoursMinutes(a.Seconds)}"));
+        _tip.Content = string.Join(Environment.NewLine, lines);
+    }
+
+    private void OnHourClicked(int h)
+    {
+        if (Chart.SelectedHour == h) { ClosePanel(); return; }
+        Chart.SelectedHour = h;
+        Focus();
+        ShowHourPanel(h);
+    }
+
+    private void ShowHourPanel(int h)
+    {
+        if (_result is not { } r) return;
+        var d = BarDetail.ForHour(r, h, TimeZoneInfo.Local);
+        var palette = Math.Max(1, _themes.Current.Apps.Count);
+        var compares = new List<(string, string, bool)>();
+        if (r.HasTypical)
+        {
+            var diff = (long)Math.Round(d.AppSeconds - d.TypicalAppSeconds);
+            compares.Add(("Typical for this hour", $"{DurationFormat.HoursMinutes((long)Math.Round(d.TypicalAppSeconds))} · {DurationFormat.Signed(diff)}", diff >= 0));
+        }
+        Panel.Show(
+            HourRange(h),
+            d.AppSeconds > 0 ? $"{DurationFormat.HoursMinutes(d.AppSeconds)} app time · {d.Sessions.Count} sessions" : "No activity this hour",
+            d.Apps.Select(a => (a.Name, a.Seconds, (int)(a.AppId % palette))).ToList(),
+            d.Sessions.Select(s => (s.AppName, Str(StringKeys.SessionLine, Clock(s.StartUtc), Clock(s.EndUtc)), DurationFormat.HoursMinutes(s.Seconds))).ToList(),
+            compares);
     }
 
     private void UpdateTrackedHeader() =>
@@ -212,7 +313,7 @@ public partial class TodayView : UserControl
         letter.SetResourceReference(TextBlock.ForegroundProperty, appBrush);
         letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         letter.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Title");
-        if (!AppIcons.TryFill(tile, row.AppId, 4)) tile.Child = letter;
+        if (!AppIcons.TryFill(tile, row.AppId)) tile.Child = letter;
 
         var name = new TextBlock { Text = row.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
         name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");

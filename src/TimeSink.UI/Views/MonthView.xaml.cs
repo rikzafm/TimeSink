@@ -218,7 +218,7 @@ public partial class MonthView : UserControl
             letter.SetResourceReference(TextBlock.ForegroundProperty, brush);
             letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
             letter.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
-            if (!AppIcons.TryFill(tile, app.AppId, 3)) tile.Child = letter;
+            if (!AppIcons.TryFill(tile, app.AppId)) tile.Child = letter;
 
             var name = new TextBlock { Text = app.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
             name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");

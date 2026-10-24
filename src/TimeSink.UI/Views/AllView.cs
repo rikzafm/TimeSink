@@ -120,6 +120,7 @@ public sealed class AllView : UserControl
         _timer.Tick += (_, _) => { if (_window is not { IsRevealed: false }) Refresh(); };
         _live.Changed += Refresh;
         _themes.Applied += Redraw;
+        AppIcons.Updated += Redraw;
         Unloaded += (_, _) => Stop();
         Redraw(); // static text and empty table; data follows in Start
     }
@@ -176,6 +177,7 @@ public sealed class AllView : UserControl
             (r.Retired.Count.ToString(En), true), (Str(AllStringKeys.RetiredSuffix), false)]);
         SetBold(_sorted, [(Str(AllStringKeys.SortedBy), false), (ColumnName(_sort.Column).ToLowerInvariant(), true), (" " + Arrow(_sort.Descending), false)]);
 
+        AppIcons.Load(_dbPath, r.Apps.Select(a => a.AppId));
         var sorted = AllSorting.Apply(r.Apps, _sort);
         if (_selected is not { } sel || sorted.All(a => a.AppId != sel)) _selected = sorted.Count > 0 ? sorted[0].AppId : null;
 
@@ -227,7 +229,7 @@ public sealed class AllView : UserControl
     {
         var grid = Columns2();
         grid.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.Table");
-        grid.Children.Add(NameCell(a.Name, AppBrush(a.AppId), dashed: false));
+        grid.Children.Add(NameCell(a.Name, AppBrush(a.AppId), dashed: false, a.AppId));
         AddNumber(grid, 1, AllFormat.Hours(a.Seconds), bold: true, "Brush.Text");
         AddNumber(grid, 2, a.DaysUsed.ToString(En), bold: false, "Brush.TextSoft");
         AddNumber(grid, 3, AllFormat.AveragePerDay(a.AverageSecondsPerDay), bold: false, "Brush.TextSoft");
@@ -352,7 +354,7 @@ public sealed class AllView : UserControl
         grid.Children.Add(t);
     }
 
-    private static FrameworkElement NameCell(string name, string brushKey, bool dashed)
+    private static FrameworkElement NameCell(string name, string brushKey, bool dashed, long? appId = null)
     {
         var dot = new Rectangle { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         dot.SetResourceReference(FrameworkElement.WidthProperty, "Double.Size.Swatch");
@@ -371,8 +373,10 @@ public sealed class AllView : UserControl
         text.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         text.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
         var row = new DockPanel { Margin = new Thickness(10, 0, 4, 0), LastChildFill = true };
-        DockPanel.SetDock(dot, Dock.Left);
-        row.Children.Add(dot);
+        FrameworkElement lead = dot;
+        if (appId is { } id && AppIcons.Icon(id, 16) is { } icon) { icon.Margin = new Thickness(0, 0, 8, 0); lead = icon; }
+        DockPanel.SetDock(lead, Dock.Left);
+        row.Children.Add(lead);
         row.Children.Add(text);
         return row;
     }

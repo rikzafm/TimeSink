@@ -42,8 +42,14 @@ public sealed class WeekView : UserControl
     private int _seq;
     private bool _started;
 
-    public WeekView(string dbPath, ThemeService themes, LiveState live)
+    private readonly DetailPanel _panel = new() { Margin = new Thickness(0, 8, 0, 4) };
+    private readonly ToolTip _tip = new();
+    private readonly Action<DateOnly>? _openDay;
+    private int _panelSeq;
+
+    public WeekView(string dbPath, ThemeService themes, LiveState live, Action<DateOnly>? openDay = null)
     {
+        _openDay = openDay;
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
@@ -91,11 +97,32 @@ public sealed class WeekView : UserControl
         root.Children.Add(header);
         root.Children.Add(_columns);
         root.Children.Add(axis);
+        root.Children.Add(_panel);
         root.Children.Add(_gridCaption);
         root.Children.Add(_grid);
         root.Children.Add(_rows);
         root.Children.Add(_empty);
         Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = root };
+
+        _columns.SetResourceReference(WeekColumns.SelectedBrushProperty, "Brush.Accent");
+        _columns.Cursor = System.Windows.Input.Cursors.Hand;
+        _tip.SetResourceReference(Control.BackgroundProperty, "Brush.Panel");
+        _tip.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
+        _tip.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");
+        _tip.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
+        _columns.ToolTip = _tip;
+        ToolTipService.SetInitialShowDelay(_columns, 80);
+        ToolTipService.SetPlacement(_columns, System.Windows.Controls.Primitives.PlacementMode.Top);
+        _columns.ColumnHovered += OnColumnHovered;
+        _columns.ColumnClicked += OnColumnClicked;
+        _panel.CloseRequested += () => _columns.SelectedIndex = -1;
+        Focusable = true;
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != System.Windows.Input.Key.Escape || _panel.Visibility != Visibility.Visible) return;
+            ClosePanel();
+            e.Handled = true;
+        };
 
         _timer.Tick += (_, _) =>
         {
@@ -169,6 +196,56 @@ public sealed class WeekView : UserControl
         foreach (var app in r.Apps) _rows.Children.Add(BuildRow(app, (int)(app.AppId % paletteSize)));
     }
 
+    private void ClosePanel()
+    {
+        _panelSeq++;
+        _columns.SelectedIndex = -1;
+        _panel.Hide();
+    }
+
+    private void OnColumnHovered(int i, Point _)
+    {
+        if (i < 0 || _result is not { } r) { _tip.IsOpen = false; return; }
+        var d = r.Days[i];
+        _tip.Content = $"{d.Date.ToString("dddd, d MMM", CultureInfo.CurrentCulture)}{Environment.NewLine}{DurationFormat.HoursMinutes(d.Seconds)}";
+    }
+
+    private async void OnColumnClicked(int i)
+    {
+        if (_result is not { } r) return;
+        if (_columns.SelectedIndex == i) { ClosePanel(); return; }
+        _columns.SelectedIndex = i;
+        Focus();
+        var seq = ++_panelSeq;
+        var day = r.Days[i].Date;
+        var now = DateTimeOffset.UtcNow;
+        var path = _dbPath;
+        DayDetail detail;
+        try
+        {
+            detail = await Task.Run(() =>
+                BarDetail.ForDay(path, day, now, TimeZoneInfo.Local, WeekStarts.Parse(SettingsStore.Get(path, WeekStarts.SettingKey))));
+        }
+        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException) { return; }
+        if (seq != _panelSeq) return;
+
+        var palette = Math.Max(1, _themes.Current.Apps.Count);
+        var compares = new List<(string, string, bool)>();
+        var vsAvg = (long)Math.Round(detail.TotalSeconds - detail.WeekAverageSeconds);
+        compares.Add(("vs the week's average", DurationFormat.Signed(vsAvg), vsAvg >= 0));
+        var vsLast = detail.TotalSeconds - detail.SameDayLastWeekSeconds;
+        compares.Add(("vs the same day last week", DurationFormat.Signed(vsLast), vsLast >= 0));
+        var span = detail.FirstStartUtc is { } a && detail.LastEndUtc is { } b ? $" · active {Clock(a)} – {Clock(b)}" : "";
+        _panel.Show(
+            day.ToString("dddd, d MMM", CultureInfo.CurrentCulture),
+            DurationFormat.HoursMinutes(detail.TotalSeconds) + span,
+            detail.Apps.Select(x => (x.Name, x.Seconds, (int)(x.AppId % palette))).ToList(),
+            [],
+            compares,
+            "Open this day in Today →",
+            _openDay is null ? null : () => _openDay(day));
+    }
+
     private static string DayName(DateOnly d) => CultureInfo.CurrentCulture.DateTimeFormat.GetAbbreviatedDayName(d.DayOfWeek);
 
     private UIElement BuildRow(WeekAppRow app, int paletteIndex)
@@ -191,7 +268,7 @@ public sealed class WeekView : UserControl
         letter.SetResourceReference(TextBlock.ForegroundProperty, appBrush);
         letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         letter.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
-        if (!AppIcons.TryFill(tile, app.AppId, 3)) tile.Child = letter;
+        if (!AppIcons.TryFill(tile, app.AppId)) tile.Child = letter;
 
         var name = new TextBlock { Text = app.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 8, 0) };
         name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");

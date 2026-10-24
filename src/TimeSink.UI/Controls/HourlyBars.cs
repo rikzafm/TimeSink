@@ -30,6 +30,44 @@ public sealed class HourlyBars : FrameworkElement
     public static readonly DependencyProperty LabelFontFamilyProperty = Reg<FontFamily?>(nameof(LabelFontFamily));
     public static readonly DependencyProperty LabelFontSizeProperty = Reg<double>(nameof(LabelFontSize), 11.0);
 
+    public static readonly DependencyProperty SelectedHourProperty = Reg<int>(nameof(SelectedHour), -1);
+
+    public static readonly DependencyProperty SelectedBrushProperty = Reg<Brush?>(nameof(SelectedBrush));
+
+    /// <summary>The outline colour of the selected hour.</summary>
+    public Brush? SelectedBrush { get => (Brush?)GetValue(SelectedBrushProperty); set => SetValue(SelectedBrushProperty, value); }
+
+    /// <summary>The hour column outlined as selected, or -1.</summary>
+    public int SelectedHour { get => (int)GetValue(SelectedHourProperty); set => SetValue(SelectedHourProperty, value); }
+
+    /// <summary>The pointer is over an hour column (-1 when it left the chart); the second value is its position in this control.</summary>
+    public event Action<int, Point>? HourHovered;
+
+    /// <summary>An hour column was clicked.</summary>
+    public event Action<int>? HourClicked;
+
+    private int HourAt(Point p) => ActualWidth <= 0 || p.X < 0 || p.X >= ActualWidth ? -1 : Math.Clamp((int)(p.X / ActualWidth * 24), 0, 23);
+
+    protected override void OnMouseMove(System.Windows.Input.MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        var p = e.GetPosition(this);
+        HourHovered?.Invoke(HourAt(p), p);
+    }
+
+    protected override void OnMouseLeave(System.Windows.Input.MouseEventArgs e)
+    {
+        base.OnMouseLeave(e);
+        HourHovered?.Invoke(-1, default);
+    }
+
+    protected override void OnMouseLeftButtonUp(System.Windows.Input.MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonUp(e);
+        var h = HourAt(e.GetPosition(this));
+        if (h >= 0) HourClicked?.Invoke(h);
+    }
+
     public IReadOnlyList<HourBucket>? Hours { get => (IReadOnlyList<HourBucket>?)GetValue(HoursProperty); set => SetValue(HoursProperty, value); }
     public IReadOnlyList<(double Start, double End)>? SleepFractions { get => ((IReadOnlyList<(double, double)>?)GetValue(SleepFractionsProperty)); set => SetValue(SleepFractionsProperty, value); }
     public double NowFraction { get => (double)GetValue(NowFractionProperty); set => SetValue(NowFractionProperty, value); }
@@ -80,6 +118,8 @@ public sealed class HourlyBars : FrameworkElement
             if (barH > 0.5)
                 dc.DrawRoundedRectangle(i == CurrentHour ? CurrentBrush : BarBrush, null,
                     new Rect(x, plotTop + plotH - barH, barW, barH), 1.5, 1.5);
+            if (i == SelectedHour && SelectedBrush is { } sel)
+                dc.DrawRoundedRectangle(null, new Pen(sel, 1.5), new Rect(x - 1, plotTop, barW + 2, plotH), 2, 2);
             if (future && bucket.TypicalAppSeconds > 0 && MutedBrush is { } m)
             {
                 var ty = plotTop + plotH - Math.Min(1.0, bucket.TypicalAppSeconds / 3600.0 / MaxAppHours) * plotH;

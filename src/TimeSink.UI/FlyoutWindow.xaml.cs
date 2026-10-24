@@ -114,7 +114,7 @@ public partial class FlyoutWindow : Window
         }
         if (tab == ShellTab.Week)
         {
-            return new WeekView(_dbPath, _themes, Live);
+            return new WeekView(_dbPath, _themes, Live, OpenDayInToday);
         }
         if (tab == ShellTab.Month)
         {
@@ -131,6 +131,14 @@ public partial class FlyoutWindow : Window
         var text = new TextBlock { Style = (Style)Application.Current.FindResource("Caption"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Tag = tab };
         text.SetResourceReference(TextBlock.TextProperty, "Str." + char.ToUpperInvariant(StringKeys.StubComingSoon[0]) + StringKeys.StubComingSoon[1..]);
         return text;
+    }
+
+    /// <summary>Week's "open this day" link: switch to the Today tab showing that day.</summary>
+    private void OpenDayInToday(DateOnly day)
+    {
+        foreach (RadioButton b in TabBar.Children)
+            if ((string)b.Tag == nameof(ShellTab.Today)) b.IsChecked = true;
+        (_bodies.GetValueOrDefault(ShellTab.Today) as TodayView)?.ShowDay(day);
     }
 
     /// <summary>Set while a native dialog (file picker) is open so losing activation does not close the flyout.</summary>
@@ -183,6 +191,7 @@ public partial class FlyoutWindow : Window
         _revealed = true;
         Place();
         Activate();
+        (Body.Content as TodayView)?.ResetToToday(); // the flyout opens on the live day
         (Body.Content as TodayView)?.Refresh(); // data went stale while waiting off-screen
         (Body.Content as WeekView)?.Refresh();
         (Body.Content as MonthView)?.Refresh();

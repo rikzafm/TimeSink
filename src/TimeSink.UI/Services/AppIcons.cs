@@ -20,14 +20,26 @@ internal static class AppIcons
 
     public static event Action? Updated;
 
-    /// <summary>Puts the app's icon in <paramref name="tile"/> when one is cached; false means the caller shows its letter.</summary>
-    public static bool TryFill(Border tile, long appId, double padding)
+    /// <summary>Puts the app's icon in <paramref name="tile"/> at the full tile size, with no box around it; false means the caller shows its letter tile.</summary>
+    public static bool TryFill(Border tile, long appId)
     {
         if (!Cache.TryGetValue(appId, out var bmp)) return false;
-        tile.Padding = new Thickness(padding);
+        tile.ClearValue(Border.BackgroundProperty);
+        tile.ClearValue(Border.BorderBrushProperty);
+        tile.BorderThickness = new Thickness(0);
+        tile.Padding = new Thickness(0);
         tile.Child = new Image { Source = bmp, Stretch = Stretch.Uniform };
         return true;
     }
+
+    /// <summary>The cached bitmap, or null when the app has no icon (yet).</summary>
+    public static BitmapSource? Get(long appId) => Cache.GetValueOrDefault(appId);
+
+    /// <summary>A bare square icon for list rows, or null when none is cached (the caller keeps its colour swatch).</summary>
+    public static Image? Icon(long appId, double size) =>
+        Cache.TryGetValue(appId, out var bmp)
+            ? new Image { Source = bmp, Width = size, Height = size, Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center }
+            : null;
 
     /// <summary>Fetches icons for ids not seen yet (UI thread). Each id is tried once per run, so a redraw cannot loop.</summary>
     public static async void Load(string dbPath, IEnumerable<long> appIds)

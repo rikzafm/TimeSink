@@ -113,6 +113,7 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         _timer.Tick += (_, _) => Refresh();
         _live.Changed += Refresh;
         _themes.Applied += Redraw;
+        AppIcons.Updated += Redraw;
         Unloaded += (_, _) => Stop();
         Redraw(); // static text and empty grid; data follows in Start
     }
@@ -188,9 +189,10 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         _empty.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         _grid.Visibility = _footnote.Visibility = _hint.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
 
+        AppIcons.Load(_dbPath, r.Rows.Select(row => row.AppId));
         _grid.MonthLabels = r.Months.Select(m => MonthAbbr(m.Month)).ToList();
         _grid.Rows = r.Rows.Select((row, i) => new MatrixGridRow(row.Name, i, row.Cells.Select(CellText).ToList(),
-            row.Cells.Select(c => c.Level).ToList(), H(row.TotalSeconds))).ToList();
+            row.Cells.Select(c => c.Level).ToList(), H(row.TotalSeconds), AppIcons.Get(row.AppId))).ToList();
         _grid.ColumnTotals = r.Months.Select(m => ((long)Math.Round(m.TotalSeconds / 3600.0)).ToString(CultureInfo.CurrentCulture)).ToList();
         _grid.GrandTotal = H(r.GrandSeconds);
         DrawSelection();

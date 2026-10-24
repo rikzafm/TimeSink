@@ -30,7 +30,7 @@
 
     <ScrollViewer VerticalScrollBarVisibility="Hidden" Focusable="False">
         <StackPanel Margin="16,10,16,12">
-            <TextBlock x:Name="Caption" Style="{StaticResource Small}" FontSize="{DynamicResource Double.FontSize.Body}"/>
+            <c:DayNav x:Name="Nav"/>
 
             <Grid Margin="0,2,0,6">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -40,12 +40,32 @@
                     <TextBlock x:Name="TotalSeconds" Style="{StaticResource Small}" Margin="6,0,0,5" VerticalAlignment="Bottom"
                                FontFamily="{DynamicResource FontFamily.Numbers}" FontSize="{DynamicResource Double.FontSize.Body}"/>
                 </StackPanel>
-                <Border HorizontalAlignment="Right" VerticalAlignment="Center" Padding="10,5"
-                        Background="{DynamicResource Brush.Panel}" BorderBrush="{DynamicResource Brush.Border}"
-                        BorderThickness="{DynamicResource Thickness.Border}" CornerRadius="999">
+                <Border x:Name="RunningPill" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="8,4,10,4"
+                        Background="{DynamicResource Brush.SurfaceAlt}" BorderBrush="{DynamicResource Brush.Border}"
+                        BorderThickness="{DynamicResource Thickness.Border}">
                     <StackPanel Orientation="Horizontal">
-                        <Ellipse x:Name="RunningDot" Width="8" Height="8" Margin="0,0,6,0" Fill="{DynamicResource Brush.Accent}"/>
-                        <TextBlock x:Name="RunningText" Style="{StaticResource Number}" FontSize="{DynamicResource Double.FontSize.Small}"/>
+                        <Grid Width="8" Height="8" Margin="0,0,6,0" VerticalAlignment="Center">
+                            <Ellipse Fill="{DynamicResource Brush.Accent}" RenderTransformOrigin="0.5,0.5" Opacity="0.6">
+                                <Ellipse.RenderTransform>
+                                    <ScaleTransform x:Name="PulseScale" ScaleX="1" ScaleY="1"/>
+                                </Ellipse.RenderTransform>
+                                <Ellipse.Triggers>
+                                    <EventTrigger RoutedEvent="Loaded">
+                                        <BeginStoryboard>
+                                            <Storyboard RepeatBehavior="Forever">
+                                                <DoubleAnimation Storyboard.TargetName="PulseScale" Storyboard.TargetProperty="ScaleX"
+                                                                 From="1" To="2.75" Duration="0:0:1.6"/>
+                                                <DoubleAnimation Storyboard.TargetName="PulseScale" Storyboard.TargetProperty="ScaleY"
+                                                                 From="1" To="2.75" Duration="0:0:1.6"/>
+                                                <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.6" To="0" Duration="0:0:1.6"/>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </EventTrigger>
+                                </Ellipse.Triggers>
+                            </Ellipse>
+                            <Ellipse x:Name="RunningDot" Fill="{DynamicResource Brush.Accent}"/>
+                        </Grid>
+                        <TextBlock x:Name="RunningText" Style="{StaticResource Number}" FontSize="12" FontWeight="SemiBold"/>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -55,8 +75,10 @@
                           LabelFontFamily="{DynamicResource FontFamily.Numbers}"
                           LabelFontSize="{DynamicResource Double.FontSize.Small}"
                           BarBrush="{DynamicResource Brush.Heat2}" CurrentBrush="{DynamicResource Brush.Accent}"
+                          Cursor="Hand"
                           MutedBrush="{DynamicResource Brush.TextMuted}" LabelTextBrush="{DynamicResource Brush.OnAccent}"/>
             <Grid x:Name="Axis" Margin="0,0,0,6"/>
+            <c:DetailPanel x:Name="Panel"/>
 
             <WrapPanel Margin="0,0,0,12">
                 <StackPanel Orientation="Horizontal" Margin="0,0,14,0">

@@ -18,7 +18,8 @@ public static class TodayQuery
     private const int Hours = 24;
 
 
-    public static TodayResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null)
+    /// <param name="forDay">The local day to show; null or any day after today means today (the live day).</param>
+    public static TodayResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null)
     {
         using var c = new SqliteConnection(new SqliteConnectionStringBuilder
         {
@@ -30,13 +31,27 @@ public static class TodayQuery
             p.CommandText = "PRAGMA busy_timeout=2000";
             p.ExecuteNonQuery();
         }
-        return Run(c, now, zone, running);
+        return Run(c, now, zone, running, forDay);
     }
 
-    public static TodayResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null)
+    /// <summary>The local date of the first tracked app, or null when nothing is tracked yet.</summary>
+    public static DateOnly? FirstDate(string dbPath, TimeZoneInfo zone)
+    {
+        using var c = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false,
+        }.ToString());
+        c.Open();
+        var apps = UsageLoader.LoadApps(c);
+        return apps.Count == 0 ? null : LocalDate(apps.Values.Min(a => a.AddedUtc), zone);
+    }
+
+    public static TodayResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null)
     {
         var nowUtc = now.ToUnixTimeSeconds();
-        var date = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        var date = forDay is { } want && want < today ? want : today;
+        var isToday = date == today;
         var d0 = DayStart(date, zone);
         var d1 = DayStart(date.AddDays(1), zone);
 
@@ -67,8 +82,8 @@ public static class TodayQuery
             var groupSegs = g.ToList();
             var sessions = groupSegs.Where(s => Overlap(s, d0, d1) > 0 || (s.Open && s.End >= d0))
                 .OrderBy(s => s.Start)
-                .Select(s => new TodaySession(Math.Max(s.Start, d0), Math.Min(s.End, d1), s.Open)).ToList();
-            var open = groupSegs.Where(s => s.Open).ToList();
+                .Select(s => new TodaySession(Math.Max(s.Start, d0), Math.Min(s.End, d1), s.Open && isToday)).ToList();
+            var open = isToday ? groupSegs.Where(s => s.Open).ToList() : [];
             var seconds = groupSegs.Sum(s => Overlap(s, d0, d1));
             if (seconds == 0 && open.Count == 0) continue;
 
@@ -109,13 +124,14 @@ public static class TodayQuery
         var total = rows.Sum(r => r.Seconds);
         var y0 = DayStart(date.AddDays(-1), zone);
         // Same wall-clock time yesterday (a DST change makes elapsed time differ from clock time).
-        var cut = Math.Min(LocalDays.AtTime(date.AddDays(-1), TimeZoneInfo.ConvertTime(now, zone).TimeOfDay, zone), d0);
+        // A past day is compared with the whole day before it.
+        var cut = isToday ? Math.Min(LocalDays.AtTime(date.AddDays(-1), TimeZoneInfo.ConvertTime(now, zone).TimeOfDay, zone), d0) : d0;
         var yesterdayByNow = segs.Sum(s => Overlap(s, y0, cut));
 
-        var openSegs = segs.Where(s => s.Open).ToList();
+        var openSegs = isToday ? segs.Where(s => s.Open).ToList() : [];
         return new TodayResult(date, d0, d1, nowUtc, total,
             openSegs.Select(s => s.Group).Distinct().Count(), openSegs.Count,
-            hours, typicalDays > 0, SleepBands(segs, d0, nowUtc), first, longest, total - yesterdayByNow, rows);
+            hours, typicalDays > 0, SleepBands(segs, d0, Math.Min(nowUtc, d1)), first, longest, total - yesterdayByNow, rows);
     }
 
     private static string NameOf(Dictionary<long, App> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();

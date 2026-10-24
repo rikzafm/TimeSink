@@ -5,8 +5,8 @@ using System.Windows.Media;
 
 namespace TimeSink.UI.Controls;
 
-/// <summary>One matrix row as drawn: app name, its palette slot, cell texts with colour levels 0-4, and the row total text.</summary>
-public sealed record MatrixGridRow(string Name, int PaletteSlot, IReadOnlyList<string> CellText, IReadOnlyList<int> Levels, string Total);
+/// <summary>One matrix row as drawn: app name, its palette slot (the swatch shown when there is no <c>Icon</c>), cell texts with colour levels 0-4, and the row total text.</summary>
+public sealed record MatrixGridRow(string Name, int PaletteSlot, IReadOnlyList<string> CellText, IReadOnlyList<int> Levels, string Total, ImageSource? Icon = null);
 
 /// <summary>
 /// The Year app x month matrix: a header of month buttons, one row per app of heat cells with a total column, and an
@@ -15,7 +15,7 @@ public sealed record MatrixGridRow(string Name, int PaletteSlot, IReadOnlyList<s
 /// </summary>
 public sealed class MatrixGrid : FrameworkElement
 {
-    private const double HeaderHeight = 22, RowHeight = 32, Gap = 3, TotalWidth = 44, FooterGap = 6, FooterHeight = 24;
+    private const double HeaderHeight = 22, RowHeight = 32, Gap = 3, TotalWidth = 44, FooterGap = 6, FooterHeight = 24, IconSize = 16, NameInset = 22;
 
     private static DependencyProperty Reg<T>(string name, T def = default!) =>
         DependencyProperty.Register(name, typeof(T), typeof(MatrixGrid),
@@ -66,7 +66,7 @@ public sealed class MatrixGrid : FrameworkElement
 
     private int Columns => MonthLabels?.Count ?? 0;
     private int RowCount => Rows?.Count ?? 0;
-    private double NameWidth => Columns > 9 ? 62 : 70;
+    private double NameWidth => Columns > 9 ? 70 : 78;
     private double CellWidth => Columns == 0 ? 0 : Math.Max(1, (ActualWidth - NameWidth - TotalWidth - (Columns + 1) * Gap) / Columns);
     private double CellX(int col) => NameWidth + Gap + col * (CellWidth + Gap);
     private double RowY(int row) => HeaderHeight + Gap + row * (RowHeight + Gap);
@@ -97,9 +97,11 @@ public sealed class MatrixGrid : FrameworkElement
             var y = RowY(r);
             if (SelectedRow == r)
                 dc.DrawRoundedRectangle(null, new Pen(TextBrush, 1), new Rect(-1, y - 1, ActualWidth + 2, RowHeight + 2), 6, 6);
-            if (AppBrushes is { Count: > 0 } apps)
+            if (row.Icon is { } icon)
+                dc.DrawImage(icon, new Rect(0, y + (RowHeight - IconSize) / 2, IconSize, IconSize));
+            else if (AppBrushes is { Count: > 0 } apps)
                 dc.DrawRoundedRectangle(apps[row.PaletteSlot % apps.Count], null, new Rect(2, y + (RowHeight - 8) / 2, 8, 8), 2, 2);
-            Text(dc, row.Name, TextBrush, FontWeights.SemiBold, new Rect(16, y, NameWidth - 16, RowHeight), middle: true, trim: true);
+            Text(dc, row.Name, TextBrush, FontWeights.SemiBold, new Rect(NameInset, y, NameWidth - NameInset, RowHeight), middle: true, trim: true);
 
             for (var m = 0; m < months.Count && m < row.CellText.Count; m++)
             {
