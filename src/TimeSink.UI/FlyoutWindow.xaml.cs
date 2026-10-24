@@ -60,6 +60,7 @@ public partial class FlyoutWindow : Window
         Select(initialTab, persist: false);
         Closed += (_, _) => _live?.Dispose();
 #if DEBUG
+        if (Environment.GetEnvironmentVariable("TS_OPENICON") == "1") Loaded += (_, _) => { ToggleSettings(); _settings!.OpenIconPicker(); }; // test aid
         if (Environment.GetEnvironmentVariable("TS_OPENADD") == "1") Loaded += (_, _) => ShowAddApp(); // test aid (decision 115)
 #endif
     }

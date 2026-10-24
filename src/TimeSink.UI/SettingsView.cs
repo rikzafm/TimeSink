@@ -4,8 +4,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
+using TimeSink.Core.Icons;
+using TimeSink.Core.Ipc;
 using TimeSink.Core.Settings;
 using TimeSink.UI.Theming;
+using TimeSink.UI.Views;
 using static TimeSink.UI.Services.TimeText;
 
 namespace TimeSink.UI;
@@ -84,6 +87,7 @@ public sealed partial class SettingsView : Grid
             SettingKind.Switch => BuildSwitch(row),
             SettingKind.Segmented => BuildSegmented(row),
             SettingKind.Button => BuildButton(row),
+            SettingKind.Icon => BuildIconRow(row),
             _ => BuildInfo(row),
         };
         control.VerticalAlignment = VerticalAlignment.Center;
@@ -132,6 +136,38 @@ public sealed partial class SettingsView : Grid
             panel.Children.Add(b);
         }
         return panel;
+    }
+
+    // The App icon row shows the applied icon and opens the picker over the Settings page.
+    private FrameworkElement BuildIconRow(SettingRow row)
+    {
+        var name = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        name.SetResourceReference(TextBlock.StyleProperty, "Caption");
+        var thumb = new ContentControl { VerticalAlignment = VerticalAlignment.Center };
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        panel.Children.Add(thumb);
+        panel.Children.Add(name);
+
+        void Show(string id)
+        {
+            thumb.Content = IconPickerView.Thumb(id, 24, new Thickness(0));
+            name.Text = IconCatalogue.Find(id).Name;
+        }
+        Show(SettingsCatalogue.Read(_dbPath, row));
+        _showIcon = Show;
+
+        var b = new Button { Content = panel, Cursor = System.Windows.Input.Cursors.Hand };
+        b.SetResourceReference(StyleProperty, "LinkButton");
+        b.Click += (_, _) => OpenIconPicker();
+        return b;
+    }
+
+    private Action<string>? _showIcon;
+
+    public void OpenIconPicker()
+    {
+        var pipe = PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB"));
+        Children.Add(new IconPickerView(_dbPath, pipe, id => _showIcon?.Invoke(id), () => Children.RemoveAt(Children.Count - 1)));
     }
 
     private FrameworkElement BuildButton(SettingRow row)

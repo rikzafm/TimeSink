@@ -76,4 +76,42 @@ public class SettingsCatalogueTests
             File.Delete(path);
         }
     }
+
+    [Fact]
+    public void The_app_icon_row_is_in_Appearance_and_defaults_to_Ticks_Comic()
+    {
+        var row = SettingsCatalogue.Find("appIcon");
+        row.Section.Should().Be(SettingsCatalogue.Appearance);
+        row.Key.Should().Be("ui.icon");
+        row.Default.Should().Be("comic.ticks");
+    }
+
+    [Theory]
+    [InlineData(null, "comic.ticks")]
+    [InlineData("misprint.burst", "misprint.burst")]
+    [InlineData("clean.bars", "clean.bars")]
+    [InlineData("clean.nope", "comic.ticks")]
+    public void The_app_icon_setting_falls_back_to_the_default_for_unknown_ids(string? stored, string expected)
+        => SettingsCatalogue.Resolve(SettingsCatalogue.Find("appIcon"), stored).Should().Be(expected);
+
+    [Fact]
+    public void The_app_icon_round_trips_through_a_temp_database()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"ts-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (Db.Open(path)) { }
+            var row = SettingsCatalogue.Find("appIcon");
+            SettingsCatalogue.Read(path, row).Should().Be("comic.ticks");
+            SettingsCatalogue.Write(path, row, "misprint.web");
+            SettingsStore.Get(path, "ui.icon").Should().Be("misprint.web");
+            SettingsCatalogue.Write(path, row, "garbage");
+            SettingsCatalogue.Read(path, row).Should().Be("comic.ticks");
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
+    }
 }

@@ -150,6 +150,7 @@ CREATE TABLE ignored_suggestions (exe_path TEXT PRIMARY KEY COLLATE NOCASE, utc 
 | `ui.accent` | `Lime\|Blue\|Pink` | `Lime` | accent preset (Lime `#c6f26b`); maps to a colour override on the active theme |
 | `ui.lastTab` / `ui.lastYearView` | string | `Today` / `Pace` | remembered tab and Year sub-view (`Pace\|Wrapped\|Matrix`) |
 | `ui.compact` | bool | `false` | |
+| `ui.icon` | string | `comic.ticks` | App icon id, `style.motif` (decision 124) |
 | `ui.reduceEffects` | bool | follows Windows animation setting | |
 | `ui.instantOpen` | bool | `false` | keep UI warm (≈40 MB) |
 | `alerts.goals` | bool | `true` | |

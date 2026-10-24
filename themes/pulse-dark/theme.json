@@ -248,6 +248,10 @@
     "setDeleteDone": "All history was deleted.",
     "setDeleteFailed": "Delete failed: {0}",
     "setChooseFile": "Choose file…",
+    "setIconTitle": "App icon",
+    "setIconSubtitle": "Pick how TimeSink looks in the tray.",
+    "setIconApply": "Apply icon",
+    "setIconReset": "Reset",
     "setExportButton": "Export…",
     "setDeleteButton": "Delete…"
   }

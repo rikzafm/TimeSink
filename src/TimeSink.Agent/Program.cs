@@ -2,6 +2,7 @@
 using TimeSink.Agent.Native;
 using TimeSink.Core.Data;
 using TimeSink.Core.Flyout;
+using TimeSink.Core.Icons;
 using TimeSink.Core.Ipc;
 
 namespace TimeSink.Agent;
@@ -22,7 +23,10 @@ internal static class Program
     private static Process? s_ui;
     private const string CloseEventName = @"Local\TimeSink.UI.Close";
 
+    private const uint IconResourceVersion = 0x00030000; // the version CreateIconFromResourceEx requires
     private const uint TrayCallback = NativeMethods.WM_APP + 1;
+    private const uint SetIconMessage = NativeMethods.WM_APP + 4; // WM_APP + 2/3 are TrackingHost's
+    private static string s_requestedIcon = IconCatalogue.DefaultId;
     private const uint IdOpen = 1, IdQuit = 2;
     private const string ClassName = "TimeSink.Agent.MessageWindow";
 
@@ -70,7 +74,8 @@ internal static class Program
     {
         s_taskbarCreated = NativeMethods.RegisterWindowMessage("TaskbarCreated");
         var instance = NativeMethods.GetModuleHandle(0);
-        s_icon = NativeMethods.LoadIcon(0, NativeMethods.IDI_APPLICATION);
+        s_icon = LoadTrayIcon(IconCatalogue.Resolve(SettingsStore.Get(s_dbPath, "ui.icon")));
+        if (s_icon == 0) s_icon = NativeMethods.LoadIcon(0, NativeMethods.IDI_APPLICATION); // never add the tray entry without an icon
 
         fixed (char* className = ClassName)
         {
@@ -91,6 +96,7 @@ internal static class Program
         AddTrayIcon();
 
         s_ipc = new IpcServer(s_pipeName, () => s_tracking?.CurrentState ?? new StateMessage(false, []), Log.Error);
+        s_ipc.IconRequested += id => { s_requestedIcon = IconCatalogue.Resolve(id); NativeMethods.PostMessage(s_hwnd, SetIconMessage, 0, 0); };
         s_ipc.Start();
         s_tracking = new TrackingHost(s_db!, s_hwnd, s_ipc.Publish);
         s_tracking.Start();
@@ -128,6 +134,27 @@ internal static class Program
         for (var i = 0; i < Math.Min(title.Length, 63); i++) nid.szInfoTitle[i] = title[i];
         for (var i = 0; i < Math.Min(body.Length, 255); i++) nid.szInfo[i] = body[i];
         NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_MODIFY, &nid);
+    }
+
+    /// <summary>Builds the tray HICON for an icon id at the system small-icon size. 0 (no icon) if the frame cannot be loaded.</summary>
+    private static unsafe nint LoadTrayIcon(string id)
+    {
+        var px = NativeMethods.GetSystemMetricsForDpi(NativeMethods.SM_CXSMICON, NativeMethods.GetDpiForSystem());
+        var frame = IconCatalogue.ReadFrame(id, px);
+        fixed (byte* p = frame)
+            return NativeMethods.CreateIconFromResourceEx(p, (uint)frame.Length, true, IconResourceVersion, px, px, 0);
+    }
+
+    /// <summary>The UI applied a new icon: swap it on the live tray entry and free the old handle.</summary>
+    private static unsafe void ApplyTrayIcon()
+    {
+        var fresh = LoadTrayIcon(s_requestedIcon);
+        if (fresh == 0) return;
+        var old = s_icon;
+        s_icon = fresh;
+        var nid = new NOTIFYICONDATAW { cbSize = (uint)sizeof(NOTIFYICONDATAW), hWnd = s_hwnd, uID = 1, uFlags = NativeMethods.NIF_ICON, hIcon = fresh };
+        NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_MODIFY, &nid);
+        if (old != 0) NativeMethods.DestroyIcon(old);
     }
 
     private static unsafe void RemoveTrayIcon()
@@ -318,6 +345,9 @@ internal static class Program
                 if (ev == NativeMethods.WM_RBUTTONUP || ev == NativeMethods.WM_CONTEXTMENU) ShowMenu();
                 else if (ev == NativeMethods.WM_LBUTTONUP) ToggleFlyout();
                 else if (ev == NativeMethods.WM_MOUSEMOVE) OnTrayHover();
+                return 0;
+            case SetIconMessage:
+                ApplyTrayIcon();
                 return 0;
             case NativeMethods.WM_DESTROY:
                 s_backup?.Stop();

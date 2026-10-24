@@ -1,8 +1,9 @@
 using TimeSink.Core.Data;
+using TimeSink.Core.Icons;
 
 namespace TimeSink.Core.Settings;
 
-public enum SettingKind { Switch, Segmented, Button, Info }
+public enum SettingKind { Switch, Segmented, Button, Info, Icon }
 
 public sealed record SettingOption(string Value, string Label);
 
@@ -42,6 +43,7 @@ public static class SettingsCatalogue
         new("theme", Appearance, "Theme", "Follows Windows when set to System.", SettingKind.Segmented, "ui.theme", "System", Opts("Dark", "Light", "System")),
         new("accent", Appearance, "Accent", "The highlight colour used across the app.", SettingKind.Segmented, "ui.accent", "Lime", Opts("Lime", "Blue", "Pink")),
         new("compact", Appearance, "Compact lists", "Tighter rows in app lists.", SettingKind.Switch, "ui.compact", "false"),
+        new("appIcon", Appearance, "App icon", "How TimeSink looks in the tray.", SettingKind.Icon, "ui.icon", IconCatalogue.DefaultId),
 
         new("goalAlerts", Notifications, "Goal and limit alerts", "A notification when a goal or limit is reached.", SettingKind.Switch, "alerts.goals", "true"),
         new("weeklySummary", Notifications, "Weekly summary", "A short recap at the start of each week.", SettingKind.Switch, "alerts.weekly", "false"),
@@ -68,6 +70,7 @@ public static class SettingsCatalogue
         {
             SettingKind.Switch => stored is "true" or "false" ? stored : row.Default,
             SettingKind.Segmented => row.OptionList.Any(o => o.Value == stored) ? stored : row.Default,
+            SettingKind.Icon => IconCatalogue.Resolve(stored),
             _ => row.Default,
         };
     }

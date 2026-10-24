@@ -48,6 +48,19 @@ public sealed class IpcClient : IDisposable
         }
     }
 
+    /// <summary>One-shot send to the Agent. A missing Agent is not an error: the setting is already saved and the Agent reads it on start.</summary>
+    public static async Task SendAsync(string pipeName, IpcMessage message, TimeSpan? timeout = null, CancellationToken ct = default)
+    {
+        try
+        {
+            using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            await pipe.ConnectAsync((int)(timeout ?? TimeSpan.FromMilliseconds(500)).TotalMilliseconds, ct).ConfigureAwait(false);
+            await IpcFraming.WriteAsync(pipe, message, ct).ConfigureAwait(false);
+            await pipe.FlushAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or TimeoutException or UnauthorizedAccessException) { }
+    }
+
     public void Dispose()
     {
         _cts.Cancel();

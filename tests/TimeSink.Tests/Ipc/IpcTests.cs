@@ -81,6 +81,25 @@ public class IpcPipeTests
     }
 
     [Fact]
+    public async Task A_set_icon_request_from_the_UI_reaches_the_agent()
+    {
+        var name = NewName();
+        using var server = new IpcServer(name, () => new StateMessage(false, []));
+        var got = new TaskCompletionSource<string>();
+        server.IconRequested += id => got.TrySetResult(id);
+        server.Start();
+
+        await IpcClient.SendAsync(name, new SetIconMessage("misprint.rings"));
+
+        (await Next(got)).Should().Be("misprint.rings");
+    }
+
+    [Fact]
+    public async Task Sending_with_no_agent_listening_does_not_throw()
+        => await FluentActions.Awaiting(() => IpcClient.SendAsync(NewName(), new SetIconMessage("clean.bars"), TimeSpan.FromMilliseconds(50)))
+            .Should().NotThrowAsync();
+
+    [Fact]
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public void A_scratch_database_gets_its_own_pipe_name()
     {

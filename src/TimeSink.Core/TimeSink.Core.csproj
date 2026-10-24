@@ -7,6 +7,9 @@
     <InternalsVisibleTo Include="TimeSink.Tests" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Icons\*.ico" LogicalName="TimeSink.Icons.%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.14" />
   </ItemGroup>

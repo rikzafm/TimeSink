@@ -27,6 +27,9 @@ public sealed class IpcServer : IDisposable
         _log = log;
     }
 
+    /// <summary>Raised (on a thread-pool thread) with the icon id when a UI sends <see cref="SetIconMessage"/>.</summary>
+    public event Action<string>? IconRequested;
+
     public void Start() => _ = Task.Run(AcceptLoop);
 
     public int ClientCount { get { lock (_clients) return _clients.Count; } }
@@ -67,7 +70,10 @@ public sealed class IpcServer : IDisposable
         try
         {
             while (await IpcFraming.ReadAsync(client.Pipe, _cts.Token).ConfigureAwait(false) is { } msg)
+            {
                 if (msg is GetStateMessage) await SendAsync(client, _current()).ConfigureAwait(false);
+                else if (msg is SetIconMessage icon) IconRequested?.Invoke(icon.IconId);
+            }
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or OperationCanceledException or ObjectDisposedException) { }
         finally

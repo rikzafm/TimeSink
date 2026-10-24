@@ -152,6 +152,22 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", EntryPoint = "LoadIconW")]
     public static partial nint LoadIcon(nint instance, nint name);
 
+    /// <summary>Builds an HICON from one PNG (or DIB) icon frame.</summary>
+    [LibraryImport("user32.dll")]
+    public static unsafe partial nint CreateIconFromResourceEx(byte* bits, uint size, [MarshalAs(UnmanagedType.Bool)] bool icon, uint version, int cx, int cy, uint flags);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DestroyIcon(nint icon);
+
+    [LibraryImport("user32.dll")]
+    public static partial uint GetDpiForSystem();
+
+    [LibraryImport("user32.dll")]
+    public static partial int GetSystemMetricsForDpi(int index, uint dpi);
+
+    public const int SM_CXSMICON = 49;
+
     [LibraryImport("user32.dll")]
     public static partial nint CreatePopupMenu();
 
