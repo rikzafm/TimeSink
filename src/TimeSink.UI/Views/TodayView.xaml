@@ -1,0 +1,107 @@
+<UserControl x:Class="TimeSink.UI.Views.TodayView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:TimeSink.UI.Controls">
+    <UserControl.Resources>
+        <Style x:Key="Soft" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextSoft}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource FontFamily.Ui}"/>
+            <Setter Property="FontSize" Value="{DynamicResource Double.FontSize.Body}"/>
+        </Style>
+        <Style x:Key="Small" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource FontFamily.Ui}"/>
+            <Setter Property="FontSize" Value="{DynamicResource Double.FontSize.Small}"/>
+        </Style>
+        <Style x:Key="Number" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}"/>
+            <Setter Property="FontFamily" Value="{DynamicResource FontFamily.Numbers}"/>
+            <Setter Property="FontSize" Value="{DynamicResource Double.FontSize.Body}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style x:Key="Tile" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource Brush.Panel}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}"/>
+            <Setter Property="BorderThickness" Value="{DynamicResource Thickness.Border}"/>
+            <Setter Property="CornerRadius" Value="{DynamicResource CornerRadius.Medium}"/>
+            <Setter Property="Padding" Value="11,9"/>
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Hidden" Focusable="False">
+        <StackPanel Margin="16,10,16,12">
+            <TextBlock x:Name="Caption" Style="{StaticResource Small}" FontSize="{DynamicResource Double.FontSize.Body}"/>
+
+            <Grid Margin="0,2,0,6">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="TotalMain" Foreground="{DynamicResource Brush.Accent}"
+                               FontFamily="{DynamicResource FontFamily.Numbers}" FontWeight="SemiBold"
+                               FontSize="{DynamicResource Double.FontSize.Display}"/>
+                    <TextBlock x:Name="TotalSeconds" Style="{StaticResource Small}" Margin="6,0,0,5" VerticalAlignment="Bottom"
+                               FontFamily="{DynamicResource FontFamily.Numbers}" FontSize="{DynamicResource Double.FontSize.Body}"/>
+                </StackPanel>
+                <Border HorizontalAlignment="Right" VerticalAlignment="Center" Padding="10,5"
+                        Background="{DynamicResource Brush.Panel}" BorderBrush="{DynamicResource Brush.Border}"
+                        BorderThickness="{DynamicResource Thickness.Border}" CornerRadius="999">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse x:Name="RunningDot" Width="8" Height="8" Margin="0,0,6,0" Fill="{DynamicResource Brush.Accent}"/>
+                        <TextBlock x:Name="RunningText" Style="{StaticResource Number}" FontSize="{DynamicResource Double.FontSize.Small}"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <c:HourlyBars x:Name="Chart" Height="104" Margin="0,0,0,4"
+                          TextElement.FontFamily="{DynamicResource FontFamily.Numbers}"
+                          LabelFontFamily="{DynamicResource FontFamily.Numbers}"
+                          LabelFontSize="{DynamicResource Double.FontSize.Small}"
+                          BarBrush="{DynamicResource Brush.Heat2}" CurrentBrush="{DynamicResource Brush.Accent}"
+                          MutedBrush="{DynamicResource Brush.TextMuted}" LabelTextBrush="{DynamicResource Brush.OnAccent}"/>
+            <Grid x:Name="Axis" Margin="0,0,0,6"/>
+
+            <WrapPanel Margin="0,0,0,12">
+                <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                    <Rectangle Width="9" Height="9" RadiusX="2" RadiusY="2" Fill="{DynamicResource Brush.Accent}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                    <TextBlock Style="{StaticResource Small}" Text="{DynamicResource Str.LegendAppsOpen}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                    <Rectangle Width="9" Height="2" Fill="{DynamicResource Brush.TextMuted}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                    <TextBlock Style="{StaticResource Small}" Text="{DynamicResource Str.LegendTypical}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Rectangle Width="9" Height="9" Stroke="{DynamicResource Brush.TextMuted}" StrokeThickness="1" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                    <TextBlock Style="{StaticResource Small}" Text="{DynamicResource Str.LegendAsleep}"/>
+                </StackPanel>
+            </WrapPanel>
+
+            <TextBlock x:Name="EarlyHint" Style="{StaticResource Small}" TextWrapping="Wrap" Margin="0,0,0,10"
+                       Text="{DynamicResource Str.TodayEarlyHint}" Visibility="Collapsed"/>
+
+            <UniformGrid Rows="1" Margin="0,0,0,10">
+                <Border Style="{StaticResource Tile}" Margin="0,0,4,0">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Small}" Text="{DynamicResource Str.TileFirstApp}"/>
+                        <TextBlock x:Name="TileFirst" Style="{StaticResource Number}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}" Margin="2,0">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Small}" Text="{DynamicResource Str.TileLongest}"/>
+                        <TextBlock x:Name="TileLongest" Style="{StaticResource Number}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Tile}" Margin="4,0,0,0">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Small}" Text="{DynamicResource Str.TileVsYesterday}"/>
+                        <TextBlock x:Name="TileVs" Style="{StaticResource Number}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <TextBlock x:Name="Empty" Style="{StaticResource Small}" TextWrapping="Wrap" HorizontalAlignment="Center" Margin="0,16"
+                       Text="{DynamicResource Str.TodayEmpty}" Visibility="Collapsed"/>
+            <StackPanel x:Name="UntrackedHost"/>
+            <TextBlock x:Name="TrackedHeader" Style="{StaticResource Small}" Margin="0,0,0,4" Text="{DynamicResource Str.TodayTrackedHeader}" Visibility="Collapsed"/>
+            <StackPanel x:Name="Rows"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

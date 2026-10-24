@@ -4,8 +4,12 @@
 
 **Blocked by:** 06
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Week start follows the setting
 - [ ] Streak counts days with any tracked time and today does not break it
 - [ ] Numbers match a hand-computed fixture
+
+## Answer
+
+Implemented and merged on integration/timesink-v1; see docs/decisions.md for deviations. Unchecked acceptance boxes were verified by tests or the implementer's live run, not by hand-tick.

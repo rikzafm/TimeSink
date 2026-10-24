@@ -1,1 +1,6 @@
 design/
+bin/
+obj/
+artifacts/
+.vs/
+*.user

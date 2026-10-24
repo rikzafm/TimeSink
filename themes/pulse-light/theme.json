@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "id": "pulse-light",
+  "name": "Pulse Light",
+  "author": "TimeSink",
+  "version": "1.0.0",
+  "extends": "pulse-dark",
+  "colors": {
+    "surface": "#f6f7f2", "surfaceAlt": "#eceee5", "panel": "#ffffff",
+    "border": "#d5d9c8", "borderSoft": "#e3e6d9",
+    "text": "#1a1f14", "textSoft": "#3b4330", "textMuted": "#5f6855",
+    "accent": "#4f7a0a", "onAccent": "#ffffff", "warning": "#9a5b00", "danger": "#b3261e",
+    "heat": ["#e6e9dc", "#cfe3a8", "#a8cc66", "#7fae2e", "#4f7a0a"],
+    "apps": ["#1f7fb5", "#4f7a0a", "#b36b00", "#7d4fc4", "#c43c62", "#a8870a"]
+  }
+}

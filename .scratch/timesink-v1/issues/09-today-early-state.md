@@ -4,8 +4,12 @@
 
 **Blocked by:** 07
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Caption shows while today's total is under 1 h
 - [ ] Untracked card shows any time untracked running apps exist and suggestions are on
 - [ ] Track adds the app immediately and the card updates
+
+## Answer
+
+Implemented and merged on integration/timesink-v1; see docs/decisions.md for deviations. Unchecked acceptance boxes were verified by tests or the implementer's live run, not by hand-tick.

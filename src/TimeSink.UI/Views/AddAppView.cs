@@ -1,0 +1,391 @@
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Markup;
+using System.Windows.Media;
+using System.Windows.Shapes;
+using System.Windows.Threading;
+using TimeSink.Core.Apps;
+using TimeSink.Core.Usage;
+using TimeSink.UI.Services;
+using TimeSink.UI.Theming;
+
+namespace TimeSink.UI.Views;
+
+/// <summary>
+/// Add app screen (board PulseAdd): a full-flyout overlay with the Running tab. Built in code; every colour, font and
+/// text comes from theme resources (<c>Brush.*</c>, <c>Str.*</c>). Tracking writes through <see cref="AppLibrary"/>;
+/// the Agent picks the new app up on its next tick (decision 39).
+/// </summary>
+public sealed partial class AddAppView : UserControl
+{
+    private sealed class Row
+    {
+        public required RunningApp App;
+        public required string? Aumid;
+        public byte[]? Png;
+        public bool Done;
+        public Border Tile = null!;
+        public Button Button = null!;
+    }
+
+    private static readonly ControlTemplate Flat = (ControlTemplate)XamlReader.Parse(
+        "<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'>" +
+        "<Border Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1' " +
+        "CornerRadius='{DynamicResource CornerRadius.Small}' Padding='{TemplateBinding Padding}'>" +
+        "<ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center' TextElement.Foreground='{TemplateBinding Foreground}'/>" +
+        "</Border></ControlTemplate>");
+
+    private sealed record Capture(IReadOnlyList<RunningApp> Apps, IReadOnlyDictionary<string, string> Aumids, Dictionary<string, byte[]?> Icons);
+
+    private readonly ThemeService _themes;
+    private readonly string _dbPath;
+    private readonly Action _close;
+    private readonly StackPanel _list = new();
+    private readonly TextBlock _count = new();
+    private readonly Dictionary<string, Row> _session = new(StringComparer.OrdinalIgnoreCase); // added in this visit
+    private readonly Dictionary<string, byte[]?> _iconCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(4) };
+    private List<Row> _rows = [];
+    private bool _loading;
+    private ContentControl _body = null!;
+    private string _tab = "Running";
+    private readonly Dictionary<string, RadioButton> _tabButtons = new();
+    private readonly HashSet<string> _addedElsewhere = new(StringComparer.OrdinalIgnoreCase); // added from Installed/Browse in this visit
+
+    public AddAppView(ThemeService themes, string dbPath, Action close)
+    {
+        _themes = themes;
+        _dbPath = dbPath;
+        _close = close;
+        SetResourceReference(BackgroundProperty, "Brush.Surface");
+        Content = BuildShell();
+        _timer.Tick += (_, _) => Refresh();
+        Loaded += (_, _) => { _themes.Applied += Redraw; Refresh(); _timer.Start(); };
+        Unloaded += (_, _) => { _themes.Applied -= Redraw; _timer.Stop(); };
+    }
+
+    // ---- shell: header, tabs, body, footer ----------------------------------------------------------------
+
+    private UIElement BuildShell()
+    {
+        var root = new Grid();
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        // header: back, title, close
+        var header = new Grid { Margin = new Thickness(10, 12, 14, 0) };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var back = IconButton("M15,6 L9,12 L15,18", "Brush.TextSoft");
+        back.Click += (_, _) => _close();
+        var title = new TextBlock { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.Bold };
+        title.SetResourceReference(TextBlock.TextProperty, "Str.AddAppTitle");
+        title.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+        title.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        title.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Title");
+        var close = IconButton("M6,6 L18,18 M18,6 L6,18", "Brush.TextMuted");
+        close.Click += (_, _) => _close();
+        Grid.SetColumn(title, 1);
+        Grid.SetColumn(close, 2);
+        header.Children.Add(back);
+        header.Children.Add(title);
+        header.Children.Add(close);
+        Grid.SetRow(header, 0);
+        root.Children.Add(header);
+
+        // tabs
+        var tabs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 8, 20, 0) };
+        var strip = new Border { BorderThickness = new Thickness(0, 0, 0, 1), Child = tabs };
+        strip.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
+        foreach (var (key, tag) in new[] { (AddAppStrings.TabRunning, "Running"), (AddAppStrings.TabInstalled, "Installed"), (AddAppStrings.TabBrowse, "Browse") })
+        {
+            var rb = new RadioButton { Tag = tag, IsChecked = tag == "Running", Margin = new Thickness(0, 0, 18, 0), Style = (Style)FindResource("TabButton") };
+            rb.SetResourceReference(ContentControl.ContentProperty, "Str." + char.ToUpperInvariant(key[0]) + key[1..]);
+            rb.Checked += (_, _) => ShowTab(tag);
+            _tabButtons[tag] = rb;
+            tabs.Children.Add(rb);
+        }
+        Grid.SetRow(strip, 1);
+        root.Children.Add(strip);
+
+        _body = new ContentControl();
+        Grid.SetRow(_body, 2);
+        root.Children.Add(_body);
+        _body.Content = BuildRunningTab();
+
+        // footer: "N added this session" + Done
+        var footer = new Grid { Margin = new Thickness(14, 8, 14, 10) };
+        _count.VerticalAlignment = VerticalAlignment.Center;
+        _count.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+        _count.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        _count.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+        var done = new Button { Template = Flat, HorizontalAlignment = HorizontalAlignment.Right, Padding = new Thickness(14, 6, 14, 6), Cursor = System.Windows.Input.Cursors.Hand, Focusable = false };
+        done.SetResourceReference(ContentControl.ContentProperty, "Str.AddDone");
+        done.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
+        done.SetResourceReference(Control.BackgroundProperty, "Brush.Surface");
+        done.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");
+        done.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
+        done.SetResourceReference(Control.FontSizeProperty, "Double.FontSize.Body");
+        done.Click += (_, _) => _close();
+        footer.Children.Add(_count);
+        footer.Children.Add(done);
+        Grid.SetRow(footer, 3);
+        root.Children.Add(footer);
+        UpdateCount();
+        return root;
+    }
+
+    private void ShowTab(string tag)
+    {
+        _tab = tag;
+        switch (tag)
+        {
+            case "Running": _body.Content = BuildRunningTab(); Render(); Refresh(); break;
+            case "Installed": _body.Content = BuildInstalledTab(); break;
+            default: _body.Content = BuildBrowseTab(); break;
+        }
+    }
+
+    private UIElement BuildRunningTab()
+    {
+        var host = new StackPanel { Margin = new Thickness(12, 12, 12, 0) };
+        host.Children.Add(_list);
+        return new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = host };
+    }
+
+    // ---- data ---------------------------------------------------------------------------------------------
+
+    private void Refresh()
+    {
+        if (_loading || _tab != "Running") return;
+        _loading = true;
+        var path = _dbPath;
+        var known = _iconCache.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Task.Run(() =>
+        {
+            try
+            {
+                ExcludedApps excluded;
+                using (var lib = AppLibrary.Open(path)) excluded = lib.ExcludedFromRunning();
+                var snap = RunningWindows.Capture();
+                var apps = RunningApps.Select(snap.Windows, excluded);
+                var icons = new Dictionary<string, byte[]?>(StringComparer.OrdinalIgnoreCase);
+                foreach (var a in apps)
+                    if (!known.Contains(a.ExePath))
+                        icons[a.ExePath] = IconService.ExtractPng(a.ExePath, snap.AumidByPath.GetValueOrDefault(a.ExePath));
+                return new Capture(apps, snap.AumidByPath, icons);
+            }
+            catch { return null; }
+        }).ContinueWith(t =>
+        {
+            _loading = false;
+            if (t.Result is not { } loaded) return;
+            var (apps, aumids, icons) = loaded;
+            foreach (var (p, png) in icons) _iconCache[p] = png;
+            var fresh = apps.Select(a => new Row { App = a, Aumid = aumids.GetValueOrDefault(a.ExePath), Png = _iconCache.GetValueOrDefault(a.ExePath) }).ToList();
+            // rows tracked in this visit stay on screen as "Tracking ✓" (the exclusion list no longer returns them)
+            var merged = fresh.Where(r => !_session.ContainsKey(r.App.ExePath)).Concat(_session.Values)
+                .OrderBy(r => r.App.StartUtc).ToList();
+            _rows = merged;
+            Render();
+        }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    private void Track(Row row)
+    {
+        if (row.Done) return;
+        var app = row.App;
+        try
+        {
+            using var lib = AppLibrary.Open(_dbPath);
+            lib.AddTracked(new NewApp(app.ExePath, app.DisplayName, app.PackageFamily), DateTimeOffset.UtcNow.ToUnixTimeSeconds(), row.Png);
+        }
+        catch { return; } // database busy or missing: the button stays "Track" so the user can retry
+        row.Done = true;
+        _session[app.ExePath] = row;
+        StyleButton(row);
+        UpdateCount();
+    }
+
+    /// <summary>"Not this one": the app joins the ignore list and leaves the list.</summary>
+    private void Dismiss(Row row)
+    {
+        if (row.Done) return;
+        try
+        {
+            using var lib = AppLibrary.Open(_dbPath);
+            lib.Ignore(row.App.ExePath, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        }
+        catch { return; }
+        _rows.Remove(row);
+        Render();
+    }
+
+    // ---- rendering ----------------------------------------------------------------------------------------
+
+    private void Redraw() { UpdateCount(); Render(); }
+
+    private void UpdateCount() => _count.Text = TimeText.Str(AddAppStrings.AddedCount, _session.Keys.Union(_addedElsewhere, StringComparer.OrdinalIgnoreCase).Count());
+
+    private void Render()
+    {
+        _list.Children.Clear();
+        var header = Text("Str.AddRunningHeader", "Double.FontSize.Small", "Brush.TextMuted");
+        header.Margin = new Thickness(8, 0, 0, 8);
+        _list.Children.Add(header);
+
+        if (_rows.Count == 0)
+        {
+            var empty = Text("Str.AddRunningEmpty", "Double.FontSize.Body", "Brush.TextMuted");
+            empty.Margin = new Thickness(8, 8, 8, 8);
+            _list.Children.Add(empty);
+        }
+        var now = DateTimeOffset.UtcNow;
+        foreach (var row in _rows) _list.Children.Add(BuildRow(row, now));
+        _list.Children.Add(BuildHint());
+    }
+
+    private UIElement BuildRow(Row row, DateTimeOffset now)
+    {
+        var g = new Grid { Margin = new Thickness(0, 0, 0, 2) };
+        g.Margin = new Thickness(0, 0, 0, 2);
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var tile = IconTile(row);
+        tile.SetResourceReference(FrameworkElement.MarginProperty, "Thickness.RowTile");
+        row.Tile = tile;
+
+        var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var name = new TextBlock { Text = row.App.DisplayName, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
+        name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+        name.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        name.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
+        var open = new TextBlock { Text = TimeText.Str(AddAppStrings.OpenFor, DurationFormat.HoursMinutes((long)(now - row.App.StartUtc).TotalSeconds)) };
+        open.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+        open.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        open.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+        var sub = new StackPanel { Orientation = Orientation.Horizontal };
+        sub.Children.Add(open);
+        var notThis = Text("Str.AddNotThisOne", "Double.FontSize.Small", "Brush.TextMuted");
+        notThis.Margin = new Thickness(10, 0, 0, 0);
+        notThis.TextDecorations = TextDecorations.Underline;
+        notThis.Cursor = System.Windows.Input.Cursors.Hand;
+        notThis.MouseLeftButtonUp += (_, _) => Dismiss(row);
+        sub.Children.Add(notThis);
+        texts.Children.Add(name);
+        texts.Children.Add(sub);
+
+        var button = new Button { Template = Flat, VerticalAlignment = VerticalAlignment.Center, MinWidth = 76, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(14, 6, 14, 6), Cursor = System.Windows.Input.Cursors.Hand, Focusable = false, FontWeight = FontWeights.Bold };
+        button.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.Button");
+        button.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
+        button.SetResourceReference(Control.FontSizeProperty, "Double.FontSize.Body");
+        button.Click += (_, _) => Track(row);
+        row.Button = button;
+        StyleButton(row);
+
+        Grid.SetColumn(texts, 1);
+        Grid.SetColumn(button, 2);
+        g.Children.Add(tile);
+        g.Children.Add(texts);
+        g.Children.Add(button);
+        return g;
+    }
+
+    private static void StyleButton(Row row)
+    {
+        var b = row.Button;
+        b.SetResourceReference(ContentControl.ContentProperty, row.Done ? "Str.AddTracking" : "Str.AddTrack");
+        b.SetResourceReference(Control.BackgroundProperty, row.Done ? "Brush.Surface" : "Brush.Accent");
+        b.SetResourceReference(Control.ForegroundProperty, row.Done ? "Brush.Accent" : "Brush.OnAccent");
+        b.SetResourceReference(Control.BorderBrushProperty, row.Done ? "Brush.Border" : "Brush.Accent");
+        b.IsHitTestVisible = !row.Done;
+    }
+
+    private Border IconTile(Row row) => MakeTile(row.App.DisplayName, row.App.ExePath, row.Png);
+
+    /// <summary>Cached/extracted icon when there is one, else a letter tile in a palette colour.</summary>
+    private Border MakeTile(string name, string exePath, byte[]? png)
+    {
+        var tile = new Border { BorderThickness = new Thickness(1) };
+        tile.SetResourceReference(FrameworkElement.WidthProperty, "Double.Row.TileLarge");
+        tile.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.TileLarge");
+        tile.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
+        tile.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
+        FillTile(tile, name, exePath, png);
+        return tile;
+    }
+
+    private void FillTile(Border tile, string name, string exePath, byte[]? png)
+    {
+        var bmp = IconService.Decode(png);
+        if (bmp is not null)
+        {
+            tile.ClearValue(Border.BackgroundProperty);
+            tile.Padding = new Thickness(3);
+            tile.Child = new Image { Source = bmp, Stretch = Stretch.Uniform };
+            return;
+        }
+        tile.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+        var letter = new TextBlock
+        {
+            Text = LetterTile.Letter(name), FontWeight = FontWeights.Bold,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+        };
+        var slot = LetterTile.PaletteIndex(LetterTile.KeyFor(exePath), Math.Max(1, _themes.Current.Apps.Count));
+        letter.SetResourceReference(TextBlock.ForegroundProperty, "Brush.App" + slot);
+        letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        letter.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Title");
+        tile.Child = letter;
+    }
+
+    private UIElement BuildHint()
+    {
+        var wrap = new Grid { Margin = new Thickness(8, 12, 8, 12) };
+        var dashed = new Rectangle { StrokeDashArray = [4, 3], StrokeThickness = 1, Fill = Brushes.Transparent };
+        dashed.SetResourceReference(Rectangle.RadiusXProperty, "Double.Radius.Medium");
+        dashed.SetResourceReference(Rectangle.RadiusYProperty, "Double.Radius.Medium");
+        dashed.SetResourceReference(Shape.StrokeProperty, "Brush.Border");
+        var line = new TextBlock { Margin = new Thickness(12, 10, 12, 10), TextWrapping = TextWrapping.Wrap };
+        line.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+        line.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        line.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+        line.Inlines.Add(new Run(TimeText.Str(AddAppStrings.HintBefore)));
+        var link = new Run(TimeText.Str(AddAppStrings.HintLink)) { FontWeight = FontWeights.Bold, TextDecorations = TextDecorations.Underline };
+        link.SetResourceReference(TextElement.ForegroundProperty, "Brush.Accent");
+        link.Cursor = System.Windows.Input.Cursors.Hand;
+        link.MouseLeftButtonUp += (_, _) => _tabButtons["Installed"].IsChecked = true;
+        line.Inlines.Add(link);
+        line.Inlines.Add(new Run(TimeText.Str(AddAppStrings.HintAfter)));
+        wrap.Children.Add(dashed);
+        wrap.Children.Add(line);
+        return wrap;
+    }
+
+    private TextBlock Text(string? strKey, string sizeKey, string brushKey)
+    {
+        var t = new TextBlock();
+        if (strKey is not null) t.SetResourceReference(TextBlock.TextProperty, strKey);
+        t.SetResourceReference(TextBlock.ForegroundProperty, brushKey);
+        t.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        t.SetResourceReference(TextBlock.FontSizeProperty, sizeKey);
+        return t;
+    }
+
+    private Button IconButton(string pathData, string brushKey)
+    {
+        var path = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse(pathData), StrokeThickness = 2.2, Width = 18, Height = 18, Stretch = Stretch.Uniform,
+            StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
+        };
+        path.SetResourceReference(Shape.StrokeProperty, brushKey);
+        var b = new Button { Template = Flat, Content = path, Width = 34, Height = 34, Cursor = System.Windows.Input.Cursors.Hand, Focusable = false, Background = Brushes.Transparent, BorderBrush = Brushes.Transparent };
+        return b;
+    }
+}
