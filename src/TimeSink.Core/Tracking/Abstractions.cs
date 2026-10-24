@@ -64,6 +64,11 @@ public interface ISessionStore
 {
     /// <summary>Apps with state 'tracked'.</summary>
     IReadOnlyList<TrackedApp> GetTrackedApps();
+    /// <summary>
+    /// Changes whenever another connection (the UI) commits to the database; null when the store cannot tell, which
+    /// means "assume it changed". Lets the Agent skip re-reading the app list on ticks where nothing external happened.
+    /// </summary>
+    long? DataVersion => null;
     IReadOnlyList<SessionRecord> GetOpenSessions();
     IReadOnlyList<SessionRecord> GetAllSessions();
     /// <summary>Opens a session. If (app, start) is taken the start is moved forward to the next free second.</summary>

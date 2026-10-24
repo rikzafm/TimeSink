@@ -316,7 +316,7 @@ public sealed class TrackingEngineTests : IDisposable
     {
         _r.Procs.Running.Add(_r.Notepad(1));
         _r.TickEvery5(0, 40);
-        _r.Db.SetAppState(_r.NotepadId, "retired", U(41));
+        _r.ExternalExec($"UPDATE apps SET state = 'retired', retired_utc = {U(41)} WHERE id = {_r.NotepadId}"); // as the UI does
         _r.Clock.UtcNow = Rig.At(42);
         _r.Engine.ReloadTrackedApps();
 
@@ -328,12 +328,63 @@ public sealed class TrackingEngineTests : IDisposable
     [Fact]
     public void An_app_added_while_running_is_picked_up_after_reload()
     {
-        var calc = _r.Db.InsertApp(@"c:\windows\calc.exe", "Calc", U(0));
+        _r.ExternalExec(@"INSERT INTO apps (exe_path, display_name, added_utc) VALUES ('c:\windows\calc.exe', 'Calc', 0)");
+        var calc = _r.Db.GetApps().Single(a => a.DisplayName == "Calc").Id;
         _r.Procs.Running.Add(new ProcInfo(9, "calc.exe", @"c:\windows\calc.exe", Rig.At(-10)));
         _r.Tick(0);
         _r.Sessions.Should().BeEmpty();
         _r.Engine.ReloadTrackedApps();
         _r.Tick(5);
         _r.Sessions.Single().AppId.Should().Be(calc);
+    }
+
+    [Fact]
+    public void Reload_re_reads_the_app_list_only_when_another_connection_committed()
+    {
+        var store = new CountingStore(_r.Store);
+        var engine = new TrackingEngine(store, _r.Procs, _r.Clock, _r.Settings, _r.Zone);
+        var baseline = store.AppReads;
+
+        engine.ReloadTrackedApps(); // first call: nothing known yet about the version it was built with
+        engine.ReloadTrackedApps();
+        engine.ReloadTrackedApps();
+        store.AppReads.Should().BeLessThanOrEqualTo(baseline); // the constructor already read at this version
+
+        _r.ExternalExec("UPDATE settings SET value = value WHERE 0"); // no change: no commit
+        engine.ReloadTrackedApps();
+        store.AppReads.Should().BeLessThanOrEqualTo(baseline);
+
+        _r.ExternalExec("INSERT INTO settings (key, value) VALUES ('x', '1')"); // the UI committed
+        engine.ReloadTrackedApps();
+        store.AppReads.Should().Be(baseline + 1);
+        engine.ReloadTrackedApps();
+        store.AppReads.Should().Be(baseline + 1);
+    }
+
+    [Fact]
+    public void A_store_that_cannot_tell_always_reloads()
+    {
+        var store = new CountingStore(_r.Store, versioned: false);
+        var engine = new TrackingEngine(store, _r.Procs, _r.Clock, _r.Settings, _r.Zone);
+        var baseline = store.AppReads;
+        engine.ReloadTrackedApps();
+        engine.ReloadTrackedApps();
+        store.AppReads.Should().Be(baseline + 2);
+    }
+
+    private sealed class CountingStore(ISessionStore inner, bool versioned = true) : ISessionStore
+    {
+        public int AppReads { get; private set; }
+        public long? DataVersion => versioned ? inner.DataVersion : null;
+        public IReadOnlyList<TrackedApp> GetTrackedApps() { AppReads++; return inner.GetTrackedApps(); }
+        public IReadOnlyList<SessionRecord> GetOpenSessions() => inner.GetOpenSessions();
+        public IReadOnlyList<SessionRecord> GetAllSessions() => inner.GetAllSessions();
+        public SessionRecord OpenSession(long appId, long startUtc, int? pid, long? procStartUtc) => inner.OpenSession(appId, startUtc, pid, procStartUtc);
+        public void Heartbeat(long sessionId, long lastSeenUtc) => inner.Heartbeat(sessionId, lastSeenUtc);
+        public void CloseSession(long sessionId, long endUtc, string reason) => inner.CloseSession(sessionId, endUtc, reason);
+        public void DeleteSession(long sessionId) => inner.DeleteSession(sessionId);
+        public void AddDailyUsage(long appId, string day, long deltaSeconds) => inner.AddDailyUsage(appId, day, deltaSeconds);
+        public IReadOnlyList<DailyUsageRow> GetDailyUsage() => inner.GetDailyUsage();
+        public void ReplaceDailyUsage(IReadOnlyCollection<DailyUsageRow> rows) => inner.ReplaceDailyUsage(rows);
     }
 }

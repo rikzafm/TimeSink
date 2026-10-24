@@ -78,6 +78,16 @@ public sealed class Rig : IDisposable
     public Dictionary<string, long> Daily(long? appId = null) =>
         Store.GetDailyUsage().Where(r => appId is null || r.AppId == appId).ToDictionary(r => r.Day, r => r.Seconds);
 
+    /// <summary>Runs SQL on a second connection, the way the UI writes to the database while the Agent runs.</summary>
+    public void ExternalExec(string sql)
+    {
+        using var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = DbPath, Pooling = false }.ToString());
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
+    }
+
     public void Dispose()
     {
         Db.Dispose();

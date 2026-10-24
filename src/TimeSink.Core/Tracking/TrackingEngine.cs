@@ -29,6 +29,7 @@ public sealed class TrackingEngine
     private readonly Dictionary<long, Open> _open = new();
 
     private IReadOnlyList<TrackedApp> _apps = Array.Empty<TrackedApp>();
+    private long? _appsVersion;    // store.DataVersion when _apps was read
     private long? _lastTick;
     private long _lastHeartbeat;
     private long _floor;           // nothing before this is counted (engine start / resume / unlock / clock change)
@@ -42,6 +43,7 @@ public sealed class TrackingEngine
         _settings = settings;
         _usage = new UsageAccumulator(store, zone);
         _floor = clock.UtcNow.ToUnixTimeSeconds();
+        _appsVersion = store.DataVersion;
         _apps = store.GetTrackedApps();
     }
 
@@ -140,12 +142,16 @@ public sealed class TrackingEngine
         _floor = Unix(now);
         _lastTick = null;
         _lastHeartbeat = _floor;
+        _appsVersion = _store.DataVersion;
         _apps = _store.GetTrackedApps();
     }
 
     /// <summary>Re-reads the tracked apps; sessions of apps that are no longer tracked are closed as 'removed'.</summary>
     public void ReloadTrackedApps()
     {
+        var version = _store.DataVersion; // read before the apps, so a commit in between triggers another reload
+        if (version is not null && version == _appsVersion) return;
+        _appsVersion = version;
         _apps = _store.GetTrackedApps();
         var tracked = _apps.Select(a => a.Id).ToHashSet();
         var now = Unix(_clock.UtcNow);
@@ -157,6 +163,7 @@ public sealed class TrackingEngine
     public void RecoverFromCrash(DateTimeOffset now)
     {
         var n = Unix(now);
+        _appsVersion = _store.DataVersion;
         _apps = _store.GetTrackedApps();
         var tracked = _apps.Select(a => a.Id).ToHashSet();
         var procs = _processes.Snapshot();

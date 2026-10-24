@@ -11,6 +11,16 @@ public sealed class SqliteSessionStore : ISessionStore
 
     public SqliteSessionStore(Db db) => _c = db.Connection;
 
+    /// <summary><c>PRAGMA data_version</c>: unchanged by this connection's own writes, bumped by every other connection's commit.</summary>
+    public long? DataVersion
+    {
+        get
+        {
+            using var cmd = Cmd("PRAGMA data_version");
+            return cmd.ExecuteScalar() is long v ? v : null;
+        }
+    }
+
     public IReadOnlyList<TrackedApp> GetTrackedApps()
     {
         using var cmd = Cmd("SELECT id, exe_path, package_family, added_utc FROM apps WHERE state = 'tracked' ORDER BY id");
