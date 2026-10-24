@@ -111,7 +111,8 @@ internal static partial class NativeMethods
     public const uint WM_CONTEXTMENU = 0x007B;
 
     public const uint NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2, NIM_SETVERSION = 4;
-    public const uint NIF_MESSAGE = 1, NIF_ICON = 2, NIF_TIP = 4;
+    public const uint NIF_MESSAGE = 1, NIF_ICON = 2, NIF_TIP = 4, NIF_INFO = 0x10;
+    public const uint NIIF_INFO = 1, NIIF_NOSOUND = 0x10;
     public const uint NOTIFYICON_VERSION_4 = 4;
 
     public const uint MF_STRING = 0, MF_SEPARATOR = 0x800;

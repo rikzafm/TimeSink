@@ -16,6 +16,7 @@ internal static class Program
     private static IpcServer? s_ipc;
     private static string s_pipeName = "";
     private static BackupScheduler? s_backup;
+    private static AlertHost? s_alerts;
     private static string s_dbPath = "";
     private static readonly FlyoutToggle s_toggle = new();
     private static Process? s_ui;
@@ -95,6 +96,8 @@ internal static class Program
         s_tracking.Start();
         s_backup = new BackupScheduler(s_dbPath, s_hwnd);
         s_backup.Start();
+        s_alerts = new AlertHost(s_db!, s_hwnd, ShowBalloon);
+        s_alerts.Start();
 
         MSG msg;
         while (NativeMethods.GetMessageW(&msg, 0, 0, 0) > 0)
@@ -109,6 +112,22 @@ internal static class Program
     {
         var nid = NewNotifyData();
         NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_ADD, &nid);
+    }
+
+    /// <summary>Shows a tray balloon (a toast on current Windows) from the tray icon. Local only: no network, no toast package.</summary>
+    private static unsafe void ShowBalloon(string title, string body)
+    {
+        var nid = new NOTIFYICONDATAW
+        {
+            cbSize = (uint)sizeof(NOTIFYICONDATAW),
+            hWnd = s_hwnd,
+            uID = 1,
+            uFlags = NativeMethods.NIF_INFO,
+            dwInfoFlags = NativeMethods.NIIF_INFO,
+        };
+        for (var i = 0; i < Math.Min(title.Length, 63); i++) nid.szInfoTitle[i] = title[i];
+        for (var i = 0; i < Math.Min(body.Length, 255); i++) nid.szInfo[i] = body[i];
+        NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_MODIFY, &nid);
     }
 
     private static unsafe void RemoveTrayIcon()
@@ -291,6 +310,7 @@ internal static class Program
         if (s_tracking is { } tracking && tracking.HandleMessage(msg, wParam))
             return msg == NativeMethods.WM_POWERBROADCAST ? 1 : 0;
         if (s_backup is { } backup && backup.HandleMessage(msg, wParam)) return 0;
+        if (s_alerts is { } alerts && alerts.HandleMessage(msg, wParam)) return 0;
         switch (msg)
         {
             case TrayCallback:
@@ -301,6 +321,7 @@ internal static class Program
                 return 0;
             case NativeMethods.WM_DESTROY:
                 s_backup?.Stop();
+                s_alerts?.Stop();
                 s_tracking?.Stop();
                 RemoveTrayIcon();
                 NativeMethods.PostQuitMessage(0);
