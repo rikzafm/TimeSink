@@ -5,6 +5,10 @@ namespace TimeSink.Core.Apps;
 
 public sealed record NewApp(string ExePath, string DisplayName, string? PackageFamily);
 
+public sealed record LibraryApp(long Id, string ExePath, string? PackageFamily, string DisplayName, string State, long? RetiredUtc);
+
+public sealed record RetiredApp(long Id, string ExePath, string DisplayName, long RetiredUtc);
+
 public enum AddOutcome { Added, AlreadyTracked, Restored }
 
 public sealed record AddResult(long AppId, AddOutcome Outcome);
@@ -76,6 +80,43 @@ public sealed class AppLibrary : IDisposable
         tx.Commit();
         return result;
     }
+
+    /// <summary>
+    /// Stops tracking an app: history stays, totals and tracking stop. The Agent's per-tick reload closes any open
+    /// session as 'removed' (engine behaviour, decision 39).
+    /// </summary>
+    public void Retire(long appId, long nowUtc) => SetState(appId, "retired", nowUtc);
+
+    /// <summary>Tracks a retired app again, counting from <paramref name="nowUtc"/>.</summary>
+    public void Restore(long appId, long nowUtc) => SetState(appId, "tracked", nowUtc);
+
+    private void SetState(long appId, string state, long nowUtc)
+    {
+        using var cmd = Cmd(state == "retired"
+            ? "UPDATE apps SET state='retired', retired_utc=$t WHERE id=$id"
+            : "UPDATE apps SET state='tracked', retired_utc=NULL, added_utc=$t WHERE id=$id");
+        cmd.Parameters.AddWithValue("$t", nowUtc);
+        cmd.Parameters.AddWithValue("$id", appId);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Every known app (tracked and retired); merged aliases are not listed.</summary>
+    public IReadOnlyList<LibraryApp> Library()
+    {
+        var list = new List<LibraryApp>();
+        using var cmd = Cmd("SELECT id, exe_path, package_family, display_name, state, retired_utc FROM apps WHERE canonical_id IS NULL ORDER BY display_name COLLATE NOCASE");
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new LibraryApp(r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2), r.GetString(3), r.GetString(4),
+                r.IsDBNull(5) ? null : r.GetInt64(5)));
+        return list;
+    }
+
+    /// <summary>Retired apps, most recently retired first.</summary>
+    public IReadOnlyList<RetiredApp> Retired() =>
+        Library().Where(a => a.State == "retired")
+            .OrderByDescending(a => a.RetiredUtc)
+            .Select(a => new RetiredApp(a.Id, a.ExePath, a.DisplayName, a.RetiredUtc ?? 0)).ToList();
 
     /// <summary>Adds a path to the ignore list ("Not this one"); repeating it is harmless.</summary>
     public void Ignore(string exePath, long nowUtc)
