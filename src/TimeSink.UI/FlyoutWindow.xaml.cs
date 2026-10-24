@@ -47,7 +47,7 @@ public partial class FlyoutWindow : Window
         }
         SourceInitialized += OnSourceInitialized;
         ContentRendered += OnContentRendered;
-        Deactivated += (_, _) => { if (_revealed && !KeepOpen && !TestKeepOpen) Close(); };
+        Deactivated += (_, _) => { if (_revealed && !KeepOpen && !TestKeepOpenActive) Close(); };
         SettingsButton.Click += (_, _) => ToggleSettings();
         AddAppButton.Click += (_, _) => ShowAddApp();
 
@@ -70,9 +70,15 @@ public partial class FlyoutWindow : Window
     /// <summary>Test aid: TS_KEEPOPEN=1 stops the flyout closing when it loses focus (so it can be screenshotted).</summary>
 #if DEBUG
     private static readonly bool TestKeepOpen = Environment.GetEnvironmentVariable("TS_KEEPOPEN") == "1";
-#else
-    private const bool TestKeepOpen = false;
 #endif
+
+    private static bool TestKeepOpenActive =>
+#if DEBUG
+        TestKeepOpen;
+#else
+        false;
+#endif
+
 
     private void Select(ShellTab tab, bool persist)
     {
