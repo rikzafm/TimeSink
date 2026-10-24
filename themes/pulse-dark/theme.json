@@ -46,6 +46,22 @@
     "sessionLine": "{0} → {1}",
     "sessionNow": "now",
     "vsAverage": "{0} vs your 7-day average",
-    "vsAverageNone": "No 7-day average yet"
+    "vsAverageNone": "No 7-day average yet",
+    "monthCombined": "Combined app time",
+    "monthSpanSoFar": "so far · through the {0}",
+    "monthSpanFull": "full month",
+    "monthDeltaVs": "{0} vs {1}",
+    "monthAvgPrefix": "Avg",
+    "monthAvgSuffix": "/ day",
+    "monthBestPrefix": "Best",
+    "monthWeek": "Week",
+    "monthLess": "Less",
+    "monthMore": "More",
+    "monthMostly": "Mostly {0} · {1}",
+    "monthDayEmpty": "No tracked time this day",
+    "monthEmpty": "No tracked time this month yet.",
+    "monthNewApp": "new",
+    "monthExport": "Export month (CSV)",
+    "monthExportDone": "Saved ✓"
   }
 }

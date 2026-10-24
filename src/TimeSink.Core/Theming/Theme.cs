@@ -49,12 +49,37 @@ public static class StringKeys
     public const string VsAverage = "vsAverage";
     public const string VsAverageNone = "vsAverageNone";
 
+    // Month view.
+    public const string MonthCombined = "monthCombined";
+    public const string MonthSpanSoFar = "monthSpanSoFar";
+    public const string MonthSpanFull = "monthSpanFull";
+    public const string MonthDeltaVs = "monthDeltaVs";
+    public const string MonthAvgPrefix = "monthAvgPrefix";
+    public const string MonthAvgSuffix = "monthAvgSuffix";
+    public const string MonthBestPrefix = "monthBestPrefix";
+    public const string MonthWeek = "monthWeek";
+    public const string MonthLess = "monthLess";
+    public const string MonthMore = "monthMore";
+    public const string MonthMostly = "monthMostly";
+    public const string MonthDayEmpty = "monthDayEmpty";
+    public const string MonthEmpty = "monthEmpty";
+    public const string MonthNewApp = "monthNewApp";
+    public const string MonthExport = "monthExport";
+    public const string MonthExportDone = "monthExportDone";
+
+    public static readonly IReadOnlyList<string> MonthKeys =
+    [
+        MonthCombined, MonthSpanSoFar, MonthSpanFull, MonthDeltaVs, MonthAvgPrefix, MonthAvgSuffix, MonthBestPrefix,
+        MonthWeek, MonthLess, MonthMore, MonthMostly, MonthDayEmpty, MonthEmpty, MonthNewApp, MonthExport, MonthExportDone,
+    ];
+
     public static readonly IReadOnlyList<string> All =
     [
         AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, Back, StubComingSoon,
         TodayCaption, TodayEarlyCaption, TodayEarlyHint, TodayEmpty, RunningPill, LegendAppsOpen, LegendTypical,
         LegendAsleep, TileFirstApp, TileLongest, TileVsYesterday, TileNone, TileLongestValue, TileVsYesterdayValue,
         StatusRunning, StatusClosed, SessionsToday, SessionLine, SessionNow, VsAverage, VsAverageNone,
+        .. MonthKeys,
     ];
 }
 
