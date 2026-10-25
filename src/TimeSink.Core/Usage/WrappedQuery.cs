@@ -18,7 +18,7 @@ public static class WrappedQuery
     private const int OthersSize = 3;
 
 
-    public static WrappedResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null)
+    public static WrappedResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
         using var c = new SqliteConnection(new SqliteConnectionStringBuilder
         {
@@ -30,10 +30,10 @@ public static class WrappedQuery
             p.CommandText = "PRAGMA busy_timeout=2000";
             p.ExecuteNonQuery();
         }
-        return Run(c, now, zone, running);
+        return Run(c, now, zone, running, onSinceUtc);
     }
 
-    public static WrappedResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null)
+    public static WrappedResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var today = LocalDays.DateOf(nowUtc, zone);
@@ -51,7 +51,8 @@ public static class WrappedQuery
         var perGroup = new Dictionary<long, long>();       // this year
         long beforeNoon = 0, total = 0;
 
-        foreach (var s in UsageLoader.LoadSegments(c, windowStart, nowUtc, apps, running))
+        var segs = UsageLoader.LoadSegments(c, windowStart, nowUtc, apps, running);
+        foreach (var s in segs)
         {
             var t = Math.Max(s.Start, windowStart);
             var end = Math.Min(s.End, nowUtc);
@@ -76,6 +77,9 @@ public static class WrappedQuery
                 t += step;
             }
         }
+
+        // The headline is PC uptime (decision 125); everything else here stays app-seconds.
+        var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc).Where(kv => kv.Key.Year == year).Sum(kv => kv.Value);
 
         var ranked = perGroup.Select(kv => new WrappedApp(kv.Key, NameOf(apps, kv.Key), kv.Value))
             .OrderByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
@@ -117,7 +121,7 @@ public static class WrappedQuery
         }
 
         return new WrappedResult(
-            year, nowUtc, first, total, daysTracked, perDay.Count(kv => kv.Value > 0), groups.Count,
+            year, nowUtc, first, uptime, total, daysTracked, perDay.Count(kv => kv.Value > 0), groups.Count,
             ranked.Take(PodiumSize).ToList(), ranked.Skip(PodiumSize).Take(OthersSize).ToList(),
             bestLen, bestLen == 0 ? null : DateOnly.FromDayNumber(719162 + bestStartDay),
             bestLen == 0 ? null : DateOnly.FromDayNumber(719162 + bestStartDay + bestLen - 1),

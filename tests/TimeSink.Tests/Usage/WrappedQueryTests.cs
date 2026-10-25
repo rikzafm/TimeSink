@@ -16,9 +16,10 @@ public sealed class WrappedQueryTests : IDisposable
     {
         var r = Run();
         r.Year.Should().Be(2026);
-        r.TotalSeconds.Should().Be(78000);          // retired Old excluded, open Alpha counted to now
-        r.EquivalentDays.Should().Be(0);
-        r.EquivalentHours.Should().Be(21);          // 78000 s = 21 h 40 m
+        r.AppSeconds.Should().Be(78000);            // retired Old excluded, open Alpha counted to now
+        r.TotalSeconds.Should().Be(117000);         // PC uptime: first to last session per day, overlaps counted once
+        r.EquivalentDays.Should().Be(1);
+        r.EquivalentHours.Should().Be(8);           // 117000 s = 32 h 30 m
         r.AppsTracked.Should().Be(4);
         r.TrackingStarted.Should().Be(new DateOnly(2026, 3, 3));
         r.DaysTracked.Should().Be(100);             // Mar 3 .. Jun 10 inclusive: 29 + 30 + 31 + 10
@@ -30,9 +31,10 @@ public sealed class WrappedQueryTests : IDisposable
     {
         _f.Session(_f.Beta, L(2026, 6, 1, 0).ToUnixTimeSeconds(), L(2026, 6, 4, 6).ToUnixTimeSeconds()); // 78 h more
         var r = Run();
-        r.TotalSeconds.Should().Be(78000 + 78 * 3600);
-        r.EquivalentDays.Should().Be(4);            // 358800 s = 99 h 40 m = 4 d 3 h
-        r.EquivalentHours.Should().Be(3);
+        r.AppSeconds.Should().Be(78000 + 78 * 3600);
+        r.TotalSeconds.Should().Be(397800);
+        r.EquivalentDays.Should().Be(4);            // 397800 s = 110 h 30 m = 4 d 14 h
+        r.EquivalentHours.Should().Be(14);
     }
 
     [Fact]
@@ -88,7 +90,7 @@ public sealed class WrappedQueryTests : IDisposable
     public void An_open_session_of_an_app_the_agent_does_not_report_stops_at_its_last_heartbeat()
     {
         var r = Run(running: new long[] { _f.Beta });
-        r.TotalSeconds.Should().Be(78000 - 300);    // last seen 15:25 not 15:30
+        r.AppSeconds.Should().Be(78000 - 300);    // last seen 15:25 not 15:30
     }
 
     [Fact]
