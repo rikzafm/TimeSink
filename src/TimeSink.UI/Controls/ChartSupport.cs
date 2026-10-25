@@ -23,6 +23,9 @@ internal static class ChartSupport
             brush ?? owner.TryFindResource("Brush.TextMuted") as Brush ?? Brushes.Transparent,
             VisualTreeHelper.GetDpi(owner).PixelsPerDip);
 
+    /// <summary>A theme brush by resource key; transparent when the key is missing.</summary>
+    public static Brush Brush(FrameworkElement owner, string key) => owner.TryFindResource(key) as Brush ?? Brushes.Transparent;
+
     /// <summary>Makes the whole area hit-testable (WPF only hit-tests drawn pixels).</summary>
     public static void HitArea(DrawingContext dc, double width, double height)
         => dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, width, height));

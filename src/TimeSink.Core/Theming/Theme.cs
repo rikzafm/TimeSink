@@ -49,6 +49,11 @@ public static class StringKeys
     public const string SessionNow = "sessionNow";
     public const string VsAverage = "vsAverage";
     public const string VsAverageNone = "vsAverageNone";
+    public const string DialSessions = "dialSessions";
+    public const string DialLongest = "dialLongest";
+    public const string DialAverage = "dialAverage";
+    public const string DialBlips = "dialBlips";
+    public const string DialLabel = "dialLabel";
 
     // Month view.
     public const string MonthCombined = "monthCombined";
@@ -87,6 +92,7 @@ public static class StringKeys
         TodayCaption, TodayCombined, TodayEarlyCaption,TodayEarlyHint, TodayEmpty, RunningPill, LegendAppsOpen, LegendTypical,
         LegendAsleep, TileFirstApp, TileLongest, TileVsYesterday, TileNone, TileLongestValue, TileVsYesterdayValue,
         StatusRunning, StatusClosed, SessionsToday, SessionLine, SessionNow, VsAverage, VsAverageNone,
+        DialSessions, DialLongest, DialAverage, DialBlips, DialLabel,
         WeekCaption, WeekStreak, WeekStreakSub, WeekGridCaption, WeekEmpty,
         .. MonthKeys,
     ];

@@ -1,5 +1,6 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Threading;
 using TimeSink.Core.Apps;
@@ -20,6 +21,8 @@ namespace TimeSink.UI.Views;
 public partial class TodayView : UserControl
 {
     private const int RefreshEverySeconds = 30;
+    private const int MinShownSessionSeconds = 60; // shorter sessions are blips: not drawn, only counted in the note
+    private const double DialSize = 150;
 #if DEBUG
     private static readonly bool ExpandAll = Environment.GetEnvironmentVariable("TS_EXPAND") == "1"; // test aid for screenshots (decision 115)
 #endif
@@ -351,7 +354,7 @@ public partial class TodayView : UserControl
         strip.SetResourceReference(SessionStrip.SegmentBrushProperty, appBrush);
         strip.SetResourceReference(SessionStrip.TrackBrushProperty, "Brush.BorderSoft");
 
-        var details = BuildDetails(r, row);
+        var details = BuildDetails(r, row, appBrush);
         details.Visibility = _expanded.Contains(row.AppId) ? Visibility.Visible : Visibility.Collapsed;
 
         var grid = new Grid { Margin = new Thickness(0, 0, 0, 0) };
@@ -389,42 +392,95 @@ public partial class TodayView : UserControl
         return card;
     }
 
-    private UIElement BuildDetails(TodayResult r, TodayAppRow row)
+    private UIElement BuildDetails(TodayResult r, TodayAppRow row, string appBrush)
     {
-        var panel = new Border { Margin = new Thickness(0, 10, 0, 0), Padding = new Thickness(10, 8, 10, 8) };
+        var panel = new Border { Margin = new Thickness(0, 10, 0, 0), Padding = new Thickness(10, 10, 10, 10) };
         panel.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
         panel.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         panel.SetResourceReference(Border.BorderThicknessProperty, "Thickness.Border");
         panel.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
 
+        var shown = row.Sessions.Where(s => s.Seconds >= MinShownSessionSeconds).ToList();
+        var hidden = row.Sessions.Count - shown.Count;
+        var avg = row.SevenDayAverageSeconds is { } a && a > 0 ? a : (double?)null;
+
+        var dial = new SessionDial
+        {
+            Width = DialSize, Height = DialSize, VerticalAlignment = VerticalAlignment.Top,
+            Segments = shown.Select(s => (Fraction(r, s.StartUtc), Fraction(r, s.EndUtc))).ToList(),
+            NowFraction = _day is null ? Fraction(r, r.NowUtc) : null,
+            TotalFraction = row.Seconds / 86400.0,
+            AverageFraction = avg is { } v ? v / 86400.0 : null,
+        };
+        dial.SetResourceReference(SessionDial.SegmentBrushProperty, appBrush);
+        dial.SetResourceReference(SessionDial.TrackBrushProperty, "Brush.BorderSoft");
+        dial.SetResourceReference(SessionDial.TickBrushProperty, "Brush.Text");
+        dial.SetResourceReference(SessionDial.NowBrushProperty, "Brush.Accent");
+        dial.SetResourceReference(SessionDial.LabelBrushProperty, "Brush.TextMuted");
+        dial.SetResourceReference(SessionDial.NumberFontProperty, "FontFamily.Numbers");
+        if (avg is { } mean)
+        {
+            var pct = (int)Math.Round((row.Seconds / mean - 1) * 100);
+            dial.CenterText = (pct >= 0 ? "+" : "") + pct + "%";
+            dial.SetResourceReference(SessionDial.CenterBrushProperty, pct >= 0 ? "Brush.Accent" : "Brush.Warning");
+        }
+        else
+        {
+            dial.CenterText = Str(StringKeys.TileNone);
+            dial.SetResourceReference(SessionDial.CenterBrushProperty, "Brush.TextMuted");
+        }
+        System.Windows.Automation.AutomationProperties.SetName(dial, Str(StringKeys.DialLabel, row.Name));
+
+        var longest = shown.Count > 0 ? shown.Max(s => s.Seconds) : 0;
+        var stats = new StackPanel { Margin = new Thickness(14, 2, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        stats.Children.Add(Stat(StringKeys.DialSessions, shown.Count.ToString(), first: true));
+        stats.Children.Add(Stat(StringKeys.DialLongest, longest > 0 ? DurationFormat.HoursMinutes(longest) : Str(StringKeys.TileNone)));
+        stats.Children.Add(Stat(StringKeys.DialAverage, avg is { } m ? DurationFormat.HoursMinutes((long)Math.Round(m)) : Str(StringKeys.TileNone)));
+
+        var top = new StackPanel { Orientation = Orientation.Horizontal };
+        top.Children.Add(dial);
+        top.Children.Add(stats);
+
+        var pills = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
+        foreach (var s in shown) pills.Children.Add(Pill(s));
+
         var stack = new StackPanel();
-        var header = new TextBlock { Text = Str(StringKeys.SessionsToday), Margin = new Thickness(0, 0, 0, 4), Style = (Style)FindResource("Small") };
-        stack.Children.Add(header);
-
-        foreach (var s in row.Sessions)
+        stack.Children.Add(top);
+        stack.Children.Add(pills);
+        if (hidden > 0)
         {
-            var line = new Grid { Margin = new Thickness(0, 2, 0, 2) };
-            line.ColumnDefinitions.Add(new ColumnDefinition());
-            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var span = new TextBlock { Style = (Style)FindResource("Soft"), Text = Str(StringKeys.SessionLine, Clock(s.StartUtc), s.IsOpen ? Str(StringKeys.SessionNow) : Clock(s.EndUtc)) };
-            var dur = new TextBlock { Style = (Style)FindResource("Number"), Text = DurationFormat.HoursMinutes(s.Seconds) };
-            Grid.SetColumn(dur, 1);
-            line.Children.Add(span);
-            line.Children.Add(dur);
-            stack.Children.Add(line);
+            var note = new TextBlock { Text = Str(StringKeys.DialBlips, hidden), Margin = new Thickness(0, 2, 0, 0), Style = (Style)FindResource("Small") };
+            stack.Children.Add(note);
         }
-
-        var compare = new TextBlock { Margin = new Thickness(0, 6, 0, 0), Style = (Style)FindResource("Small") };
-        if (row.SevenDayAverageSeconds is { } avg && avg > 0)
-        {
-            var pct = (int)Math.Round((row.Seconds / avg - 1) * 100);
-            compare.Text = Str(StringKeys.VsAverage, (pct >= 0 ? "+" : "") + pct + "%");
-            compare.SetResourceReference(TextBlock.ForegroundProperty, pct >= 0 ? "Brush.Accent" : "Brush.Warning");
-        }
-        else compare.Text = Str(StringKeys.VsAverageNone);
-        stack.Children.Add(compare);
 
         panel.Child = stack;
         return panel;
+    }
+
+    private UIElement Stat(string labelKey, string value, bool first = false)
+    {
+        var label = new TextBlock { Text = Str(labelKey), Style = (Style)FindResource("Small") };
+        var number = new TextBlock { Text = value, Style = (Style)FindResource("Number") };
+        number.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Title");
+        var s = new StackPanel { Margin = new Thickness(0, first ? 0 : 10, 0, 0) };
+        s.Children.Add(label);
+        s.Children.Add(number);
+        return s;
+    }
+
+    /// <summary>One session as a rounded chip: time span, then its length; the open session reads in the accent colour.</summary>
+    private Border Pill(TodaySession s)
+    {
+        var span = new Run(Str(StringKeys.SessionLine, Clock(s.StartUtc), s.IsOpen ? Str(StringKeys.SessionNow) : Clock(s.EndUtc)) + " · ");
+        var dur = new Run(DurationFormat.HoursMinutes(s.Seconds)) { FontWeight = FontWeights.SemiBold };
+        var text = new TextBlock { Style = (Style)FindResource("Small") };
+        text.Inlines.Add(span);
+        text.Inlines.Add(dur);
+        if (s.IsOpen) text.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
+        var pill = new Border { Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 6, 6), Child = text };
+        pill.SetResourceReference(Border.BorderBrushProperty, s.IsOpen ? "Brush.Accent" : "Brush.Border");
+        pill.SetResourceReference(Border.BorderThicknessProperty, "Thickness.Border");
+        pill.SizeChanged += (_, e) => pill.CornerRadius = new CornerRadius(e.NewSize.Height / 2); // as RunningPill: WPF does not clamp
+        return pill;
     }
 }
