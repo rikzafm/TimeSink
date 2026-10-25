@@ -246,7 +246,7 @@ public sealed partial class AddAppView
         }
         else if (lib is { State: "retired" })
         {
-            var restore = Pill("Str.AddRestore", PillStyle.Filled);
+            var restore = ActionIcon(IconPlus, PillStyle.Filled, AddAppStrings.Restore, AddAppStrings.Restore);
             restore.Click += (_, _) => Restore(lib);
             actions.Children.Add(restore);
         }

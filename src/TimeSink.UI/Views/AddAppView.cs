@@ -331,7 +331,9 @@ public sealed partial class AddAppView : UserControl
             tile.ClearValue(Border.BackgroundProperty);
             tile.BorderThickness = new Thickness(0);
             tile.Padding = new Thickness(0);
-            tile.Child = new Image { Source = bmp, Stretch = Stretch.Uniform };
+            var img = new Image { Source = bmp, Stretch = Stretch.Uniform };
+            RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.Fant);
+            tile.Child = img;
             return;
         }
         tile.BorderThickness = new Thickness(1); // letter fallback keeps its box
