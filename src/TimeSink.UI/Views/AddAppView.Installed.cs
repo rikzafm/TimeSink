@@ -238,7 +238,7 @@ public sealed partial class AddAppView
         if (lib is { State: "tracked" })
         {
             actions.Children.Add(BackgroundSwitch(lib.Background, () => SetBackground(lib.Id, !lib.Background, RenderInstalled)));
-            var stop = ActionIcon(IconStop, PillStyle.Quiet, AddAppStrings.StopTip, AddAppStrings.StopTracking);
+            var stop = ActionIcon(IconStop, PillStyle.Quiet, AddAppStrings.StopTip, AddAppStrings.StopTracking, filled: true);
             stop.Margin = new Thickness(0, 0, 6, 0);
             stop.Click += (_, _) => Retire(lib);
             actions.Children.Add(stop);
@@ -281,10 +281,10 @@ public sealed partial class AddAppView
         return b;
     }
 
-    // 24 x 24 line icons for the row buttons (stroked, round caps)
-    private const string IconPlus = "M12,5 L12,19 M5,12 L19,12";
+    // 24 x 24 icons for the row buttons: stroked with round caps, except Stop, which is a small filled rounded square
+    private const string IconPlus = "M12,7 L12,17 M7,12 L17,12";
     private const string IconCheck = "M5,12.5 L10,17.5 L19,7";
-    private const string IconStop = "M7,7 L17,7 L17,17 L7,17 Z";
+    private const string IconStop = "M9.5,8 L14.5,8 A1.5,1.5 0 0 1 16,9.5 L16,14.5 A1.5,1.5 0 0 1 14.5,16 L9.5,16 A1.5,1.5 0 0 1 8,14.5 L8,9.5 A1.5,1.5 0 0 1 9.5,8 Z";
     private const string IconLayers = "M12,4 L20,8.5 L12,13 L4,8.5 Z M4,12.5 L12,17 L20,12.5 M4,16 L12,20.5 L20,16";
     private const string IconSliders = "M4,8 L20,8 M4,16 L20,16 M9,5 L9,11 M15,13 L15,19";
 
@@ -292,16 +292,19 @@ public sealed partial class AddAppView
     /// An icon-only row button: <paramref name="tipKey"/> is its tooltip and <paramref name="nameKey"/> its accessible
     /// name. <paramref name="lit"/> marks a switched-on state with the accent colour.
     /// </summary>
-    private Button ActionIcon(string pathData, PillStyle style, string tipKey, string nameKey, bool lit = false)
+    private Button ActionIcon(string pathData, PillStyle style, string tipKey, string nameKey, bool lit = false, bool filled = false)
     {
-        var stroke = lit ? "Brush.Accent" : style switch { PillStyle.Filled => "Brush.OnAccent", PillStyle.Done => "Brush.Accent", _ => "Brush.TextMuted" };
+        var ink = lit ? "Brush.Accent" : style switch { PillStyle.Filled => "Brush.OnAccent", PillStyle.Done => "Brush.Accent", _ => "Brush.TextMuted" };
         var path = new System.Windows.Shapes.Path
         {
-            Data = Geometry.Parse(pathData), StrokeThickness = 2, Width = 18, Height = 18, Stretch = Stretch.Uniform,
+            Data = Geometry.Parse(pathData), StrokeThickness = filled ? 0 : style == PillStyle.Filled ? 2.4 : 2,
             StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
         };
-        path.SetResourceReference(Shape.StrokeProperty, stroke);
-        var b = new Button { Template = Flat, Content = path, Width = 38, Padding = new Thickness(0), Cursor = System.Windows.Input.Cursors.Hand, Focusable = false };
+        path.SetResourceReference(filled ? Shape.FillProperty : Shape.StrokeProperty, ink);
+        // drawn on a 24 x 24 canvas and scaled to 18 px, so each icon keeps its own size inside the button
+        var canvas = new Canvas { Width = 24, Height = 24 };
+        canvas.Children.Add(path);
+        var b = new Button { Template = Flat, Content = new Viewbox { Width = 18, Height = 18, Child = canvas }, Width = 38, Padding = new Thickness(0), Cursor = System.Windows.Input.Cursors.Hand, Focusable = false };
         b.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.Button");
         b.SetResourceReference(Control.BackgroundProperty, style == PillStyle.Filled ? "Brush.Accent" : "Brush.Surface");
         b.SetResourceReference(Control.BorderBrushProperty, style == PillStyle.Filled || lit ? "Brush.Accent" : "Brush.Border");
