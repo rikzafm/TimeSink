@@ -181,17 +181,11 @@ public sealed partial class AddAppView
         texts.Children.Add(name);
         texts.Children.Add(sub);
 
-        var manage = Button(AddAppStrings.Manage, open ? BtnKind.Primary : BtnKind.Outline, () => ToggleOpen(app));
-        manage.Height = 30;
-        manage.Padding = new Thickness(10, 0, 10, 0);
-        if (open) { manage.Background = Brushes.Transparent; manage.SetResourceReference(Control.BorderBrushProperty, "Brush.Accent"); manage.SetResourceReference(Control.ForegroundProperty, "Brush.Accent"); }
-        else manage.SetResourceReference(Control.ForegroundProperty, "Brush.TextSoft");
+        var manage = ActionIcon(IconSliders, PillStyle.Quiet, AddAppStrings.Manage, AddAppStrings.Manage, lit: open);
+        manage.Click += (_, _) => ToggleOpen(app);
         Grid.SetColumn(texts, 1);
         var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        var bg = BackgroundPill(app.Background, () => SetBackground(app.Id, !app.Background, RenderTracked));
-        bg.Height = 30;
-        bg.Padding = new Thickness(10, 0, 10, 0);
-        right.Children.Add(bg);
+        right.Children.Add(BackgroundSwitch(app.Background, () => SetBackground(app.Id, !app.Background, RenderTracked)));
         right.Children.Add(manage);
         Grid.SetColumn(right, 2);
         top.Children.Add(tile);

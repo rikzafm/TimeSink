@@ -237,15 +237,12 @@ public sealed partial class AddAppView
         var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         if (lib is { State: "tracked" })
         {
-            actions.Children.Add(BackgroundPill(lib.Background, () => SetBackground(lib.Id, !lib.Background, RenderInstalled)));
-            var stop = Pill("Str.AddStopTracking", PillStyle.Quiet);
-            stop.ToolTip = TimeText.Str(AddAppStrings.StopTip);
+            actions.Children.Add(BackgroundSwitch(lib.Background, () => SetBackground(lib.Id, !lib.Background, RenderInstalled)));
+            var stop = ActionIcon(IconStop, PillStyle.Quiet, AddAppStrings.StopTip, AddAppStrings.StopTracking);
             stop.Margin = new Thickness(0, 0, 6, 0);
             stop.Click += (_, _) => Retire(lib);
             actions.Children.Add(stop);
-            var on = Pill("Str.AddTracking", PillStyle.Done);
-            on.IsHitTestVisible = false;
-            actions.Children.Add(on);
+            actions.Children.Add(ActionIcon(IconCheck, PillStyle.Done, AddAppStrings.Tracking, AddAppStrings.Tracking)); // status only: no click handler
         }
         else if (lib is { State: "retired" })
         {
@@ -255,7 +252,7 @@ public sealed partial class AddAppView
         }
         else if (app is not null)
         {
-            var track = Pill("Str.AddTrack", PillStyle.Filled);
+            var track = ActionIcon(IconPlus, PillStyle.Filled, AddAppStrings.Track, AddAppStrings.Track);
             track.Click += (_, _) => TrackInstalled(app);
             actions.Children.Add(track);
         }
@@ -284,13 +281,40 @@ public sealed partial class AddAppView
         return b;
     }
 
-    /// <summary>The per-row "Background" switch on tracked apps (Installed and Tracked tabs): lit when the app ranks after the others.</summary>
-    private Button BackgroundPill(bool on, Action toggle)
+    // 24 x 24 line icons for the row buttons (stroked, round caps)
+    private const string IconPlus = "M12,5 L12,19 M5,12 L19,12";
+    private const string IconCheck = "M5,12.5 L10,17.5 L19,7";
+    private const string IconStop = "M7,7 L17,7 L17,17 L7,17 Z";
+    private const string IconLayers = "M12,4 L20,8.5 L12,13 L4,8.5 Z M4,12.5 L12,17 L20,12.5 M4,16 L12,20.5 L20,16";
+    private const string IconSliders = "M4,8 L20,8 M4,16 L20,16 M9,5 L9,11 M15,13 L15,19";
+
+    /// <summary>
+    /// An icon-only row button: <paramref name="tipKey"/> is its tooltip and <paramref name="nameKey"/> its accessible
+    /// name. <paramref name="lit"/> marks a switched-on state with the accent colour.
+    /// </summary>
+    private Button ActionIcon(string pathData, PillStyle style, string tipKey, string nameKey, bool lit = false)
     {
-        var b = Pill("Str.AddBackground", on ? PillStyle.Done : PillStyle.Quiet);
-        b.ToolTip = TimeText.Str(AddAppStrings.BackgroundTip);
+        var stroke = lit ? "Brush.Accent" : style switch { PillStyle.Filled => "Brush.OnAccent", PillStyle.Done => "Brush.Accent", _ => "Brush.TextMuted" };
+        var path = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse(pathData), StrokeThickness = 2, Width = 18, Height = 18, Stretch = Stretch.Uniform,
+            StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
+        };
+        path.SetResourceReference(Shape.StrokeProperty, stroke);
+        var b = new Button { Template = Flat, Content = path, Width = 38, Padding = new Thickness(0), Cursor = System.Windows.Input.Cursors.Hand, Focusable = false };
+        b.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.Button");
+        b.SetResourceReference(Control.BackgroundProperty, style == PillStyle.Filled ? "Brush.Accent" : "Brush.Surface");
+        b.SetResourceReference(Control.BorderBrushProperty, style == PillStyle.Filled || lit ? "Brush.Accent" : "Brush.Border");
+        b.ToolTip = TimeText.Str(tipKey);
+        System.Windows.Automation.AutomationProperties.SetName(b, TimeText.Str(nameKey));
+        return b;
+    }
+
+    /// <summary>The per-row "Background" switch on tracked apps (Installed and Tracked tabs): lit when the app ranks after the others.</summary>
+    private Button BackgroundSwitch(bool on, Action toggle)
+    {
+        var b = ActionIcon(IconLayers, on ? PillStyle.Done : PillStyle.Quiet, AddAppStrings.BackgroundTip, AddAppStrings.Background, lit: on);
         b.Margin = new Thickness(0, 0, 6, 0);
-        if (on) b.SetResourceReference(Control.BorderBrushProperty, "Brush.Accent");
         b.Click += (_, _) => toggle();
         return b;
     }
