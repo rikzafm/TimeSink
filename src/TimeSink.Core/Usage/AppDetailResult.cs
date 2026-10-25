@@ -28,4 +28,5 @@ public sealed record AppDetailResult(
     int LastYear,
     long YearSeconds,
     long PeakDaySeconds,
-    IReadOnlyList<AppDetailDay> Days);
+    IReadOnlyList<AppDetailDay> Days,
+    bool Background = false);

@@ -99,7 +99,7 @@ public static class WeekQuery
                 .Select(i => perGroupDay.GetValueOrDefault((g, today.AddDays(i - (SparkDays - 1))))).ToList();
             rows.Add(new WeekAppRow(g, names.GetValueOrDefault(g, g.ToString()), week, spark));
         }
-        rows = rows.OrderByDescending(r => r.Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        rows = rows.OrderBy(r => UsageRank.Tier(apps, r.AppId)).ThenByDescending(r => r.Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
 
         return new WeekResult(today, thisWeek, nowUtc, days.Sum(d => d.Seconds), days, heat, streak, rows);
     }

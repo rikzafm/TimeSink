@@ -112,7 +112,7 @@ public static class YearQuery
             }
 
             var top = kind is YearMonthKind.Tracked or YearMonthKind.Current && perMonth.TryGetValue(idx, out var shares)
-                ? shares.OrderByDescending(kv => kv.Value).ThenBy(kv => NameOf(apps, kv.Key), StringComparer.CurrentCultureIgnoreCase)
+                ? shares.OrderBy(kv => UsageRank.Tier(apps, kv.Key)).ThenByDescending(kv => kv.Value).ThenBy(kv => NameOf(apps, kv.Key), StringComparer.CurrentCultureIgnoreCase)
                     .Select(kv => new YearAppShare(kv.Key, NameOf(apps, kv.Key), kv.Value)).ToList()
                 : new List<YearAppShare>();
             months.Add(new YearMonth(m, kind, secs, proj, delta, prev, top));

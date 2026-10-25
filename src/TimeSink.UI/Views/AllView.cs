@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using Microsoft.Win32;
 using TimeSink.Core.Theming;
 using TimeSink.Core.Usage;
+using TimeSink.UI.Controls;
 using TimeSink.UI.Services;
 using TimeSink.UI.Theming;
 using static TimeSink.UI.Services.TimeText;
@@ -231,7 +232,7 @@ public sealed class AllView : UserControl
     {
         var grid = Columns2();
         grid.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.Table");
-        grid.Children.Add(NameCell(a.Name, AppBrush(a.AppId), dashed: false, a.AppId));
+        grid.Children.Add(NameCell(a.Name, AppBrush(a.AppId), dashed: false, a.AppId, a.Background));
         AddNumber(grid, 1, AllFormat.Hours(a.Seconds), bold: true, "Brush.Text");
         AddNumber(grid, 2, a.DaysUsed.ToString(En), bold: false, "Brush.TextSoft");
         AddNumber(grid, 3, AllFormat.AveragePerDay(a.AverageSecondsPerDay), bold: false, "Brush.TextSoft");
@@ -357,7 +358,7 @@ public sealed class AllView : UserControl
         grid.Children.Add(t);
     }
 
-    private static FrameworkElement NameCell(string name, string brushKey, bool dashed, long? appId = null)
+    private static FrameworkElement NameCell(string name, string brushKey, bool dashed, long? appId = null, bool background = false)
     {
         var dot = new Rectangle { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         dot.SetResourceReference(FrameworkElement.WidthProperty, "Double.Size.Swatch");
@@ -380,6 +381,12 @@ public sealed class AllView : UserControl
         if (appId is { } id && AppIcons.Icon(id, 16) is { } icon) { icon.Margin = new Thickness(0, 0, 8, 0); lead = icon; }
         DockPanel.SetDock(lead, Dock.Left);
         row.Children.Add(lead);
+        if (background) // why this app ranks below the others
+        {
+            var badge = BackgroundBadge.Create();
+            DockPanel.SetDock(badge, Dock.Right);
+            row.Children.Add(badge);
+        }
         row.Children.Add(text);
         return row;
     }

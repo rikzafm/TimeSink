@@ -65,6 +65,8 @@ public static class AddAppStrings
     public const string MergeStarts = "addMergeStarts";
     public const string MergeCount = "addMergeCount";
     public const string SaveChanges = "addSaveChanges";
+    public const string Background = "addBackground";
+    public const string BackgroundTip = "addBackgroundTip";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -75,5 +77,6 @@ public static class AddAppStrings
         TabTracked, TrackedSearch, TrackedHeader, TrackedEmpty, TrackedSub, TrackedCount, Manage, Rename, Merge, Stop,
         RenameLabel, Save, Cancel, MergeTitle, MergeSub, MergePreview, MergePick, MergeInto, Unmerge, StopTitle, StopBody, KeepTracking,
         FilterUntracked, FilterAll, SubStopped, SubInstalled, MergeStarts, MergeCount, SaveChanges,
+        Background, BackgroundTip,
     ];
 }

@@ -39,10 +39,11 @@ public static class AppDetailQuery
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
 
         string? name = null, exe = null;
+        var background = false;
         var members = new HashSet<long>();
         using (var cmd = c.CreateCommand())
         {
-            cmd.CommandText = "SELECT id, canonical_id, display_name, state, exe_path FROM apps";
+            cmd.CommandText = "SELECT id, canonical_id, display_name, state, exe_path, is_background FROM apps";
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -52,6 +53,7 @@ public static class AppDetailQuery
                     if (!r.IsDBNull(1) || r.GetString(3) != "tracked") return null; // aliases are shown under their canonical app
                     name = r.GetString(2);
                     exe = Path.GetFileName(r.GetString(4));
+                    background = r.GetInt64(5) != 0;
                     members.Add(id);
                 }
                 else if (!r.IsDBNull(1) && r.GetInt64(1) == appId) members.Add(id);
@@ -134,6 +136,6 @@ public static class AppDetailQuery
         }
 
         return new AppDetailResult(appId, name, exe ?? "", first, lastOpened, total, segs.Count,
-            segs.Count > 0 ? total / segs.Count : 0, longest, shown, firstYear, today.Year, yearSeconds, peak, days);
+            segs.Count > 0 ? total / segs.Count : 0, longest, shown, firstYear, today.Year, yearSeconds, peak, days, background);
     }
 }

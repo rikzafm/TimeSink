@@ -216,7 +216,16 @@ public sealed class AppDetailView : UserControl
             ? Str(AppDetailStringKeys.Meta, r.ExeName, first.ToString(first.Year == DateTime.Now.Year ? "d MMM" : "d MMM yyyy", En))
             : r.ExeName;
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
-        text.Children.Add(name);
+        if (r.Background)
+        {
+            var title = new DockPanel { LastChildFill = true };
+            var badge = BackgroundBadge.Create();
+            DockPanel.SetDock(badge, Dock.Right);
+            title.Children.Add(badge);
+            title.Children.Add(name);
+            text.Children.Add(title);
+        }
+        else text.Children.Add(name);
         text.Children.Add(meta);
 
         var row = new DockPanel { LastChildFill = true };

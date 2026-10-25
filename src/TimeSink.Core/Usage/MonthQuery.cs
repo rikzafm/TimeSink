@@ -86,7 +86,7 @@ public static class MonthQuery
             var date = first.AddDays(d);
             var amounts = days[d]
                 .Select(kv => new MonthAppAmount(kv.Key, NameOf(apps, kv.Key), kv.Value))
-                .OrderByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+                .OrderBy(a => UsageRank.Tier(apps, a.AppId)).ThenByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
             var seconds = uptime.GetValueOrDefault(date);
             foreach (var a in amounts) monthTotals[a.AppId] = monthTotals.GetValueOrDefault(a.AppId) + a.Seconds;
             total += seconds;
@@ -96,7 +96,7 @@ public static class MonthQuery
 
         var top = monthTotals
             .Select(kv => (Id: kv.Key, Name: NameOf(apps, kv.Key), Seconds: kv.Value))
-            .OrderByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(a => UsageRank.Tier(apps, a.Id)).ThenByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
             .Select(a =>
             {
                 var prev = prevTotals.GetValueOrDefault(a.Id);

@@ -8,7 +8,8 @@ internal sealed record Migration(int Version, Action<SqliteConnection> Apply);
 /// <summary>Forward-only schema migrations keyed by <c>PRAGMA user_version</c>.</summary>
 internal static class Migrator
 {
-    public static readonly IReadOnlyList<Migration> Shipped = [new(M001_Initial.Version, M001_Initial.Apply)];
+    public static readonly IReadOnlyList<Migration> Shipped = 
+        [new(M001_Initial.Version, M001_Initial.Apply), new(M002_BackgroundApps.Version, M002_BackgroundApps.Apply)];
 
     public static int LatestVersion => Shipped[^1].Version;
 

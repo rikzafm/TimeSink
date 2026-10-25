@@ -108,13 +108,13 @@ public sealed class BackupRestoreTests : IDisposable
         var live = _rig.NewDb("live.db");
         // Pretend this build ships a second migration.
         IReadOnlyList<TimeSink.Core.Data.Migration> v2 = [.. TimeSink.Core.Data.Migrator.Shipped,
-            new(2, c => BackupTestRig.Exec(c, "ALTER TABLE apps ADD COLUMN note TEXT"))];
+            new(TimeSink.Core.Data.Migrator.LatestVersion + 1, c => BackupTestRig.Exec(c, "ALTER TABLE apps ADD COLUMN note TEXT"))];
 
         var info = RestoreService.Inspect(file, v2);
         var merged = RestoreService.Merge(file, live, TimeZoneInfo.Utc, v2);
 
         info.NeedsMigration.Should().BeTrue();
-        info.Manifest.SchemaVersion.Should().Be(1);
+        info.Manifest.SchemaVersion.Should().Be(TimeSink.Core.Data.Migrator.LatestVersion);
         merged.SessionsAdded.Should().Be(1);
         _rig.Scalar<long>(live, "SELECT SUM(seconds) FROM daily_usage").Should().Be(600);
     }

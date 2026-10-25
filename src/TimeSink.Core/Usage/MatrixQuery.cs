@@ -13,7 +13,7 @@ public static class MatrixQuery
     private const int TopApps = 3;
     private const int TrendWindow = 3;
 
-    private sealed record App(long Id, long Group, string Name, long AddedUtc);
+    private sealed record App(long Id, long Group, string Name, long AddedUtc, bool Background);
     private readonly record struct Seg(long Group, long Start, long End);
 
     /// <summary>Colour level of <paramref name="seconds"/> against the app's best month: under 30%, 55%, 75%, 90%, else top.</summary>
@@ -77,14 +77,14 @@ public static class MatrixQuery
         var grand = uptimeByMonth.Sum();
         var rows = perApp.Where(kv => kv.Value.Sum() > 0)
             .Select(kv => BuildRow(kv.Key, NameOf(apps, kv.Key), kv.Value, first, grand))
-            .OrderByDescending(r => r.TotalSeconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+            .OrderBy(r => Tier(apps, r.AppId)).ThenByDescending(r => r.TotalSeconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
 
         var months = new List<MatrixMonth>(count);
         for (var i = 0; i < count; i++)
         {
             var idx = i;
             var top = rows.Where(r => r.Cells[idx].Seconds > 0)
-                .OrderByDescending(r => r.Cells[idx].Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(r => Tier(apps, r.AppId)).ThenByDescending(r => r.Cells[idx].Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)
                 .Take(TopApps).Select(r => new YearAppShare(r.AppId, r.Name, r.Cells[idx].Seconds)).ToList();
             months.Add(new MatrixMonth(first + i, uptimeByMonth[idx], top));
         }
@@ -111,15 +111,17 @@ public static class MatrixQuery
         return new MatrixRow(id, name, cells, total, share, firstMonth + peak, best, trend);
     }
 
+    private static int Tier(Dictionary<long, App> apps, long group) => apps.TryGetValue(group, out var a) && a.Background ? 1 : 0;
+
     private static string NameOf(Dictionary<long, App> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
 
     private static Dictionary<long, App> LoadApps(SqliteConnection c)
     {
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name, added_utc FROM apps WHERE state = 'tracked'";
+        cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name, added_utc, is_background FROM apps WHERE state = 'tracked'";
         using var r = cmd.ExecuteReader();
         var d = new Dictionary<long, App>();
-        while (r.Read()) d[r.GetInt64(0)] = new App(r.GetInt64(0), r.GetInt64(1), r.GetString(2), r.GetInt64(3));
+        while (r.Read()) d[r.GetInt64(0)] = new App(r.GetInt64(0), r.GetInt64(1), r.GetString(2), r.GetInt64(3), r.GetInt64(4) != 0);
         // A tracked alias whose canonical row is retired/absent still names its own group.
         foreach (var a in d.Values.ToList())
             if (!d.ContainsKey(a.Group) && a.Group != a.Id) d[a.Id] = a with { Group = a.Id };

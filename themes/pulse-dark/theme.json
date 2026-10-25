@@ -83,6 +83,8 @@
     "addMergeStarts": "Ticked untracked apps start being tracked now and count under {0}.",
     "addMergeCount": "Merge {0} into {1}",
     "addSaveChanges": "Save changes",
+    "addBackground": "Background",
+    "addBackgroundTip": "Runs all day (Steam, Wallpaper Engine). Still counted, but ranked after your other apps.",
     "addNoFolder": "That folder does not exist on this PC.",
     "back": "Back",
     "stubComingSoon": "Coming soon",

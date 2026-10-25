@@ -5,14 +5,14 @@ namespace TimeSink.Core.Apps;
 
 public sealed record NewApp(string ExePath, string DisplayName, string? PackageFamily);
 
-public sealed record LibraryApp(long Id, string ExePath, string? PackageFamily, string DisplayName, string State, long? RetiredUtc);
+public sealed record LibraryApp(long Id, string ExePath, string? PackageFamily, string DisplayName, string State, long? RetiredUtc, bool Background = false);
 
 public sealed record RetiredApp(long Id, string ExePath, string DisplayName, long RetiredUtc);
 
 public sealed record MergedApp(long Id, string ExePath, string DisplayName, long Seconds);
 
 /// <summary>A tracked app as the Tracked tab shows it: merged aliases listed under it, <c>Seconds</c> including them.</summary>
-public sealed record TrackedEntry(long Id, string ExePath, string DisplayName, long AddedUtc, long Seconds, IReadOnlyList<MergedApp> Merged);
+public sealed record TrackedEntry(long Id, string ExePath, string DisplayName, long AddedUtc, long Seconds, IReadOnlyList<MergedApp> Merged, bool Background = false);
 
 public enum AddOutcome { Added, AlreadyTracked, Restored }
 
@@ -114,11 +114,11 @@ public sealed class AppLibrary : IDisposable
         using (var r = cmd.ExecuteReader())
             while (r.Read()) seconds[r.GetInt64(0)] = r.GetInt64(1);
 
-        var rows = new List<(long Id, long? Canonical, string Exe, string Name, long Added)>();
-        using (var cmd = Cmd("SELECT id, canonical_id, exe_path, display_name, added_utc FROM apps WHERE state = 'tracked'"))
+        var rows = new List<(long Id, long? Canonical, string Exe, string Name, long Added, bool Background)>();
+        using (var cmd = Cmd("SELECT id, canonical_id, exe_path, display_name, added_utc, is_background FROM apps WHERE state = 'tracked'"))
         using (var r = cmd.ExecuteReader())
             while (r.Read())
-                rows.Add((r.GetInt64(0), r.IsDBNull(1) ? null : r.GetInt64(1), r.GetString(2), r.GetString(3), r.GetInt64(4)));
+                rows.Add((r.GetInt64(0), r.IsDBNull(1) ? null : r.GetInt64(1), r.GetString(2), r.GetString(3), r.GetInt64(4), r.GetInt64(5) != 0));
 
         return rows.Where(a => a.Canonical is null)
             .Select(a =>
@@ -126,9 +126,21 @@ public sealed class AppLibrary : IDisposable
                 var merged = rows.Where(m => m.Canonical == a.Id)
                     .Select(m => new MergedApp(m.Id, m.Exe, m.Name, seconds.GetValueOrDefault(m.Id)))
                     .OrderBy(m => m.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToList();
-                return new TrackedEntry(a.Id, a.Exe, a.Name, a.Added, seconds.GetValueOrDefault(a.Id) + merged.Sum(m => m.Seconds), merged);
+                return new TrackedEntry(a.Id, a.Exe, a.Name, a.Added, seconds.GetValueOrDefault(a.Id) + merged.Sum(m => m.Seconds), merged, a.Background);
             })
             .OrderBy(a => a.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToList();
+    }
+
+    /// <summary>
+    /// Marks an app as a Background app (it runs all day, like Steam): still tracked and counted, but ranked after the
+    /// others. A merged group is flagged on its canonical app, so an alias id flags the app it is merged into.
+    /// </summary>
+    public void SetBackground(long appId, bool background)
+    {
+        using var cmd = Cmd("UPDATE apps SET is_background=$b WHERE id = COALESCE((SELECT canonical_id FROM apps WHERE id=$id), $id)");
+        cmd.Parameters.AddWithValue("$b", background ? 1 : 0);
+        cmd.Parameters.AddWithValue("$id", appId);
+        cmd.ExecuteNonQuery();
     }
 
     /// <summary>Changes the name shown everywhere; history and totals are untouched. A blank name is ignored.</summary>
@@ -178,11 +190,11 @@ public sealed class AppLibrary : IDisposable
     public IReadOnlyList<LibraryApp> Library()
     {
         var list = new List<LibraryApp>();
-        using var cmd = Cmd("SELECT id, exe_path, package_family, display_name, state, retired_utc FROM apps WHERE canonical_id IS NULL ORDER BY display_name COLLATE NOCASE");
+        using var cmd = Cmd("SELECT id, exe_path, package_family, display_name, state, retired_utc, is_background FROM apps WHERE canonical_id IS NULL ORDER BY display_name COLLATE NOCASE");
         using var r = cmd.ExecuteReader();
         while (r.Read())
             list.Add(new LibraryApp(r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2), r.GetString(3), r.GetString(4),
-                r.IsDBNull(5) ? null : r.GetInt64(5)));
+                r.IsDBNull(5) ? null : r.GetInt64(5), r.GetInt64(6) != 0));
         return list;
     }
 

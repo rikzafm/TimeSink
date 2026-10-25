@@ -16,6 +16,7 @@ public static class AllQuery
         public required long Id;
         public required string Name;
         public required bool Retired;
+        public bool Background;
         public long RetiredUtc;
         public long Seconds;
         public long Longest;
@@ -45,7 +46,7 @@ public static class AllQuery
         var groupOf = new Dictionary<long, long>();
         using (var cmd = c.CreateCommand())
         {
-            cmd.CommandText = "SELECT id, canonical_id, display_name, state, retired_utc FROM apps ORDER BY id";
+            cmd.CommandText = "SELECT id, canonical_id, display_name, state, retired_utc, is_background FROM apps ORDER BY id";
             using var r = cmd.ExecuteReader();
             var aliases = new List<(long Id, long Canonical)>();
             while (r.Read())
@@ -55,7 +56,7 @@ public static class AllQuery
                 groups[id] = new Group
                 {
                     Id = id, Name = r.GetString(2), Retired = r.GetString(3) == "retired",
-                    RetiredUtc = r.IsDBNull(4) ? 0 : r.GetInt64(4),
+                    RetiredUtc = r.IsDBNull(4) ? 0 : r.GetInt64(4), Background = r.GetInt64(5) != 0,
                 };
                 groupOf[id] = id;
             }
@@ -96,7 +97,7 @@ public static class AllQuery
 
         var apps = groups.Values.Where(g => !g.Retired).OrderBy(g => g.Id).Select(g => new AllAppRow(
             g.Id, g.Name, g.Seconds, g.Days.Count, Average(g.Seconds, g.Days.Count), total > 0 ? g.Seconds / (double)total : 0,
-            g.Days.Count > 0 ? g.Days.Min : null, BestMonth(g), g.Longest)).ToList();
+            g.Days.Count > 0 ? g.Days.Min : null, BestMonth(g), g.Longest, g.Background)).ToList();
         var retired = groups.Values.Where(g => g.Retired).OrderByDescending(g => g.RetiredUtc).ThenBy(g => g.Id).Select(g => new AllRetiredRow(
             g.Id, g.Name, g.Seconds, g.Days.Count, Average(g.Seconds, g.Days.Count),
             LocalDays.DateOf(g.RetiredUtc, zone))).ToList();

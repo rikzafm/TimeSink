@@ -82,7 +82,7 @@ public static class WrappedQuery
         var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc).Where(kv => kv.Key.Year == year).Sum(kv => kv.Value);
 
         var ranked = perGroup.Select(kv => new WrappedApp(kv.Key, NameOf(apps, kv.Key), kv.Value))
-            .OrderByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+            .OrderBy(a => UsageRank.Tier(apps, a.AppId)).ThenByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
 
         // Longest run of consecutive local days with any tracked time (earliest wins a tie).
         int bestLen = 0, bestStartDay = 0, runLen = 0, runStart = 0, prevDay = int.MinValue;

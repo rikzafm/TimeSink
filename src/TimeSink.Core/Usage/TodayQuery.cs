@@ -111,7 +111,7 @@ public static class TodayQuery
                 closedToday.Count > 0 ? closedToday.Max(s => s.End) : null,
                 sessions, avg, avgDays));
         }
-        rows = rows.OrderByDescending(r => r.Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        rows = rows.OrderBy(r => UsageRank.Tier(apps, r.AppId)).ThenByDescending(r => r.Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
 
         // Tiles.
         FirstAppTile? first = null;

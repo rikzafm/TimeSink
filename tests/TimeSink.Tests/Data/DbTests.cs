@@ -20,14 +20,14 @@ public sealed class DbTests : IDisposable
 
         using (var db = Db.Open(path))
         {
-            db.SchemaVersion.Should().Be(1);
+            db.SchemaVersion.Should().Be(Db.LatestSchemaVersion);
             db.JournalMode.Should().Be("wal");
             var id = db.InsertApp(@"c:\windows\notepad.exe", "Notepad", addedUtc: 1_700_000_000);
             id.Should().BeGreaterThan(0);
         }
 
         using var reopened = Db.Open(path);
-        reopened.SchemaVersion.Should().Be(1);
+        reopened.SchemaVersion.Should().Be(Db.LatestSchemaVersion);
         reopened.GetApps().Should().ContainSingle()
             .Which.Should().Be(new AppRow(1, @"c:\windows\notepad.exe", "Notepad", "tracked"));
     }

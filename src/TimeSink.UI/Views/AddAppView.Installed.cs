@@ -237,6 +237,7 @@ public sealed partial class AddAppView
         var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         if (lib is { State: "tracked" })
         {
+            actions.Children.Add(BackgroundPill(lib.Background, () => SetBackground(lib.Id, !lib.Background, RenderInstalled)));
             var stop = Pill("Str.AddStopTracking", PillStyle.Quiet);
             stop.ToolTip = TimeText.Str(AddAppStrings.StopTip);
             stop.Margin = new Thickness(0, 0, 6, 0);
@@ -281,6 +282,24 @@ public sealed partial class AddAppView
         b.SetResourceReference(Control.BorderBrushProperty, style == PillStyle.Filled ? "Brush.Accent" : "Brush.Border");
         if (style == PillStyle.Quiet) b.FontWeight = FontWeights.Normal;
         return b;
+    }
+
+    /// <summary>The per-row "Background" switch on tracked apps (Installed and Tracked tabs): lit when the app ranks after the others.</summary>
+    private Button BackgroundPill(bool on, Action toggle)
+    {
+        var b = Pill("Str.AddBackground", on ? PillStyle.Done : PillStyle.Quiet);
+        b.ToolTip = TimeText.Str(AddAppStrings.BackgroundTip);
+        b.Margin = new Thickness(0, 0, 6, 0);
+        if (on) b.SetResourceReference(Control.BorderBrushProperty, "Brush.Accent");
+        b.Click += (_, _) => toggle();
+        return b;
+    }
+
+    private void SetBackground(long appId, bool background, Action rerender)
+    {
+        try { using var lib = AppLibrary.Open(_dbPath); lib.SetBackground(appId, background); }
+        catch { return; }
+        rerender();
     }
 
     // ---- actions ------------------------------------------------------------------------------------------

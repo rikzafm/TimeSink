@@ -16,7 +16,8 @@ public sealed record AllAppRow(
     double Share,
     DateOnly? FirstTracked,
     AllBestMonth? BestMonth,
-    long LongestSessionSeconds);
+    long LongestSessionSeconds,
+    bool Background = false);
 
 /// <summary>A retired app: listed below the table, dimmed, never part of the totals or shares.</summary>
 public sealed record AllRetiredRow(

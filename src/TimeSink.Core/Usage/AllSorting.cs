@@ -16,10 +16,16 @@ public readonly record struct AllSort(AllColumn Column, bool Descending)
 
 public static class AllSorting
 {
-    /// <summary>Sorts the tracked rows; ties fall back to the app name (A-Z) so the order is stable.</summary>
+    /// <summary>
+    /// Sorts the tracked rows; ties fall back to the app name (A-Z) so the order is stable. The default sort groups
+    /// apps that have time first, then Background apps with time, then apps that never ran; a header sort is purely by its column.
+    /// </summary>
     public static IReadOnlyList<AllAppRow> Apply(IEnumerable<AllAppRow> rows, AllSort sort)
     {
         var byName = StringComparer.CurrentCultureIgnoreCase;
+        if (sort == AllSort.Default)
+            return rows.OrderBy(r => r.Seconds <= 0 ? 2 : r.Background ? 1 : 0)
+                .ThenByDescending(r => r.Seconds).ThenBy(r => r.Name, byName).ToList();
         IOrderedEnumerable<AllAppRow> ordered = sort.Column switch
         {
             AllColumn.App => Order(rows, r => r.Name, byName, sort.Descending),

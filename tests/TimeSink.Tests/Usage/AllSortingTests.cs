@@ -51,6 +51,30 @@ public sealed class AllSortingTests : IDisposable
     }
 
     [Fact]
+    public void Background_apps_rank_after_the_others_in_the_default_order_but_still_count_in_the_totals()
+    {
+        var before = Result().Totals;
+        _f.Exec($"UPDATE apps SET is_background = 1 WHERE id = {_f.Chrome}");
+
+        var r = Result();
+        r.Apps.Single(a => a.Name == "Chrome").Background.Should().BeTrue();
+        Names(AllSorting.Apply(r.Apps, AllSort.Default)).Should().Equal("Code", "Disc", ZedName, "Mus", "Chrome");
+        r.Totals.Should().Be(before);
+    }
+
+    [Fact]
+    public void Apps_that_never_ran_sit_below_background_apps_and_a_header_sort_ignores_the_flag()
+    {
+        _f.Exec("INSERT INTO apps(id, exe_path, display_name, added_utc) VALUES (902, 'c:\\never.exe', 'Never', 0)");
+        _f.Exec($"UPDATE apps SET is_background = 1 WHERE id = {_f.Mus}");
+
+        var r = Result();
+        Names(AllSorting.Apply(r.Apps, AllSort.Default)).Should().Equal("Chrome", "Code", "Disc", ZedName, "Mus", "Never");
+        Names(AllSorting.Apply(r.Apps, new AllSort(AllColumn.Hours, true))).Should().Equal("Chrome", "Code", "Disc", ZedName, "Mus", "Never");
+        Names(AllSorting.Apply(r.Apps, AllSort.Default.Tap(AllColumn.App))).Should().Equal("Chrome", "Code", "Disc", "Mus", "Never", ZedName);
+    }
+
+    [Fact]
     public void Retired_rows_keep_their_order_whatever_the_sort_is()
     {
         _f.Exec("INSERT INTO apps(id, exe_path, display_name, added_utc, state, retired_utc) VALUES (901, 'c:\\a.exe', 'Aaa', 0, 'retired', " + U(2026, 2, 1, 0) + ")");
