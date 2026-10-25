@@ -18,13 +18,13 @@ using static TimeSink.UI.Services.TimeText;
 namespace TimeSink.UI.Views;
 
 /// <summary>
-/// Year > Wrapped: three pageable cards (total hours, top apps podium, habits; board PulseYearWrapped) and "Save as
+/// Year > Wrapped: five pageable cards (total hours, top apps, top games and top gacha podiums, habits; board PulseYearWrapped) and "Save as
 /// image", which writes the visible card to a PNG. Built in code; data arrives after first paint via <see cref="Start"/>.
 /// </summary>
 public sealed class YearWrappedView : UserControl, IYearSubView
 {
     private const int RefreshEverySeconds = 30;
-    private const int CardCount = 3;
+    private const int CardCount = 5; // total, top apps, top games, top gacha, habits
     private const double SwipeDistance = 40;
 
     private readonly string _dbPath;
@@ -115,6 +115,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         _timer.Tick += (_, _) => Refresh();
         _live.Changed += Refresh;
         _themes.Applied += Redraw;
+        AppIcons.Updated += Redraw;
         Unloaded += (_, _) => Stop();
         Redraw(); // static text and an empty card; data follows in Start
     }
@@ -154,6 +155,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or IOException) { return; }
         if (seq != _seq || !_started) return;
         _result = result;
+        AppIcons.Load(_dbPath, result.Podium.Concat(result.Others).Concat(result.GamesTop?.Podium ?? []).Concat(result.GachaTop?.Podium ?? []).Select(a => a.AppId));
         Redraw();
 #if DEBUG
         var auto = Environment.GetEnvironmentVariable("TS_WRAPPED_SAVETO"); // test aid: write the visible card, no dialog (decision 115)
@@ -175,10 +177,21 @@ public sealed class YearWrappedView : UserControl, IYearSubView
     {
         if (r.TotalSeconds <= 0)
         {
-            var label = index switch { 1 => WrappedStringKeys.Card2Label, 2 => WrappedStringKeys.Card3Label, _ => WrappedStringKeys.Card1Label };
+            var label = index switch
+            {
+                1 => WrappedStringKeys.Card2Label, 2 => WrappedStringKeys.Card4Label, 3 => WrappedStringKeys.Card5Label,
+                4 => WrappedStringKeys.Card3Label, _ => WrappedStringKeys.Card1Label,
+            };
             return new EmptyCardModel(Str(label, r.Year), Str(YearStringKeys.Empty));
         }
-        return index switch { 1 => TopApps(r), 2 => Habits(r), _ => Total(r) };
+        return index switch
+        {
+            1 => Podium(Str(WrappedStringKeys.Card2Label), WrappedStringKeys.TopHeadline, r.Podium, r.Others, ""),
+            2 => Podium(Str(WrappedStringKeys.Card4Label), WrappedStringKeys.GamesHeadline, r.GamesTop?.Podium, r.GamesTop?.Others, WrappedStringKeys.NoGames),
+            3 => Podium(Str(WrappedStringKeys.Card5Label), WrappedStringKeys.GachaHeadline, r.GachaTop?.Podium, r.GachaTop?.Others, WrappedStringKeys.NoGacha),
+            4 => Habits(r),
+            _ => Total(r),
+        };
     }
 
     private static TotalCardModel Total(WrappedResult r)
@@ -206,24 +219,24 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         return "?";
     }
 
-    private static TopAppsCardModel TopApps(WrappedResult r)
+    private static WrappedCardModel Podium(string label, string headlineKey, IReadOnlyList<WrappedApp>? p, IReadOnlyList<WrappedApp>? others, string emptyKey)
     {
-        var p = r.Podium;
-        WrappedPodiumEntry E(int i) => new(Letter(p[i].Name), p[i].Name, Hours(p[i].Seconds), i + 1);
-        // Display order: second place, winner, third place.
-        var order = p.Count >= 3 ? new[] { 1, 0, 2 } : p.Count == 2 ? new[] { 1, 0 } : new[] { 0 };
+        if (p is not { Count: > 0 }) return new EmptyCardModel(label, Str(emptyKey.Length > 0 ? emptyKey : YearStringKeys.Empty));
+        WrappedPodiumEntry E(int i) => new(Letter(p[i].Name), p[i].Name, Hours(p[i].Seconds), i + 1, AppIcons.Get(p[i].AppId));
+        // Display order: winner in the middle, then 2nd to its left, 3rd right, 4th far left, 5th far right.
+        var order = new List<int> { 0 };
+        for (var i = 1; i < p.Count; i++) { if (i % 2 == 1) order.Insert(0, i); else order.Add(i); }
         var then = new List<(string, bool)>();
-        if (r.Others.Count > 0)
+        if (others is { Count: > 0 })
         {
             then.Add((Str(WrappedStringKeys.Then) + " ", false));
-            for (var i = 0; i < r.Others.Count; i++)
+            for (var i = 0; i < others.Count; i++)
             {
-                if (i > 0) then.Add((" Â· ", false));
-                then.Add(($"{r.Others[i].Name} {Hours(r.Others[i].Seconds)}", true));
+                if (i > 0) then.Add((" · ", false));
+                then.Add(($"{others[i].Name} {Hours(others[i].Seconds)}", true));
             }
         }
-        return new TopAppsCardModel(Str(WrappedStringKeys.Card2Label), Str(WrappedStringKeys.TopHeadline, p[0].Name),
-            order.Select(E).ToList(), then);
+        return new TopAppsCardModel(label, Str(headlineKey, p[0].Name), order.Select(E).ToList(), then);
     }
 
     private static HabitsCardModel Habits(WrappedResult r)
@@ -262,7 +275,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         _card.MediumRadius = Application.Current.TryFindResource("CornerRadius.Medium") is CornerRadius mr ? mr.TopLeft : 10;
         _card.LargeRadius = Application.Current.TryFindResource("CornerRadius.Large") is CornerRadius lr ? lr.TopLeft : 12;
         _pager.ButtonRadius = Application.Current.TryFindResource("CornerRadius.Small") is CornerRadius sr ? sr.TopLeft : 8;
-        var names = new[] { Str(WrappedStringKeys.CardNameTotal), Str(WrappedStringKeys.CardNameTop), Str(WrappedStringKeys.CardNameHabits) };
+        var names = new[] { Str(WrappedStringKeys.CardNameTotal), Str(WrappedStringKeys.CardNameTop), Str(WrappedStringKeys.CardNameGames), Str(WrappedStringKeys.CardNameGacha), Str(WrappedStringKeys.CardNameHabits) };
         System.Windows.Automation.AutomationProperties.SetName(_card, Str(WrappedStringKeys.GoTo, _index + 1, names[_index]));
         System.Windows.Automation.AutomationProperties.SetName(_pager, Str(WrappedStringKeys.Prev) + " / " + Str(WrappedStringKeys.Next));
         _card.Model = _result is { } r ? BuildModel(r, _index) : null;

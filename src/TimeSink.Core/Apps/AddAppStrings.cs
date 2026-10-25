@@ -67,6 +67,11 @@ public static class AddAppStrings
     public const string SaveChanges = "addSaveChanges";
     public const string Background = "addBackground";
     public const string BackgroundTip = "addBackgroundTip";
+    public const string Kind = "addKind";
+    public const string KindTip = "addKindTip";
+    public const string KindOther = "addKindOther";
+    public const string KindGame = "addKindGame";
+    public const string KindGacha = "addKindGacha";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -77,6 +82,6 @@ public static class AddAppStrings
         TabTracked, TrackedSearch, TrackedHeader, TrackedEmpty, TrackedSub, TrackedCount, Manage, Rename, Merge, Stop,
         RenameLabel, Save, Cancel, MergeTitle, MergeSub, MergePreview, MergePick, MergeInto, Unmerge, StopTitle, StopBody, KeepTracking,
         FilterUntracked, FilterAll, SubStopped, SubInstalled, MergeStarts, MergeCount, SaveChanges,
-        Background, BackgroundTip,
+        Background, BackgroundTip, Kind, KindTip, KindOther, KindGame, KindGacha,
     ];
 }

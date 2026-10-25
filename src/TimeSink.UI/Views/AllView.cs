@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using TimeSink.Core.Data;
 using TimeSink.Core.Theming;
 using TimeSink.Core.Usage;
 using TimeSink.UI.Controls;
@@ -26,7 +27,11 @@ public sealed class AllView : UserControl
     private const int RefreshEverySeconds = 30;
     private static readonly CultureInfo En = CultureInfo.InvariantCulture; // English names in v1 (spec 8.1)
     private static readonly AllColumn[] Columns = [AllColumn.App, AllColumn.Hours, AllColumn.DaysUsed, AllColumn.AvgPerDay, AllColumn.Share];
-    private static readonly double[] ColumnWidths = [1.7, 0.9, 0.8, 0.9, 1.2];
+    private static readonly double[] DefaultWidths = [1.7, 0.9, 0.8, 0.9, 1.2];
+    private const string WidthsKey = "all.columns"; // star weights, dragged on the header's column edges
+    private const double MinColumnPx = 36;
+    private static double[] ColumnWidths = [.. DefaultWidths];
+    private static readonly Stack<double[]> UndoWidths = new(), RedoWidths = new(); // kept for the app session
 
     private readonly string _dbPath;
     private readonly ThemeService _themes;
@@ -56,6 +61,13 @@ public sealed class AllView : UserControl
         _live = live;
         _window = window;
 
+        LoadWidths();
+        Focusable = true;
+        Loaded += (_, _) => Focus();
+        PreviewMouseDown += (_, _) => Focus();
+        PreviewKeyDown += OnKeyDown;
+        ApplyWidths(_head);
+        ApplyWidths(_totals);
         _total.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
         _total.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
         _total.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Display");
@@ -225,7 +237,94 @@ public sealed class AllView : UserControl
             b.Click += (_, _) => { _sort = _sort.Tap(col); Redraw(); };
             Grid.SetColumn(b, i);
             _head.Children.Add(b);
+            if (i < Columns.Length - 1) _head.Children.Add(ResizeHandle(i));
         }
+    }
+
+    // ---- column resizing ----
+
+    private void LoadWidths()
+    {
+        var parts = (SettingsStore.Get(_dbPath, WidthsKey) ?? "").Split(',');
+        var w = parts.Select(p => double.TryParse(p, NumberStyles.Float, En, out var v) && v > 0 && double.IsFinite(v) ? v : 0).ToArray();
+        ColumnWidths = w.Length == DefaultWidths.Length && w.All(v => v > 0) ? w : [.. DefaultWidths];
+    }
+
+    private void SaveWidths() =>
+        SettingsStore.Set(_dbPath, WidthsKey, string.Join(",", ColumnWidths.Select(v => v.ToString("0.###", En))));
+
+    /// <summary>Pushes <see cref="ColumnWidths"/> into a table grid (the header, totals and every row share them).</summary>
+    private static void ApplyWidths(Grid g)
+    {
+        for (var i = 0; i < g.ColumnDefinitions.Count && i < ColumnWidths.Length; i++)
+            g.ColumnDefinitions[i].Width = new GridLength(ColumnWidths[i], GridUnitType.Star);
+    }
+
+    /// <summary>Records <paramref name="before"/> as an undo step if the widths now differ from it.</summary>
+    private static void PushUndo(double[] before)
+    {
+        if (before.SequenceEqual(ColumnWidths)) return;
+        UndoWidths.Push(before);
+        RedoWidths.Clear();
+    }
+
+    private void OnKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == 0) return;
+        var shift = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Shift) != 0;
+        var undo = e.Key == System.Windows.Input.Key.Z && !shift;
+        var redo = e.Key == System.Windows.Input.Key.Y || (e.Key == System.Windows.Input.Key.Z && shift);
+        if (!undo && !redo) return;
+        var from = undo ? UndoWidths : RedoWidths;
+        if (from.Count > 0)
+        {
+            (undo ? RedoWidths : UndoWidths).Push([.. ColumnWidths]);
+            ColumnWidths = from.Pop();
+            ApplyWidthsEverywhere();
+            SaveWidths();
+        }
+        e.Handled = true;
+    }
+
+    private void ApplyWidthsEverywhere()
+    {
+        ApplyWidths(_head);
+        ApplyWidths(_totals);
+        foreach (var row in _rows.Children)
+            if (row is Border { Child: Grid g }) ApplyWidths(g);
+    }
+
+    /// <summary>A thin drag target on the right edge of header column <paramref name="index"/>: moves the edge between it and the next column.</summary>
+    private FrameworkElement ResizeHandle(int index)
+    {
+        var h = new Border { Width = 8, HorizontalAlignment = HorizontalAlignment.Right, Background = Brushes.Transparent, Cursor = System.Windows.Input.Cursors.SizeWE };
+        Grid.SetColumn(h, index);
+        Panel.SetZIndex(h, 1);
+        double startX = 0, left = 0, right = 0;
+        double[] before = [];
+        h.MouseLeftButtonDown += (_, e) =>
+        {
+            if (e.ClickCount == 2) { var before = ColumnWidths; ColumnWidths = [.. DefaultWidths]; PushUndo(before); ApplyWidthsEverywhere(); SaveWidths(); e.Handled = true; return; }
+            startX = e.GetPosition(_head).X;
+            left = ColumnWidths[index];
+            right = ColumnWidths[index + 1];
+            before = [.. ColumnWidths];
+            h.CaptureMouse();
+            e.Handled = true;
+        };
+        h.MouseMove += (_, e) =>
+        {
+            if (!h.IsMouseCaptured || _head.ActualWidth <= 0) return;
+            var perPx = ColumnWidths.Sum() / _head.ActualWidth;
+            var min = MinColumnPx * perPx;
+            var pair = left + right;
+            var l = Math.Clamp(left + (e.GetPosition(_head).X - startX) * perPx, Math.Min(min, pair / 2), Math.Max(pair - min, pair / 2));
+            ColumnWidths[index] = l;
+            ColumnWidths[index + 1] = pair - l;
+            ApplyWidthsEverywhere();
+        };
+        h.MouseLeftButtonUp += (_, _) => { if (h.IsMouseCaptured) { h.ReleaseMouseCapture(); PushUndo(before); SaveWidths(); } };
+        return h;
     }
 
     private FrameworkElement AppRow(AllAppRow a, int index, bool selected, long maxSeconds)
@@ -383,7 +482,7 @@ public sealed class AllView : UserControl
         row.Children.Add(lead);
         if (background) // why this app ranks below the others
         {
-            var badge = BackgroundBadge.Create();
+            var badge = BackgroundBadge.CreateIcon(); // icon only: the text pill squeezed names down to ".."
             DockPanel.SetDock(badge, Dock.Right);
             row.Children.Add(badge);
         }

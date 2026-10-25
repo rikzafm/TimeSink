@@ -33,6 +33,10 @@ public sealed class HourlyBars : FrameworkElement
     public static readonly DependencyProperty SelectedHourProperty = Reg<int>(nameof(SelectedHour), -1);
 
     public static readonly DependencyProperty SelectedBrushProperty = Reg<Brush?>(nameof(SelectedBrush));
+    public static readonly DependencyProperty HoveredHourProperty = Reg<int>(nameof(HoveredHour), -1);
+
+    /// <summary>The column under the pointer, or -1.</summary>
+    public int HoveredHour { get => (int)GetValue(HoveredHourProperty); private set => SetValue(HoveredHourProperty, value); }
 
     /// <summary>The outline colour of the selected hour.</summary>
     public Brush? SelectedBrush { get => (Brush?)GetValue(SelectedBrushProperty); set => SetValue(SelectedBrushProperty, value); }
@@ -52,12 +56,15 @@ public sealed class HourlyBars : FrameworkElement
     {
         base.OnMouseMove(e);
         var p = e.GetPosition(this);
-        HourHovered?.Invoke(HourAt(p), p);
+        var h = HourAt(p);
+        HoveredHour = h;
+        HourHovered?.Invoke(h, p);
     }
 
     protected override void OnMouseLeave(System.Windows.Input.MouseEventArgs e)
     {
         base.OnMouseLeave(e);
+        HoveredHour = -1;
         HourHovered?.Invoke(-1, default);
     }
 
@@ -115,9 +122,17 @@ public sealed class HourlyBars : FrameworkElement
             var bucket = hours[i];
             var barH = Math.Min(1.0, bucket.AppSeconds / 3600.0 / MaxAppHours) * plotH;
             var future = CurrentHour >= 0 && i > CurrentHour;
+            if (i == HoveredHour && MutedBrush is { } hoverFill)
+            {
+                dc.PushOpacity(0.18);
+                dc.DrawRoundedRectangle(hoverFill, null, new Rect(x - 1, plotTop, barW + 2, plotH), 2, 2);
+                dc.Pop();
+            }
             if (barH > 0.5)
+            {
                 dc.DrawRoundedRectangle(i == CurrentHour ? CurrentBrush : BarBrush, null,
                     new Rect(x, plotTop + plotH - barH, barW, barH), 1.5, 1.5);
+            }
             if (i == SelectedHour && SelectedBrush is { } sel)
                 dc.DrawRoundedRectangle(null, new Pen(sel, 1.5), new Rect(x - 1, plotTop, barW + 2, plotH), 2, 2);
             if (future && bucket.TypicalAppSeconds > 0 && MutedBrush is { } m)

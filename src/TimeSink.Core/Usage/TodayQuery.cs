@@ -111,7 +111,13 @@ public static class TodayQuery
                 closedToday.Count > 0 ? closedToday.Max(s => s.End) : null,
                 sessions, avg, avgDays));
         }
-        rows = rows.OrderBy(r => UsageRank.Tier(apps, r.AppId)).ThenByDescending(r => r.Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        // The live day lists running apps first (most time first), then closed ones by most recent close; Background apps
+        // stay after the rest within each group. A past day keeps the plain time ranking.
+        rows = (isToday
+            ? rows.OrderByDescending(r => r.IsRunning).ThenBy(r => UsageRank.Tier(apps, r.AppId))
+                .ThenByDescending(r => r.IsRunning ? r.Seconds : r.LastClosedUtc ?? 0)
+            : rows.OrderBy(r => UsageRank.Tier(apps, r.AppId)).ThenByDescending(r => r.Seconds))
+            .ThenByDescending(r => r.Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
 
         // Tiles.
         FirstAppTile? first = null;

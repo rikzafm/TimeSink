@@ -9,7 +9,7 @@ internal sealed record Migration(int Version, Action<SqliteConnection> Apply);
 internal static class Migrator
 {
     public static readonly IReadOnlyList<Migration> Shipped = 
-        [new(M001_Initial.Version, M001_Initial.Apply), new(M002_BackgroundApps.Version, M002_BackgroundApps.Apply)];
+        [new(M001_Initial.Version, M001_Initial.Apply), new(M002_BackgroundApps.Version, M002_BackgroundApps.Apply), new(M003_AppKind.Version, M003_AppKind.Apply)];
 
     public static int LatestVersion => Shipped[^1].Version;
 

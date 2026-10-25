@@ -7,8 +7,8 @@ namespace TimeSink.UI.Controls;
 /// <summary>A small tile (value + caption) at the foot of the "total hours" card.</summary>
 public sealed record WrappedTile(string Value, string Caption);
 
-/// <summary>One podium column. <c>Rank</c> is 1-3; <c>Hours</c> is the pre-composed time ("165h").</summary>
-public sealed record WrappedPodiumEntry(string Letter, string Name, string Hours, int Rank);
+/// <summary>One podium column. <c>Rank</c> is 1-5; <c>Hours</c> is the pre-composed time ("165h"); <c>Icon</c> is the app's own logo, or null to show the letter.</summary>
+public sealed record WrappedPodiumEntry(string Letter, string Name, string Hours, int Rank, ImageSource? Icon = null);
 
 /// <summary>A habit tile: small caps key, big value, one-line sub.</summary>
 public sealed record WrappedHabit(string Key, string Value, string Sub);
@@ -19,7 +19,7 @@ public abstract record WrappedCardModel(string Label);
 public sealed record TotalCardModel(string Label, string Big, string Unit, string Line, string LineHighlight, IReadOnlyList<WrappedTile> Tiles)
     : WrappedCardModel(Label);
 
-/// <param name="Entries">In display order (rank 2, rank 1, rank 3).</param>
+/// <param name="Entries">In display order (rank 4, 2, 1, 3, 5: the winner in the middle).</param>
 /// <param name="Then">Runs of the footer line; <c>Soft</c> runs are brighter.</param>
 public sealed record TopAppsCardModel(string Label, string Headline, IReadOnlyList<WrappedPodiumEntry> Entries, IReadOnlyList<(string Text, bool Soft)> Then)
     : WrappedCardModel(Label);
@@ -226,7 +226,7 @@ public sealed class WrappedCard : FrameworkElement
             var x = x0 + k * (slot + Gap);
             var cx = x + slot / 2;
             var color = brushes is { Count: > 0 } ? brushes[(e.Rank - 1) % brushes.Count] : AccentBrush;
-            var pillarH = e.Rank switch { 1 => 108.0, 2 => 78.0, _ => 58.0 };
+            var pillarH = e.Rank switch { 1 => 108.0, 2 => 84.0, 3 => 68.0, 4 => 54.0, _ => 42.0 };
             dc.DrawGeometry(color, null, TopRounded(new Rect(x, baseY - pillarH, slot, pillarH), 8));
             var rank = Text(e.Rank.ToString(CultureInfo.CurrentCulture), DisplaySize * 0.76, OnAccentBrush, bold: true, numbers: true);
             dc.DrawText(rank, new Point(cx - rank.Width / 2, baseY - pillarH + 6));
@@ -238,9 +238,14 @@ public sealed class WrappedCard : FrameworkElement
             var nameY = hoursY - 4 - name.Height;
             dc.DrawText(name, new Point(cx - Math.Min(slot, name.Width) / 2, nameY));
             var tileR = new Rect(cx - 18, nameY - 4 - 36, 36, 36);
-            DrawTile(dc, tileR, MediumRadius, TileBackBrush);
-            var letter = Text(e.Letter, TitleSize + 2, color, bold: true);
-            dc.DrawText(letter, new Point(cx - letter.Width / 2, tileR.Y + (36 - letter.Height) / 2));
+            if (e.Icon is { } icon)
+                dc.DrawImage(icon, tileR); // the logo alone, no tile behind it
+            else
+            {
+                DrawTile(dc, tileR, MediumRadius, TileBackBrush);
+                var letter = Text(e.Letter, TitleSize + 2, color, bold: true);
+                dc.DrawText(letter, new Point(cx - letter.Width / 2, tileR.Y + (36 - letter.Height) / 2));
+            }
         }
     }
 

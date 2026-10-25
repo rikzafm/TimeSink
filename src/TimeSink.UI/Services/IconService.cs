@@ -30,16 +30,16 @@ internal static class IconService
     private static Guid _iid = new("bcc18b79-ba16-442f-80c4-8a59c30c463b");
     private const int SIIGBF_BIGGERSIZEOK = 0x1;
 
-    /// <summary>PNG bytes (64 px) of the app's icon, from its Start tile when an AUMID is known, else from the exe; null on failure.</summary>
-    public static byte[]? ExtractPng(string exePath, string? aumid, string? imageFile = null)
+    /// <summary>PNG bytes (<paramref name="size"/> px, 64 by default) of the app's icon, from its Start tile when an AUMID is known, else from the exe; null on failure.</summary>
+    public static byte[]? ExtractPng(string exePath, string? aumid, string? imageFile = null, int size = 64)
     {
-        if (imageFile is not null && FromImage(imageFile) is { } art) return art;
-        if (aumid is not null && Extract(@"shell:AppsFolder\" + aumid) is { } tile) return tile;
-        return Extract(exePath);
+        if (imageFile is not null && FromImage(imageFile, size) is { } art) return art;
+        if (aumid is not null && Extract(@"shell:AppsFolder\" + aumid, size) is { } tile) return tile;
+        return Extract(exePath, size);
     }
 
     /// <summary>An image file (Steam's cached art) centre-cropped to a square and scaled to 64 px; null when unreadable.</summary>
-    private static byte[]? FromImage(string path)
+    private static byte[]? FromImage(string path, int size)
     {
         try
         {
@@ -50,7 +50,7 @@ internal static class IconService
             bmp.EndInit();
             var side = Math.Min(bmp.PixelWidth, bmp.PixelHeight);
             var crop = new CroppedBitmap(bmp, new Int32Rect((bmp.PixelWidth - side) / 2, (bmp.PixelHeight - side) / 2, side, side));
-            var scaled = new TransformedBitmap(crop, new System.Windows.Media.ScaleTransform(64.0 / side, 64.0 / side));
+            var scaled = new TransformedBitmap(crop, new System.Windows.Media.ScaleTransform((double)size / side, (double)size / side));
             var enc = new PngBitmapEncoder();
             enc.Frames.Add(BitmapFrame.Create(scaled));
             using var ms = new MemoryStream();
@@ -60,13 +60,13 @@ internal static class IconService
         catch { return null; }
     }
 
-    private static byte[]? Extract(string parsingName)
+    private static byte[]? Extract(string parsingName, int size)
     {
         nint hbmp = 0;
         try
         {
             if (SHCreateItemFromParsingName(parsingName, 0, ref _iid, out var factory) != 0) return null;
-            if (factory.GetImage(new SIZE { cx = 64, cy = 64 }, SIIGBF_BIGGERSIZEOK, out hbmp) != 0 || hbmp == 0) return null;
+            if (factory.GetImage(new SIZE { cx = size, cy = size }, SIIGBF_BIGGERSIZEOK, out hbmp) != 0 || hbmp == 0) return null;
             var src = Imaging.CreateBitmapSourceFromHBitmap(hbmp, 0, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
             var enc = new PngBitmapEncoder();
             enc.Frames.Add(BitmapFrame.Create(src));
@@ -77,6 +77,8 @@ internal static class IconService
         catch { return null; }
         finally { if (hbmp != 0) DeleteObject(hbmp); }
     }
+
+    private const int MaxDecodePx = 96;
 
     public static BitmapSource? Decode(byte[]? png)
     {

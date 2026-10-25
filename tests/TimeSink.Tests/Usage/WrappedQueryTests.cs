@@ -38,11 +38,11 @@ public sealed class WrappedQueryTests : IDisposable
     }
 
     [Fact]
-    public void Podium_is_the_top_three_apps_and_the_rest_follow()
+    public void Podium_is_the_top_five_apps_and_the_rest_follow()
     {
         var r = Run();
-        r.Podium.Select(a => (a.Name, a.Seconds)).Should().Equal(("Alpha", 64800L), ("Beta", 10800L), ("Gamma", 1800L));
-        r.Others.Select(a => (a.Name, a.Seconds)).Should().Equal(("Delta", 600L));
+        r.Podium.Select(a => (a.Name, a.Seconds)).Should().Equal(("Alpha", 64800L), ("Beta", 10800L), ("Gamma", 1800L), ("Delta", 600L));
+        r.Others.Should().BeEmpty();
     }
 
     [Fact]

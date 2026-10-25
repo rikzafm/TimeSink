@@ -18,4 +18,25 @@ public static class BackgroundBadge
         badge.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Tiny");
         return badge;
     }
+
+    /// <summary>Icon-only form for tight rows (the All table): the layers icon, with the explanation as a tooltip.</summary>
+    public static FrameworkElement CreateIcon()
+    {
+        var path = new System.Windows.Shapes.Path
+        {
+            Data = System.Windows.Media.Geometry.Parse("M12,4 L20,8.5 L12,13 L4,8.5 Z M4,12.5 L12,17 L20,12.5 M4,16 L12,20.5 L20,16"),
+            StrokeThickness = 2, StrokeStartLineCap = System.Windows.Media.PenLineCap.Round, StrokeEndLineCap = System.Windows.Media.PenLineCap.Round,
+            StrokeLineJoin = System.Windows.Media.PenLineJoin.Round,
+        };
+        path.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Brush.TextMuted");
+        var box = new Viewbox { Width = 14, Height = 14, Child = new Canvas { Width = 24, Height = 24, Children = { path } }, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Cursor = System.Windows.Input.Cursors.Help };
+        var tip = new ToolTip();
+        tip.SetResourceReference(ContentControl.ContentProperty, "Str.AddBackgroundTip");
+        tip.SetResourceReference(Control.BackgroundProperty, "Brush.Panel");
+        tip.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
+        tip.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");
+        tip.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
+        box.ToolTip = tip;
+        return box;
+    }
 }

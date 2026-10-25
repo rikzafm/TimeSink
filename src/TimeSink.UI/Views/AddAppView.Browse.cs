@@ -148,7 +148,7 @@ public sealed partial class AddAppView
             ShowStatus(TimeText.Str(result.Error == BrowseError.TargetMissing ? AddAppStrings.TargetMissing : AddAppStrings.NotAnApp), error: true);
             return;
         }
-        Task.Run(() => IconService.ExtractPng(app.ExePath, null)).ContinueWith(t =>
+        Task.Run(() => IconService.ExtractPng(app.ExePath, null, null, TileIconPx)).ContinueWith(t =>
         {
             try
             {

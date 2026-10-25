@@ -7,13 +7,13 @@ namespace TimeSink.UI.Controls;
 
 /// <summary>
 /// The Today tab's caption line doubling as the day switcher: the caption in its original spot (opens a
-/// month picker when clicked), a plain ‹ in the margin to its left and a plain › hugging its end. Days outside [first tracked day, today] are disabled.
+/// month picker when clicked), a plain ◂ in the margin to its left and a plain ▸ hugging its end. Days outside [first tracked day, today] are disabled.
 /// Colours, fonts and radii come from theme resources.
 /// </summary>
 public sealed class DayNav : Grid
 {
-    private readonly TextBlock _prev = Glyph("‹");
-    private readonly TextBlock _next = Glyph("›");
+    private readonly TextBlock _prev = Glyph("◂");
+    private readonly TextBlock _next = Glyph("▸");
     private readonly TextBlock _caption = new() { Cursor = System.Windows.Input.Cursors.Hand, VerticalAlignment = VerticalAlignment.Center };
     private readonly Popup _popup = new() { StaysOpen = false, AllowsTransparency = true, Placement = PlacementMode.Bottom };
     private readonly Border _popupBody = new() { Width = 252, Padding = new Thickness(8) };
@@ -32,9 +32,10 @@ public sealed class DayNav : Grid
         ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         ColumnDefinitions.Add(new ColumnDefinition());
 
-        // The caption keeps its original spot; ‹ hangs in the page margin to its left, › hugs its end.
+        // The caption keeps its original spot; ◂ hangs in the page margin to its left, ▸ hugs its end.
         _prev.HorizontalAlignment = HorizontalAlignment.Left;
-        _prev.Margin = new Thickness(-12, 0, 0, 0);
+        _prev.Margin = new Thickness(-15, 0, 0, 0);
+        _next.Margin = new Thickness(4, 0, 0, 0);
         _caption.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
         _caption.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         _caption.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
@@ -104,8 +105,8 @@ public sealed class DayNav : Grid
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         head.ColumnDefinitions.Add(new ColumnDefinition());
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var prev = Link("‹");
-        var next = Link("›");
+        var prev = Link("◂");
+        var next = Link("▸");
         var title = Themed(new TextBlock
         {
             Text = _month.ToString("MMMM yyyy", CultureInfo.CurrentCulture),

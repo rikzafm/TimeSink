@@ -1,13 +1,16 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Apps;
 
 namespace TimeSink.Core.Usage;
 
 /// <summary>A tracked app as the usage queries see it. <c>Group</c> is the canonical app id (merged apps share it).</summary>
-internal sealed record UsageApp(long Id, long Group, string Name, long AddedUtc, bool Background = false);
+internal sealed record UsageApp(long Id, long Group, string Name, long AddedUtc, bool Background = false, AppKind Kind = AppKind.Other);
 
 /// <summary>Background apps (Steam, Wallpaper Engine) rank after every other app; the flag lives on the canonical app of a merged group.</summary>
 internal static class UsageRank
 {
+    public static AppKind KindOf(Dictionary<long, UsageApp> apps, long group) => apps.TryGetValue(group, out var a) ? a.Kind : AppKind.Other;
+
     public static int Tier(Dictionary<long, UsageApp> apps, long group) => apps.TryGetValue(group, out var a) && a.Background ? 1 : 0;
 }
 
@@ -24,10 +27,11 @@ internal static class UsageLoader
     public static Dictionary<long, UsageApp> LoadApps(SqliteConnection c)
     {
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name, added_utc, is_background FROM apps WHERE state = 'tracked'";
+        cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name, added_utc, is_background, exe_path, kind FROM apps WHERE state = 'tracked'";
         using var r = cmd.ExecuteReader();
         var d = new Dictionary<long, UsageApp>();
-        while (r.Read()) d[r.GetInt64(0)] = new UsageApp(r.GetInt64(0), r.GetInt64(1), r.GetString(2), r.GetInt64(3), r.GetInt64(4) != 0);
+        while (r.Read()) d[r.GetInt64(0)] = new UsageApp(r.GetInt64(0), r.GetInt64(1), r.GetString(2), r.GetInt64(3), r.GetInt64(4) != 0,
+            AppKinds.Resolve(r.IsDBNull(6) ? null : r.GetInt64(6), r.GetString(5), r.GetString(2)));
         // A tracked alias whose canonical row is retired/absent still names its own group.
         foreach (var a in d.Values.ToList())
             if (!d.ContainsKey(a.Group) && a.Group != a.Id) d[a.Id] = a with { Group = a.Id };

@@ -15,7 +15,7 @@ public static class WeekQuery
     /// <summary>The streak is looked for this far back (and so tops out at this many days).</summary>
     public const int StreakLookbackDays = 365;
 
-    public static WeekResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
+    public static WeekResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, int weeksBack = 0)
     {
         using var c = new SqliteConnection(new SqliteConnectionStringBuilder
         {
@@ -27,17 +27,18 @@ public static class WeekQuery
             p.CommandText = "PRAGMA busy_timeout=2000";
             p.ExecuteNonQuery();
         }
-        return Run(c, now, zone, weekStart, running, onSinceUtc);
+        return Run(c, now, zone, weekStart, running, onSinceUtc, weeksBack);
     }
 
-    public static WeekResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
+    public static WeekResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, int weeksBack = 0)
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var today = LocalDays.DateOf(nowUtc, zone);
         var offset = ((int)today.DayOfWeek - (int)weekStart.ToDayOfWeek() + 7) % 7;
         var thisWeek = today.AddDays(-offset);
         var gridStart = thisWeek.AddDays(-7 * (GridWeeks - 1));
-        var lookStart = gridStart < today.AddDays(-StreakLookbackDays) ? gridStart : today.AddDays(-StreakLookbackDays);
+        var shownWeek = thisWeek.AddDays(-7 * weeksBack); // the seven columns and app rows; the grid and streak stay anchored to today
+        var lookStart = new[] { gridStart, today.AddDays(-StreakLookbackDays), shownWeek.AddDays(-7) }.Min();
 
         var apps = UsageLoader.LoadApps(c);
         var names = apps.Values.Where(a => a.Id == a.Group).ToDictionary(a => a.Id, a => a.Name);
@@ -68,7 +69,7 @@ public static class WeekQuery
 
         var days = Enumerable.Range(0, 7).Select(i =>
         {
-            var d = thisWeek.AddDays(i);
+            var d = shownWeek.AddDays(i);
             return new WeekDay(d, uptime.GetValueOrDefault(d), d == today, d > today);
         }).ToList();
 
@@ -80,6 +81,12 @@ public static class WeekQuery
             var secs = future ? 0 : uptime.GetValueOrDefault(d);
             heat.Add(new HeatCell(d, secs, future ? 0 : HeatLevel(secs), future));
         }
+
+        // Weekly totals for the trend strip (anchored to today like the grid) and last week up to the same weekday.
+        var weekTotals = Enumerable.Range(0, GridWeeks)
+            .Select(w => heat.Skip(w * 7).Take(7).Sum(h => h.Seconds)).ToList();
+        var prevWeek = days.Select((d, i) => (d, i)).Where(x => !x.d.IsFuture)
+            .Sum(x => uptime.GetValueOrDefault(shownWeek.AddDays(x.i - 7)));
 
         // Streak: consecutive days with any time, counted back from today; an empty today does not break it.
         var streak = 0;
@@ -101,7 +108,7 @@ public static class WeekQuery
         }
         rows = rows.OrderBy(r => UsageRank.Tier(apps, r.AppId)).ThenByDescending(r => r.Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
 
-        return new WeekResult(today, thisWeek, nowUtc, days.Sum(d => d.Seconds), days, heat, streak, rows);
+        return new WeekResult(today, shownWeek, nowUtc, days.Sum(d => d.Seconds), days, heat, streak, rows, weekTotals, prevWeek);
     }
 
     /// <summary>Heat step for a day's seconds: under 1 h, 3 h, 5 h, 7 h, then 7 h or more (the Month view uses the same steps).</summary>

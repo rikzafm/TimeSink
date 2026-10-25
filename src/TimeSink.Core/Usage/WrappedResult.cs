@@ -1,5 +1,11 @@
 namespace TimeSink.Core.Usage;
 
+/// <summary>The podium for one kind of app (games, gacha games): top three, the next three, and the kind's total app-seconds.</summary>
+public sealed record WrappedKindTop(IReadOnlyList<WrappedApp> Podium, IReadOnlyList<WrappedApp> Others, long Seconds)
+{
+    public static readonly WrappedKindTop Empty = new([], [], 0);
+}
+
 /// <summary>One app on the Wrapped podium (merged apps are one row under their canonical app).</summary>
 public sealed record WrappedApp(long AppId, string Name, long Seconds);
 
@@ -26,7 +32,9 @@ public sealed record WrappedResult(
     double? BusiestMonthDeltaPercent,
     int? PeakHour,
     long PeakHourSeconds,
-    int BeforeNoonPercent)
+    int BeforeNoonPercent,
+    WrappedKindTop? GamesTop = null,
+    WrappedKindTop? GachaTop = null)
 {
     /// <summary>"N days and M hours" the PC was on: whole days of the total.</summary>
     public int EquivalentDays => (int)(TotalSeconds / 86400);

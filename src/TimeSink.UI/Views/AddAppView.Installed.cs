@@ -109,7 +109,7 @@ public sealed partial class AddAppView
             foreach (var a in todo)
             {
                 byte[]? png;
-                try { png = IconService.ExtractPng(a.ExePath, a.Aumid, a.IconFile); } catch { png = null; }
+                try { png = IconService.ExtractPng(a.ExePath, a.Aumid, a.IconFile, TileIconPx); } catch { png = null; }
                 Dispatcher.BeginInvoke(() =>
                 {
                     _iconCache[a.ExePath] = png;
@@ -153,7 +153,7 @@ public sealed partial class AddAppView
             head.Margin = new Thickness(8, 8, 0, 4);
             _groupHeaders[g.Letter] = head;
             _instList.Children.Add(head);
-            foreach (var app in g.Apps) _instList.Children.Add(InstalledRow(app));
+            foreach (var app in g.Apps) _instList.Children.Add(Cached(InstalledRow(app)));
         }
 
         foreach (var letter in InstalledCatalog.Rail(groups))
@@ -170,14 +170,16 @@ public sealed partial class AddAppView
         }
 
         // apps stopped earlier (history kept): restorable from here, whether or not they are installed
-        var retired = _library.Where(a => a.State == "retired").OrderByDescending(a => a.RetiredUtc).ToList();
+        HashSet<long> trivial;
+        try { using var lib = AppLibrary.Open(_dbPath); trivial = lib.TrivialRetired(); } catch { trivial = []; }
+        var retired = _library.Where(a => a.State == "retired" && !trivial.Contains(a.Id)).OrderByDescending(a => a.RetiredUtc).ToList();
         if (retired.Count > 0 && _query.Trim().Length == 0)
         {
             var head = Text("Str.AddRetiredHeader", "Double.FontSize.Small", "Brush.TextMuted");
             head.Margin = new Thickness(8, 16, 0, 4);
             _instList.Children.Add(head);
             foreach (var r in retired)
-                _instList.Children.Add(AppRow(r.DisplayName, r.ExePath, null, StateOf(r.ExePath, r.PackageFamily)));
+                _instList.Children.Add(Cached(AppRow(r.DisplayName, r.ExePath, null, StateOf(r.ExePath, r.PackageFamily))));
         }
 
         _instScroll.ScrollToVerticalOffset(offset);
@@ -237,22 +239,21 @@ public sealed partial class AddAppView
         var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         if (lib is { State: "tracked" })
         {
+            actions.Children.Add(KindSwitch(lib.Kind, () => SetKind(lib.Id, AppKinds.Next(lib.Kind), RenderInstalled)));
             actions.Children.Add(BackgroundSwitch(lib.Background, () => SetBackground(lib.Id, !lib.Background, RenderInstalled)));
-            var stop = ActionIcon(IconStop, PillStyle.Quiet, AddAppStrings.StopTip, AddAppStrings.StopTracking, filled: true);
-            stop.Margin = new Thickness(0, 0, 6, 0);
+            var stop = ActionIcon(IconEyeOpen, PillStyle.Done, AddAppStrings.StopTip, AddAppStrings.StopTracking); // open eye = tracked; click closes it
             stop.Click += (_, _) => Retire(lib);
             actions.Children.Add(stop);
-            actions.Children.Add(ActionIcon(IconCheck, PillStyle.Done, AddAppStrings.Tracking, AddAppStrings.Tracking)); // status only: no click handler
         }
         else if (lib is { State: "retired" })
         {
-            var restore = ActionIcon(IconPlus, PillStyle.Filled, AddAppStrings.Restore, AddAppStrings.Restore);
+            var restore = ActionIcon(IconEyeClosed, PillStyle.Filled, AddAppStrings.Restore, AddAppStrings.Restore);
             restore.Click += (_, _) => Restore(lib);
             actions.Children.Add(restore);
         }
         else if (app is not null)
         {
-            var track = ActionIcon(IconPlus, PillStyle.Filled, AddAppStrings.Track, AddAppStrings.Track);
+            var track = ActionIcon(IconEyeClosed, PillStyle.Filled, AddAppStrings.Track, AddAppStrings.Track);
             track.Click += (_, _) => TrackInstalled(app);
             actions.Children.Add(track);
         }
@@ -281,10 +282,9 @@ public sealed partial class AddAppView
         return b;
     }
 
-    // 24 x 24 icons for the row buttons: stroked with round caps, except Stop, which is a small filled rounded square
-    private const string IconPlus = "M12,7 L12,17 M7,12 L17,12";
-    private const string IconCheck = "M5,12.5 L10,17.5 L19,7";
-    private const string IconStop = "M9.5,8 L14.5,8 A1.5,1.5 0 0 1 16,9.5 L16,14.5 A1.5,1.5 0 0 1 14.5,16 L9.5,16 A1.5,1.5 0 0 1 8,14.5 L8,9.5 A1.5,1.5 0 0 1 9.5,8 Z";
+    // 24 x 24 icons for the row buttons: all stroked with round caps
+    private const string IconEyeOpen = "M2.5,12 C5,7.5 8.5,5.5 12,5.5 C15.5,5.5 19,7.5 21.5,12 C19,16.5 15.5,18.5 12,18.5 C8.5,18.5 5,16.5 2.5,12 Z M15,12 A3,3 0 1 1 9,12 A3,3 0 1 1 15,12 Z";
+    private const string IconEyeClosed = "M3,10 C5.5,14 9,16 12,16 C15,16 18.5,14 21,10 M6,14 L4.2,16.4 M12,16.5 L12,19.5 M18,14 L19.8,16.4";
     private const string IconLayers = "M12,4 L20,8.5 L12,13 L4,8.5 Z M4,12.5 L12,17 L20,12.5 M4,16 L12,20.5 L20,16";
     private const string IconSliders = "M4,8 L20,8 M4,16 L20,16 M9,5 L9,11 M15,13 L15,19";
 
@@ -292,15 +292,15 @@ public sealed partial class AddAppView
     /// An icon-only row button: <paramref name="tipKey"/> is its tooltip and <paramref name="nameKey"/> its accessible
     /// name. <paramref name="lit"/> marks a switched-on state with the accent colour.
     /// </summary>
-    private Button ActionIcon(string pathData, PillStyle style, string tipKey, string nameKey, bool lit = false, bool filled = false)
+    private Button ActionIcon(string pathData, PillStyle style, string tipKey, string nameKey, bool lit = false)
     {
         var ink = lit ? "Brush.Accent" : style switch { PillStyle.Filled => "Brush.OnAccent", PillStyle.Done => "Brush.Accent", _ => "Brush.TextMuted" };
         var path = new System.Windows.Shapes.Path
         {
-            Data = Geometry.Parse(pathData), StrokeThickness = filled ? 0 : style == PillStyle.Filled ? 2.4 : 2,
+            Data = Geometry.Parse(pathData), StrokeThickness = style == PillStyle.Filled ? 2.4 : 2,
             StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
         };
-        path.SetResourceReference(filled ? Shape.FillProperty : Shape.StrokeProperty, ink);
+        path.SetResourceReference(Shape.StrokeProperty, ink);
         // drawn on a 24 x 24 canvas and scaled to 18 px, so each icon keeps its own size inside the button
         var canvas = new Canvas { Width = 24, Height = 24 };
         canvas.Children.Add(path);
@@ -322,6 +322,28 @@ public sealed partial class AddAppView
         return b;
     }
 
+    private const string IconGamepad = "M7,8 L17,8 C20,8 21.5,11 21,15 C20.7,17.5 18.5,18 17.5,16.5 L16,15 L8,15 L6.5,16.5 C5.5,18 3.3,17.5 3,15 C2.5,11 4,8 7,8 Z M8,10.5 L8,13 M6.8,11.7 L9.2,11.7 M16.5,11 L16.6,11 M18,12.5 L18.1,12.5";
+    private const string IconSparkle = "M12,3 L14,10 L21,12 L14,14 L12,21 L10,14 L3,12 L10,10 Z";
+
+    /// <summary>The per-row game-type button: cycles Other, Game, Gacha (what Year > Wrapped counts the app as); lit unless Other.</summary>
+    private Button KindSwitch(AppKind kind, Action toggle)
+    {
+        var name = TimeText.Str(kind switch { AppKind.Game => AddAppStrings.KindGame, AppKind.Gacha => AddAppStrings.KindGacha, _ => AddAppStrings.KindOther });
+        var on = kind != AppKind.Other;
+        var b = ActionIcon(kind == AppKind.Gacha ? IconSparkle : IconGamepad, on ? PillStyle.Done : PillStyle.Quiet, AddAppStrings.Kind, AddAppStrings.Kind, lit: on);
+        b.ToolTip = TimeText.Str(AddAppStrings.KindTip, name);
+        b.Margin = new Thickness(0, 0, 6, 0);
+        b.Click += (_, _) => toggle();
+        return b;
+    }
+
+    private void SetKind(long appId, AppKind kind, Action rerender)
+    {
+        try { using var lib = AppLibrary.Open(_dbPath); lib.SetKind(appId, kind); }
+        catch { return; }
+        rerender();
+    }
+
     private void SetBackground(long appId, bool background, Action rerender)
     {
         try { using var lib = AppLibrary.Open(_dbPath); lib.SetBackground(appId, background); }
@@ -334,7 +356,7 @@ public sealed partial class AddAppView
     private void TrackInstalled(InstalledApp app)
     {
         var cached = _iconCache.GetValueOrDefault(app.ExePath);
-        Task.Run(() => cached ?? IconService.ExtractPng(app.ExePath, app.Aumid, app.IconFile)).ContinueWith(t =>
+        Task.Run(() => cached ?? IconService.ExtractPng(app.ExePath, app.Aumid, app.IconFile, TileIconPx)).ContinueWith(t =>
         {
             try
             {

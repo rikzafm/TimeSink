@@ -14,7 +14,7 @@ namespace TimeSink.Core.Usage;
 /// </summary>
 public static class WrappedQuery
 {
-    private const int PodiumSize = 3;
+    private const int PodiumSize = 5;
     private const int OthersSize = 3;
 
 
@@ -81,8 +81,16 @@ public static class WrappedQuery
         // The headline is PC uptime (decision 125); everything else here stays app-seconds.
         var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc).Where(kv => kv.Key.Year == year).Sum(kv => kv.Value);
 
-        var ranked = perGroup.Select(kv => new WrappedApp(kv.Key, NameOf(apps, kv.Key), kv.Value))
-            .OrderBy(a => UsageRank.Tier(apps, a.AppId)).ThenByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        // Background apps (Steam, Wallpaper Engine) stay out of every ranking here; their time still counts in the totals.
+        var ranked = perGroup.Where(kv => UsageRank.Tier(apps, kv.Key) == 0).Select(kv => new WrappedApp(kv.Key, NameOf(apps, kv.Key), kv.Value))
+            .OrderByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+
+        WrappedKindTop TopOf(Apps.AppKind kind)
+        {
+            var list = ranked.Where(a => UsageRank.KindOf(apps, a.AppId) == kind).OrderByDescending(a => a.Seconds)
+                .ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+            return new WrappedKindTop(list.Take(PodiumSize).ToList(), list.Skip(PodiumSize).Take(OthersSize).ToList(), list.Sum(a => a.Seconds));
+        }
 
         // Longest run of consecutive local days with any tracked time (earliest wins a tie).
         int bestLen = 0, bestStartDay = 0, runLen = 0, runStart = 0, prevDay = int.MinValue;
@@ -126,7 +134,8 @@ public static class WrappedQuery
             bestLen, bestLen == 0 ? null : DateOnly.FromDayNumber(719162 + bestStartDay),
             bestLen == 0 ? null : DateOnly.FromDayNumber(719162 + bestStartDay + bestLen - 1),
             busiest, busiestSecs, delta, peak, peakSecs,
-            total == 0 ? 0 : (int)Math.Round(beforeNoon * 100.0 / total, MidpointRounding.AwayFromZero));
+            total == 0 ? 0 : (int)Math.Round(beforeNoon * 100.0 / total, MidpointRounding.AwayFromZero),
+            TopOf(Apps.AppKind.Game), TopOf(Apps.AppKind.Gacha));
     }
 
     private static long Mod(long a, long m) => (a % m + m) % m;

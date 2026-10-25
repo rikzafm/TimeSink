@@ -32,7 +32,7 @@ public partial class MonthView : UserControl
 
     private int _year, _month;
     private DateOnly? _selected;
-    private DateOnly? _firstTracked; // first tracked day; months before it are empty, so ‹ stops there
+    private DateOnly? _firstTracked; // first tracked day; months before it are empty, so ◂ stops there
     private MonthResult? _result;
     private int _seq;
     private bool _started;

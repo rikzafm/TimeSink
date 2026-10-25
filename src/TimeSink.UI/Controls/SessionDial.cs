@@ -46,6 +46,54 @@ public sealed class SessionDial : FrameworkElement
     public Brush? LabelBrush { get => (Brush?)GetValue(LabelBrushProperty); set => SetValue(LabelBrushProperty, value); }
     public FontFamily? NumberFont { get => (FontFamily?)GetValue(NumberFontProperty); set => SetValue(NumberFontProperty, value); }
 
+    public static readonly DependencyProperty HighlightIndexProperty = Reg<int>(nameof(HighlightIndex), -1);
+
+    /// <summary>The session arc drawn emphasised (the rest dim), or -1.</summary>
+    public int HighlightIndex { get => (int)GetValue(HighlightIndexProperty); set => SetValue(HighlightIndexProperty, value); }
+
+    /// <summary>The pointer is over a session arc (-1 when it left or is between arcs).</summary>
+    public event Action<int>? SegmentHovered;
+
+    /// <summary>A session arc was clicked.</summary>
+    public event Action<int>? SegmentClicked;
+
+    private int SegmentAt(Point p)
+    {
+        var size = Math.Min(ActualWidth, ActualHeight);
+        if (Segments is null || size <= 0) return -1;
+        var k = size / Design;
+        double dx = p.X - size / 2, dy = p.Y - size / 2;
+        var r = Math.Sqrt(dx * dx + dy * dy);
+        if (Math.Abs(r - OuterRadius * k) > (OuterStroke / 2 + 4) * k) return -1;
+        var f = Math.Atan2(dx, -dy) / (2 * Math.PI);
+        if (f < 0) f += 1;
+        var slop = MinSweep(k);
+        for (var i = 0; i < Segments.Count; i++)
+            if (f >= Segments[i].Start - slop && f <= Math.Max(Segments[i].End, Segments[i].Start + 2 * slop) + slop) return i;
+        return -1;
+    }
+
+    protected override void OnMouseMove(System.Windows.Input.MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        SegmentHovered?.Invoke(SegmentAt(e.GetPosition(this)));
+    }
+
+    protected override void OnMouseLeave(System.Windows.Input.MouseEventArgs e)
+    {
+        base.OnMouseLeave(e);
+        SegmentHovered?.Invoke(-1);
+    }
+
+    protected override void OnMouseLeftButtonUp(System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var i = SegmentAt(e.GetPosition(this));
+        if (i < 0) return;
+        base.OnMouseLeftButtonUp(e);
+        SegmentClicked?.Invoke(i);
+        e.Handled = true; // the row card around the dial would otherwise collapse
+    }
+
     /// <summary>The caller sets Width and Height (square); without them the dial takes no room.</summary>
     protected override Size MeasureOverride(Size availableSize) => new(double.IsNaN(Width) ? 0 : Width, double.IsNaN(Height) ? 0 : Height);
 
@@ -58,12 +106,20 @@ public sealed class SessionDial : FrameworkElement
 
         Pen Ring(Brush? b, double stroke) { var p = new Pen(b, stroke * k) { StartLineCap = PenLineCap.Flat, EndLineCap = PenLineCap.Flat }; p.Freeze(); return p; }
 
+        dc.DrawEllipse(Brushes.Transparent, null, c, size / 2, size / 2);
         dc.DrawEllipse(null, Ring(TrackBrush, OuterStroke), c, OuterRadius * k, OuterRadius * k);
         dc.DrawEllipse(null, Ring(TrackBrush, InnerStroke), c, InnerRadius * k, InnerRadius * k);
 
         var outer = Ring(SegmentBrush, OuterStroke);
         if (Segments is not null)
-            foreach (var (s, e) in Segments) Arc(dc, outer, c, OuterRadius * k, s, Math.Max(e, s + MinSweep(k)));
+            for (var i = 0; i < Segments.Count; i++)
+            {
+                var (s, e) = Segments[i];
+                var dim = HighlightIndex >= 0 && i != HighlightIndex;
+                if (dim) dc.PushOpacity(0.35);
+                Arc(dc, outer, c, OuterRadius * k, s, Math.Max(e, s + MinSweep(k)));
+                if (dim) dc.Pop();
+            }
 
         var total = Math.Clamp(TotalFraction, 0, 1);
         if (total > 0)

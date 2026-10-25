@@ -98,7 +98,7 @@ public static class AllQuery
         var apps = groups.Values.Where(g => !g.Retired).OrderBy(g => g.Id).Select(g => new AllAppRow(
             g.Id, g.Name, g.Seconds, g.Days.Count, Average(g.Seconds, g.Days.Count), total > 0 ? g.Seconds / (double)total : 0,
             g.Days.Count > 0 ? g.Days.Min : null, BestMonth(g), g.Longest, g.Background)).ToList();
-        var retired = groups.Values.Where(g => g.Retired).OrderByDescending(g => g.RetiredUtc).ThenBy(g => g.Id).Select(g => new AllRetiredRow(
+        var retired = groups.Values.Where(g => g.Retired && g.Seconds >= TimeSink.Core.Apps.AppLibrary.MinRetiredSeconds).OrderByDescending(g => g.RetiredUtc).ThenBy(g => g.Id).Select(g => new AllRetiredRow(
             g.Id, g.Name, g.Seconds, g.Days.Count, Average(g.Seconds, g.Days.Count),
             LocalDays.DateOf(g.RetiredUtc, zone))).ToList();
 

@@ -5,14 +5,14 @@ namespace TimeSink.Core.Apps;
 
 public sealed record NewApp(string ExePath, string DisplayName, string? PackageFamily);
 
-public sealed record LibraryApp(long Id, string ExePath, string? PackageFamily, string DisplayName, string State, long? RetiredUtc, bool Background = false);
+public sealed record LibraryApp(long Id, string ExePath, string? PackageFamily, string DisplayName, string State, long? RetiredUtc, bool Background = false, AppKind Kind = AppKind.Other);
 
 public sealed record RetiredApp(long Id, string ExePath, string DisplayName, long RetiredUtc);
 
 public sealed record MergedApp(long Id, string ExePath, string DisplayName, long Seconds);
 
 /// <summary>A tracked app as the Tracked tab shows it: merged aliases listed under it, <c>Seconds</c> including them.</summary>
-public sealed record TrackedEntry(long Id, string ExePath, string DisplayName, long AddedUtc, long Seconds, IReadOnlyList<MergedApp> Merged, bool Background = false);
+public sealed record TrackedEntry(long Id, string ExePath, string DisplayName, long AddedUtc, long Seconds, IReadOnlyList<MergedApp> Merged, bool Background = false, AppKind Kind = AppKind.Other);
 
 public enum AddOutcome { Added, AlreadyTracked, Restored }
 
@@ -114,11 +114,12 @@ public sealed class AppLibrary : IDisposable
         using (var r = cmd.ExecuteReader())
             while (r.Read()) seconds[r.GetInt64(0)] = r.GetInt64(1);
 
-        var rows = new List<(long Id, long? Canonical, string Exe, string Name, long Added, bool Background)>();
-        using (var cmd = Cmd("SELECT id, canonical_id, exe_path, display_name, added_utc, is_background FROM apps WHERE state = 'tracked'"))
+        var rows = new List<(long Id, long? Canonical, string Exe, string Name, long Added, bool Background, AppKind Kind)>();
+        using (var cmd = Cmd("SELECT id, canonical_id, exe_path, display_name, added_utc, is_background, kind FROM apps WHERE state = 'tracked'"))
         using (var r = cmd.ExecuteReader())
             while (r.Read())
-                rows.Add((r.GetInt64(0), r.IsDBNull(1) ? null : r.GetInt64(1), r.GetString(2), r.GetString(3), r.GetInt64(4), r.GetInt64(5) != 0));
+                rows.Add((r.GetInt64(0), r.IsDBNull(1) ? null : r.GetInt64(1), r.GetString(2), r.GetString(3), r.GetInt64(4), r.GetInt64(5) != 0,
+                    AppKinds.Resolve(r.IsDBNull(6) ? null : r.GetInt64(6), r.GetString(2), r.GetString(3))));
 
         return rows.Where(a => a.Canonical is null)
             .Select(a =>
@@ -126,7 +127,7 @@ public sealed class AppLibrary : IDisposable
                 var merged = rows.Where(m => m.Canonical == a.Id)
                     .Select(m => new MergedApp(m.Id, m.Exe, m.Name, seconds.GetValueOrDefault(m.Id)))
                     .OrderBy(m => m.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToList();
-                return new TrackedEntry(a.Id, a.Exe, a.Name, a.Added, seconds.GetValueOrDefault(a.Id) + merged.Sum(m => m.Seconds), merged, a.Background);
+                return new TrackedEntry(a.Id, a.Exe, a.Name, a.Added, seconds.GetValueOrDefault(a.Id) + merged.Sum(m => m.Seconds), merged, a.Background, a.Kind);
             })
             .OrderBy(a => a.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
@@ -139,6 +140,18 @@ public sealed class AppLibrary : IDisposable
     {
         using var cmd = Cmd("UPDATE apps SET is_background=$b WHERE id = COALESCE((SELECT canonical_id FROM apps WHERE id=$id), $id)");
         cmd.Parameters.AddWithValue("$b", background ? 1 : 0);
+        cmd.Parameters.AddWithValue("$id", appId);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Sets what an app is for the Wrapped game pages. Always stored, so a choice of "Other" sticks over detection. A
+    /// merged group is set on its canonical app, like <see cref="SetBackground"/>.
+    /// </summary>
+    public void SetKind(long appId, AppKind kind)
+    {
+        using var cmd = Cmd("UPDATE apps SET kind=$k WHERE id = COALESCE((SELECT canonical_id FROM apps WHERE id=$id), $id)");
+        cmd.Parameters.AddWithValue("$k", (int)kind);
         cmd.Parameters.AddWithValue("$id", appId);
         cmd.ExecuteNonQuery();
     }
@@ -190,12 +203,28 @@ public sealed class AppLibrary : IDisposable
     public IReadOnlyList<LibraryApp> Library()
     {
         var list = new List<LibraryApp>();
-        using var cmd = Cmd("SELECT id, exe_path, package_family, display_name, state, retired_utc, is_background FROM apps WHERE canonical_id IS NULL ORDER BY display_name COLLATE NOCASE");
+        using var cmd = Cmd("SELECT id, exe_path, package_family, display_name, state, retired_utc, is_background, kind FROM apps WHERE canonical_id IS NULL ORDER BY display_name COLLATE NOCASE");
         using var r = cmd.ExecuteReader();
         while (r.Read())
             list.Add(new LibraryApp(r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2), r.GetString(3), r.GetString(4),
-                r.IsDBNull(5) ? null : r.GetInt64(5), r.GetInt64(6) != 0));
+                r.IsDBNull(5) ? null : r.GetInt64(5), r.GetInt64(6) != 0,
+                AppKinds.Resolve(r.IsDBNull(7) ? null : r.GetInt64(7), r.GetString(1), r.GetString(3))));
         return list;
+    }
+
+    /// <summary>A retired app with less lifetime time than this is not worth listing (it is hidden, its data kept).</summary>
+    public const long MinRetiredSeconds = 3600;
+
+    /// <summary>Ids of retired apps under <see cref="MinRetiredSeconds"/> of lifetime time (merged aliases counted with their canonical app).</summary>
+    public HashSet<long> TrivialRetired()
+    {
+        var ids = new HashSet<long>();
+        using var cmd = Cmd(@"SELECT a.id FROM apps a WHERE a.state = 'retired' AND a.canonical_id IS NULL AND
+            COALESCE((SELECT SUM(d.seconds) FROM daily_usage d JOIN apps m ON m.id = d.app_id WHERE m.id = a.id OR m.canonical_id = a.id), 0) < $min");
+        cmd.Parameters.AddWithValue("$min", MinRetiredSeconds);
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) ids.Add(r.GetInt64(0));
+        return ids;
     }
 
     /// <summary>Retired apps, most recently retired first.</summary>

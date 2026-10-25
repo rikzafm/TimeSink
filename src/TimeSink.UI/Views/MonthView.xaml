@@ -15,23 +15,22 @@
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
         <Style x:Key="NavButton" TargetType="Button">
-            <Setter Property="Width" Value="34"/>
-            <Setter Property="Height" Value="34"/>
+            <Setter Property="Width" Value="22"/>
+            <Setter Property="Height" Value="22"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Focusable" Value="False"/>
-            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}"/>
             <Setter Property="FontFamily" Value="{DynamicResource FontFamily.Ui}"/>
-            <Setter Property="FontSize" Value="{DynamicResource Double.FontSize.Title}"/>
+            <Setter Property="FontSize" Value="{DynamicResource Double.FontSize.Body}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Box" Background="Transparent" BorderBrush="{DynamicResource Brush.Border}"
-                                BorderThickness="{DynamicResource Thickness.Border}" CornerRadius="{DynamicResource CornerRadius.Small}">
+                        <Border Background="Transparent">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Box" Property="Background" Value="{DynamicResource Brush.SurfaceAlt}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="{DynamicResource Double.Opacity.Disabled}"/>
@@ -51,16 +50,16 @@
 
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Hidden" Focusable="False">
             <StackPanel Margin="16,6,16,6">
-                <Grid Margin="0,0,0,6">
-                    <Button x:Name="Prev" Style="{StaticResource NavButton}" HorizontalAlignment="Left" Content="‹"/>
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,6">
+                    <Button x:Name="Prev" Style="{StaticResource NavButton}" VerticalAlignment="Center" Margin="0,0,8,0" Content="◂"/>
+                    <StackPanel VerticalAlignment="Center">
                         <TextBlock x:Name="MonthName" HorizontalAlignment="Center" FontWeight="Bold"
                                    Foreground="{DynamicResource Brush.Text}" FontFamily="{DynamicResource FontFamily.Ui}"
                                    FontSize="{DynamicResource Double.FontSize.Title}"/>
                         <TextBlock x:Name="Span" Style="{StaticResource Small}" HorizontalAlignment="Center"/>
                     </StackPanel>
-                    <Button x:Name="Next" Style="{StaticResource NavButton}" HorizontalAlignment="Right" Content="›"/>
-                </Grid>
+                    <Button x:Name="Next" Style="{StaticResource NavButton}" VerticalAlignment="Center" Margin="8,0,0,0" Content="▸"/>
+                </StackPanel>
 
                 <Grid Margin="0,0,0,8">
                     <StackPanel HorizontalAlignment="Left">

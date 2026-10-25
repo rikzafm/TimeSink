@@ -43,6 +43,16 @@ public partial class TodayView : UserControl
     private DateOnly? _day;   // null = the live day; otherwise a past day being browsed
     private DateOnly? _first; // first tracked day, the earliest the picker allows
     private readonly ToolTip _tip = new();
+    private readonly Dictionary<long, (Border Card, Action<bool> SetOpen)> _cards = new();
+    private readonly Dictionary<long, long> _pinnedSession = new(); // app -> start of the session pinned in its dial/pills
+
+    /// <summary>Which session of a row is emphasised across its strip, dial and pills: the hovered one, else the pinned one.</summary>
+    private sealed class SessionLink
+    {
+        public int Hover = -1, Pinned = -1;
+        public Action? Apply;
+        public int Active => Hover >= 0 ? Hover : Pinned;
+    }
 
     private static DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
 
@@ -57,21 +67,40 @@ public partial class TodayView : UserControl
         _untracked =new UntrackedCardView(dbPath, themes, Refresh);
         _untracked.Rendered += UpdateTrackedHeader;
         UntrackedHost.Children.Add(_untracked);
-        _tip.SetResourceReference(Control.BackgroundProperty, "Brush.Panel");
-        _tip.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
-        _tip.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");
-        _tip.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
+        StyleTip(_tip);
         Chart.ToolTip = _tip;
         ToolTipService.SetInitialShowDelay(Chart, 80);
         ToolTipService.SetPlacement(Chart, System.Windows.Controls.Primitives.PlacementMode.Top);
         Chart.HourHovered += OnHourHovered;
         Chart.HourClicked += OnHourClicked;
+        TileFirstBox.MouseLeftButtonUp += (_, _) => { if (_result?.FirstApp is { } f && _result.Apps.FirstOrDefault(a => a.Name == f.AppName) is { } row) JumpToApp(row.AppId); };
+        TileLongestBox.MouseLeftButtonUp += (_, _) => { if (_result?.Longest is { } l) JumpToApp(l.AppId); };
+        TileVsBox.MouseLeftButtonUp += (_, _) =>
+        {
+            if (_result is not { } r) return;
+            var prev = r.Date.AddDays(-1);
+            if (_first is { } first && prev < first) return;
+            ShowDay(prev);
+        };
+        TileFirstBox.ToolTip = "Jump to the app you opened first";
+        TileLongestBox.ToolTip = "Jump to the app with the longest session";
+        TileVsBox.ToolTip = "Show the previous day";
         Chart.SetResourceReference(HourlyBars.SelectedBrushProperty, "Brush.Accent");
         Panel.CloseRequested += () => Chart.SelectedHour = -1;
         Nav.DateChosen += d => ShowDay(d);
         Focusable = true;
         PreviewKeyDown += (_, e) =>
         {
+            if (e.Key is Key.Left or Key.Right && _result is not null)
+            {
+                var step = e.Key == Key.Left ? -1 : 1;
+                var h = Chart.SelectedHour >= 0 ? Math.Clamp(Chart.SelectedHour + step, 0, 23)
+                    : Chart.CurrentHour >= 0 ? Chart.CurrentHour : step < 0 ? 23 : 0;
+                Chart.SelectedHour = h;
+                ShowHourPanel(h);
+                e.Handled = true;
+                return;
+            }
             if (e.Key != Key.Escape || Panel.Visibility != Visibility.Visible) return;
             ClosePanel();
             e.Handled = true;
@@ -202,8 +231,6 @@ public partial class TodayView : UserControl
 
         var nowLocalHour = live ? TimeText.Local(r.NowUtc).Hour : -1;
         Chart.Hours = r.Hours;
-        Chart.CurrentHour = nowLocalHour;
-        Chart.SleepFractions = r.SleepBands.Select(b => (Fraction(r, b.StartUtc), Fraction(r, b.EndUtc))).ToList();
         BuildAxis();
 
         TileFirst.Text = r.FirstApp is { } f ? Clock(f.StartUtc) : Str(StringKeys.TileNone);
@@ -232,13 +259,29 @@ public partial class TodayView : UserControl
 
     private string HourRange(int h) => $"{Hour(h)} – {Hour((h + 1) % 24)}";
 
-    private void OnHourHovered(int h, Point _)
+    private void OnHourHovered(int h, Point p)
     {
         if (h < 0 || _result is not { } r) { _tip.IsOpen = false; return; }
         var d = BarDetail.ForHour(r, h, TimeZoneInfo.Local);
         var lines = new List<string> { $"{HourRange(h)} · " + (d.AppSeconds > 0 ? DurationFormat.HoursMinutes(d.AppSeconds) : "no activity") };
         lines.AddRange(d.Apps.Take(3).Select(a => $"{a.Name} {DurationFormat.HoursMinutes(a.Seconds)}"));
         _tip.Content = string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>A stat tile points at an app: open its row and bring it into view.</summary>
+    private void JumpToApp(long appId)
+    {
+        if (!_cards.TryGetValue(appId, out var c)) return;
+        c.SetOpen(true);
+        c.Card.BringIntoView();
+    }
+
+    private static void StyleTip(ToolTip tip)
+    {
+        tip.SetResourceReference(Control.BackgroundProperty, "Brush.Panel");
+        tip.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
+        tip.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");
+        tip.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
     }
 
     private void OnHourClicked(int h)
@@ -300,6 +343,7 @@ public partial class TodayView : UserControl
         AppIcons.Load(_dbPath, r.Apps.Select(a => a.AppId));
         Rows.Children.Clear();
         _rowViews.Clear();
+        _cards.Clear();
         var paletteSize = Math.Max(1, _themes.Current.Apps.Count);
 #if DEBUG
         if (ExpandAll) foreach (var a in r.Apps) _expanded.Add(a.AppId);
@@ -354,8 +398,27 @@ public partial class TodayView : UserControl
         strip.SetResourceReference(SessionStrip.SegmentBrushProperty, appBrush);
         strip.SetResourceReference(SessionStrip.TrackBrushProperty, "Brush.BorderSoft");
 
-        var details = BuildDetails(r, row, appBrush);
+        var link = new SessionLink();
+        var details = BuildDetails(r, row, appBrush, link);
         details.Visibility = _expanded.Contains(row.AppId) ? Visibility.Visible : Visibility.Collapsed;
+        var shown = row.Sessions.Where(x => x.Seconds >= MinShownSessionSeconds).ToList();
+        if (_pinnedSession.TryGetValue(row.AppId, out var pinnedStart))
+            link.Pinned = shown.FindIndex(x => x.StartUtc == pinnedStart);
+        // Opened by hand, not through ToolTipService: that only shows a tip once per enter, so dragging across the gap
+        // between two sessions closed it and the next session never got one.
+        var stripTip = new ToolTip { PlacementTarget = strip, Placement = System.Windows.Controls.Primitives.PlacementMode.Relative, VerticalOffset = -30, StaysOpen = true };
+        StyleTip(stripTip);
+        strip.Unloaded += (_, _) => stripTip.IsOpen = false; // the rows are rebuilt on refresh
+        strip.SegmentHovered += (i, p) =>
+        {
+            link.Hover = i < 0 ? -1 : shown.IndexOf(row.Sessions[i]);
+            link.Apply!();
+            if (i < 0) { stripTip.IsOpen = false; return; }
+            var s = row.Sessions[i];
+            stripTip.Content = $"{Clock(s.StartUtc)} – {(s.IsOpen ? Str(StringKeys.SessionNow) : Clock(s.EndUtc))} · {DurationFormat.HoursMinutes(s.Seconds)}";
+            stripTip.HorizontalOffset = p.X + 8;
+            stripTip.IsOpen = true;
+        };
 
         var grid = new Grid { Margin = new Thickness(0, 0, 0, 0) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -378,21 +441,39 @@ public partial class TodayView : UserControl
         var card = new Border { Margin = new Thickness(-8, 0, -8, 0), Background = System.Windows.Media.Brushes.Transparent, Cursor = Cursors.Hand, Child = stack };
         card.SetResourceReference(Border.PaddingProperty, "Thickness.RowCard");
         card.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
-        card.MouseLeftButtonUp += (_, _) =>
+        void SetOpen(bool open)
         {
-            var open = details.Visibility != Visibility.Visible;
             details.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
             if (open) _expanded.Add(row.AppId); else _expanded.Remove(row.AppId);
             if (open) card.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
             else card.Background = System.Windows.Media.Brushes.Transparent;
-        };
+        }
+        card.MouseLeftButtonUp += (_, _) => SetOpen(details.Visibility != Visibility.Visible);
+        _cards[row.AppId] = (card, SetOpen);
         if (_expanded.Contains(row.AppId)) card.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+
+        // The strip, dial and pills of a row share one highlighted session: hover previews it, a click pins it.
+        var applyDetails = link.Apply;
+        link.Apply = () =>
+        {
+            applyDetails?.Invoke();
+            var active = link.Active;
+            strip.HighlightIndex = active >= 0 ? IndexOf(row.Sessions, shown[active]) : -1;
+        };
+        strip.SegmentClicked += i =>
+        {
+            SetOpen(true);
+            var at = shown.IndexOf(row.Sessions[i]);
+            link.Pinned = link.Pinned == at ? -1 : at;
+            PinSession(row, link, shown);
+        };
+        link.Apply();
 
         _rowViews[row.AppId] = (time, status, row);
         return card;
     }
 
-    private UIElement BuildDetails(TodayResult r, TodayAppRow row, string appBrush)
+    private UIElement BuildDetails(TodayResult r, TodayAppRow row, string appBrush, SessionLink link)
     {
         var panel = new Border { Margin = new Thickness(0, 10, 0, 0), Padding = new Thickness(10, 10, 10, 10) };
         panel.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
@@ -442,7 +523,31 @@ public partial class TodayView : UserControl
         top.Children.Add(stats);
 
         var pills = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
-        foreach (var s in shown) pills.Children.Add(Pill(s));
+        var pillBorders = new List<Border>();
+        foreach (var s in shown) { var pill = Pill(s); pillBorders.Add(pill); pills.Children.Add(pill); }
+
+        link.Apply = () =>
+        {
+            var active = link.Active;
+            dial.HighlightIndex = active;
+            for (var i = 0; i < pillBorders.Count; i++)
+            {
+                pillBorders[i].Opacity = active < 0 || i == active ? 1 : 0.45;
+                pillBorders[i].SetResourceReference(Border.BorderBrushProperty, i == active || shown[i].IsOpen ? "Brush.Accent" : "Brush.Border");
+            }
+        };
+        for (var i = 0; i < pillBorders.Count; i++)
+        {
+            var at = i;
+            pillBorders[i].Cursor = Cursors.Hand;
+            pillBorders[i].Background = System.Windows.Media.Brushes.Transparent;
+            pillBorders[i].MouseEnter += (_, _) => { link.Hover = at; link.Apply!(); };
+            pillBorders[i].MouseLeave += (_, _) => { link.Hover = -1; link.Apply!(); };
+            pillBorders[i].MouseLeftButtonUp += (_, e) => { link.Pinned = link.Pinned == at ? -1 : at; PinSession(row, link, shown); e.Handled = true; };
+        }
+        dial.SegmentHovered += i => { link.Hover = i; link.Apply!(); };
+        dial.SegmentClicked += i => { link.Pinned = link.Pinned == i ? -1 : i; PinSession(row, link, shown); };
+        dial.Cursor = Cursors.Arrow;
 
         var stack = new StackPanel();
         stack.Children.Add(top);
@@ -455,6 +560,20 @@ public partial class TodayView : UserControl
 
         panel.Child = stack;
         return panel;
+    }
+
+    private static int IndexOf(IReadOnlyList<TodaySession> list, TodaySession s)
+    {
+        for (var i = 0; i < list.Count; i++) if (list[i] == s) return i;
+        return -1;
+    }
+
+    /// <summary>Remembers (per app) which session is pinned so the next redraw restores it, and repaints the row's highlight.</summary>
+    private void PinSession(TodayAppRow row, SessionLink link, List<TodaySession> shown)
+    {
+        if (link.Pinned >= 0) _pinnedSession[row.AppId] = shown[link.Pinned].StartUtc;
+        else _pinnedSession.Remove(row.AppId);
+        link.Apply!();
     }
 
     private UIElement Stat(string labelKey, string value, bool first = false)

@@ -78,7 +78,16 @@ public sealed class AllSortingTests : IDisposable
     public void Retired_rows_keep_their_order_whatever_the_sort_is()
     {
         _f.Exec("INSERT INTO apps(id, exe_path, display_name, added_utc, state, retired_utc) VALUES (901, 'c:\\a.exe', 'Aaa', 0, 'retired', " + U(2026, 2, 1, 0) + ")");
+        _f.Session(901, U(2026, 1, 15, 0), U(2026, 1, 15, 2)); // retired apps under an hour of history are not listed
         // Most recently stopped first: Old (Mar 1) then Aaa (Feb 1).
         Result().Retired.Select(r => r.Name).Should().Equal("Old", "Aaa");
+    }
+
+    [Fact]
+    public void Retired_apps_under_an_hour_are_left_out()
+    {
+        _f.Exec("INSERT INTO apps(id, exe_path, display_name, added_utc, state, retired_utc) VALUES (902, 'c:\b.exe', 'Brief', 0, 'retired', " + U(2026, 2, 1, 0) + ")");
+        _f.Session(902, U(2026, 1, 15, 0), U(2026, 1, 15, 0) + 1800);
+        Result().Retired.Select(r => r.Name).Should().NotContain("Brief");
     }
 }

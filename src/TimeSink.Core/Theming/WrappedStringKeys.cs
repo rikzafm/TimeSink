@@ -41,6 +41,14 @@ public static class WrappedStringKeys
     public const string CardNameTotal = "wrapCardNameTotal";
     public const string CardNameTop = "wrapCardNameTop";
     public const string CardNameHabits = "wrapCardNameHabits";
+    public const string CardNameGames = "wrapCardNameGames";
+    public const string CardNameGacha = "wrapCardNameGacha";
+    public const string Card4Label = "wrapCard4Label";
+    public const string GamesHeadline = "wrapGamesHeadline";
+    public const string Card5Label = "wrapCard5Label";
+    public const string GachaHeadline = "wrapGachaHeadline";
+    public const string NoGames = "wrapNoGames";
+    public const string NoGacha = "wrapNoGacha";
     public const string Prev = "wrapPrev";
     public const string Next = "wrapNext";
     public const string GoTo = "wrapGoTo";
@@ -55,5 +63,6 @@ public static class WrappedStringKeys
         ShortHours, Card3Label, HabitsHeadline, Streak, StreakSpan, StreakOne, Busiest, BusiestValue, BusiestVs, BusiestOnly,
         Peak, PeakValue, PeakSub, Noon, NoonSub, NoonSubEarly, CardNameTotal, CardNameTop, CardNameHabits, Prev, Next, GoTo,
         Save, SaveDone, SaveTitle, SaveFilter,
+        CardNameGames, CardNameGacha, Card4Label, GamesHeadline, Card5Label, GachaHeadline, NoGames, NoGacha,
     ];
 }

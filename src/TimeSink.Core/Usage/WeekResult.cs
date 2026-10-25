@@ -28,6 +28,8 @@ public sealed record HeatCell(DateOnly Date, long Seconds, int Level, bool IsFut
 public sealed record WeekAppRow(long AppId, string Name, long Seconds, IReadOnlyList<long> Spark);
 
 /// <summary>Everything the Week view shows.</summary>
+/// <param name="WeekTotals">PC uptime per week for the 20 grid weeks, oldest first (the last is the current week).</param>
+/// <param name="PrevWeekSeconds">The week before the shown one, counting only the weekdays that have started in the shown week.</param>
 /// <param name="Heat">140 cells, week-major: index = week * 7 + dayOfWeek (week 0 is the oldest, week 19 the current one).</param>
 public sealed record WeekResult(
     DateOnly Today,
@@ -37,4 +39,6 @@ public sealed record WeekResult(
     IReadOnlyList<WeekDay> Days,
     IReadOnlyList<HeatCell> Heat,
     int StreakDays,
-    IReadOnlyList<WeekAppRow> Apps);
+    IReadOnlyList<WeekAppRow> Apps,
+    IReadOnlyList<long> WeekTotals,
+    long PrevWeekSeconds);

@@ -12,7 +12,7 @@ namespace TimeSink.UI.Views;
 
 /// <summary>
 /// Tracked tab: every tracked app with its own logo, and per app Rename, Merge into another app, and Stop tracking.
-/// Merged apps are listed as chips under the app that keeps the name (Unmerge on each chip).
+/// Merged apps are listed as chips under the app that keeps the name (an "x" on each chip unmerges).
 /// </summary>
 public sealed partial class AddAppView
 {
@@ -114,6 +114,36 @@ public sealed partial class AddAppView
                 _trackedIcons[a] = lib.GetIcon(a);
         }
         catch { /* database busy: keep what is on screen */ }
+        UpgradeTrackedIcons();
+    }
+
+    private readonly HashSet<long> _trackedIconsHiRes = new();
+
+    /// <summary>Stored icons are 64 px; re-extracts each tracked app's logo at tile resolution once, then redraws.</summary>
+    private void UpgradeTrackedIcons()
+    {
+        var todo = _tracked.Where(a => _trackedIconsHiRes.Add(a.Id)).ToList();
+        if (todo.Count == 0) return;
+        var aumids = (_installed ?? Array.Empty<InstalledApp>()).GroupBy(i => i.ExePath, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        Task.Run(() =>
+        {
+            var found = new Dictionary<long, byte[]>();
+            foreach (var a in todo)
+            {
+                aumids.TryGetValue(a.ExePath, out var inst);
+                try
+                {
+                    if (IconService.ExtractPng(a.ExePath, inst?.Aumid, inst?.IconFile, TileIconPx) is { } png) found[a.Id] = png;
+                }
+                catch { /* keep the stored icon */ }
+            }
+            return found;
+        }).ContinueWith(t =>
+        {
+            if (t.Result.Count == 0) return;
+            foreach (var (id, png) in t.Result) _trackedIcons[id] = png;
+            if (_trackedList is not null) RenderTracked();
+        }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
     private void RenderTracked()
@@ -142,7 +172,7 @@ public sealed partial class AddAppView
             none.Text = TimeText.Str(AddAppStrings.NoMatch, q);
             _trackedList.Children.Add(none);
         }
-        foreach (var app in shown) _trackedList.Children.Add(TrackedRow(app));
+        foreach (var app in shown) _trackedList.Children.Add(Cached(TrackedRow(app)));
         _trackedScroll.ScrollToVerticalOffset(offset);
     }
 
@@ -185,6 +215,7 @@ public sealed partial class AddAppView
         manage.Click += (_, _) => ToggleOpen(app);
         Grid.SetColumn(texts, 1);
         var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        right.Children.Add(KindSwitch(app.Kind, () => SetKind(app.Id, AppKinds.Next(app.Kind), RenderTracked)));
         right.Children.Add(BackgroundSwitch(app.Background, () => SetBackground(app.Id, !app.Background, RenderTracked)));
         right.Children.Add(manage);
         Grid.SetColumn(right, 2);
@@ -208,18 +239,24 @@ public sealed partial class AddAppView
 
     private UIElement Chip(MergedApp m)
     {
-        var chip = new Border { Margin = new Thickness(0, 0, 6, 4), Padding = new Thickness(9, 2, 6, 2), BorderThickness = new Thickness(1) };
+        var chip = new Border { Margin = new Thickness(0, 0, 6, 4), Padding = new Thickness(10, 3, 4, 3), BorderThickness = new Thickness(1) };
         chip.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         chip.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Large");
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         var label = Text(null, "Double.FontSize.Small", "Brush.TextSoft");
         label.Text = m.DisplayName;
         label.VerticalAlignment = VerticalAlignment.Center;
-        var un = Text("Str.AddUnmerge", "Double.FontSize.Small", "Brush.TextMuted");
-        un.Margin = new Thickness(8, 0, 0, 0);
-        un.VerticalAlignment = VerticalAlignment.Center;
-        un.TextDecorations = TextDecorations.Underline;
-        un.Cursor = Cursors.Hand;
+        var glyph = Text("Str.AddUnmerge", "Double.FontSize.Small", "Brush.TextMuted");
+        glyph.HorizontalAlignment = HorizontalAlignment.Center;
+        glyph.VerticalAlignment = VerticalAlignment.Center;
+        var un = new Border
+        {
+            Width = 18, Height = 18, Margin = new Thickness(6, 0, 0, 0), Background = Brushes.Transparent,
+            VerticalAlignment = VerticalAlignment.Center, ToolTip = "Unmerge", Cursor = Cursors.Hand, Child = glyph,
+        };
+        un.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Large");
+        un.MouseEnter += (_, _) => glyph.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+        un.MouseLeave += (_, _) => glyph.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
         un.MouseLeftButtonUp += (_, _) =>
         {
             try { using var lib = AppLibrary.Open(_dbPath); lib.Unmerge(m.Id); } catch { return; }
@@ -351,7 +388,8 @@ public sealed partial class AddAppView
             _library = lib.Library();
             var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows) + System.IO.Path.DirectorySeparatorChar;
             // stopped apps with history, minus Windows' own processes (explorer.exe and friends), which the Installed tab never lists
-            foreach (var r in _library.Where(a => a.State == "retired" && !a.ExePath.StartsWith(windows, StringComparison.OrdinalIgnoreCase)))
+            var trivial = lib.TrivialRetired();
+            foreach (var r in _library.Where(a => a.State == "retired" && !trivial.Contains(a.Id) && !a.ExePath.StartsWith(windows, StringComparison.OrdinalIgnoreCase)))
                 list.Add(new MergeCandidate("s" + r.Id, r.DisplayName, r.ExePath, TimeText.Str(AddAppStrings.SubStopped), lib.GetIcon(r.Id), false, null, r, null));
         }
         catch { _library = []; }
@@ -484,7 +522,7 @@ public sealed partial class AddAppView
             go.FontWeight = changed ? FontWeights.Bold : FontWeights.SemiBold;
             go.IsHitTestVisible = changed;
             if (!changed) go.SetResourceReference(ContentControl.ContentProperty, "Str.AddMerge");
-            else if (removes == 0) go.Content = TimeText.Str(AddAppStrings.MergeCount, adds, keeper.DisplayName);
+            else if (removes == 0) go.Content = TimeText.Str(AddAppStrings.MergeCount, adds, keeper.DisplayName.Length > 20 ? keeper.DisplayName[..19] + "…" : keeper.DisplayName);
             else go.SetResourceReference(ContentControl.ContentProperty, "Str.AddSaveChanges");
         }
         Render();

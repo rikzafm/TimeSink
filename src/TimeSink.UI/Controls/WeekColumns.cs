@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 using TimeSink.Core.Usage;
@@ -6,11 +7,15 @@ namespace TimeSink.UI.Controls;
 
 /// <summary>
 /// The Week tab's seven columns: height proportional to the day's time (scaled to the busiest day), the current day in
-/// the accent colour, days still to come as a short empty stub. Plain primitives; colours are DPs bound to theme brushes.
+/// the accent colour, days still to come as a short empty stub. Each column carries its time above and its weekday name
+/// below, and a dashed line marks the average of the days that have time. Plain primitives; colours are DPs bound to theme brushes.
 /// </summary>
 public sealed class WeekColumns : FrameworkElement
 {
     private const double Gap = 6;
+    private const double LabelH = 14;
+    private const double LetterH = 18;
+    private const double FontSize = 10;
 
     private static DependencyProperty Reg<T>(string name, T def = default!) =>
         DependencyProperty.Register(name, typeof(T), typeof(WeekColumns),
@@ -20,6 +25,15 @@ public sealed class WeekColumns : FrameworkElement
     public static readonly DependencyProperty ColumnBrushProperty = Reg<Brush?>(nameof(ColumnBrush));
     public static readonly DependencyProperty CurrentBrushProperty = Reg<Brush?>(nameof(CurrentBrush));
     public static readonly DependencyProperty FutureBrushProperty = Reg<Brush?>(nameof(FutureBrush));
+
+    public static readonly DependencyProperty LabelBrushProperty = Reg<Brush?>(nameof(LabelBrush));
+    public static readonly DependencyProperty AverageBrushProperty = Reg<Brush?>(nameof(AverageBrush));
+
+    /// <summary>Colour of the time and weekday labels (today's use <see cref="CurrentBrush"/>).</summary>
+    public Brush? LabelBrush { get => (Brush?)GetValue(LabelBrushProperty); set => SetValue(LabelBrushProperty, value); }
+
+    /// <summary>Colour of the dashed average line.</summary>
+    public Brush? AverageBrush { get => (Brush?)GetValue(AverageBrushProperty); set => SetValue(AverageBrushProperty, value); }
 
     public static readonly DependencyProperty SelectedBrushProperty = Reg<Brush?>(nameof(SelectedBrush));
 
@@ -77,15 +91,34 @@ public sealed class WeekColumns : FrameworkElement
         if (Days is not { Count: > 0 } days || w <= 0) return;
         var max = Math.Max(1, days.Max(d => d.Seconds));
         var colW = (w - Gap * (days.Count - 1)) / days.Count;
+        var plotH = Math.Max(1, h - LabelH - LetterH);
+        var baseY = h - LetterH;
+        var numbers = TryFindResource("FontFamily.Numbers") as FontFamily;
+        var counted = days.Where(d => !d.IsFuture && d.Seconds > 0).ToList();
+        if (counted.Count > 0 && AverageBrush is { } avg)
+        {
+            var y = baseY - counted.Average(d => d.Seconds) / max * plotH;
+            dc.DrawLine(new Pen(avg, 1) { DashStyle = new DashStyle([3, 3], 0) }, new Point(0, y), new Point(w, y));
+        }
         for (var i = 0; i < days.Count; i++)
         {
             var d = days[i];
             var x = i * (colW + Gap);
-            var barH = d.IsFuture ? 6 : Math.Max(6, d.Seconds / (double)max * h);
+            var barH = d.IsFuture ? 6 : Math.Max(6, d.Seconds / (double)max * plotH);
             var brush = d.IsFuture ? FutureBrush : d.IsToday ? CurrentBrush : ColumnBrush;
-            dc.DrawRoundedRectangle(brush, null, new Rect(x, h - barH, colW, barH), 3, 3);
+            dc.DrawRoundedRectangle(brush, null, new Rect(x, baseY - barH, colW, barH), 3, 3);
             if (i == SelectedIndex && SelectedBrush is { } sel)
-                dc.DrawRoundedRectangle(null, new Pen(sel, 1.5), new Rect(x - 1.5, h - barH - 1.5, colW + 3, barH + 3), 4, 4);
+                dc.DrawRoundedRectangle(null, new Pen(sel, 1.5), new Rect(x - 1.5, baseY - barH - 1.5, colW + 3, barH + 3), 4, 4);
+
+            var text = d.IsToday ? CurrentBrush : LabelBrush;
+            if (!d.IsFuture && d.Seconds > 0)
+            {
+                var value = ChartSupport.Text(this, DurationFormat.HoursMinutes(d.Seconds), numbers, FontSize, text, FontWeights.Normal);
+                dc.DrawText(value, new Point(x + (colW - value.Width) / 2, baseY - barH - value.Height - 2));
+            }
+            var day = ChartSupport.Text(this, CultureInfo.CurrentCulture.DateTimeFormat.GetAbbreviatedDayName(d.Date.DayOfWeek), null, FontSize, text,
+                d.IsToday ? FontWeights.SemiBold : FontWeights.Normal);
+            dc.DrawText(day, new Point(x + (colW - day.Width) / 2, h - LetterH + 5));
         }
     }
 }

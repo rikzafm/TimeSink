@@ -117,22 +117,13 @@ public sealed partial class AddAppView : UserControl
         root.Children.Add(_body);
         _body.Content = BuildRunningTab();
 
-        // footer: "N added this session" + Done
+        // footer: "N added this session"
         var footer = new Grid { Margin = new Thickness(14, 8, 14, 10) };
         _count.VerticalAlignment = VerticalAlignment.Center;
         _count.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
         _count.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         _count.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
-        var done = new Button { Template = Flat, HorizontalAlignment = HorizontalAlignment.Right, Padding = new Thickness(14, 6, 14, 6), Cursor = System.Windows.Input.Cursors.Hand, Focusable = false };
-        done.SetResourceReference(ContentControl.ContentProperty, "Str.AddDone");
-        done.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
-        done.SetResourceReference(Control.BackgroundProperty, "Brush.Surface");
-        done.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");
-        done.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
-        done.SetResourceReference(Control.FontSizeProperty, "Double.FontSize.Body");
-        done.Click += (_, _) => _close();
         footer.Children.Add(_count);
-        footer.Children.Add(done);
         Grid.SetRow(footer, 3);
         root.Children.Add(footer);
         UpdateCount();
@@ -177,7 +168,7 @@ public sealed partial class AddAppView : UserControl
                 var icons = new Dictionary<string, byte[]?>(StringComparer.OrdinalIgnoreCase);
                 foreach (var a in apps)
                     if (!known.Contains(a.ExePath))
-                        icons[a.ExePath] = IconService.ExtractPng(a.ExePath, snap.AumidByPath.GetValueOrDefault(a.ExePath));
+                        icons[a.ExePath] = IconService.ExtractPng(a.ExePath, snap.AumidByPath.GetValueOrDefault(a.ExePath), null, TileIconPx);
                 return new Capture(apps, snap.AumidByPath, icons);
             }
             catch { return null; }
@@ -246,7 +237,7 @@ public sealed partial class AddAppView : UserControl
             _list.Children.Add(empty);
         }
         var now = DateTimeOffset.UtcNow;
-        foreach (var row in _rows) _list.Children.Add(BuildRow(row, now));
+        foreach (var row in _rows) _list.Children.Add(Cached(BuildRow(row, now)));
         _list.Children.Add(BuildHint());
     }
 
@@ -308,6 +299,9 @@ public sealed partial class AddAppView : UserControl
         b.IsHitTestVisible = !row.Done;
     }
 
+    /// <summary>Extraction size for tab tiles: well above the on-screen tile so logos stay sharp on high-DPI displays.</summary>
+    private const int TileIconPx = 256;
+
     private Border IconTile(Row row) => MakeTile(row.App.DisplayName, row.App.ExePath, row.Png);
 
     /// <summary>Cached/extracted icon when there is one, else a letter tile in a palette colour.</summary>
@@ -320,6 +314,16 @@ public sealed partial class AddAppView : UserControl
         tile.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         FillTile(tile, name, exePath, png);
         return tile;
+    }
+
+    /// <summary>
+    /// Scrolling a long list moves already-drawn rows, so each row is kept as a GPU bitmap (at the screen's pixel density,
+    /// so text stays sharp) instead of being re-rasterised every frame.
+    /// </summary>
+    private T Cached<T>(T row) where T : UIElement
+    {
+        row.CacheMode = new BitmapCache(VisualTreeHelper.GetDpi(this).DpiScaleX) { SnapsToDevicePixels = true };
+        return row;
     }
 
     private void FillTile(Border tile, string name, string exePath, byte[]? png)

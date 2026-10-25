@@ -4,7 +4,7 @@ using static TimeSink.Tests.Usage.MonthFixture;
 
 namespace TimeSink.Tests.Usage;
 
-/// <summary>A Background app (the fixture's top app, Chrome) keeps its time but ranks after every other app on each ranked list.</summary>
+/// <summary>A Background app (the fixture's top app, Chrome) keeps its time but ranks after every other app on each ranked list (Wrapped leaves it out of its podiums).</summary>
 public sealed class BackgroundRankingTests : IDisposable
 {
     private readonly MonthFixture _f = new();
@@ -22,14 +22,17 @@ public sealed class BackgroundRankingTests : IDisposable
         var today = TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null).Apps.Select(a => a.Name).ToList();
         var week = WeekQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, WeekStart.Mon).Apps.Select(a => a.Name).ToList();
 
-        if (todayBefore.Contains("Chrome")) today.Last().Should().Be("Chrome");
+        // Running apps list first on Today, so the background app is last within its own running/closed group.
+        var chrome = TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null).Apps.FirstOrDefault(a => a.Name == "Chrome");
+        if (chrome is not null)
+            TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null).Apps.Where(a => a.IsRunning == chrome.IsRunning).Last().Name.Should().Be("Chrome");
         if (weekBefore.Contains("Chrome")) week.Last().Should().Be("Chrome");
         today.Should().BeEquivalentTo(todayBefore);
         week.Should().BeEquivalentTo(weekBefore);
     }
 
     [Fact]
-    public void Month_top_apps_and_wrapped_podium_put_the_background_app_last()
+    public void Month_top_apps_put_the_background_app_last_and_wrapped_leaves_it_out()
     {
         FlagChrome();
 
@@ -37,7 +40,7 @@ public sealed class BackgroundRankingTests : IDisposable
         month.TopApps.Last().Name.Should().Be("Chrome");
 
         var wrapped = WrappedQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc);
-        wrapped.Podium.Concat(wrapped.Others).Last().Name.Should().Be("Chrome");
+        wrapped.Podium.Concat(wrapped.Others).Select(a => a.Name).Should().NotContain("Chrome");
     }
 
     [Fact]

@@ -68,6 +68,16 @@ public sealed class WeekQueryTests : IDisposable
     }
 
     [Fact]
+    public void Week_totals_end_with_this_week_and_last_week_counts_only_the_weekdays_started()
+    {
+        var r = Run();
+        r.WeekTotals.Should().HaveCount(20);
+        r.WeekTotals[^1].Should().Be(r.TotalSeconds);
+        // Today is Wed, so only last Mon-Wed (heat cells 126-128) count against this week's Mon-Wed.
+        r.PrevWeekSeconds.Should().Be(r.Heat.Skip(126).Take(3).Sum(c => c.Seconds)).And.BeGreaterThan(0);
+    }
+
+    [Fact]
     public void Heat_levels_use_the_one_three_five_seven_hour_steps()
     {
         WeekQuery.HeatLevel(0).Should().Be(0);

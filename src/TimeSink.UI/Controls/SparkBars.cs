@@ -20,11 +20,46 @@ public sealed class SparkBars : FrameworkElement
 
     protected override Size MeasureOverride(Size availableSize) => new(56, 22);
 
+    /// <summary>The pointer is over a bar (-1 when it left); the second value is its position in this control.</summary>
+    public event Action<int, Point>? BarHovered;
+
+    /// <summary>A bar was clicked.</summary>
+    public event Action<int>? BarClicked;
+
+    private int IndexAt(Point p)
+    {
+        if (Values is not { Count: > 0 } v || ActualWidth <= 0 || p.X < 0 || p.X >= ActualWidth) return -1;
+        return Math.Clamp((int)(p.X / ActualWidth * v.Count), 0, v.Count - 1);
+    }
+
+    protected override void OnMouseMove(System.Windows.Input.MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        var p = e.GetPosition(this);
+        BarHovered?.Invoke(IndexAt(p), p);
+    }
+
+    protected override void OnMouseLeave(System.Windows.Input.MouseEventArgs e)
+    {
+        base.OnMouseLeave(e);
+        BarHovered?.Invoke(-1, default);
+    }
+
+    protected override void OnMouseLeftButtonUp(System.Windows.Input.MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonUp(e);
+        var i = IndexAt(e.GetPosition(this));
+        if (i < 0) return;
+        BarClicked?.Invoke(i);
+        e.Handled = true;
+    }
+
     protected override void OnRender(DrawingContext dc)
     {
-        if (Values is not { Count: > 0 } v) return;
         var w = ActualWidth;
         var h = ActualHeight;
+        ChartSupport.HitArea(dc, w, h);
+        if (Values is not { Count: > 0 } v) return;
         var max = Math.Max(1, v.Max());
         var barW = (w - Gap * (v.Count - 1)) / v.Count;
         for (var i = 0; i < v.Count; i++)
