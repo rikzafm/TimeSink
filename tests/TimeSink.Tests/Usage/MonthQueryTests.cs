@@ -71,10 +71,11 @@ public sealed class MonthQueryTests : IDisposable
     }
 
     [Fact]
-    public void Top_four_apps_with_deltas_against_the_same_days_of_last_month()
+    public void All_apps_ranked_with_deltas_against_the_same_days_of_last_month()
     {
         var r = March();
-        r.TopApps.Select(a => a.Name).Should().Equal("Code", "Chrome", "Disc", ZedName); // Mus is fifth
+        r.TopApps.Select(a => a.Name).Take(4).Should().Equal("Code", "Chrome", "Disc", ZedName);
+        r.TopApps.Should().HaveCountGreaterThan(4); // no cap: the month tab scrolls
         r.TopApps[0].Should().BeEquivalentTo(new { Seconds = 55800L, PreviousSeconds = 7200L, DeltaSeconds = 48600L });
         r.TopApps[0].DeltaPercent.Should().BeApproximately(6.75, 1e-9);
         r.TopApps[1].Should().BeEquivalentTo(new { Seconds = 37200L, PreviousSeconds = 18000L, DeltaSeconds = 19200L });

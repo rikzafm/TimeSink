@@ -13,7 +13,6 @@ namespace TimeSink.Core.Usage;
 public static class YearQuery
 {
     private const int RecentMonths = 3;
-    private const int TopApps = 4;
 
 
     public static YearResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
@@ -114,7 +113,7 @@ public static class YearQuery
 
             var top = kind is YearMonthKind.Tracked or YearMonthKind.Current && perMonth.TryGetValue(idx, out var shares)
                 ? shares.OrderByDescending(kv => kv.Value).ThenBy(kv => NameOf(apps, kv.Key), StringComparer.CurrentCultureIgnoreCase)
-                    .Take(TopApps).Select(kv => new YearAppShare(kv.Key, NameOf(apps, kv.Key), kv.Value)).ToList()
+                    .Select(kv => new YearAppShare(kv.Key, NameOf(apps, kv.Key), kv.Value)).ToList()
                 : new List<YearAppShare>();
             months.Add(new YearMonth(m, kind, secs, proj, delta, prev, top));
         }

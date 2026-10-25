@@ -19,6 +19,7 @@ public sealed class YearView : UserControl
     private readonly LiveState _live;
     private readonly Dictionary<YearSubView, UIElement> _bodies = new();
     private readonly ContentPresenter _body = new();
+    private readonly StackPanel _strip;
     private YearSubView _current;
     private bool _started;
 
@@ -45,6 +46,16 @@ public sealed class YearView : UserControl
             b.Checked += (_, _) => Select(sub, persist: true);
             strip.Children.Add(b);
         }
+        _strip = strip;
+        // The switch scrolls away with the body: hidden once the body is scrolled (only when it stays scrollable without the
+        // strip, so hiding can't clamp the offset back to 0 and flip-flop), shown again at the top.
+        _body.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler((_, e) =>
+        {
+            if (e.OriginalSource is not ScrollViewer sv || _current == YearSubView.Pace) return; // Pace pins its top, switch included
+            if (sv.VerticalOffset <= 0) _strip.Visibility = Visibility.Visible;
+            else if (_strip.Visibility == Visibility.Visible && sv.ScrollableHeight > _strip.ActualHeight + _strip.Margin.Top + 24)
+                _strip.Visibility = Visibility.Collapsed;
+        }));
         Grid.SetRow(_body, 1);
         root.Children.Add(strip);
         root.Children.Add(_body);
@@ -66,6 +77,7 @@ public sealed class YearView : UserControl
         if (_started && _bodies.TryGetValue(_current, out var old)) (old as IYearSubView)?.Stop();
         if (!_bodies.TryGetValue(sub, out var body)) _bodies[sub] = body = CreateSubView(sub);
         _current = sub;
+        _strip.Visibility = Visibility.Visible;
         _body.Content = body;
         if (_started) (body as IYearSubView)?.Start();
         if (!persist) return;

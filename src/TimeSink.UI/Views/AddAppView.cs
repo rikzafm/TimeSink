@@ -101,7 +101,7 @@ public sealed partial class AddAppView : UserControl
         var tabs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 8, 20, 0) };
         var strip = new Border { BorderThickness = new Thickness(0, 0, 0, 1), Child = tabs };
         strip.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
-        foreach (var (key, tag) in new[] { (AddAppStrings.TabRunning, "Running"), (AddAppStrings.TabInstalled, "Installed"), (AddAppStrings.TabBrowse, "Browse") })
+        foreach (var (key, tag) in new[] { (AddAppStrings.TabRunning, "Running"), (AddAppStrings.TabInstalled, "Installed"), (AddAppStrings.TabTracked, "Tracked"), (AddAppStrings.TabBrowse, "Browse") })
         {
             var rb = new RadioButton { Tag = tag, IsChecked = tag == "Running", Margin = new Thickness(0, 0, 18, 0), Style = (Style)FindResource("TabButton") };
             rb.SetResourceReference(ContentControl.ContentProperty, "Str." + char.ToUpperInvariant(key[0]) + key[1..]);
@@ -146,6 +146,7 @@ public sealed partial class AddAppView : UserControl
         {
             case "Running": _body.Content = BuildRunningTab(); Render(); Refresh(); break;
             case "Installed": _body.Content = BuildInstalledTab(); break;
+            case "Tracked": _mergeSource = null; _openId = null; _mode = ""; ShowTracked(); break;
             default: _body.Content = BuildBrowseTab(); break;
         }
     }
@@ -326,11 +327,14 @@ public sealed partial class AddAppView : UserControl
         var bmp = IconService.Decode(png);
         if (bmp is not null)
         {
+            // a real logo sits bare on the panel: no box, no outline, and it fills the whole tile
             tile.ClearValue(Border.BackgroundProperty);
-            tile.Padding = new Thickness(3);
+            tile.BorderThickness = new Thickness(0);
+            tile.Padding = new Thickness(0);
             tile.Child = new Image { Source = bmp, Stretch = Stretch.Uniform };
             return;
         }
+        tile.BorderThickness = new Thickness(1); // letter fallback keeps its box
         tile.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
         var letter = new TextBlock
         {

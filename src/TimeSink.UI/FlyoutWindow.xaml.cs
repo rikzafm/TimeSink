@@ -126,7 +126,7 @@ public partial class FlyoutWindow : Window
         }
         if (tab == ShellTab.All)
         {
-            return new AllView(_dbPath, _themes, Live, this);
+            return new AllView(_dbPath, _themes, Live, this, ShowAppDetail);
         }
         var text = new TextBlock { Style = (Style)Application.Current.FindResource("Caption"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Tag = tab };
         text.SetResourceReference(TextBlock.TextProperty, "Str." + char.ToUpperInvariant(StringKeys.StubComingSoon[0]) + StringKeys.StubComingSoon[1..]);
@@ -146,6 +146,10 @@ public partial class FlyoutWindow : Window
 
     // Add app covers the whole flyout; closing it returns to whatever was underneath.
     private void ShowAddApp() => Overlay.Content = new AddAppView(_themes, _dbPath, () => Overlay.Content = null);
+
+    // The app detail page (double-click a row in All) also covers the whole flyout; Back or Esc returns to the table.
+    private void ShowAppDetail(long appId) =>
+        Overlay.Content = new AppDetailView(_dbPath, _themes, Live, appId, () => Overlay.Content = null);
 
     private SettingsView? _settings;
     private ShellTab _current;

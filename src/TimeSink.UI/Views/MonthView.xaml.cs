@@ -32,6 +32,7 @@ public partial class MonthView : UserControl
 
     private int _year, _month;
     private DateOnly? _selected;
+    private DateOnly? _firstTracked; // first tracked day; months before it are empty, so ‹ stops there
     private MonthResult? _result;
     private int _seq;
     private bool _started;
@@ -82,6 +83,7 @@ public partial class MonthView : UserControl
     {
         var m = new DateOnly(_year, _month, 1).AddMonths(delta);
         if (m > DateOnly.FromDateTime(DateTime.Now)) return;
+        if (delta < 0 && (_firstTracked is not { } ft || m < new DateOnly(ft.Year, ft.Month, 1))) return;
         _year = m.Year;
         _month = m.Month;
         _selected = null;
@@ -99,9 +101,12 @@ public partial class MonthView : UserControl
         MonthResult result;
         try
         {
-            result = await Task.Run(() =>
-                MonthQuery.Run(path, now, TimeZoneInfo.Local, year, month,
-                    MonthQuery.ParseWeekStart(SettingsStore.Get(path, "week.start")), running, SignInTime.Cached()));
+            DateOnly? first;
+            (result, first) = await Task.Run(() =>
+                (MonthQuery.Run(path, now, TimeZoneInfo.Local, year, month,
+                    MonthQuery.ParseWeekStart(SettingsStore.Get(path, "week.start")), running, SignInTime.Cached()),
+                 TodayQuery.FirstDate(path, TimeZoneInfo.Local)));
+            _firstTracked = first;
         }
         catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or IOException) { return; } // no DB yet
         if (seq != _seq || !_started) return;
@@ -118,6 +123,7 @@ public partial class MonthView : UserControl
         var first = r.FirstDay;
         MonthName.Text = first.ToString("MMMM yyyy", En);
         Span.Text = r.IsCurrent ? Str(StringKeys.MonthSpanSoFar, Ordinal(r.DaysCounted)) : Str(StringKeys.MonthSpanFull);
+        Prev.IsEnabled = _firstTracked is { } ft && first > new DateOnly(ft.Year, ft.Month, 1);
         Next.IsEnabled = !r.IsCurrent && first.AddMonths(1) <= DateOnly.FromDateTime(DateTime.Now);
 
         Total.Text = DurationFormat.HoursMinutes(r.TotalSeconds);

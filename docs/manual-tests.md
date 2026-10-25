@@ -29,8 +29,8 @@ Use a fresh Windows user (or VM). Build with `pwsh installer\Build-Package.ps1` 
 | [ ] | Run `TimeSink-Setup-<version>.exe` as a standard user | No UAC prompt; installs to `%LocalAppData%\Programs\TimeSink` | | |
 | [ ] | Launch, track an app, enable Start with Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\TimeSink` = `"...\TimeSink.Agent.exe" --background` | | |
 | [ ] | Install again over the running copy | Agent is stopped and replaced, data kept | | |
-| [ ] | Uninstall, answer No to data deletion | Agent and UI stopped, files removed, Run value gone, `%LocalAppData%\TimeSink` kept | | |
-| [ ] | Reinstall and uninstall, answer Yes | `%LocalAppData%\TimeSink` deleted | | |
+| [ ] | Uninstall, answer No to data deletion (mouse starts on No in each of the 3 prompts) | Agent and UI stopped, files removed, Run value gone, `%LocalAppData%\TimeSink` kept | | |
+| [ ] | Reinstall and uninstall, answer Yes to all 3 data-deletion prompts | `%LocalAppData%\TimeSink` deleted | | |
 | [ ] | Portable zip: unzip to a user folder, run Agent | Works without installer; tray icon and flyout appear | | |
 
 ## 24 h soak (budgets, implementation.md section 12)
@@ -71,3 +71,10 @@ Note decision 44/48: the UI About row shows working set, the budget is private b
 | DB size at end | |
 | Verdict (Pass/Fail) | |
 | Date / tester | |
+
+## App detail (All tab)
+
+1. Open the All tab, double-click an app row. The detail page covers the flyout with that app's own icon, name, exe and "tracked since".
+2. Check the three tiles against what you know (last opened day/time and length, average session, times opened) and that the year grid colours follow that app only; hover a day for its time and sessions.
+3. Use the year arrows (disabled at the first tracked year and the current year), Back, and Esc. Switch the theme to Light and repeat.
+4. Double-click an app that is running now: Last opened shows "Running now".

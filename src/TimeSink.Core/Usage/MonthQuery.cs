@@ -15,7 +15,6 @@ namespace TimeSink.Core.Usage;
 /// </summary>
 public static class MonthQuery
 {
-    private const int TopCount = 4;
     private static readonly long[] HeatSeconds = [3600, 3 * 3600, 5 * 3600, 7 * 3600];
 
 
@@ -98,7 +97,6 @@ public static class MonthQuery
         var top = monthTotals
             .Select(kv => (Id: kv.Key, Name: NameOf(apps, kv.Key), Seconds: kv.Value))
             .OrderByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
-            .Take(TopCount)
             .Select(a =>
             {
                 var prev = prevTotals.GetValueOrDefault(a.Id);

@@ -9,6 +9,11 @@ public sealed record LibraryApp(long Id, string ExePath, string? PackageFamily, 
 
 public sealed record RetiredApp(long Id, string ExePath, string DisplayName, long RetiredUtc);
 
+public sealed record MergedApp(long Id, string ExePath, string DisplayName, long Seconds);
+
+/// <summary>A tracked app as the Tracked tab shows it: merged aliases listed under it, <c>Seconds</c> including them.</summary>
+public sealed record TrackedEntry(long Id, string ExePath, string DisplayName, long AddedUtc, long Seconds, IReadOnlyList<MergedApp> Merged);
+
 public enum AddOutcome { Added, AlreadyTracked, Restored }
 
 public sealed record AddResult(long AppId, AddOutcome Outcome);
@@ -90,13 +95,82 @@ public sealed class AppLibrary : IDisposable
     /// <summary>Tracks a retired app again, counting from <paramref name="nowUtc"/>.</summary>
     public void Restore(long appId, long nowUtc) => SetState(appId, "tracked", nowUtc);
 
+    // an app's merged aliases follow it, so stopping or restoring a merged app never leaves orphans behind
     private void SetState(long appId, string state, long nowUtc)
     {
         using var cmd = Cmd(state == "retired"
-            ? "UPDATE apps SET state='retired', retired_utc=$t WHERE id=$id"
-            : "UPDATE apps SET state='tracked', retired_utc=NULL, added_utc=$t WHERE id=$id");
+            ? "UPDATE apps SET state='retired', retired_utc=$t WHERE id=$id OR canonical_id=$id"
+            : "UPDATE apps SET state='tracked', retired_utc=NULL, added_utc=$t WHERE id=$id OR canonical_id=$id");
         cmd.Parameters.AddWithValue("$t", nowUtc);
         cmd.Parameters.AddWithValue("$id", appId);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Tracked apps with their merged aliases and lifetime seconds (aliases counted under the app that keeps the name), by name.</summary>
+    public IReadOnlyList<TrackedEntry> Tracked()
+    {
+        var seconds = new Dictionary<long, long>();
+        using (var cmd = Cmd("SELECT app_id, SUM(seconds) FROM daily_usage GROUP BY app_id"))
+        using (var r = cmd.ExecuteReader())
+            while (r.Read()) seconds[r.GetInt64(0)] = r.GetInt64(1);
+
+        var rows = new List<(long Id, long? Canonical, string Exe, string Name, long Added)>();
+        using (var cmd = Cmd("SELECT id, canonical_id, exe_path, display_name, added_utc FROM apps WHERE state = 'tracked'"))
+        using (var r = cmd.ExecuteReader())
+            while (r.Read())
+                rows.Add((r.GetInt64(0), r.IsDBNull(1) ? null : r.GetInt64(1), r.GetString(2), r.GetString(3), r.GetInt64(4)));
+
+        return rows.Where(a => a.Canonical is null)
+            .Select(a =>
+            {
+                var merged = rows.Where(m => m.Canonical == a.Id)
+                    .Select(m => new MergedApp(m.Id, m.Exe, m.Name, seconds.GetValueOrDefault(m.Id)))
+                    .OrderBy(m => m.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToList();
+                return new TrackedEntry(a.Id, a.Exe, a.Name, a.Added, seconds.GetValueOrDefault(a.Id) + merged.Sum(m => m.Seconds), merged);
+            })
+            .OrderBy(a => a.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToList();
+    }
+
+    /// <summary>Changes the name shown everywhere; history and totals are untouched. A blank name is ignored.</summary>
+    public bool Rename(long appId, string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0) return false;
+        using var cmd = Cmd("UPDATE apps SET display_name=$n WHERE id=$id");
+        cmd.Parameters.AddWithValue("$n", name);
+        cmd.Parameters.AddWithValue("$id", appId);
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>
+    /// Counts <paramref name="sourceId"/> (and anything already merged into it) under <paramref name="targetId"/>.
+    /// Both must be tracked and the target must not itself be merged into something else.
+    /// </summary>
+    public bool Merge(long sourceId, long targetId)
+    {
+        if (sourceId == targetId) return false;
+        using var tx = _c.BeginTransaction();
+        using (var check = Cmd("SELECT COUNT(*) FROM apps WHERE state='tracked' AND canonical_id IS NULL AND id IN ($s,$t)", tx))
+        {
+            check.Parameters.AddWithValue("$s", sourceId);
+            check.Parameters.AddWithValue("$t", targetId);
+            if ((long)check.ExecuteScalar()! != 2) return false;
+        }
+        using (var up = Cmd("UPDATE apps SET canonical_id=$t WHERE id=$s OR canonical_id=$s", tx))
+        {
+            up.Parameters.AddWithValue("$s", sourceId);
+            up.Parameters.AddWithValue("$t", targetId);
+            up.ExecuteNonQuery();
+        }
+        tx.Commit();
+        return true;
+    }
+
+    /// <summary>Makes a merged app a separate tracked app again.</summary>
+    public void Unmerge(long aliasId)
+    {
+        using var cmd = Cmd("UPDATE apps SET canonical_id=NULL WHERE id=$id");
+        cmd.Parameters.AddWithValue("$id", aliasId);
         cmd.ExecuteNonQuery();
     }
 

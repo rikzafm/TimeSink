@@ -85,8 +85,8 @@ public sealed class YearPaceView : UserControl, IYearSubView
         _bars.SetResourceReference(PaceBars.LabelFontSizeProperty, "Double.FontSize.Small");
         _bars.MonthPicked += i => { _selected = i; DrawChartAndPanel(); };
 
-        var legend = new Grid { Margin = new Thickness(0, 6, 0, 0) };
-        var legendItems = new StackPanel { Orientation = Orientation.Horizontal };
+        var legend = new Grid { Margin = new Thickness(0, 6, 0, 8) };
+        var legendItems = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 12, 0) };
         legendItems.Children.Add(LegendItem(_legendTracked, "Brush.Heat3", dashed: false));
         legendItems.Children.Add(LegendItem(_legendProjected, "Brush.Heat3", dashed: true));
         legendItems.Children.Add(LegendItem(_legendAverage, "Brush.TextMuted", dashed: true, line: true));
@@ -107,17 +107,26 @@ public sealed class YearPaceView : UserControl, IYearSubView
         panel.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         panel.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
 
-        var stack = new StackPanel { Margin = new Thickness(16, 6, 16, 12) };
-        stack.Children.Add(header);
-        stack.Children.Add(banner);
-        stack.Children.Add(_bars);
-        stack.Children.Add(legend);
-        stack.Children.Add(panel);
-        Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = stack };
+        // Header, banner, chart and legend stay pinned; only the month panel (app list) scrolls beneath them.
+        var pinned = new StackPanel { Margin = new Thickness(16, 6, 16, 0) };
+        pinned.Children.Add(header);
+        pinned.Children.Add(banner);
+        pinned.Children.Add(_bars);
+        pinned.Children.Add(legend);
+        panel.Margin = new Thickness(16, 10, 16, 12);
+        var scroller = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = panel };
+        Grid.SetRow(scroller, 1);
+        var root = new Grid();
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.Children.Add(pinned);
+        root.Children.Add(scroller);
+        Content = root;
 
         _timer.Tick += (_, _) => Refresh();
         _live.Changed += Refresh;
         _themes.Applied += Redraw;
+        AppIcons.Updated += Redraw;
         Unloaded += (_, _) => Stop();
         Redraw(); // static text and empty chart; data follows in Start
     }
@@ -132,7 +141,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
             swatch.StrokeDashArray = new DoubleCollection { 2, 2 };
         }
         else swatch.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, brushKey);
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 14, 0) };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 18, 0) };
         row.Children.Add(swatch);
         row.Children.Add(text);
         return row;
@@ -272,6 +281,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
             }
             return;
         }
+        AppIcons.Load(_dbPath, m.TopApps.Select(a => a.AppId));
         var max = Math.Max(1, m.TopApps.Max(a => a.Seconds));
         for (var i = 0; i < m.TopApps.Count; i++)
         {
@@ -282,8 +292,10 @@ public sealed class YearPaceView : UserControl, IYearSubView
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(56) });
 
-            var dot = new System.Windows.Shapes.Rectangle { Width = 9, Height = 9, RadiusX = 2, RadiusY = 2, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-            dot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "Brush.App" + i % 6);
+            FrameworkElement dot = (FrameworkElement?)AppIcons.Icon(app.AppId, 16)
+                ?? new System.Windows.Shapes.Rectangle { Width = 9, Height = 9, RadiusX = 2, RadiusY = 2, VerticalAlignment = VerticalAlignment.Center };
+            dot.Margin = new Thickness(0, 0, 8, 0);
+            if (dot is System.Windows.Shapes.Shape swatch) swatch.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "Brush.App" + i % 6);
             var name = Label("Soft");
             name.Text = app.Name;
             name.TextTrimming = TextTrimming.CharacterEllipsis;

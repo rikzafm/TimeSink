@@ -29,6 +29,7 @@ public partial class App : Application
     {
         StartupTrace.Mark("onStartup");
         base.OnStartup(e);
+        TimeSink.UI.Services.SmoothScroll.Install();
 
         // Story 48: formatting follows the user's Windows regional settings (never overridden, including the 12/24 h
         // clock). Threads that WPF or tasks create start from the same culture, and XAML text formatting (default en-US)

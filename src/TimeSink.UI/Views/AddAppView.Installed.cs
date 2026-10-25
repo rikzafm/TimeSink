@@ -94,6 +94,7 @@ public sealed partial class AddAppView
             _installedLoading = false;
             _installed = t.Result;
             if (_tab == "Installed") RenderInstalled();
+            else if (_tab == "Tracked" && _mergeSource is not null) ShowTracked(); // merge picker was waiting for the list
             LoadInstalledIcons(t.Result);
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }

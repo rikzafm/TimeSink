@@ -66,7 +66,7 @@ public sealed class MatrixGrid : FrameworkElement
 
     private int Columns => MonthLabels?.Count ?? 0;
     private int RowCount => Rows?.Count ?? 0;
-    private double NameWidth => Columns > 9 ? 70 : 78;
+    private double NameWidth => 70;
     private double CellWidth => Columns == 0 ? 0 : Math.Max(1, (ActualWidth - NameWidth - TotalWidth - (Columns + 1) * Gap) / Columns);
     private double CellX(int col) => NameWidth + Gap + col * (CellWidth + Gap);
     private double RowY(int row) => HeaderHeight + Gap + row * (RowHeight + Gap);
@@ -86,10 +86,10 @@ public sealed class MatrixGrid : FrameworkElement
             var rect = new Rect(CellX(m), 0, cw, HeaderHeight);
             var on = SelectedMonth == m;
             if (on) dc.DrawRoundedRectangle(TextBrush, null, rect, 5, 5);
-            Text(dc, months[m], on ? OnSelectionBrush : MutedBrush, FontWeights.Bold, rect, center: true, middle: true);
+            Text(dc, months[m], on ? OnSelectionBrush : MutedBrush, FontWeights.Bold, rect, center: true, middle: true, delta: -1);
         }
         Text(dc, TotalHeader ?? "", MutedBrush, FontWeights.Bold,
-            new Rect(ActualWidth - TotalWidth, 0, TotalWidth, HeaderHeight), right: true, middle: true);
+            new Rect(ActualWidth - TotalWidth, 0, TotalWidth, HeaderHeight), right: true, middle: true, delta: -1);
 
         for (var r = 0; r < rows.Count; r++)
         {
@@ -101,7 +101,7 @@ public sealed class MatrixGrid : FrameworkElement
                 dc.DrawImage(icon, new Rect(0, y + (RowHeight - IconSize) / 2, IconSize, IconSize));
             else if (AppBrushes is { Count: > 0 } apps)
                 dc.DrawRoundedRectangle(apps[row.PaletteSlot % apps.Count], null, new Rect(2, y + (RowHeight - 8) / 2, 8, 8), 2, 2);
-            Text(dc, row.Name, TextBrush, FontWeights.SemiBold, new Rect(NameInset, y, NameWidth - NameInset, RowHeight), middle: true, trim: true);
+            Text(dc, row.Name, TextBrush, FontWeights.SemiBold, new Rect(NameInset, y, NameWidth - NameInset, RowHeight), middle: true, trim: true, delta: 1);
 
             for (var m = 0; m < months.Count && m < row.CellText.Count; m++)
             {
@@ -111,7 +111,7 @@ public sealed class MatrixGrid : FrameworkElement
                 if (SelectedMonth == m) dc.DrawRoundedRectangle(null, new Pen(TextBrush, 2), Inflate(rect, -1), 5, 5);
                 Text(dc, row.CellText[m], level >= 3 ? OnHeatBrush : TextBrush, FontWeights.SemiBold, rect, center: true, middle: true);
             }
-            Text(dc, row.Total, TextBrush, FontWeights.Bold, new Rect(ActualWidth - TotalWidth, y, TotalWidth, RowHeight), right: true, middle: true);
+            Text(dc, row.Total, TextBrush, FontWeights.Bold, new Rect(ActualWidth - TotalWidth, y, TotalWidth, RowHeight), right: true, middle: true, delta: 1);
         }
 
         var fy = FooterY;
@@ -122,14 +122,14 @@ public sealed class MatrixGrid : FrameworkElement
             for (var m = 0; m < months.Count && m < totals.Count; m++)
                 Text(dc, totals[m], SelectedMonth == m ? TextBrush : MutedBrush, FontWeights.Bold,
                     new Rect(CellX(m), fy + 1, cw, FooterHeight), center: true, middle: true);
-        Text(dc, GrandTotal ?? "", AccentBrush, FontWeights.Bold, new Rect(ActualWidth - TotalWidth, fy + 1, TotalWidth, FooterHeight), right: true, middle: true);
+        Text(dc, GrandTotal ?? "", AccentBrush, FontWeights.Bold, new Rect(ActualWidth - TotalWidth, fy + 1, TotalWidth, FooterHeight), right: true, middle: true, delta: 1);
     }
 
     private void Text(DrawingContext dc, string text, Brush? brush, FontWeight weight, Rect box,
-        bool center = false, bool right = false, bool middle = false, bool trim = false)
+        bool center = false, bool right = false, bool middle = false, bool trim = false, double delta = 0)
     {
         if (text.Length == 0) return;
-        var ft = ChartSupport.Text(this, text, LabelFontFamily, LabelFontSize, brush, weight);
+        var ft = ChartSupport.Text(this, text, LabelFontFamily, LabelFontSize + delta, brush, weight);
         ft.MaxLineCount = 1;
         ft.Trimming = trim ? TextTrimming.CharacterEllipsis : TextTrimming.None;
         if (trim) ft.MaxTextWidth = Math.Max(1, box.Width);

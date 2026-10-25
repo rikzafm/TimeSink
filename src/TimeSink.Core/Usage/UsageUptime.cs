@@ -7,16 +7,17 @@ namespace TimeSink.Core.Usage;
 internal static class UsageUptime
 {
     /// <summary>
-    /// Seconds the PC was on within [<paramref name="from"/>, <paramref name="to"/>), sleep excluded. The PC is on from
-    /// <paramref name="onSince"/> (e.g. sign-in) when known, else from the first tracked session; a live day runs to
+    /// Seconds the PC was on within [<paramref name="from"/>, <paramref name="to"/>), sleep excluded. The day starts at its
+    /// first tracked session or <paramref name="onSince"/> (e.g. sign-in), whichever is earlier; a live day runs to
     /// <paramref name="to"/>, a finished one to the last tracked session end (nothing else records the PC being on).
     /// </summary>
     public static long Seconds(List<UsageSeg> segs, long from, long to, bool live, long? onSince)
     {
         var inRange = segs.Where(s => s.End > from && s.Start < to).ToList();
+        // Per day, not per Windows session: after a mid-day restart the sign-in is later than the day's first activity.
         long start;
-        if (onSince is { } on) start = Math.Max(from, on);
-        else if (inRange.Count > 0) start = Math.Max(from, inRange.Min(s => s.Start));
+        if (inRange.Count > 0) start = Math.Max(from, Math.Min(onSince ?? long.MaxValue, inRange.Min(s => s.Start)));
+        else if (onSince is { } on) start = Math.Max(from, on);
         else return 0;
         var end = live ? to : inRange.Count > 0 ? Math.Min(to, inRange.Max(s => s.End)) : start;
         if (end <= start) return 0;

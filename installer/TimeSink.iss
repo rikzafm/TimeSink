@@ -61,6 +61,80 @@ begin
   Result := '';
 end;
 
+function SetCursorPos(X, Y: Integer): Boolean;
+  external 'SetCursorPos@user32.dll stdcall';
+function ClientToScreen(hWnd: HWND; var Pt: TPoint): Boolean;
+  external 'ClientToScreen@user32.dll stdcall';
+
+var
+  AskNoButton: TNewButton;
+
+procedure AskFormShown(Sender: TObject);
+var
+  Pt: TPoint;
+begin
+  // Park the mouse on "No" so a stray click keeps the data.
+  Pt.X := AskNoButton.Width div 2;
+  Pt.Y := AskNoButton.Height div 2;
+  ClientToScreen(AskNoButton.Handle, Pt);
+  SetCursorPos(Pt.X, Pt.Y);
+end;
+
+// True only if the user clicks Yes. "No", Esc and the close box all answer No.
+function AskDeleteData(const Question: String): Boolean;
+var
+  Form: TSetupForm;
+  Msg: TNewStaticText;
+  YesButton: TNewButton;
+begin
+  Form := CreateCustomForm(ScaleX(420), ScaleY(150), False, True);
+  try
+    Form.Caption := 'Delete TimeSink data?';
+    Form.Position := poScreenCenter;
+    Form.OnShow := @AskFormShown;
+
+    Msg := TNewStaticText.Create(Form);
+    Msg.Parent := Form;
+    Msg.AutoSize := False;
+    Msg.WordWrap := True;
+    Msg.SetBounds(ScaleX(16), ScaleY(16), Form.ClientWidth - ScaleX(32), ScaleY(90));
+    Msg.Caption := Question;
+
+    YesButton := TNewButton.Create(Form);
+    YesButton.Parent := Form;
+    YesButton.Caption := '&Yes, delete';
+    YesButton.ModalResult := mrYes;
+    YesButton.SetBounds(Form.ClientWidth - ScaleX(184), Form.ClientHeight - ScaleY(40), ScaleX(80), ScaleY(26));
+
+    AskNoButton := TNewButton.Create(Form);
+    AskNoButton.Parent := Form;
+    AskNoButton.Caption := '&No, keep it';
+    AskNoButton.ModalResult := mrNo;
+    AskNoButton.Cancel := True;
+    AskNoButton.Default := True;
+    AskNoButton.SetBounds(Form.ClientWidth - ScaleX(96), Form.ClientHeight - ScaleY(40), ScaleX(80), ScaleY(26));
+    Form.ActiveControl := AskNoButton;
+
+    Result := Form.ShowModal = mrYes;
+  finally
+    Form.Free;
+  end;
+end;
+
+// Three separate confirmations; any "No" keeps the data.
+function ConfirmDeleteData(const Dir: String): Boolean;
+begin
+  if UninstallSilent then
+  begin
+    Result := False;  // nobody to ask: keep the data
+    Exit;
+  end;
+  Result :=
+    AskDeleteData('Also delete your TimeSink data (usage history, settings, backups) in ' + Dir + '?') and
+    AskDeleteData('Are you sure? Your usage history will be gone for good.') and
+    AskDeleteData('Last chance: really delete all TimeSink data? This cannot be undone.');
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
@@ -71,9 +145,7 @@ begin
   if CurUninstallStep = usPostUninstall then
   begin
     if DirExists(ExpandConstant('{localappdata}\TimeSink')) then
-      if MsgBox('Also delete your TimeSink data (usage history, settings, backups) in ' +
-                ExpandConstant('{localappdata}\TimeSink') + '?' + #13#10 + 'This cannot be undone.',
-                mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+      if ConfirmDeleteData(ExpandConstant('{localappdata}\TimeSink')) then
         DelTree(ExpandConstant('{localappdata}\TimeSink'), True, True, True);
   end;
 end;

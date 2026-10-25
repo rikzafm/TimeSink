@@ -5,6 +5,8 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Data.Sqlite;
 using TimeSink.Core.Apps;
+using TimeSink.Core.Data;
+using TimeSink.Core.Icons;
 
 namespace TimeSink.UI.Services;
 
@@ -32,6 +34,9 @@ internal static class AppIcons
         return true;
     }
 
+    private static bool IsSelf(string exePath) =>
+        Path.GetFileName(exePath).StartsWith("TimeSink.", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>The cached bitmap, or null when the app has no icon (yet).</summary>
     public static BitmapSource? Get(long appId) => Cache.GetValueOrDefault(appId);
 
@@ -55,11 +60,18 @@ internal static class AppIcons
                 IReadOnlyList<LibraryApp>? apps = null;
                 foreach (var id in want)
                 {
+                    apps ??= lib.Library();
+                    var app = apps.FirstOrDefault(a => a.Id == id);
                     var png = lib.GetIcon(id);
-                    if (png is null)
+                    if (app is not null && IsSelf(app.ExePath))
                     {
-                        apps ??= lib.Library();
-                        var app = apps.FirstOrDefault(a => a.Id == id);
+                        // TimeSink's own row shows the chosen app icon; an exe-extracted copy can be a stale generic one.
+                        var own = IconCatalogue.ReadFrame(IconCatalogue.Resolve(SettingsStore.Get(dbPath, "ui.icon")), 64);
+                        if (!own.AsSpan().SequenceEqual(png)) lib.PutIcon(id, own);
+                        png = own;
+                    }
+                    else if (png is null)
+                    {
                         if (app is not null && IconService.ExtractPng(app.ExePath, null, SteamLibrary.ArtForExe(app.ExePath)) is { } extracted)
                         {
                             lib.PutIcon(id, extracted);

@@ -105,12 +105,12 @@ public sealed class TodayQueryTests : IDisposable
     }
 
     [Fact]
-    public void Uptime_starts_at_sign_in_when_known_and_ignores_it_before_midnight()
+    public void Uptime_is_per_day_so_a_later_sign_in_does_not_shorten_it()
     {
-        TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null, null, U(2026, 3, 11, 8)).UptimeSeconds
-            .Should().Be(U(2026, 3, 11, 14, 20) - U(2026, 3, 11, 8) - 5400);
-        TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null, null, U(2026, 3, 9, 8)).UptimeSeconds
-            .Should().Be(U(2026, 3, 11, 14, 20) - U(2026, 3, 11, 0) - 5400);
+        // The day's first activity is the 00:00 carry-over, so a mid-day sign-in (restart) or one before midnight changes nothing.
+        var expected = U(2026, 3, 11, 14, 20) - U(2026, 3, 11, 0) - 5400;
+        TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null, null, U(2026, 3, 11, 8)).UptimeSeconds.Should().Be(expected);
+        TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null, null, U(2026, 3, 9, 8)).UptimeSeconds.Should().Be(expected);
     }
 
     [Fact]

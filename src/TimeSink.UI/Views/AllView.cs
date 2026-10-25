@@ -31,6 +31,7 @@ public sealed class AllView : UserControl
     private readonly ThemeService _themes;
     private readonly LiveState _live;
     private readonly FlyoutWindow? _window;
+    private readonly Action<long>? _openDetail;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(RefreshEverySeconds) };
 
     private readonly TextBlock _caption = Label(), _total = new(), _counts = Label(), _sorted = Label();
@@ -46,8 +47,9 @@ public sealed class AllView : UserControl
     private int _seq;
     private bool _started;
 
-    public AllView(string dbPath, ThemeService themes, LiveState live, FlyoutWindow? window)
+    public AllView(string dbPath, ThemeService themes, LiveState live, FlyoutWindow? window, Action<long>? openDetail = null)
     {
+        _openDetail = openDetail;
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
@@ -257,6 +259,7 @@ public sealed class AllView : UserControl
         box.Child = grid;
         var id = a.AppId;
         box.MouseLeftButtonUp += (_, _) => { _selected = id; Redraw(); };
+        box.MouseLeftButtonDown += (_, e) => { if (e.ClickCount == 2) _openDetail?.Invoke(id); }; // double-click: app detail
         return box;
     }
 

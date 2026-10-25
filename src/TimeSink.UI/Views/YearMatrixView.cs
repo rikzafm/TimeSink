@@ -88,7 +88,6 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         body.Children.Add(head);
         body.Children.Add(_selNote);
         body.Children.Add(_selBars);
-        _panel.Margin = new Thickness(0, 12, 0, 0);
         _panel.Padding = new Thickness(12, 10, 12, 10);
         _panel.BorderThickness = new Thickness(1);
         _panel.Child = body;
@@ -97,7 +96,6 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         _panel.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         _panel.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
 
-        _hint.Margin = new Thickness(0, 8, 0, 0);
         _hint.HorizontalAlignment = HorizontalAlignment.Right;
 
         var stack = new StackPanel { Margin = new Thickness(16, 6, 16, 12) };
@@ -106,9 +104,18 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         stack.Children.Add(_empty);
         stack.Children.Add(_grid);
         stack.Children.Add(_footnote);
-        stack.Children.Add(_panel);
-        stack.Children.Add(_hint);
-        Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = stack };
+        // design: the app/month summary and hint stay pinned under the grid; only the grid scrolls when there are many apps
+        _panel.Margin = new Thickness(16, 10, 16, 0);
+        _hint.Margin = new Thickness(16, 8, 16, 10);
+        var pinned = new StackPanel();
+        pinned.Children.Add(_panel);
+        pinned.Children.Add(_hint);
+        var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = stack };
+        var root = new DockPanel();
+        DockPanel.SetDock(pinned, Dock.Bottom);
+        root.Children.Add(pinned);
+        root.Children.Add(scroll);
+        Content = root;
 
         _timer.Tick += (_, _) => Refresh();
         _live.Changed += Refresh;
@@ -167,6 +174,9 @@ public sealed class YearMatrixView : UserControl, IYearSubView
     private void Redraw()
     {
         _footnote.Text = Str(MatrixStringKeys.Footnote);
+        var small = (double)FindResource("Double.FontSize.Small");
+        _caption.FontSize = _hint.FontSize = small + 1; // design: 12px caption and hint, 10px footnote
+        _footnote.FontSize = small - 1;
         _hint.Text = Str(MatrixStringKeys.Hint);
         _empty.Text = Str(MatrixStringKeys.Empty);
         _grid.TotalHeader = Str(MatrixStringKeys.Total);
