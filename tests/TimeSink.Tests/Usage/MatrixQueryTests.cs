@@ -107,8 +107,8 @@ public sealed class MatrixQueryTests : IDisposable
         Row(r, "Chrome").TotalSeconds.Should().Be(39 * H);
         Row(r, "Code").TotalSeconds.Should().Be(19 * H);
         Row(r, "Disc").TotalSeconds.Should().Be(3 * H);
-        r.Months.Select(m => m.TotalSeconds).Should().Equal(12 * H, 15 * H, 26 * H, 8 * H);
-        r.GrandSeconds.Should().Be(61 * H);
+        r.Months.Select(m => m.TotalSeconds).Should().Equal(10 * H, 15 * H, 26 * H, 8 * H); // PC uptime: overlapping apps count once
+        r.GrandSeconds.Should().Be(59 * H);
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public sealed class MatrixQueryTests : IDisposable
         var chrome = Row(r, "Chrome");
         chrome.PeakMonth.Should().Be(4);
         chrome.PeakSeconds.Should().Be(20 * H);
-        chrome.SharePercent.Should().Be(64);                    // 39 / 61
+        chrome.SharePercent.Should().Be(66);                    // 39 / 59 uptime
         chrome.TrendPercent.Should().BeApproximately(190, 1e-9); // Mar-May 29 h vs Feb 10 h
         Row(r, "Code").TrendPercent.Should().BeApproximately(750, 1e-9); // 17 h vs 2 h
         Row(r, "Disc").TrendPercent.Should().BeNull();               // earlier months have no time

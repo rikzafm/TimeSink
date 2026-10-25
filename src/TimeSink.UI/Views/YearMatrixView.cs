@@ -160,7 +160,7 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         var now = DateTimeOffset.UtcNow;
         var running = _live.RunningIds;
         MatrixResult result;
-        try { result = await Task.Run(() => MatrixQuery.Run(_dbPath, now, TimeZoneInfo.Local, running)); }
+        try { result = await Task.Run(() => MatrixQuery.Run(_dbPath, now, TimeZoneInfo.Local, running, SignInTime.Cached())); }
         catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException) { return; }
         if (seq != _seq || !_started) return;
         _result = result;

@@ -5,13 +5,14 @@ public sealed record WrappedApp(long AppId, string Name, long Seconds);
 
 /// <summary>
 /// Everything the three Year > Wrapped cards show for the calendar year of <see cref="NowUtc"/> (year to date).
-/// Time is app-seconds (overlapping apps add, as elsewhere). Nullable members are null when there is nothing to say.
+/// <see cref="TotalSeconds"/> is PC uptime; every other time is app-seconds (overlapping apps add). Nullable members are null when there is nothing to say.
 /// </summary>
 public sealed record WrappedResult(
     int Year,
     long NowUtc,
     DateOnly? TrackingStarted,
     long TotalSeconds,
+    long AppSeconds,
     int DaysTracked,
     int DaysWithActivity,
     int AppsTracked,
@@ -27,7 +28,7 @@ public sealed record WrappedResult(
     long PeakHourSeconds,
     int BeforeNoonPercent)
 {
-    /// <summary>"N days and M hours" of back-to-back running: whole days of the total.</summary>
+    /// <summary>"N days and M hours" the PC was on: whole days of the total.</summary>
     public int EquivalentDays => (int)(TotalSeconds / 86400);
 
     /// <summary>The whole hours left over after <see cref="EquivalentDays"/>.</summary>

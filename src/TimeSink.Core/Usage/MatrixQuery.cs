@@ -24,7 +24,7 @@ public static class MatrixQuery
         return pct < 30 * best ? 0 : pct < 55 * best ? 1 : pct < 75 * best ? 2 : pct < 90 * best ? 3 : 4;
     }
 
-    public static MatrixResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null)
+    public static MatrixResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
         using var c = new SqliteConnection(new SqliteConnectionStringBuilder
         {
@@ -36,10 +36,10 @@ public static class MatrixQuery
             p.CommandText = "PRAGMA busy_timeout=2000";
             p.ExecuteNonQuery();
         }
-        return Run(c, now, zone, running);
+        return Run(c, now, zone, running, onSinceUtc);
     }
 
-    public static MatrixResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null)
+    public static MatrixResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var today = LocalDays.DateOf(nowUtc, zone);
@@ -66,7 +66,15 @@ public static class MatrixQuery
             }
         }
 
-        var grand = perApp.Values.Sum(a => a.Sum());
+        // Month totals and the headline are PC uptime (decision 125); the per-app cells stay per-app.
+        var uptimeByMonth = new long[count];
+        var uptimeApps = UsageLoader.LoadApps(c);
+        foreach (var (day, secs) in UsageUptime.PerDay(UsageLoader.LoadSegments(c, bounds[0], nowUtc, uptimeApps, running), zone, nowUtc, onSinceUtc))
+        {
+            var idx = (day.Year - year) * 12 + day.Month - first;
+            if (idx >= 0 && idx < count) uptimeByMonth[idx] += secs;
+        }
+        var grand = uptimeByMonth.Sum();
         var rows = perApp.Where(kv => kv.Value.Sum() > 0)
             .Select(kv => BuildRow(kv.Key, NameOf(apps, kv.Key), kv.Value, first, grand))
             .OrderByDescending(r => r.TotalSeconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
@@ -78,7 +86,7 @@ public static class MatrixQuery
             var top = rows.Where(r => r.Cells[idx].Seconds > 0)
                 .OrderByDescending(r => r.Cells[idx].Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)
                 .Take(TopApps).Select(r => new YearAppShare(r.AppId, r.Name, r.Cells[idx].Seconds)).ToList();
-            months.Add(new MatrixMonth(first + i, rows.Sum(r => r.Cells[idx].Seconds), top));
+            months.Add(new MatrixMonth(first + i, uptimeByMonth[idx], top));
         }
         return new MatrixResult(year, nowUtc, started, first, months, rows, grand);
     }

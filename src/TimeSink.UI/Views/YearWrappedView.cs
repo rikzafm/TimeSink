@@ -150,7 +150,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         var now = DateTimeOffset.UtcNow;
         var running = _live.RunningIds;
         WrappedResult result;
-        try { result = await Task.Run(() => WrappedQuery.Run(_dbPath, now, TimeZoneInfo.Local, running)); }
+        try { result = await Task.Run(() => WrappedQuery.Run(_dbPath, now, TimeZoneInfo.Local, running, SignInTime.Cached())); }
         catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or IOException) { return; }
         if (seq != _seq || !_started) return;
         _result = result;
