@@ -107,14 +107,13 @@ public sealed partial class AddAppView
 
     private void LoadTracked()
     {
-        try
+        var snapshot = _catalogue.Tracked(_trackedIcons.Keys.Concat(_hiResIcons.Keys).ToHashSet());
+        if (snapshot.Outcome == CatalogueOutcome.Done) // otherwise the database is busy: keep what is on screen
         {
-            using var lib = AppLibrary.Open(_dbPath);
-            _tracked = lib.Tracked();
-            foreach (var a in _tracked.Select(a => a.Id).Where(id => !_trackedIcons.ContainsKey(id)).ToList())
-                _trackedIcons[a] = _hiResIcons.GetValueOrDefault(a) ?? lib.GetIcon(a);
+            _tracked = snapshot.Apps;
+            foreach (var id in _tracked.Select(a => a.Id).Where(id => !_trackedIcons.ContainsKey(id)).ToList())
+                _trackedIcons[id] = _hiResIcons.GetValueOrDefault(id) ?? snapshot.Icons.GetValueOrDefault(id);
         }
-        catch { /* database busy: keep what is on screen */ }
         UpgradeTrackedIcons();
     }
 
@@ -299,7 +298,7 @@ public sealed partial class AddAppView
             done = true;
             if (save)
             {
-                try { using var lib = AppLibrary.Open(_dbPath); lib.Rename(app.Id, _draft); } catch { /* keep the old name */ }
+                _catalogue.ApplyChange(AppChange.Rename(app.Id, _draft)); // blank or database busy: keep the old name
             }
             _mode = "";
             RenderTracked();
@@ -344,10 +343,7 @@ public sealed partial class AddAppView
 
     private void StopTracking(TrackedEntry app)
     {
-        try { using var lib = AppLibrary.Open(_dbPath); lib.Retire(app.Id, DateTimeOffset.UtcNow.ToUnixTimeSeconds()); }
-        catch { return; }
-        foreach (var path in app.Merged.Select(m => m.ExePath).Append(app.ExePath))
-            _catalogue.NoteStopped(path);
+        if (_catalogue.ApplyChange(AppChange.Retire(app)) != CatalogueOutcome.Done) return;
         _openId = null;
         _mode = "";
         UpdateCount();

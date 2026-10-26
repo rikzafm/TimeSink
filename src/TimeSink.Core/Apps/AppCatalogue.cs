@@ -2,8 +2,14 @@ using Microsoft.Data.Sqlite;
 
 namespace TimeSink.Core.Apps;
 
-/// <summary>Result of an operation that touches the database: done, or the database was busy or missing.</summary>
-public enum CatalogueOutcome { Done, Unavailable }
+/// <summary>
+/// Result of an operation that touches the database: done, the database was busy or missing, or (for
+/// <see cref="AppCatalogue.ApplyChange"/> only) the change did not apply.
+/// </summary>
+public enum CatalogueOutcome { Done, Unavailable, Rejected }
+
+/// <summary>The tracked apps (<see cref="AppCatalogue.Tracked"/>) and their stored icons by app id; empty when <see cref="Outcome"/> is Unavailable.</summary>
+public sealed record TrackedSnapshot(CatalogueOutcome Outcome, IReadOnlyList<TrackedEntry> Apps, IReadOnlyDictionary<long, byte[]?> Icons);
 
 /// <summary>
 /// A running app the user may track. <see cref="Tracking"/> marks a row tracked earlier in this visit, which stays
@@ -142,46 +148,61 @@ public sealed class AppCatalogue
         return CatalogueOutcome.Done;
     }
 
-    /// <summary>Stops tracking the app, keeping its history; it no longer counts as added in this visit.</summary>
-    public CatalogueOutcome Retire(LibraryApp app)
+    /// <summary>
+    /// A snapshot of the tracked (Main) apps with their Merged apps, read now, plus the stored icon of each one whose id
+    /// is not in <paramref name="iconsKnown"/> (null where none is stored). Empty with
+    /// <see cref="CatalogueOutcome.Unavailable"/> when the database is busy or missing.
+    /// </summary>
+    public TrackedSnapshot Tracked(IReadOnlySet<long>? iconsKnown = null)
     {
         try
         {
             using var lib = AppLibrary.Open(_dbPath);
-            lib.Retire(app.Id, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            var apps = lib.Tracked();
+            var icons = new Dictionary<long, byte[]?>();
+            foreach (var a in apps.Where(a => iconsKnown is null || !iconsKnown.Contains(a.Id))) icons[a.Id] = lib.GetIcon(a.Id);
+            return new TrackedSnapshot(CatalogueOutcome.Done, apps, icons);
         }
-        catch (Exception e) when (IsBusyOrMissing(e)) { return CatalogueOutcome.Unavailable; }
-        NoteStopped(app.ExePath);
-        return CatalogueOutcome.Done;
+        catch (Exception e) when (IsBusyOrMissing(e)) { return new TrackedSnapshot(CatalogueOutcome.Unavailable, [], new Dictionary<long, byte[]?>()); }
     }
 
-    /// <summary>Tracks a Retired app again; it counts towards "Added N".</summary>
-    public CatalogueOutcome Restore(LibraryApp app)
+    /// <summary>The stored icon of any app (a Merged one too), or null when none is stored or the database is busy or missing.</summary>
+    public byte[]? StoredIcon(long appId)
     {
         try
         {
             using var lib = AppLibrary.Open(_dbPath);
-            lib.Restore(app.Id, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            return lib.GetIcon(appId);
         }
-        catch (Exception e) when (IsBusyOrMissing(e)) { return CatalogueOutcome.Unavailable; }
-        NoteAddedElsewhere(app.ExePath);
-        return CatalogueOutcome.Done;
+        catch (Exception e) when (IsBusyOrMissing(e)) { return null; }
     }
 
-    /// <summary>Sets what Year > Wrapped counts the app as.</summary>
-    public CatalogueOutcome SetKind(long appId, AppKind kind) => Apply(lib => lib.SetKind(appId, kind));
-
-    /// <summary>Sets whether the app ranks after the others.</summary>
-    public CatalogueOutcome SetBackground(long appId, bool background) => Apply(lib => lib.SetBackground(appId, background));
-
-    private CatalogueOutcome Apply(Action<AppLibrary> change)
+    /// <summary>
+    /// Applies one edit to an app. <see cref="CatalogueOutcome.Rejected"/> when the change does not apply (a blank name, an
+    /// unknown app, a Make-main on an app that is not Merged) and <see cref="CatalogueOutcome.Unavailable"/> when the
+    /// database is busy or missing; in both cases nothing changed. A Retire or Restore also updates the "Added N" count.
+    /// </summary>
+    public CatalogueOutcome ApplyChange(AppChange change)
     {
         try
         {
             using var lib = AppLibrary.Open(_dbPath);
-            change(lib);
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            switch (change.Kind)
+            {
+                case ChangeKind.Rename: if (!lib.Rename(change.AppId, change.Name)) return CatalogueOutcome.Rejected; break;
+                case ChangeKind.SetKind: lib.SetKind(change.AppId, change.GameKind); break;
+                case ChangeKind.SetBackground: lib.SetBackground(change.AppId, change.Background); break;
+                case ChangeKind.Retire: lib.Retire(change.AppId, now); break;
+                case ChangeKind.Restore: lib.Restore(change.AppId, now); break;
+                case ChangeKind.MakeMain: if (!lib.MakeMain(change.AppId)) return CatalogueOutcome.Rejected; break;
+                case ChangeKind.Unmerge: lib.Unmerge(change.AppId); break;
+                case ChangeKind.ClearHistory: lib.ClearHistory(change.AppId); break;
+            }
         }
         catch (Exception e) when (IsBusyOrMissing(e)) { return CatalogueOutcome.Unavailable; }
+        if (change.Kind == ChangeKind.Retire) foreach (var path in change.ExePaths) NoteStopped(path);
+        else if (change.Kind == ChangeKind.Restore) foreach (var path in change.ExePaths) NoteAddedElsewhere(path);
         return CatalogueOutcome.Done;
     }
 
@@ -223,8 +244,7 @@ public sealed class AppCatalogue
     {
         TrackedEntry main;
         var list = new List<MergeCandidate>();
-        IReadOnlyList<LibraryApp> library;
-        IReadOnlyList<MergedAlias> aliases;
+        LibraryState state;
         try
         {
             using var lib = AppLibrary.Open(_dbPath);
@@ -235,10 +255,10 @@ public sealed class AppCatalogue
                 list.Add(new MergeCandidate("t" + a.Id, CandidateKind.Tracked, a.DisplayName, a.ExePath, a.Id, a.Seconds, null, lib.GetIcon(a.Id)));
             foreach (var m in main.Merged)
                 list.Add(new MergeCandidate("m" + m.Id, CandidateKind.Merged, m.DisplayName, m.ExePath, m.Id, m.Seconds, null, lib.GetIcon(m.Id)));
-            library = lib.Library();
-            aliases = lib.MergedAliases();
+            var library = lib.Library();
             var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows) + Path.DirectorySeparatorChar;
             var trivial = lib.TrivialRetired();
+            state = new LibraryState(CatalogueOutcome.Done, library, lib.MergedAliases(), trivial);
             foreach (var r in library.Where(a => a.State == "retired" && !trivial.Contains(a.Id) && !a.ExePath.StartsWith(windows, StringComparison.OrdinalIgnoreCase)))
                 list.Add(new MergeCandidate("s" + r.Id, CandidateKind.Retired, r.DisplayName, r.ExePath, r.Id, 0, null, lib.GetIcon(r.Id)));
         }
@@ -246,7 +266,7 @@ public sealed class AppCatalogue
 
         foreach (var i in Installed())
         {
-            if (IsKnown(i, library, aliases)) continue; // already tracked, stopped or merged
+            if (state.StateOf(i.ExePath, i.PackageFamily) is not null) continue; // already tracked, stopped or merged
             var key = "i" + i.ExePath.ToLowerInvariant();
             list.Add(new MergeCandidate(key, CandidateKind.Installed, i.Name, i.ExePath, 0, 0, i, knownIcons?.GetValueOrDefault(i.ExePath)));
         }
@@ -273,17 +293,6 @@ public sealed class AppCatalogue
     public IReadOnlyList<InstalledApp>? LastInstalled
     {
         get { lock (_scanGate) return _lastInstalled; }
-    }
-
-    // a merged app is the app it counts under, so it reads as tracked (or stopped) with that app
-    private static bool IsKnown(InstalledApp i, IReadOnlyList<LibraryApp> library, IReadOnlyList<MergedAlias> aliases)
-    {
-        bool Same(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
-        if (library.Any(a => Same(a.ExePath, i.ExePath))) return true;
-        if (aliases.Any(m => Same(m.ExePath, i.ExePath))) return true;
-        if (i.PackageFamily is null) return false;
-        return library.Any(a => a.State == "tracked" && Same(a.PackageFamily, i.PackageFamily))
-            || aliases.Any(m => Same(m.PackageFamily, i.PackageFamily));
     }
 
     private static bool IsBusyOrMissing(Exception e) => MergePlan.IsBusyOrMissing(e);

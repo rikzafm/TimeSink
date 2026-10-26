@@ -352,13 +352,13 @@ public sealed partial class AddAppView
 
     private void SetKind(long appId, AppKind kind, Action rerender)
     {
-        if (_catalogue.SetKind(appId, kind) == CatalogueOutcome.Unavailable) return;
+        if (_catalogue.ApplyChange(AppChange.SetKind(appId, kind)) != CatalogueOutcome.Done) return;
         rerender();
     }
 
     private void SetBackground(long appId, bool background, Action rerender)
     {
-        if (_catalogue.SetBackground(appId, background) == CatalogueOutcome.Unavailable) return;
+        if (_catalogue.ApplyChange(AppChange.SetBackground(appId, background)) != CatalogueOutcome.Done) return;
         rerender();
     }
 
@@ -378,14 +378,14 @@ public sealed partial class AddAppView
 
     private void Retire(LibraryApp app)
     {
-        if (_catalogue.Retire(app) == CatalogueOutcome.Unavailable) return;
+        if (_catalogue.ApplyChange(AppChange.Retire(app)) != CatalogueOutcome.Done) return;
         UpdateCount();
         RenderInstalled();
     }
 
     private void Restore(LibraryApp app)
     {
-        if (_catalogue.Restore(app) == CatalogueOutcome.Unavailable) return;
+        if (_catalogue.ApplyChange(AppChange.Restore(app)) != CatalogueOutcome.Done) return;
         UpdateCount();
         RenderInstalled();
     }

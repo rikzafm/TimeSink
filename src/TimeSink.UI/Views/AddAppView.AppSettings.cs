@@ -129,8 +129,7 @@ public sealed partial class AddAppView
         void Commit()
         {
             if (name.Text.Trim() == app.DisplayName) return;
-            try { using var lib = AppLibrary.Open(_dbPath); if (!lib.Rename(app.Id, name.Text)) { name.Text = app.DisplayName; return; } }
-            catch { name.Text = app.DisplayName; return; }
+            if (_catalogue.ApplyChange(AppChange.Rename(app.Id, name.Text)) != CatalogueOutcome.Done) { name.Text = app.DisplayName; return; }
             if (_settingsId == app.Id) RefreshSettings(); // not when the screen was closed and this is its focus loss
         }
         name.LostKeyboardFocus += (_, _) => Commit();
@@ -344,10 +343,8 @@ public sealed partial class AddAppView
         {
             var confirm = ConfirmBox(TimeText.Str(AddAppStrings.ChangeMainTitle, newMain.DisplayName), "Str.AddChangeMainBody", AddAppStrings.Cancel, AddAppStrings.ChangeMainConfirm, () =>
             {
-                long keep;
-                try { using var lib = AppLibrary.Open(_dbPath); if (!lib.MakeMain(newMain.Id)) return; }
-                catch { return; }
-                keep = newMain.Id;
+                if (_catalogue.ApplyChange(AppChange.MakeMain(newMain.Id)) != CatalogueOutcome.Done) return;
+                var keep = newMain.Id;
                 _settingsAsk = "";
                 _settingsId = keep;
                 RefreshSettings();
@@ -389,7 +386,7 @@ public sealed partial class AddAppView
             var id = m.Id;
             un.Click += (_, _) =>
             {
-                try { using var lib = AppLibrary.Open(_dbPath); lib.Unmerge(id); } catch { return; }
+                if (_catalogue.ApplyChange(AppChange.Unmerge(id)) != CatalogueOutcome.Done) return;
                 RefreshSettings();
             };
             Grid.SetColumn(name, 1);
@@ -446,8 +443,7 @@ public sealed partial class AddAppView
     private byte[]? MergedIcon(long id)
     {
         if (_mergedIcons.TryGetValue(id, out var png)) return png;
-        try { using var lib = AppLibrary.Open(_dbPath); png = lib.GetIcon(id); } catch { return null; }
-        return _mergedIcons[id] = png;
+        return _mergedIcons[id] = _catalogue.StoredIcon(id);
     }
 
     private UIElement AboutSection(TrackedEntry app)
@@ -529,7 +525,7 @@ public sealed partial class AddAppView
         void Yes()
         {
             if (step < 3) { _clearStep = step + 1; RefreshSettings(); return; }
-            try { using var lib = AppLibrary.Open(_dbPath); lib.ClearHistory(app.Id); } catch { return; }
+            if (_catalogue.ApplyChange(AppChange.ClearHistory(app.Id)) != CatalogueOutcome.Done) return;
             _clearStep = 0;
             RefreshSettings();
         }

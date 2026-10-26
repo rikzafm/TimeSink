@@ -424,11 +424,11 @@ public sealed class AppCatalogueTests : IDisposable
         cat.AddApp(new NewApp(@"c:\a\one.exe", "One", null), null); // counted as added this visit
         var app = cat.Library().StateOf(@"c:\a\one.exe", null)!;
 
-        cat.Retire(app).Should().Be(CatalogueOutcome.Done);
+        cat.ApplyChange(AppChange.Retire(app)).Should().Be(CatalogueOutcome.Done);
         cat.Library().StateOf(@"c:\a\one.exe", null)!.State.Should().Be("retired");
         cat.AddedCount.Should().Be(0);
 
-        cat.Restore(app).Should().Be(CatalogueOutcome.Done);
+        cat.ApplyChange(AppChange.Restore(app)).Should().Be(CatalogueOutcome.Done);
         cat.Library().StateOf(@"c:\a\one.exe", null)!.Should().Match<LibraryApp>(a => a.Id == id && a.State == "tracked");
         cat.AddedCount.Should().Be(1);
     }
@@ -440,24 +440,121 @@ public sealed class AppCatalogueTests : IDisposable
         var app = new LibraryApp(1, @"c:\a\one.exe", null, "One", "tracked", null);
 
         cat.AddApp(new NewApp(@"c:\a\one.exe", "One", null), null).Should().Be(CatalogueOutcome.Unavailable);
-        cat.Retire(app).Should().Be(CatalogueOutcome.Unavailable);
-        cat.Restore(app).Should().Be(CatalogueOutcome.Unavailable);
+        cat.ApplyChange(AppChange.Retire(app)).Should().Be(CatalogueOutcome.Unavailable);
+        cat.ApplyChange(AppChange.Restore(app)).Should().Be(CatalogueOutcome.Unavailable);
         cat.AddedCount.Should().Be(0);
     }
 
     [Fact]
-    public void The_kind_and_background_switches_apply_and_report_a_missing_database()
+    public void The_kind_and_background_changes_apply()
     {
         var id = Track(@"c:\a\one.exe", "One");
         var cat = Catalogue();
 
-        cat.SetKind(id, AppKind.Gacha).Should().Be(CatalogueOutcome.Done);
-        cat.SetBackground(id, true).Should().Be(CatalogueOutcome.Done);
+        cat.ApplyChange(AppChange.SetKind(id, AppKind.Gacha)).Should().Be(CatalogueOutcome.Done);
+        cat.ApplyChange(AppChange.SetBackground(id, true)).Should().Be(CatalogueOutcome.Done);
 
         cat.Library().StateOf(@"c:\a\one.exe", null).Should().Match<LibraryApp>(a => a.Kind == AppKind.Gacha && a.Background);
-        var missing = Catalogue(Path.Combine(_dir, "nope", "missing.db"));
-        missing.SetKind(id, AppKind.Game).Should().Be(CatalogueOutcome.Unavailable);
-        missing.SetBackground(id, false).Should().Be(CatalogueOutcome.Unavailable);
+    }
+
+    [Fact]
+    public void Renaming_trims_the_name_and_a_blank_name_is_rejected_leaving_the_old_one()
+    {
+        var id = Track(@"c:\a\one.exe", "One");
+        var cat = Catalogue();
+
+        cat.ApplyChange(AppChange.Rename(id, "  Uno  ")).Should().Be(CatalogueOutcome.Done);
+        cat.ApplyChange(AppChange.Rename(id, "   ")).Should().Be(CatalogueOutcome.Rejected);
+        cat.ApplyChange(AppChange.Rename(999, "Nobody")).Should().Be(CatalogueOutcome.Rejected);
+
+        cat.Library().StateOf(@"c:\a\one.exe", null)!.DisplayName.Should().Be("Uno");
+    }
+
+    [Fact]
+    public void Making_a_merged_app_main_unmerging_and_clearing_history_apply()
+    {
+        var main = Track(@"c:\a\main.exe", "Main", 100);
+        var alias = Track(@"c:\a\alias.exe", "Alias", 50);
+        var other = Track(@"c:\a\other.exe", "Other");
+        using (var lib = AppLibrary.Open(_path)) { lib.Merge(alias, main); lib.Merge(other, main); }
+        var cat = Catalogue();
+
+        cat.ApplyChange(AppChange.MakeMain(alias)).Should().Be(CatalogueOutcome.Done);
+        cat.Tracked().Apps.Single(a => a.Id == alias).Merged.Select(m => m.Id).Should().BeEquivalentTo([main, other]);
+
+        cat.ApplyChange(AppChange.Unmerge(other)).Should().Be(CatalogueOutcome.Done);
+        cat.Tracked().Apps.Select(a => a.Id).Should().BeEquivalentTo([alias, other]);
+
+        cat.ApplyChange(AppChange.ClearHistory(alias)).Should().Be(CatalogueOutcome.Done);
+        cat.Tracked().Apps.Single(a => a.Id == alias).Seconds.Should().Be(0);
+    }
+
+    [Fact]
+    public void Making_main_an_app_that_is_not_merged_is_rejected()
+    {
+        var id = Track(@"c:\a\one.exe", "One");
+
+        Catalogue().ApplyChange(AppChange.MakeMain(id)).Should().Be(CatalogueOutcome.Rejected);
+    }
+
+    [Fact]
+    public void Retiring_a_tracked_entry_stops_it_and_everything_merged_into_it_counting_as_added()
+    {
+        var main = Track(@"c:\a\main.exe", "Main");
+        var alias = Track(@"c:\a\alias.exe", "Alias");
+        using (var lib = AppLibrary.Open(_path)) lib.Merge(alias, main);
+        var cat = Catalogue();
+        cat.AddApp(new NewApp(@"c:\a\main.exe", "Main", null), null);
+        cat.AddApp(new NewApp(@"c:\a\alias.exe", "Alias", null), null);
+
+        cat.ApplyChange(AppChange.Retire(MainEntry(main))).Should().Be(CatalogueOutcome.Done);
+
+        cat.AddedCount.Should().Be(0);
+        cat.Library().StateOf(@"c:\a\main.exe", null)!.State.Should().Be("retired");
+    }
+
+    [Fact]
+    public void Every_change_reports_a_missing_database()
+    {
+        var cat = Catalogue(Path.Combine(_dir, "nope", "missing.db"));
+        var app = new LibraryApp(1, @"c:\a\one.exe", null, "One", "tracked", null);
+        var entry = new TrackedEntry(1, @"c:\a\one.exe", "One", 0, 0, []);
+        AppChange[] changes =
+        [
+            AppChange.Rename(1, "X"), AppChange.SetKind(1, AppKind.Game), AppChange.SetBackground(1, true), AppChange.Retire(app),
+            AppChange.Retire(entry), AppChange.Restore(app), AppChange.MakeMain(1), AppChange.Unmerge(1), AppChange.ClearHistory(1),
+        ];
+
+        changes.Select(cat.ApplyChange).Should().OnlyContain(o => o == CatalogueOutcome.Unavailable);
+    }
+
+    [Fact]
+    public void The_tracked_snapshot_lists_tracked_apps_with_stored_icons_except_for_those_the_caller_has()
+    {
+        var one = Track(@"c:\a\one.exe", "One", 60);
+        var two = Track(@"c:\a\two.exe", "Two");
+        var cat = Catalogue();
+
+        var all = cat.Tracked();
+        var rest = cat.Tracked(iconsKnown: new HashSet<long> { one });
+
+        all.Outcome.Should().Be(CatalogueOutcome.Done);
+        all.Apps.Select(a => a.Id).Should().BeEquivalentTo([one, two]);
+        all.Icons[one].Should().Equal(Encoding.UTF8.GetBytes(@"stored:c:\a\one.exe"));
+        rest.Icons.Keys.Should().BeEquivalentTo([two]);
+        cat.StoredIcon(two).Should().Equal(Encoding.UTF8.GetBytes(@"stored:c:\a\two.exe"));
+    }
+
+    [Fact]
+    public void The_tracked_snapshot_and_stored_icon_report_a_missing_database()
+    {
+        var cat = Catalogue(Path.Combine(_dir, "nope", "missing.db"));
+
+        var snapshot = cat.Tracked();
+
+        snapshot.Outcome.Should().Be(CatalogueOutcome.Unavailable);
+        snapshot.Apps.Should().BeEmpty();
+        cat.StoredIcon(1).Should().BeNull();
     }
 
     [Fact]
