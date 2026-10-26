@@ -156,7 +156,7 @@ public sealed partial class AddAppView
                 lib.AddTracked(app, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), t.Result);
             }
             catch { return; }
-            _addedElsewhere.Add(app.ExePath);
+            _catalogue.NoteAddedElsewhere(app.ExePath);
             UpdateCount();
             ShowStatus(app.DisplayName + " · " + TimeText.Str(AddAppStrings.Tracking), error: false);
         }, TaskScheduler.FromCurrentSynchronizationContext());

@@ -16,12 +16,12 @@ namespace TimeSink.UI.Views;
 /// </summary>
 internal sealed class UntrackedCardView : StackPanel
 {
-    private sealed record Snapshot(bool On, IReadOnlyList<OpenWindow> Windows, ExcludedApps Excluded, IReadOnlyDictionary<string, string> Aumids, Dictionary<string, byte[]?> Icons);
+    private sealed record Snapshot(bool On, IReadOnlyList<RunningCandidate> Candidates);
 
     private readonly string _dbPath;
     private readonly ThemeService _themes;
     private readonly Action _changed;
-    private readonly Dictionary<string, byte[]?> _icons = new(StringComparer.OrdinalIgnoreCase);
+    private readonly AppCatalogue _catalogue;
     private readonly HashSet<string> _handled = new(StringComparer.OrdinalIgnoreCase); // tracked/dismissed here, until the next capture
     private Snapshot? _last;
     private bool _loading;
@@ -29,6 +29,7 @@ internal sealed class UntrackedCardView : StackPanel
     public UntrackedCardView(string dbPath, ThemeService themes, Action changed)
     {
         _dbPath = dbPath;
+        _catalogue = new AppCatalogue(dbPath, Win32Desktop.Instance);
         _themes = themes;
         _changed = changed;
         Visibility = Visibility.Collapsed;
@@ -45,30 +46,22 @@ internal sealed class UntrackedCardView : StackPanel
     {
         if (_loading) return;
         _loading = true;
-        var known = _icons.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var path = _dbPath;
         Task.Run(() =>
         {
             try
             {
                 var on = TodayEarly.SuggestionsEnabled(SettingsStore.Get(path, "tracking.suggestApps"));
-                if (!on) return new Snapshot(false, [], new ExcludedApps([], []), new Dictionary<string, string>(), []);
-                ExcludedApps excluded;
-                using (var lib = AppLibrary.Open(path)) excluded = lib.ExcludedFromRunning();
-                var snap = RunningWindows.Capture();
-                var icons = new Dictionary<string, byte[]?>(StringComparer.OrdinalIgnoreCase);
-                var card = TodayEarly.UntrackedCard(true, snap.Windows, excluded, TodayEarly.DefaultMaxShown + 2);
-                if (card is not null)
-                    foreach (var a in card.Shown.Where(a => !known.Contains(a.ExePath)))
-                        icons[a.ExePath] = IconService.ExtractPng(a.ExePath, snap.AumidByPath.GetValueOrDefault(a.ExePath));
-                return new Snapshot(true, snap.Windows, excluded, snap.AumidByPath, icons);
+                if (!on) return new Snapshot(false, []);
+                _catalogue.NewVisit(); // rows tracked here drop out through the database, not the visit state
+                var running = _catalogue.Running(iconPx: 64, iconLimit: TodayEarly.DefaultMaxShown + 2);
+                return running.Outcome == CatalogueOutcome.Done ? new Snapshot(true, running.Candidates) : null; // database missing/busy: keep what is on screen
             }
-            catch { return null; } // database missing/busy: keep what is on screen
+            catch { return null; } // window capture failed: keep what is on screen
         }).ContinueWith(t =>
         {
             _loading = false;
             if (t.Result is not { } snapshot) return;
-            foreach (var (p, png) in snapshot.Icons) _icons[p] = png;
             _handled.Clear();
             _last = snapshot;
             Render();
@@ -79,7 +72,7 @@ internal sealed class UntrackedCardView : StackPanel
     {
         Children.Clear();
         var card = _last is { On: true } l
-            ? TodayEarly.UntrackedCard(true, l.Windows, new ExcludedApps(l.Excluded.Paths.Concat(_handled), l.Excluded.PackageFamilies))
+            ? TodayEarly.UntrackedCard(true, l.Candidates.Where(c => !c.Tracking && !_handled.Contains(c.App.ExePath)).Select(c => c.App).ToList())
             : null;
         Visibility = card is null ? Visibility.Collapsed : Visibility.Visible;
         if (card is not null) Children.Add(BuildCard(card));
@@ -103,7 +96,7 @@ internal sealed class UntrackedCardView : StackPanel
         head.Children.Add(dot);
         head.Children.Add(title);
         body.Children.Add(head);
-        foreach (var app in card.Shown) body.Children.Add(BuildRow(app));
+        foreach (var app in card.Shown) body.Children.Add(BuildRow(_last!.Candidates.First(c => c.App.ExePath == app.ExePath)));
 
         var grid = new Grid { Margin = new Thickness(0, 0, 0, 12) };
         grid.Children.Add(frame);
@@ -111,12 +104,13 @@ internal sealed class UntrackedCardView : StackPanel
         return grid;
     }
 
-    private UIElement BuildRow(RunningApp app)
+    private UIElement BuildRow(RunningCandidate candidate)
     {
+        var app = candidate.App;
         var tile = new Border { Width = 26, Height = 26, BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center };
         tile.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
         tile.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
-        if (IconService.Decode(_icons.GetValueOrDefault(app.ExePath)) is { } bmp)
+        if (IconService.Decode(candidate.Png) is { } bmp)
         {
             tile.Padding = new Thickness(2);
             tile.Child = new Image { Source = bmp, Stretch = Stretch.Uniform };
@@ -141,10 +135,10 @@ internal sealed class UntrackedCardView : StackPanel
         texts.Children.Add(since);
 
         var track = Button("Str.AddTrack", "Brush.OnAccent", "Brush.Accent", "Brush.Accent", FontWeights.Bold, new Thickness(12, 4, 12, 4));
-        track.Click += (_, _) => Track(app);
+        track.Click += (_, _) => Track(candidate);
         var skip = Button("Str." + char.ToUpperInvariant(TodayEarlyStrings.NotThisOne[0]) + TodayEarlyStrings.NotThisOne[1..], "Brush.TextMuted", "Brush.Panel", "Brush.Border", FontWeights.Normal, new Thickness(8, 4, 8, 4));
         skip.Margin = new Thickness(0, 0, 6, 0);
-        skip.Click += (_, _) => Dismiss(app);
+        skip.Click += (_, _) => Dismiss(candidate);
 
         var row = new Grid { Margin = new Thickness(0, 6, 0, 0) };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -165,26 +159,16 @@ internal sealed class UntrackedCardView : StackPanel
         return line;
     }
 
-    private void Track(RunningApp app)
+    private void Track(RunningCandidate candidate)
     {
-        try
-        {
-            using var lib = AppLibrary.Open(_dbPath);
-            lib.AddTracked(new NewApp(app.ExePath, app.DisplayName, app.PackageFamily), DateTimeOffset.UtcNow.ToUnixTimeSeconds(), _icons.GetValueOrDefault(app.ExePath));
-        }
-        catch { return; } // busy or missing database: the button stays so the user can retry
-        Handled(app);
+        if (_catalogue.Track(candidate) == CatalogueOutcome.Unavailable) return; // the button stays so the user can retry
+        Handled(candidate.App);
     }
 
-    private void Dismiss(RunningApp app)
+    private void Dismiss(RunningCandidate candidate)
     {
-        try
-        {
-            using var lib = AppLibrary.Open(_dbPath);
-            lib.Ignore(app.ExePath, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        }
-        catch { return; }
-        Handled(app);
+        if (_catalogue.Dismiss(candidate) == CatalogueOutcome.Unavailable) return;
+        Handled(candidate.App);
     }
 
     private void Handled(RunningApp app)

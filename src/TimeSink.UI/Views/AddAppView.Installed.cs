@@ -398,7 +398,7 @@ public sealed partial class AddAppView
             }
             catch { return; }
             _iconCache[app.ExePath] = t.Result;
-            _addedElsewhere.Add(app.ExePath);
+            _catalogue.NoteAddedElsewhere(app.ExePath);
             UpdateCount();
             RenderInstalled();
         }, TaskScheduler.FromCurrentSynchronizationContext());
@@ -408,8 +408,7 @@ public sealed partial class AddAppView
     {
         try { using var lib = AppLibrary.Open(_dbPath); lib.Retire(app.Id, DateTimeOffset.UtcNow.ToUnixTimeSeconds()); }
         catch { return; }
-        _addedElsewhere.Remove(app.ExePath);
-        _session.Remove(app.ExePath);
+        _catalogue.NoteStopped(app.ExePath);
         UpdateCount();
         RenderInstalled();
     }
@@ -418,7 +417,7 @@ public sealed partial class AddAppView
     {
         try { using var lib = AppLibrary.Open(_dbPath); lib.Restore(app.Id, DateTimeOffset.UtcNow.ToUnixTimeSeconds()); }
         catch { return; }
-        _addedElsewhere.Add(app.ExePath);
+        _catalogue.NoteAddedElsewhere(app.ExePath);
         UpdateCount();
         RenderInstalled();
     }

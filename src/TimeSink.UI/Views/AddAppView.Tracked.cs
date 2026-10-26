@@ -351,10 +351,7 @@ public sealed partial class AddAppView
         try { using var lib = AppLibrary.Open(_dbPath); lib.Retire(app.Id, DateTimeOffset.UtcNow.ToUnixTimeSeconds()); }
         catch { return; }
         foreach (var path in app.Merged.Select(m => m.ExePath).Append(app.ExePath))
-        {
-            _addedElsewhere.Remove(path);
-            _session.Remove(path);
-        }
+            _catalogue.NoteStopped(path);
         _openId = null;
         _mode = "";
         UpdateCount();
@@ -642,7 +639,7 @@ public sealed partial class AddAppView
                     id = lib.AddTracked(app.ToNewApp(), now, png).AppId;
                 }
                 if (!lib.Merge(id, keeper.Id)) continue;
-                if (!c.Tracked) _addedElsewhere.Add(c.ExePath);
+                if (!c.Tracked) _catalogue.NoteAddedElsewhere(c.ExePath);
             }
         }
         catch { return; }

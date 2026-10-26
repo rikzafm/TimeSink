@@ -37,14 +37,12 @@ public sealed partial class AddAppView : UserControl
         "<ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center' TextElement.Foreground='{TemplateBinding Foreground}'/>" +
         "</Border></ControlTemplate>");
 
-    private sealed record Capture(IReadOnlyList<RunningApp> Apps, IReadOnlyDictionary<string, string> Aumids, Dictionary<string, byte[]?> Icons);
-
     private readonly ThemeService _themes;
     private readonly string _dbPath;
     private readonly Action _close;
     private readonly StackPanel _list = new();
     private readonly TextBlock _count = new();
-    private readonly Dictionary<string, Row> _session = new(StringComparer.OrdinalIgnoreCase); // added in this visit
+    private readonly AppCatalogue _catalogue;
     private readonly Dictionary<string, byte[]?> _iconCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(4) };
     private List<Row> _rows = [];
@@ -53,13 +51,13 @@ public sealed partial class AddAppView : UserControl
     private UIElement _shell = null!;
     private string _tab = "Running";
     private readonly Dictionary<string, RadioButton> _tabButtons = new();
-    private readonly HashSet<string> _addedElsewhere = new(StringComparer.OrdinalIgnoreCase); // added from Installed/Browse in this visit
 
     public AddAppView(ThemeService themes, string dbPath, Action close)
     {
         _themes = themes;
         _dbPath = dbPath;
         _close = close;
+        _catalogue = new AppCatalogue(dbPath, Win32Desktop.Instance);
         SetResourceReference(BackgroundProperty, "Brush.Surface");
         Content = _shell = BuildShell();
         _timer.Tick += (_, _) => Refresh();
@@ -73,8 +71,7 @@ public sealed partial class AddAppView : UserControl
     /// </summary>
     public void OnShown()
     {
-        _session.Clear();
-        _addedElsewhere.Clear();
+        _catalogue.NewVisit();
         _query = "";
         _trackedQuery = "";
         _openId = null;
@@ -190,33 +187,17 @@ public sealed partial class AddAppView : UserControl
     {
         if (_loading || _tab != "Running") return;
         _loading = true;
-        var path = _dbPath;
-        var known = _iconCache.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
         Task.Run(() =>
         {
-            try
-            {
-                ExcludedApps excluded;
-                using (var lib = AppLibrary.Open(path)) excluded = lib.ExcludedFromRunning();
-                var snap = RunningWindows.Capture();
-                var apps = RunningApps.Select(snap.Windows, excluded);
-                var icons = new Dictionary<string, byte[]?>(StringComparer.OrdinalIgnoreCase);
-                foreach (var a in apps)
-                    if (!known.Contains(a.ExePath))
-                        icons[a.ExePath] = IconService.ExtractPng(a.ExePath, snap.AumidByPath.GetValueOrDefault(a.ExePath), null, TileIconPx);
-                return new Capture(apps, snap.AumidByPath, icons);
-            }
-            catch { return null; }
+            try { return _catalogue.Running(TileIconPx); }
+            catch { return null; } // window capture failed: keep what is on screen
         }).ContinueWith(t =>
         {
             _loading = false;
-            if (t.Result is not { } loaded) return;
-            var (apps, aumids, icons) = loaded;
-            foreach (var (p, png) in icons) _iconCache[p] = png;
-            var fresh = apps.Select(a => new Row { App = a, Aumid = aumids.GetValueOrDefault(a.ExePath), Png = _iconCache.GetValueOrDefault(a.ExePath) }).ToList();
-            // rows tracked in this visit stay on screen as "Tracking ✓" (the exclusion list no longer returns them)
-            var merged = fresh.Where(r => !_session.ContainsKey(r.App.ExePath)).Concat(_session.Values)
-                .OrderBy(r => r.App.StartUtc).ToList();
+            if (t.Result is not { Outcome: CatalogueOutcome.Done } running) return;
+            // rows tracked in this visit stay on screen as "Tracking ✓": the catalogue keeps them in the list
+            var merged = running.Candidates
+                .Select(c => new Row { App = c.App, Aumid = c.Aumid, Png = c.Png, Done = c.Tracking }).ToList();
             if (SameRows(_rows, merged))
             {
                 // nothing opened or closed: keep the rows (and their decoded icons) and only move the "open for" clocks
@@ -244,15 +225,8 @@ public sealed partial class AddAppView : UserControl
     private void Track(Row row)
     {
         if (row.Done) return;
-        var app = row.App;
-        try
-        {
-            using var lib = AppLibrary.Open(_dbPath);
-            lib.AddTracked(new NewApp(app.ExePath, app.DisplayName, app.PackageFamily), DateTimeOffset.UtcNow.ToUnixTimeSeconds(), row.Png);
-        }
-        catch { return; } // database busy or missing: the button stays "Track" so the user can retry
+        if (_catalogue.Track(Candidate(row)) == CatalogueOutcome.Unavailable) return; // the button stays "Track" so the user can retry
         row.Done = true;
-        _session[app.ExePath] = row;
         StyleButton(row);
         UpdateCount();
     }
@@ -261,21 +235,18 @@ public sealed partial class AddAppView : UserControl
     private void Dismiss(Row row)
     {
         if (row.Done) return;
-        try
-        {
-            using var lib = AppLibrary.Open(_dbPath);
-            lib.Ignore(row.App.ExePath, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        }
-        catch { return; }
+        if (_catalogue.Dismiss(Candidate(row)) == CatalogueOutcome.Unavailable) return;
         _rows.Remove(row);
         Render();
     }
+
+    private static RunningCandidate Candidate(Row row) => new(row.App, row.Aumid, row.Png, row.Done);
 
     // ---- rendering ----------------------------------------------------------------------------------------
 
     private void Redraw() { UpdateCount(); Render(); }
 
-    private void UpdateCount() => _count.Text = TimeText.Str(AddAppStrings.AddedCount, _session.Keys.Union(_addedElsewhere, StringComparer.OrdinalIgnoreCase).Count());
+    private void UpdateCount() => _count.Text = TimeText.Str(AddAppStrings.AddedCount, _catalogue.AddedCount);
 
     private void Render()
     {

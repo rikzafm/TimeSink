@@ -41,7 +41,13 @@ public static class TodayEarly
     public static UntrackedCard? UntrackedCard(bool suggestionsOn, IEnumerable<OpenWindow> windows, ExcludedApps excluded, int maxShown = DefaultMaxShown)
     {
         if (!suggestionsOn) return null;
-        var apps = RunningApps.Select(windows, excluded);
+        return UntrackedCard(suggestionsOn, RunningApps.Select(windows, excluded), maxShown);
+    }
+
+    /// <summary>The same card from running apps already filtered (the catalogue's Running Candidates).</summary>
+    public static UntrackedCard? UntrackedCard(bool suggestionsOn, IReadOnlyList<RunningApp> apps, int maxShown = DefaultMaxShown)
+    {
+        if (!suggestionsOn) return null;
         return apps.Count == 0 ? null : new UntrackedCard(apps.Count, apps.Take(maxShown).ToList());
     }
 }
