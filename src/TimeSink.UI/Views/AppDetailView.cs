@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
@@ -38,6 +39,9 @@ public sealed class AppDetailView : UserControl
     private int _year = DateTime.Now.Year;
     private DayOfWeek _weekStart = DayOfWeek.Monday;
     private int _seq;
+    private bool _bars;
+    private AppDetailRange _range = AppDetailRange.Year;
+    private DateOnly _anchor = Today();
 
     public AppDetailView(string dbPath, ThemeService themes, LiveState live, long appId, Action close)
     {
@@ -111,11 +115,12 @@ public sealed class AppDetailView : UserControl
         AppIcons.Load(_dbPath, [r.AppId]);
         var header = Header(r);
         var tiles = Tiles(r);
-        var card = YearCard(r);
+        var card = _bars ? BarsCard(r) : YearCard(r);
         var note = Label();
         note.TextAlignment = TextAlignment.Center;
         note.Margin = new Thickness(0, 10, 0, 0);
-        note.Text = r.PeakDaySeconds > 0
+        note.Text = _bars ? ""
+            : r.PeakDaySeconds > 0
             ? Str(AppDetailStringKeys.Footnote, DurationFormat.HoursMinutes(r.PeakDaySeconds))
             : Str(AppDetailStringKeys.FootnoteNone, r.Year.ToString(En));
         header.Margin = new Thickness(0, 10, 0, 0);
@@ -147,9 +152,23 @@ public sealed class AppDetailView : UserControl
         row.Children.Add(back);
         if (r is null) return row;
 
-        var prev = YearButton(left: true, enabled: r.Year > r.FirstYear, AppDetailStringKeys.PrevYear, () => SwitchYear(r.Year - 1));
-        var next = YearButton(left: false, enabled: r.Year < r.LastYear, AppDetailStringKeys.NextYear, () => SwitchYear(r.Year + 1));
-        var year = new TextBlock { Text = r.Year.ToString(En), MinWidth = 44, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold };
+        Button prev, next;
+        string label;
+        if (_bars)
+        {
+            var d = ChartData(r);
+            prev = YearButton(left: true, enabled: d.CanPrev, AppDetailStringKeys.PrevPeriod, () => { _anchor = AppDetailChart.Step(_range, d.From, -1); Redraw(); });
+            next = YearButton(left: false, enabled: d.CanNext, AppDetailStringKeys.NextPeriod, () => { _anchor = AppDetailChart.Step(_range, d.From, 1); Redraw(); });
+            label = _range == AppDetailRange.All ? "" : PeriodLabel(d);
+        }
+        else
+        {
+            prev = YearButton(left: true, enabled: r.Year > r.FirstYear, AppDetailStringKeys.PrevYear, () => SwitchYear(r.Year - 1));
+            next = YearButton(left: false, enabled: r.Year < r.LastYear, AppDetailStringKeys.NextYear, () => SwitchYear(r.Year + 1));
+            label = r.Year.ToString(En);
+        }
+        if (_bars && _range == AppDetailRange.All) return row; // a single period: nothing to step through
+        var year = new TextBlock { Text = label, MinWidth = _bars ? 96 : 44, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold };
         year.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
         year.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
         year.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
@@ -324,21 +343,231 @@ public sealed class AppDetailView : UserControl
         var footerBox = new Border { Padding = new Thickness(0, 8, 0, 0), BorderThickness = new Thickness(0, 1, 0, 0), VerticalAlignment = VerticalAlignment.Bottom, Child = footer };
         footerBox.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
 
+        return CardFrame(head, Toolbar(), months, footerBox);
+    }
+
+    /// <summary>The card shared by both chart views: head, toolbar, a content area that takes the spare height, and the readout footer.</summary>
+    private static FrameworkElement CardFrame(FrameworkElement head, FrameworkElement toolbar, FrameworkElement content, FrameworkElement footer)
+    {
+        toolbar.Margin = new Thickness(0, 8, 0, 0);
         var inner = new Grid();
+        inner.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         inner.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         inner.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         inner.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        Grid.SetRow(months, 1);
-        Grid.SetRow(footerBox, 2);
+        Grid.SetRow(toolbar, 1);
+        Grid.SetRow(content, 2);
+        Grid.SetRow(footer, 3);
         inner.Children.Add(head);
-        inner.Children.Add(months);
-        inner.Children.Add(footerBox);
+        inner.Children.Add(toolbar);
+        inner.Children.Add(content);
+        inner.Children.Add(footer);
 
         var card = new Border { Padding = new Thickness(14, 12, 14, 10), BorderThickness = new Thickness(1), Child = inner };
         card.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
         card.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         card.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Large");
         return card;
+    }
+
+    // ---- bar chart view ----
+
+    private FrameworkElement Toolbar()
+    {
+        var bar = new DockPanel { LastChildFill = false };
+        var view = Segmented([Str(AppDetailStringKeys.ViewCalendar), Str(AppDetailStringKeys.ViewBars)], _bars ? 1 : 0, i => { _bars = i == 1; Redraw(); });
+        DockPanel.SetDock(view, Dock.Left);
+        bar.Children.Add(view);
+        if (_bars)
+        {
+            string[] names = [Str(AppDetailStringKeys.RangeAll), Str(AppDetailStringKeys.RangeYear), Str(AppDetailStringKeys.RangeMonth), Str(AppDetailStringKeys.RangeWeek)];
+            var range = CycleButton(names[(int)_range], () => { _range = (AppDetailRange)(((int)_range + 1) % names.Length); _anchor = Today(); Redraw(); });
+            DockPanel.SetDock(range, Dock.Right);
+            bar.Children.Add(range);
+        }
+        return bar;
+    }
+
+    private static DateOnly Today() => DateOnly.FromDateTime(DateTime.Now);
+
+    private AppDetailChartData ChartData(AppDetailResult r) =>
+        AppDetailChart.Build(_range, _anchor, Today(), r.FirstTracked, _weekStart,
+            r.DaySeconds ?? new Dictionary<DateOnly, long>(), r.Opens ?? []);
+
+    private string PeriodLabel(AppDetailChartData d) => _range switch
+    {
+        AppDetailRange.All => Str(AppDetailStringKeys.AllTime),
+        AppDetailRange.Year => d.From.Year.ToString(En),
+        AppDetailRange.Month => d.From.ToString("MMMM yyyy", En),
+        _ => $"{d.From.ToString("d MMM", En)} – {d.To.ToString("d MMM", En)}",
+    };
+
+    private FrameworkElement BarsCard(AppDetailResult r)
+    {
+        var d = ChartData(r);
+        var title = new TextBlock { Text = PeriodLabel(d), FontWeight = FontWeights.SemiBold };
+        title.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+        title.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        title.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
+        var hours = new TextBlock { Text = Str(AppDetailStringKeys.YearHours, AllFormat.Hours(d.TotalSeconds)), FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Right };
+        hours.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
+        hours.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
+        hours.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
+        var head = new Grid();
+        head.Children.Add(title);
+        head.Children.Add(hours);
+
+        _readout = Label();
+        _readout.Text = Str(AppDetailStringKeys.BarsHint);
+        _readout.TextTrimming = TextTrimming.CharacterEllipsis;
+        _readout.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextSoft");
+        var footerBox = new Border { Padding = new Thickness(0, 8, 0, 0), BorderThickness = new Thickness(0, 1, 0, 0), VerticalAlignment = VerticalAlignment.Bottom, Child = _readout };
+        footerBox.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
+
+        var peak = d.Bars.Max(b => b.Seconds);
+        var barStrip = BarStrip(d.Bars.Select(b => peak > 0 ? (double)b.Seconds / peak : 0).ToList(), LabelsFor(d.Bars.Select(b => b.Label).ToList()),
+            i => _readout.Text = i is { } k ? Str(AppDetailStringKeys.BarTip, BarName(d.Bars[k]), DurationFormat.HoursMinutes(d.Bars[k].Seconds)) : Str(AppDetailStringKeys.BarsHint),
+            height: 120, maxBarWidth: 36);
+        barStrip.Margin = new Thickness(0, 12, 0, 0);
+
+        var tod = TimeOfDay(d);
+        tod.Margin = new Thickness(0, 16, 0, 8);
+        var content = new StackPanel { VerticalAlignment = VerticalAlignment.Top };
+        content.Children.Add(barStrip);
+        content.Children.Add(tod);
+        System.Windows.Automation.AutomationProperties.SetName(content, PeriodLabel(d));
+        return CardFrame(head, Toolbar(), content, footerBox);
+    }
+
+    private string BarName(AppDetailBar b) => _range switch
+    {
+        AppDetailRange.All => b.From.Year.ToString(En),
+        AppDetailRange.Year => b.From.ToString("MMMM yyyy", En),
+        _ => b.From.ToString("ddd d MMM", En),
+    };
+
+    /// <summary>Thins the axis labels so a month of day numbers stays readable: every label up to 12 bars, otherwise every fifth.</summary>
+    private static List<string?> LabelsFor(IReadOnlyList<string> all) =>
+        all.Select((l, i) => all.Count <= 12 || i % 5 == 0 ? l : null).ToList();
+
+    private FrameworkElement TimeOfDay(AppDetailChartData d)
+    {
+        var caption = Label();
+        caption.Text = Str(AppDetailStringKeys.TimeOfDay);
+        caption.FontSize = 10;
+        var summary = new TextBlock { FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Right, TextTrimming = TextTrimming.CharacterEllipsis };
+        summary.SetResourceReference(TextBlock.ForegroundProperty, d.PeakHour is null ? "Brush.TextMuted" : "Brush.Accent");
+        summary.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        summary.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+        summary.Text = d.PeakHour is { } h
+            ? Str(AppDetailStringKeys.OpenedAround, ClockFormat.Clock(new DateTime(2000, 1, 1, h, 0, 0), CultureInfo.CurrentCulture))
+            : Str(AppDetailStringKeys.OpenedNone);
+        var head = new Grid();
+        head.Children.Add(caption);
+        head.Children.Add(summary);
+
+        var most = d.OpensByHour.Max();
+        var labels = Enumerable.Range(0, 24).Select(h => h % 6 == 0 ? h.ToString("00", En) : null).ToList();
+        var strip = BarStrip(d.OpensByHour.Select(n => most > 0 ? (double)n / most : 0).ToList(), labels,
+            i => summary.Text = i is { } k
+                ? Str(AppDetailStringKeys.BarTip, ClockFormat.Clock(new DateTime(2000, 1, 1, k, 0, 0), CultureInfo.CurrentCulture), Opens(d.OpensByHour[k]))
+                : d.PeakHour is { } p ? Str(AppDetailStringKeys.OpenedAround, ClockFormat.Clock(new DateTime(2000, 1, 1, p, 0, 0), CultureInfo.CurrentCulture)) : Str(AppDetailStringKeys.OpenedNone),
+            accentPeak: d.PeakHour, height: 44);
+        strip.Margin = new Thickness(0, 6, 0, 0);
+
+        var box = new StackPanel();
+        box.Children.Add(head);
+        box.Children.Add(strip);
+        return box;
+    }
+
+    private static string Opens(int n) => n == 1 ? Str(AppDetailStringKeys.SessionOne) : Str(AppDetailStringKeys.SessionMany, n);
+
+    /// <summary>
+    /// A bottom-aligned bar per value (0..1 of the strip height) with a sparse label row. A fixed <paramref name="height"/>
+    /// gives a compact strip, otherwise the strip takes the height it is given. Hovering a bar reports its index.
+    /// </summary>
+    private static FrameworkElement BarStrip(IReadOnlyList<double> values, IReadOnlyList<string?> labels, Action<int?> hover, int? accentPeak = null, double? height = null, double maxBarWidth = double.PositiveInfinity)
+    {
+        var bars = new UniformGrid { Columns = values.Count, Rows = 1 };
+        var names = new UniformGrid { Columns = values.Count, Rows = 1 };
+        for (var i = 0; i < values.Count; i++)
+        {
+            var index = i;
+            var cell = new Grid { Background = Brushes.Transparent, Margin = new Thickness(1, 0, 1, 0), MaxWidth = maxBarWidth };
+            cell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1 - values[i], GridUnitType.Star) });
+            cell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(values[i], GridUnitType.Star) });
+            var fill = new Border { MinHeight = values[i] > 0 ? 2 : 0 };
+            fill.SetResourceReference(Border.BackgroundProperty, accentPeak is { } p && p != i ? "Brush.Heat2" : "Brush.Accent");
+            fill.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Tiny");
+            Grid.SetRow(fill, 1);
+            cell.Children.Add(fill);
+            cell.MouseEnter += (_, _) => hover(index);
+            cell.MouseLeave += (_, _) => hover(null);
+            bars.Children.Add(cell);
+
+            var name = Label();
+            name.Text = labels[i] ?? "";
+            name.FontSize = 9;
+            name.TextAlignment = TextAlignment.Center;
+            name.TextWrapping = TextWrapping.NoWrap;
+            names.Children.Add(name);
+        }
+        var baseline = new Border { BorderThickness = new Thickness(0, 0, 0, 1), Child = bars };
+        baseline.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
+        if (height is { } h) baseline.Height = h;
+
+        var strip = new Grid();
+        strip.RowDefinitions.Add(new RowDefinition { Height = height is null ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
+        strip.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        names.Margin = new Thickness(0, 3, 0, 0);
+        Grid.SetRow(names, 1);
+        strip.Children.Add(baseline);
+        strip.Children.Add(names);
+        return strip;
+    }
+
+    /// <summary>One accent-filled button showing the current choice; each click moves to the next one.</summary>
+    private static FrameworkElement CycleButton(string text, Action click)
+    {
+        var label = new TextBlock { Text = text + " ↻", Margin = new Thickness(12, 5, 12, 5), FontWeight = FontWeights.SemiBold };
+        label.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Surface");
+        label.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        label.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+        // A plain border, not a LinkButton: its hover fill would swallow the dark label on the accent.
+        var pill = new Border { Child = label, Cursor = Cursors.Hand };
+        pill.MouseLeftButtonUp += (_, _) => click();
+        pill.MouseEnter += (_, _) => pill.Opacity = 0.85;
+        pill.MouseLeave += (_, _) => pill.Opacity = 1;
+        System.Windows.Automation.AutomationProperties.SetName(pill, text);
+        pill.SetResourceReference(Border.BackgroundProperty, "Brush.Accent");
+        pill.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
+        return pill;
+    }
+
+    /// <summary>A small pill of mutually exclusive choices; the picked one is filled with the accent.</summary>
+    private static FrameworkElement Segmented(IReadOnlyList<string> labels, int selected, Action<int> pick)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        for (var i = 0; i < labels.Count; i++)
+        {
+            var index = i;
+            var on = i == selected;
+            var text = new TextBlock { Text = labels[i], Margin = new Thickness(8, 3, 8, 3), FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal };
+            text.SetResourceReference(TextBlock.ForegroundProperty, on ? "Brush.Surface" : "Brush.TextSoft");
+            text.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+            text.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+            var seg = new Border { Child = text, Cursor = on ? Cursors.Arrow : Cursors.Hand };
+            seg.MouseLeftButtonUp += (_, _) => { if (!on) pick(index); };
+            seg.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
+            if (on) seg.SetResourceReference(Border.BackgroundProperty, "Brush.Accent");
+            row.Children.Add(seg);
+        }
+        var pill = new Border { Padding = new Thickness(2), BorderThickness = new Thickness(1), Child = row };
+        pill.SetResourceReference(Border.BackgroundProperty, "Brush.Surface");
+        pill.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
+        pill.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
+        return pill;
     }
 
     private FrameworkElement Months(AppDetailResult r)

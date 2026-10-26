@@ -29,6 +29,13 @@ public partial class App : Application
     {
         StartupTrace.Mark("onStartup");
         base.OnStartup(e);
+        // The refresh methods are async void and catch only database errors; anything else would end the process
+        // from a background refresh, so a failed refresh is dropped and the next tick tries again.
+        DispatcherUnhandledException += (_, args) =>
+        {
+            System.Diagnostics.Debug.WriteLine(args.Exception);
+            args.Handled = true;
+        };
         TimeSink.UI.Services.SmoothScroll.Install();
 
         // Story 48: formatting follows the user's Windows regional settings (never overridden, including the 12/24 h

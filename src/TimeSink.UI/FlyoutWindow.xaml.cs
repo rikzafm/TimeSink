@@ -87,51 +87,49 @@ public partial class FlyoutWindow : Window
             _bodies[tab] = body = CreateBody(tab);
         Body.Content = body;
         _current = tab;
-        foreach (var other in _bodies.Values) if (other is TodayView t && !ReferenceEquals(t, body)) t.Stop();
-        foreach (var other in _bodies.Values) if (other is WeekView w && !ReferenceEquals(w, body)) w.Stop();
-        foreach (var other in _bodies.Values) if (other is YearView y && !ReferenceEquals(y, body)) y.Stop();
-        if (_rendered && body is YearView year) year.Start();
-        if (_rendered && body is TodayView today) today.Start(); // before first render, OnContentRendered starts it
-        if (_rendered && body is WeekView week) week.Start();
-        foreach (var other in _bodies.Values) if (other is MonthView m && !ReferenceEquals(m, body)) m.Stop();
-        if (_rendered && body is MonthView month) month.Start();
-        foreach (var other in _bodies.Values) if (other is AllView a && !ReferenceEquals(a, body)) a.Stop();
-        if (_rendered && body is AllView all) all.Start();
+        foreach (var other in _bodies.Values) if (!ReferenceEquals(other, body)) StopBody(other);
+        if (_rendered) StartBody(body); // before first render, OnContentRendered starts it
         if (persist)
         {
-            var path = _dbPath;
             var value = tab.ToString();
-            Task.Run(() => SettingsStore.Set(path, ShellTabs.SettingKey, value));
+            SerialWriter.Run(() => SettingsStore.Set(_dbPath, ShellTabs.SettingKey, value));
         }
     }
 
-    // Stub bodies; real views arrive with later tickets. Built on first visit only.
-    private UIElement CreateBody(ShellTab tab)
+    private static void StopBody(UIElement body)
     {
-        if (tab == ShellTab.Today)
+        switch (body)
         {
-            return new TodayView(_dbPath, _themes, Live);
+            case TodayView v: v.Stop(); break;
+            case WeekView v: v.Stop(); break;
+            case MonthView v: v.Stop(); break;
+            case YearView v: v.Stop(); break;
+            case AllView v: v.Stop(); break;
         }
-        if (tab == ShellTab.Week)
-        {
-            return new WeekView(_dbPath, _themes, Live, OpenDayInToday);
-        }
-        if (tab == ShellTab.Month)
-        {
-            return new MonthView(_dbPath, _themes, Live, this);
-        }
-        if (tab == ShellTab.Year)
-        {
-            return new YearView(_dbPath, _themes, Live);
-        }
-        if (tab == ShellTab.All)
-        {
-            return new AllView(_dbPath, _themes, Live, this, ShowAppDetail);
-        }
-        var text = new TextBlock { Style = (Style)Application.Current.FindResource("Caption"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Tag = tab };
-        text.SetResourceReference(TextBlock.TextProperty, "Str." + char.ToUpperInvariant(StringKeys.StubComingSoon[0]) + StringKeys.StubComingSoon[1..]);
-        return text;
     }
+
+    private static void StartBody(UIElement body)
+    {
+        switch (body)
+        {
+            case TodayView v: v.Start(); break;
+            case WeekView v: v.Start(); break;
+            case MonthView v: v.Start(); break;
+            case YearView v: v.Start(); break;
+            case AllView v: v.Start(); break;
+        }
+    }
+
+    // Built on first visit only.
+    private UIElement CreateBody(ShellTab tab) => tab switch
+    {
+        ShellTab.Today => new TodayView(_dbPath, _themes, Live),
+        ShellTab.Week => new WeekView(_dbPath, _themes, Live, OpenDayInToday),
+        ShellTab.Month => new MonthView(_dbPath, _themes, Live, this),
+        ShellTab.Year => new YearView(_dbPath, _themes, Live),
+        ShellTab.All => new AllView(_dbPath, _themes, Live, this, ShowAppDetail),
+        _ => throw new ArgumentOutOfRangeException(nameof(tab)),
+    };
 
     /// <summary>Week's "open this day" link: switch to the Today tab showing that day.</summary>
     private void OpenDayInToday(DateOnly day)
@@ -145,7 +143,19 @@ public partial class FlyoutWindow : Window
     public bool KeepOpen { get; set; }
 
     // Add app covers the whole flyout; closing it returns to whatever was underneath.
-    private void ShowAddApp() => Overlay.Content = new AddAppView(_themes, _dbPath, () => Overlay.Content = null);
+    // The view is built once and kept (its icons and installed list are expensive); OnShown resets the per-visit state.
+    private AddAppView? _addApp;
+
+    private void ShowAddApp()
+    {
+        _addApp ??= new AddAppView(_themes, _dbPath, () =>
+        {
+            Overlay.Content = null;
+            Live.NotifyDataChanged(); // names, merges and tracked apps may have changed underneath
+        });
+        _addApp.OnShown();
+        Overlay.Content = _addApp;
+    }
 
     // The app detail page (double-click a row in All) also covers the whole flyout; Back or Esc returns to the table.
     private void ShowAppDetail(long appId) =>
@@ -162,6 +172,7 @@ public partial class FlyoutWindow : Window
             if (_settings.TryClosePicker()) return;
             TabStrip.Visibility = Visibility.Visible;
             Body.Content = _bodies[_current];
+            if (_rendered) StartBody(_bodies[_current]); // leaving the tree stopped it (Unloaded); resume ticking and refresh
             SettingsButton.Content = new TextBlock { FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"), Text = "", FontSize = 16 };
             SettingsButton.SetResourceReference(FrameworkElement.ToolTipProperty, "Str.Settings");
             return;

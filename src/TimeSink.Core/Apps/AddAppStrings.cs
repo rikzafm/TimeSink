@@ -40,7 +40,7 @@ public static class AddAppStrings
     public const string TrackedSearch = "addTrackedSearch";
     public const string TrackedHeader = "addTrackedHeader";
     public const string TrackedEmpty = "addTrackedEmpty";
-    public const string TrackedSub = "addTrackedSub";
+    public const string TrackedNoPublisher = "addTrackedNoPublisher";
     public const string TrackedCount = "addTrackedCount";
     public const string Manage = "addManage";
     public const string Rename = "addRename";
@@ -67,11 +67,42 @@ public static class AddAppStrings
     public const string SaveChanges = "addSaveChanges";
     public const string Background = "addBackground";
     public const string BackgroundTip = "addBackgroundTip";
+    public const string BackgroundApp = "addBackgroundApp";
     public const string Kind = "addKind";
     public const string KindTip = "addKindTip";
     public const string KindOther = "addKindOther";
     public const string KindGame = "addKindGame";
     public const string KindGacha = "addKindGacha";
+
+    public const string SettingsMeta = "addSettingsMeta";
+    public const string SettingsType = "addSettingsType";
+    public const string SettingsTypeSub = "addSettingsTypeSub";
+    public const string SettingsBackgroundSub = "addSettingsBackgroundSub";
+    public const string SettingsMerged = "addSettingsMerged";
+    public const string SettingsMergedNone = "addSettingsMergedNone";
+    public const string MergedOne = "addMergedOne";
+    public const string MergedMany = "addMergedMany";
+    public const string SettingsAbout = "addSettingsAbout";
+    public const string ShowInFolder = "addShowInFolder";
+    public const string SettingsDanger = "addSettingsDanger";
+    public const string ClearHistory = "addClearHistory";
+    public const string ClearTitle = "addClearTitle";
+    public const string ClearBody = "addClearBody";
+    public const string ClearConfirm = "addClearConfirm";
+    public const string ClearTitle2 = "addClearTitle2";
+    public const string ClearBody2 = "addClearBody2";
+    public const string ClearTitle3 = "addClearTitle3";
+    public const string ClearBody3 = "addClearBody3";
+    public const string ClearNo = "addClearNo";
+    public const string ClearYes = "addClearYes";
+    public const string ClearStep = "addClearStep";
+    public const string SettingsHint = "addSettingsHint";
+    public const string TrackedHint = "addTrackedHint";
+    public const string DangerNote = "addDangerNote";
+    public const string ChangeMain = "addChangeMain";
+    public const string ChangeMainTitle = "addChangeMainTitle";
+    public const string ChangeMainConfirm = "addChangeMainConfirm";
+    public const string ChangeMainBody = "addChangeMainBody";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -79,9 +110,12 @@ public static class AddAppStrings
         HintBefore, HintLink, HintAfter, AddedCount, Done, RunningEmpty, Close,
         Search, NoMatch, InstalledLoading, InstalledEmpty, StopTracking, StopTip, Restore, RetiredHeader,
         NotThisOne, DropTitle, DropSub, Choose, Places, NotAnApp, TargetMissing, NoFolder,
-        TabTracked, TrackedSearch, TrackedHeader, TrackedEmpty, TrackedSub, TrackedCount, Manage, Rename, Merge, Stop,
+        TabTracked, TrackedSearch, TrackedHeader, TrackedEmpty, TrackedNoPublisher, TrackedCount, Manage, Rename, Merge, Stop,
         RenameLabel, Save, Cancel, MergeTitle, MergeSub, MergePreview, MergePick, MergeInto, Unmerge, StopTitle, StopBody, KeepTracking,
         FilterUntracked, FilterAll, SubStopped, SubInstalled, MergeStarts, MergeCount, SaveChanges,
-        Background, BackgroundTip, Kind, KindTip, KindOther, KindGame, KindGacha,
+        Background, BackgroundTip, BackgroundApp, Kind, KindTip, KindOther, KindGame, KindGacha,
+        SettingsMeta, SettingsType, SettingsTypeSub, SettingsBackgroundSub, SettingsMerged, SettingsMergedNone, MergedOne, MergedMany,
+        SettingsAbout, ShowInFolder, SettingsDanger, ClearHistory, ClearTitle, ClearBody, ClearConfirm, ClearTitle2, ClearBody2, ClearTitle3, ClearBody3, ClearNo, ClearYes, ClearStep, SettingsHint, TrackedHint, DangerNote,
+        ChangeMain, ChangeMainTitle, ChangeMainConfirm, ChangeMainBody,
     ];
 }

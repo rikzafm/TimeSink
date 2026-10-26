@@ -55,9 +55,7 @@
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock x:Name="MonthName" HorizontalAlignment="Center" FontWeight="Bold"
                                    Foreground="{DynamicResource Brush.Text}" FontFamily="{DynamicResource FontFamily.Ui}"
-                                   FontSize="{DynamicResource Double.FontSize.Title}"/>
-                        <TextBlock x:Name="Span" Style="{StaticResource Small}" HorizontalAlignment="Center"/>
-                    </StackPanel>
+                                   FontSize="{DynamicResource Double.FontSize.Title}"/>                    </StackPanel>
                     <Button x:Name="Next" Style="{StaticResource NavButton}" VerticalAlignment="Center" Margin="8,0,0,0" Content="▸"/>
                 </StackPanel>
 
@@ -108,7 +106,5 @@
                            Text="{DynamicResource Str.MonthEmpty}" Visibility="Collapsed"/>
             </StackPanel>
         </ScrollViewer>
-
-        <Button x:Name="ExportButton" Grid.Row="1" Style="{StaticResource LinkButton}" HorizontalAlignment="Right" Margin="0,0,10,2"/>
     </Grid>
 </UserControl>

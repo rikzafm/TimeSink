@@ -6,6 +6,9 @@ public enum AppDetailDayKind { Tracked, BeforeTracking, Future }
 /// <summary>One calendar day of the year grid. <see cref="Sessions"/> counts the sessions that touch the day.</summary>
 public sealed record AppDetailDay(DateOnly Date, long Seconds, int Sessions, int Level, AppDetailDayKind Kind);
 
+/// <summary>One session start: the local day and hour (0-23) it opened in.</summary>
+public sealed record AppDetailOpen(DateOnly Date, int Hour);
+
 /// <summary>The most recent session of the app: when it started, how long it ran and whether it is still running.</summary>
 public sealed record AppDetailLast(long StartUtc, long Seconds, bool Running);
 
@@ -29,4 +32,6 @@ public sealed record AppDetailResult(
     long YearSeconds,
     long PeakDaySeconds,
     IReadOnlyList<AppDetailDay> Days,
-    bool Background = false);
+    bool Background = false,
+    IReadOnlyDictionary<DateOnly, long>? DaySeconds = null,
+    IReadOnlyList<AppDetailOpen>? Opens = null);

@@ -45,8 +45,9 @@ public sealed partial class AddAppView
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var search = SearchBox("Str.AddTrackedSearch", AddAppStrings.TrackedSearch, _trackedQuery, text => { _trackedQuery = text; RenderTracked(); });
+        var search = SearchBox("Str.AddTrackedSearch", AddAppStrings.TrackedSearch, _trackedQuery, text => { _trackedQuery = text; RenderTracked(reload: false); });
         root.Children.Add(search);
 
         _trackedHeader = Text(null, "Double.FontSize.Small", "Brush.TextMuted");
@@ -55,6 +56,10 @@ public sealed partial class AddAppView
         _trackedScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = _trackedList };
         Grid.SetRow(_trackedScroll, 1);
         root.Children.Add(_trackedScroll);
+        var hint = Text("Str.AddTrackedHint", "Double.FontSize.Small", "Brush.TextMuted");
+        hint.Margin = new Thickness(20, 8, 20, 4);
+        Grid.SetRow(hint, 2);
+        root.Children.Add(hint);
         RenderTracked();
         if (_restoreOffset) // back from the merge screen: land where the list was
         {
@@ -111,13 +116,15 @@ public sealed partial class AddAppView
             using var lib = AppLibrary.Open(_dbPath);
             _tracked = lib.Tracked();
             foreach (var a in _tracked.Select(a => a.Id).Where(id => !_trackedIcons.ContainsKey(id)).ToList())
-                _trackedIcons[a] = lib.GetIcon(a);
+                _trackedIcons[a] = _hiResIcons.GetValueOrDefault(a) ?? lib.GetIcon(a);
         }
         catch { /* database busy: keep what is on screen */ }
         UpgradeTrackedIcons();
     }
 
-    private readonly HashSet<long> _trackedIconsHiRes = new();
+    // Shared by every Add app visit in this process, so reopening the screen does not extract the same logos again.
+    private static readonly HashSet<long> _trackedIconsHiRes = new();
+    private static readonly Dictionary<long, byte[]> _hiResIcons = new();
 
     /// <summary>Stored icons are 64 px; re-extracts each tracked app's logo at tile resolution once, then redraws.</summary>
     private void UpgradeTrackedIcons()
@@ -141,20 +148,26 @@ public sealed partial class AddAppView
         }).ContinueWith(t =>
         {
             if (t.Result.Count == 0) return;
-            foreach (var (id, png) in t.Result) _trackedIcons[id] = png;
+            foreach (var (id, png) in t.Result) _trackedIcons[id] = _hiResIcons[id] = png;
             if (_trackedList is not null) RenderTracked();
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
-    private void RenderTracked()
+    private void RenderTracked() => RenderTracked(reload: true);
+
+    /// <param name="reload">Re-read the tracked apps from the database; a search keystroke reuses the last read.</param>
+    private void RenderTracked(bool reload)
     {
         if (_trackedList is null) return;
         var offset = _trackedScroll.VerticalOffset;
-        LoadTracked();
+        if (reload) LoadTracked();
         _trackedList.Children.Clear();
         var q = _trackedQuery.Trim();
-        var shown = _tracked.Where(a => q.Length == 0 || a.DisplayName.Contains(q, StringComparison.CurrentCultureIgnoreCase)
-            || a.Merged.Any(m => m.DisplayName.Contains(q, StringComparison.CurrentCultureIgnoreCase))).ToList();
+        var shown = q.Length == 0 ? _tracked.ToList() : _tracked
+            .Select(a => (App: a, Score: FuzzySearch.Score(q, a.Merged.Select(m => m.DisplayName).Prepend(a.DisplayName), PublisherOf(a))))
+            .Where(x => x.Score is not null)
+            .OrderByDescending(x => x.Score)
+            .Select(x => x.App).ToList();
 
         _trackedHeader.Text = q.Length == 0 ? TimeText.Str(AddAppStrings.TrackedHeader).ToUpperInvariant() : TimeText.Str(AddAppStrings.TrackedCount, shown.Count);
         _trackedList.Children.Add(_trackedHeader);
@@ -199,105 +212,83 @@ public sealed partial class AddAppView
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var tile = MakeTile(app.DisplayName, app.ExePath, _trackedIcons.GetValueOrDefault(app.Id)); // the app's own logo
-        tile.Margin = new Thickness(0, 0, 12, 0);
+        var tileHost = new Grid { Margin = new Thickness(0, 0, 12, 0) };
+        tileHost.Children.Add(tile);
+        if (app.Merged.Count > 0) tileHost.Children.Add(MergedBadge(app.Merged.Count));
         var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         var name = new TextBlock { Text = app.DisplayName, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
         name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
         name.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         name.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
+        name.Cursor = Cursors.IBeam; // double-click the name to rename
+        card.Cursor = Cursors.Hand;  // double-click the rest of the row for settings
+        if (!open)
+        {
+            card.MouseEnter += (_, _) => card.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
+            card.MouseLeave += (_, _) => card.Background = Brushes.Transparent;
+        }
         var sub = Text(null, "Double.FontSize.Small", "Brush.TextMuted");
-        sub.Text = TimeText.Str(AddAppStrings.TrackedSub, DurationFormat.HoursMinutes(app.Seconds), TimeText.Local(app.AddedUtc).ToString("MMM yyyy"));
+        sub.Text = PublisherOf(app) ?? TimeText.Str(AddAppStrings.TrackedNoPublisher);
         sub.TextTrimming = TextTrimming.CharacterEllipsis;
-        texts.Children.Add(name);
+        texts.Children.Add(open && _mode == "rename" ? RenameInline(app) : name);
         texts.Children.Add(sub);
 
-        var manage = ActionIcon(IconSliders, PillStyle.Quiet, AddAppStrings.Manage, AddAppStrings.Manage, lit: open);
-        manage.Click += (_, _) => ToggleOpen(app);
         Grid.SetColumn(texts, 1);
         var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         right.Children.Add(KindSwitch(app.Kind, () => SetKind(app.Id, AppKinds.Next(app.Kind), RenderTracked)));
         right.Children.Add(BackgroundSwitch(app.Background, () => SetBackground(app.Id, !app.Background, RenderTracked)));
-        right.Children.Add(manage);
+        var stopBtn = ActionIcon(IconEyeOpen, PillStyle.Quiet, AddAppStrings.StopTip, AddAppStrings.Stop, lit: open && _mode == "stop");
+        stopBtn.Click += (_, _) => { _openId = app.Id; _mode = "stop"; RenderTracked(); };
+        right.Children.Add(stopBtn);
         Grid.SetColumn(right, 2);
-        top.Children.Add(tile);
+        top.Children.Add(tileHost);
         top.Children.Add(texts);
         top.Children.Add(right);
         stack.Children.Add(top);
 
-        if (app.Merged.Count > 0)
-        {
-            var chips = new WrapPanel { Margin = new Thickness(52, 8, 0, 0) };
-            foreach (var m in app.Merged) chips.Children.Add(Chip(m));
-            stack.Children.Add(chips);
-        }
+        if (open && _mode == "stop") stack.Children.Add(StopConfirm(app));
 
-        if (open && _mode == "") stack.Children.Add(ActionStrip(app));
-        else if (open && _mode == "rename") stack.Children.Add(RenameEditor(app));
-        else if (open && _mode == "stop") stack.Children.Add(StopConfirm(app));
+        // double-click the name to rename it in place; double-click anywhere else on the row for the app's settings
+        card.MouseLeftButtonDown += (_, e) =>
+        {
+            if (e.ClickCount != 2 || _mode == "rename") return;
+            e.Handled = true;
+            if (ReferenceEquals(e.OriginalSource, name)) { _openId = app.Id; _mode = "rename"; _draft = app.DisplayName; RenderTracked(); }
+            else ShowAppSettings(app.Id);
+        };
         return card;
     }
 
-    private UIElement Chip(MergedApp m)
+    /// <summary>The publisher from the installed-apps scan (matched by exe path); null until the scan has loaded or when the app is not in it.</summary>
+    private string? PublisherOf(TrackedEntry app)
     {
-        var chip = new Border { Margin = new Thickness(0, 0, 6, 4), Padding = new Thickness(10, 3, 4, 3), BorderThickness = new Thickness(1) };
-        chip.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
-        chip.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Large");
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
-        var label = Text(null, "Double.FontSize.Small", "Brush.TextSoft");
-        label.Text = m.DisplayName;
-        label.VerticalAlignment = VerticalAlignment.Center;
-        var glyph = Text("Str.AddUnmerge", "Double.FontSize.Small", "Brush.TextMuted");
-        glyph.HorizontalAlignment = HorizontalAlignment.Center;
-        glyph.VerticalAlignment = VerticalAlignment.Center;
-        var un = new Border
+        if (_installed is null) { LoadInstalled(); return null; }
+        var inst = _installed.FirstOrDefault(i => string.Equals(i.ExePath, app.ExePath, StringComparison.OrdinalIgnoreCase));
+        if (inst is null) return null;
+        return inst.IsSteam ? InstalledApp.SteamSource : inst.Publisher is { Length: > 0 } pub ? pub : null;
+    }
+
+    /// <summary>Number of merged apps, pinned to the logo's bottom-right corner.</summary>
+    private static Border MergedBadge(int count)
+    {
+        var text = new TextBlock { Text = count.ToString(), FontWeight = FontWeights.Bold, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        text.SetResourceReference(TextBlock.ForegroundProperty, "Brush.OnAccent");
+        text.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        var badge = new Border
         {
-            Width = 18, Height = 18, Margin = new Thickness(6, 0, 0, 0), Background = Brushes.Transparent,
-            VerticalAlignment = VerticalAlignment.Center, ToolTip = "Unmerge", Cursor = Cursors.Hand, Child = glyph,
+            Child = text, MinWidth = 18, Height = 18, Padding = new Thickness(4, 0, 4, 0), CornerRadius = new CornerRadius(9),
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, -6, -6),
+            BorderThickness = new Thickness(2),
         };
-        un.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Large");
-        un.MouseEnter += (_, _) => glyph.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
-        un.MouseLeave += (_, _) => glyph.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
-        un.MouseLeftButtonUp += (_, _) =>
-        {
-            try { using var lib = AppLibrary.Open(_dbPath); lib.Unmerge(m.Id); } catch { return; }
-            RenderTracked();
-        };
-        row.Children.Add(label);
-        row.Children.Add(un);
-        chip.Child = row;
-        return chip;
+        badge.SetResourceReference(Border.BackgroundProperty, "Brush.Accent");
+        badge.SetResourceReference(Border.BorderBrushProperty, "Brush.Panel");
+        return badge;
     }
 
-    private void ToggleOpen(TrackedEntry app)
+    /// <summary>The name as a text box: Enter saves, Esc or leaving the box cancels.</summary>
+    private UIElement RenameInline(TrackedEntry app)
     {
-        _openId = _openId == app.Id ? null : app.Id;
-        _mode = "";
-        _draft = app.DisplayName;
-        RenderTracked();
-    }
-
-    private UIElement ActionStrip(TrackedEntry app)
-    {
-        var g = new Grid { Margin = new Thickness(0, 12, 0, 2) };
-        for (var i = 0; i < 3; i++) g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var rename = Button(AddAppStrings.Rename, BtnKind.Outline, () => { _mode = "rename"; _draft = app.DisplayName; RenderTracked(); });
-        var merge = Button(AddAppStrings.Merge, BtnKind.Outline, () => { _listOffset = _trackedScroll.VerticalOffset; _mergeSource = app.Id; _mergePicked.Clear(); foreach (var m in app.Merged) _mergePicked.Add("m" + m.Id); _mergeFilter = "Tracked"; ShowTracked(); });
-        var stop = Button(AddAppStrings.Stop, BtnKind.Danger, () => { _mode = "stop"; RenderTracked(); });
-        merge.Margin = new Thickness(8, 0, 8, 0);
-        Grid.SetColumn(merge, 1);
-        Grid.SetColumn(stop, 2);
-        g.Children.Add(rename);
-        g.Children.Add(merge);
-        g.Children.Add(stop);
-        return g;
-    }
-
-    private UIElement RenameEditor(TrackedEntry app)
-    {
-        var panel = new StackPanel { Margin = new Thickness(0, 12, 0, 2) };
-        var label = Text("Str.AddRenameLabel", "Double.FontSize.Small", "Brush.TextMuted");
-        label.Margin = new Thickness(0, 0, 0, 6);
-        var box = new TextBox { Text = _draft, Padding = new Thickness(10, 8, 10, 8), BorderThickness = new Thickness(1), VerticalContentAlignment = VerticalAlignment.Center };
+        var box = new TextBox { Text = _draft, Padding = new Thickness(6, 1, 6, 1), BorderThickness = new Thickness(1), FontWeight = FontWeights.SemiBold, VerticalContentAlignment = VerticalAlignment.Center };
         box.SetResourceReference(Control.BackgroundProperty, "Brush.Surface");
         box.SetResourceReference(Control.BorderBrushProperty, "Brush.Accent");
         box.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
@@ -305,30 +296,28 @@ public sealed partial class AddAppView
         box.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
         box.SetResourceReference(Control.FontSizeProperty, "Double.FontSize.Body");
         box.TextChanged += (_, _) => _draft = box.Text;
-        void Save()
+        var done = false;
+        void Finish(bool save)
         {
-            try { using var lib = AppLibrary.Open(_dbPath); if (!lib.Rename(app.Id, _draft)) return; } catch { return; }
+            if (done) return;
+            done = true;
+            if (save)
+            {
+                try { using var lib = AppLibrary.Open(_dbPath); lib.Rename(app.Id, _draft); } catch { /* keep the old name */ }
+            }
             _mode = "";
             RenderTracked();
         }
         box.KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Enter) Save();
-            else if (e.Key == Key.Escape) { _mode = ""; RenderTracked(); }
+            if (e.Key == Key.Enter) { e.Handled = true; Finish(true); }
+            else if (e.Key == Key.Escape) { e.Handled = true; Finish(false); }
         };
+        box.LostKeyboardFocus += (_, _) => Dispatcher.BeginInvoke(() => Finish(false)); // clicking elsewhere cancels, like Esc
         box.Loaded += (_, _) => { box.Focus(); box.SelectAll(); };
-
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
-        var cancel = Button(AddAppStrings.Cancel, BtnKind.Outline, () => { _mode = ""; RenderTracked(); });
-        cancel.Margin = new Thickness(0, 0, 8, 0);
-        var save = Button(AddAppStrings.Save, BtnKind.Primary, Save);
-        buttons.Children.Add(cancel);
-        buttons.Children.Add(save);
-        panel.Children.Add(label);
-        panel.Children.Add(box);
-        panel.Children.Add(buttons);
-        return panel;
+        return box;
     }
+
 
     private UIElement StopConfirm(TrackedEntry app)
     {
@@ -447,7 +436,7 @@ public sealed partial class AddAppView
         note.Margin = new Thickness(20, 0, 20, 8);
         note.TextWrapping = TextWrapping.Wrap;
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(14, 0, 14, 12) };
-        var cancel = Button(AddAppStrings.Cancel, BtnKind.Outline, () => { _mergeSource = null; _restoreOffset = true; ShowTracked(); });
+        var cancel = Button(AddAppStrings.Cancel, BtnKind.Outline, () => { _mergeSource = null; _restoreOffset = true; ShowTracked(); ReturnToSettings(); });
         cancel.Margin = new Thickness(0, 0, 8, 0);
         var go = Button(AddAppStrings.Merge, BtnKind.Ghost, () => ConfirmMerge(keeper, candidates));
         buttons.Children.Add(cancel);
@@ -664,6 +653,7 @@ public sealed partial class AddAppView
         _mode = "";
         UpdateCount();
         ShowTracked();
+        ReturnToSettings();
     }
 
     // ---- buttons ------------------------------------------------------------------------------------------

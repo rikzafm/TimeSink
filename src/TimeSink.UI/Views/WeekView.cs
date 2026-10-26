@@ -158,8 +158,8 @@ public sealed class WeekView : UserControl
             Refresh();
         };
         _live.Changed += Refresh;
-        _themes.Applied += Redraw;
-        AppIcons.Updated += Redraw;
+        _themes.Applied += () => { if (_started) Redraw(); }; // a stopped view redraws from fresh data when it starts again
+        AppIcons.Updated += () => { if (_started) Redraw(); };
         Unloaded += (_, _) => Stop();
     }
 

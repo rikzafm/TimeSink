@@ -40,5 +40,8 @@ public sealed class LiveState : IDisposable
         Application.Current?.Dispatcher.BeginInvoke(() => Changed?.Invoke());
     }
 
+    /// <summary>Tells the views to re-query after the UI itself changed the database (merge, main app, stop tracking).</summary>
+    public void NotifyDataChanged() => Changed?.Invoke();
+
     public void Dispose() => _client.Dispose();
 }

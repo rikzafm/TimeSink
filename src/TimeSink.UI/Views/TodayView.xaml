@@ -52,7 +52,7 @@
                                 <Ellipse.Triggers>
                                     <EventTrigger RoutedEvent="Loaded">
                                         <BeginStoryboard>
-                                            <Storyboard RepeatBehavior="Forever">
+                                            <Storyboard RepeatBehavior="Forever" Timeline.DesiredFrameRate="20">
                                                 <DoubleAnimation Storyboard.TargetName="PulseScale" Storyboard.TargetProperty="ScaleX"
                                                                  From="1" To="2.75" Duration="0:0:1.6"/>
                                                 <DoubleAnimation Storyboard.TargetName="PulseScale" Storyboard.TargetProperty="ScaleY"

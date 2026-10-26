@@ -11,6 +11,7 @@ public sealed record WrappedApp(long AppId, string Name, long Seconds);
 
 /// <summary>
 /// Everything the three Year > Wrapped cards show for the calendar year of <see cref="NowUtc"/> (year to date).
+/// <see cref="LongestSessions"/> is each non-background app's single longest session (Seconds = its length), longest first, top five.
 /// <see cref="TotalSeconds"/> is PC uptime; every other time is app-seconds (overlapping apps add). Nullable members are null when there is nothing to say.
 /// </summary>
 public sealed record WrappedResult(
@@ -34,7 +35,8 @@ public sealed record WrappedResult(
     long PeakHourSeconds,
     int BeforeNoonPercent,
     WrappedKindTop? GamesTop = null,
-    WrappedKindTop? GachaTop = null)
+    WrappedKindTop? GachaTop = null,
+    IReadOnlyList<WrappedApp>? LongestSessions = null)
 {
     /// <summary>"N days and M hours" the PC was on: whole days of the total.</summary>
     public int EquivalentDays => (int)(TotalSeconds / 86400);

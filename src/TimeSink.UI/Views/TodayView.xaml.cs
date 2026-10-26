@@ -51,6 +51,7 @@ public partial class TodayView : UserControl
     {
         public int Hover = -1, Pinned = -1;
         public Action? Apply;
+        public Action? ApplyDetails; // set once the row's detail panel has been built
         public int Active => Hover >= 0 ? Hover : Pinned;
     }
 
@@ -107,8 +108,9 @@ public partial class TodayView : UserControl
         };
         _timer.Tick += (_, _) => OnTick();
         _live.Changed += Refresh;
-        _themes.Applied += Redraw;
-        AppIcons.Updated += Redraw;
+        // A stopped view is rebuilt from fresh data when it starts again, so it skips theme and icon redraws meanwhile.
+        _themes.Applied += () => { if (_started) Redraw(); };
+        AppIcons.Updated += () => { if (_started) Redraw(); };
         Unloaded += (_, _) => Stop();
     }
 
@@ -162,7 +164,7 @@ public partial class TodayView : UserControl
         {
             (result, var first) = await Task.Run(() =>
             {
-                _signInUtc ??= SignInTime.Get() ?? 0; // uptime starts at sign-in; looked up once, off the UI thread
+                _signInUtc ??= SignInTime.Cached() ?? 0; // uptime starts at sign-in; looked up once (shared with the other tabs), off the UI thread
                 return (TodayQuery.Run(_dbPath, now, TimeZoneInfo.Local, running, day, _signInUtc is > 0 ? _signInUtc : null),
                     TodayQuery.FirstDate(_dbPath, TimeZoneInfo.Local));
             });
@@ -399,8 +401,14 @@ public partial class TodayView : UserControl
         strip.SetResourceReference(SessionStrip.TrackBrushProperty, "Brush.BorderSoft");
 
         var link = new SessionLink();
-        var details = BuildDetails(r, row, appBrush, link);
-        details.Visibility = _expanded.Contains(row.AppId) ? Visibility.Visible : Visibility.Collapsed;
+        // The dial, stats and pills are built the first time the row opens: most rows are never expanded.
+        var details = new Border { Visibility = _expanded.Contains(row.AppId) ? Visibility.Visible : Visibility.Collapsed };
+        void EnsureDetails()
+        {
+            if (details.Child is not null) return;
+            details.Child = BuildDetails(r, row, appBrush, link);
+            link.Apply!();
+        }
         var shown = row.Sessions.Where(x => x.Seconds >= MinShownSessionSeconds).ToList();
         if (_pinnedSession.TryGetValue(row.AppId, out var pinnedStart))
             link.Pinned = shown.FindIndex(x => x.StartUtc == pinnedStart);
@@ -443,6 +451,7 @@ public partial class TodayView : UserControl
         card.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
         void SetOpen(bool open)
         {
+            if (open) EnsureDetails();
             details.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
             if (open) _expanded.Add(row.AppId); else _expanded.Remove(row.AppId);
             if (open) card.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
@@ -453,13 +462,13 @@ public partial class TodayView : UserControl
         if (_expanded.Contains(row.AppId)) card.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
 
         // The strip, dial and pills of a row share one highlighted session: hover previews it, a click pins it.
-        var applyDetails = link.Apply;
         link.Apply = () =>
         {
-            applyDetails?.Invoke();
+            link.ApplyDetails?.Invoke();
             var active = link.Active;
             strip.HighlightIndex = active >= 0 ? IndexOf(row.Sessions, shown[active]) : -1;
         };
+        if (details.Visibility == Visibility.Visible) EnsureDetails();
         strip.SegmentClicked += i =>
         {
             SetOpen(true);
@@ -526,7 +535,7 @@ public partial class TodayView : UserControl
         var pillBorders = new List<Border>();
         foreach (var s in shown) { var pill = Pill(s); pillBorders.Add(pill); pills.Children.Add(pill); }
 
-        link.Apply = () =>
+        link.ApplyDetails = () =>
         {
             var active = link.Active;
             dial.HighlightIndex = active;

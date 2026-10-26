@@ -63,9 +63,10 @@ internal static class IconService
     private static byte[]? Extract(string parsingName, int size)
     {
         nint hbmp = 0;
+        IShellItemImageFactory? factory = null;
         try
         {
-            if (SHCreateItemFromParsingName(parsingName, 0, ref _iid, out var factory) != 0) return null;
+            if (SHCreateItemFromParsingName(parsingName, 0, ref _iid, out factory) != 0) return null;
             if (factory.GetImage(new SIZE { cx = size, cy = size }, SIIGBF_BIGGERSIZEOK, out hbmp) != 0 || hbmp == 0) return null;
             var src = Imaging.CreateBitmapSourceFromHBitmap(hbmp, 0, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
             var enc = new PngBitmapEncoder();
@@ -75,22 +76,30 @@ internal static class IconService
             return ms.ToArray();
         }
         catch { return null; }
-        finally { if (hbmp != 0) DeleteObject(hbmp); }
+        finally
+        {
+            if (hbmp != 0) DeleteObject(hbmp);
+            if (factory is not null) Marshal.ReleaseComObject(factory);
+        }
     }
 
-    private const int MaxDecodePx = 96;
+    // Decoded once per byte array: list views rebuild their rows often and would otherwise decode every icon each time.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<byte[], BitmapSource> Decoded = new();
 
     public static BitmapSource? Decode(byte[]? png)
     {
         if (png is not { Length: > 0 }) return null;
+        if (Decoded.TryGetValue(png, out var cached)) return cached;
         try
         {
+            using var ms = new MemoryStream(png);
             var bmp = new BitmapImage();
             bmp.BeginInit();
             bmp.CacheOption = BitmapCacheOption.OnLoad;
-            bmp.StreamSource = new MemoryStream(png);
+            bmp.StreamSource = ms;
             bmp.EndInit();
             bmp.Freeze();
+            Decoded.AddOrUpdate(png, bmp);
             return bmp;
         }
         catch { return null; }

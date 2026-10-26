@@ -19,7 +19,8 @@ internal static class SignInTime
     {
         try
         {
-            var session = Process.GetCurrentProcess().SessionId;
+            int session;
+            using (var self = Process.GetCurrentProcess()) session = self.SessionId;
             long? best = null;
             foreach (var p in Process.GetProcessesByName("explorer"))
                 using (p)

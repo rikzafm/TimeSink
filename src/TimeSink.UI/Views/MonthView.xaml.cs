@@ -50,17 +50,15 @@ public partial class MonthView : UserControl
         _year = today.Year;
         _month = today.Month;
         InitializeComponent();
-        ExportButton.SetResourceReference(ContentProperty, "Str.MonthExport");
         Prev.Click += (_, _) => Navigate(-1);
         Next.Click += (_, _) => Navigate(1);
-        ExportButton.Click += (_, _) => Export();
         Calendar.DayClicked += d => { _selected = d; Redraw(); };
         SelBar.HoverChanged += ShowBarNote;
         SelBar.SegmentClicked += _ => ShowBarNote(-1);
         _timer.Tick += (_, _) => { if (_window is not { IsRevealed: false }) Refresh(); };
         _live.Changed += () => { if (_result?.IsCurrent == true) Refresh(); };
-        _themes.Applied += Redraw;
-        AppIcons.Updated += Redraw;
+        _themes.Applied += () => { if (_started) Redraw(); }; // a stopped view redraws from fresh data when it starts again
+        AppIcons.Updated += () => { if (_started) Redraw(); };
         Unloaded += (_, _) => Stop();
     }
 
@@ -122,7 +120,6 @@ public partial class MonthView : UserControl
         if (_result is not { } r) return;
         var first = r.FirstDay;
         MonthName.Text = first.ToString("MMMM yyyy", En);
-        Span.Text = r.IsCurrent ? Str(StringKeys.MonthSpanSoFar, Ordinal(r.DaysCounted)) : Str(StringKeys.MonthSpanFull);
         Prev.IsEnabled = _firstTracked is { } ft && first > new DateOnly(ft.Year, ft.Month, 1);
         Next.IsEnabled = !r.IsCurrent && first.AddMonths(1) <= DateOnly.FromDateTime(DateTime.Now);
 
@@ -212,9 +209,12 @@ public partial class MonthView : UserControl
         }
         SelBar.ClearPinned();
         SelBar.Segments = segments;
-        _defaultNote = day.Apps.Count > 0
-            ? Str(StringKeys.MonthMostly, day.Apps[0].Name, DurationFormat.HoursMinutes(day.Apps[0].Seconds))
-            : Str(StringKeys.MonthDayEmpty);
+        // "Mostly X" only when X clearly leads: at least 1.5x the runner-up (Background apps rank last in Apps, so sort by time)
+        var byTime = day.Apps.OrderByDescending(a => a.Seconds).ToList();
+        _defaultNote = byTime.Count == 0 ? Str(StringKeys.MonthDayEmpty)
+            : byTime.Count == 1 || byTime[0].Seconds * 2 >= byTime[1].Seconds * 3
+                ? Str(StringKeys.MonthMostly, byTime[0].Name, DurationFormat.HoursMinutes(byTime[0].Seconds))
+                : Str(StringKeys.MonthSpread, byTime.Count);
         ShowBarNote(-1);
     }
 
@@ -296,25 +296,6 @@ public partial class MonthView : UserControl
             row.Children.Add(body);
             TopApps.Children.Add(row);
         }
-    }
-
-    private void Export()
-    {
-        if (_result is not { } r) return;
-        if (_window is not null) _window.KeepOpen = true; // the file dialog deactivates the flyout (decision 55)
-        try
-        {
-            var dlg = new SaveFileDialog { Title = Str(StringKeys.MonthExport), FileName = MonthExport.FileName(r), Filter = "CSV (*.csv)|*.csv" };
-            if (dlg.ShowDialog() != true) return;
-            MonthExport.Write(r, dlg.FileName);
-            ExportButton.SetResourceReference(ContentProperty, "Str.MonthExportDone");
-            var reset = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-            reset.Tick += (_, _) => { reset.Stop(); ExportButton.SetResourceReference(ContentProperty, "Str.MonthExport"); };
-            reset.Start();
-        }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
-        finally { if (_window is not null) _window.KeepOpen = false; }
     }
 
     private static string Percent(double fraction)

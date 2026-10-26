@@ -6,7 +6,6 @@ using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
-using Microsoft.Win32;
 using TimeSink.Core.Data;
 using TimeSink.Core.Theming;
 using TimeSink.Core.Usage;
@@ -18,20 +17,19 @@ using static TimeSink.UI.Services.TimeText;
 namespace TimeSink.UI.Views;
 
 /// <summary>
-/// All tab (board PulseAllTable): lifetime table with sortable headers, a per-app detail line, a totals row, dimmed
-/// retired rows and the CSV export link. Built in code on first visit; data loads only from <see cref="Start"/>
-/// (after the first frame), then every 30 s and on pipe state change.
+/// All tab (board PulseAllTable): lifetime list with a big hours figure per app, avg session and last opened, a totals
+/// row, dimmed retired rows and the CSV export link. Two switchable row layouts: labeled stats (small caps captions) and
+/// icon stats (clock and restore glyphs). The "sorted by" text cycles the sort column and its arrow flips the direction.
+/// Built in code on first visit; data loads only from <see cref="Start"/> (after the first frame), then every 30 s and on pipe state change.
 /// </summary>
 public sealed class AllView : UserControl
 {
     private const int RefreshEverySeconds = 30;
+    private const string LayoutKey = "all.layout"; // "labeled" (default) or "icons"
+    private const string ClockPath = "M12,4 A8,8 0 1 0 12,20 A8,8 0 1 0 12,4 M12,8 L12,12 L15,14";
+    private const string RestorePath = "M4.5,12 A7.5,7.5 0 1 0 7,6.5 M4,3.5 L4,8.5 L9,8.5";
+    private const string LayoutPath = "M4,4 L10,4 L10,10 L4,10 Z M13,6 L20,6 M13,9 L18,9 M4,14 L10,14 L10,20 L4,20 Z M13,16 L20,16 M13,19 L18,19";
     private static readonly CultureInfo En = CultureInfo.InvariantCulture; // English names in v1 (spec 8.1)
-    private static readonly AllColumn[] Columns = [AllColumn.App, AllColumn.Hours, AllColumn.DaysUsed, AllColumn.AvgPerDay, AllColumn.Share];
-    private static readonly double[] DefaultWidths = [1.7, 0.9, 0.8, 0.9, 1.2];
-    private const string WidthsKey = "all.columns"; // star weights, dragged on the header's column edges
-    private const double MinColumnPx = 36;
-    private static double[] ColumnWidths = [.. DefaultWidths];
-    private static readonly Stack<double[]> UndoWidths = new(), RedoWidths = new(); // kept for the app session
 
     private readonly string _dbPath;
     private readonly ThemeService _themes;
@@ -40,15 +38,18 @@ public sealed class AllView : UserControl
     private readonly Action<long>? _openDetail;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(RefreshEverySeconds) };
 
-    private readonly TextBlock _caption = Label(), _total = new(), _counts = Label(), _sorted = Label();
-    private readonly Grid _head = Columns2();
+    private readonly TextBlock _caption = Label(), _total = new(), _counts = Label();
+    private readonly WrapPanel _sorted = new() { HorizontalAlignment = HorizontalAlignment.Right };
+    private readonly Dictionary<long, Border> _rowBoxes = new();
+    private readonly Grid _head = new();
     private readonly StackPanel _rows = new();
-    private readonly Grid _totals = Columns2();
-    private readonly TextBlock _note = Label();
-    private readonly Button _export = new() { HorizontalAlignment = HorizontalAlignment.Right };
+    private readonly Grid _totals = new();
+    private readonly Button _layoutToggle = new() { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+    private readonly System.Windows.Shapes.Path _layoutGlyph = new() { Data = Geometry.Parse(LayoutPath), StrokeThickness = 1.6, Width = 16, Height = 16, Stretch = Stretch.Uniform, StrokeLineJoin = PenLineJoin.Round, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
 
     private AllResult? _result;
     private AllSort _sort = AllSort.Default;
+    private bool _icons;
     private long? _selected;
     private int _seq;
     private bool _started;
@@ -60,34 +61,48 @@ public sealed class AllView : UserControl
         _themes = themes;
         _live = live;
         _window = window;
+        _icons = SettingsStore.Get(dbPath, LayoutKey) == "icons";
 
-        LoadWidths();
         Focusable = true;
         Loaded += (_, _) => Focus();
         PreviewMouseDown += (_, _) => Focus();
-        PreviewKeyDown += OnKeyDown;
-        ApplyWidths(_head);
-        ApplyWidths(_totals);
         _total.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
         _total.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
         _total.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Display");
         _total.FontWeight = FontWeights.SemiBold;
-        _note.TextWrapping = TextWrapping.Wrap;
-        foreach (var t in new[] { _counts, _sorted }) t.HorizontalAlignment = HorizontalAlignment.Right;
+        _counts.HorizontalAlignment = HorizontalAlignment.Right;
+        _counts.TextTrimming = TextTrimming.CharacterEllipsis;
 
-        // Header: caption + big lifetime total on the left, counts and sort state on the right.
-        var header = new Grid { Margin = new Thickness(0, 2, 0, 0) };
-        var left = new StackPanel();
-        left.Children.Add(_caption);
-        left.Children.Add(_total);
-        var right = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 4) };
+        // Header: caption and layout switch, then the big lifetime total with counts and sort state on its right.
+        _layoutToggle.SetResourceReference(StyleProperty, "LinkButton");
+        _layoutToggle.Content = _layoutGlyph;
+        _layoutToggle.Margin = new Thickness(0, 0, -6, 0);
+        _layoutToggle.Click += (_, _) => SetLayout(!_icons);
+        var captionRow = new Grid();
+        captionRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        captionRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        _caption.TextTrimming = TextTrimming.CharacterEllipsis;
+        _caption.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(_layoutToggle, 1);
+        captionRow.Children.Add(_caption);
+        captionRow.Children.Add(_layoutToggle);
+
+        var totalRow = new Grid { Margin = new Thickness(0, 0, 0, 0) };
+        totalRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        totalRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 60 });
+        var right = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(8, 0, 0, 4) };
         right.Children.Add(_counts);
         right.Children.Add(_sorted);
-        header.Children.Add(left);
-        header.Children.Add(right);
+        Grid.SetColumn(right, 1);
+        totalRow.Children.Add(_total);
+        totalRow.Children.Add(right);
+        var header = new StackPanel { Margin = new Thickness(0, 2, 0, 0) };
+        header.Children.Add(captionRow);
+        header.Children.Add(totalRow);
 
         // Table frame: header row, scrolling body, totals row.
         _head.SetResourceReference(Panel.BackgroundProperty, "Brush.SurfaceAlt");
+        _head.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.TableHead");
         var headLine = Line("Brush.Border", bottom: true);
         headLine.Child = _head;
         var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = _rows };
@@ -108,34 +123,25 @@ public sealed class AllView : UserControl
         var frame = new Border { Margin = new Thickness(0, 12, 0, 0), BorderThickness = new Thickness(1), ClipToBounds = true, Child = table };
         frame.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         frame.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Large");
-
-        var noteBox = new Border { Margin = new Thickness(0, 8, 0, 0), Padding = new Thickness(12, 8, 12, 8), MinHeight = 36, BorderThickness = new Thickness(1), Child = _note };
-        noteBox.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
-        noteBox.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
-        noteBox.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
-
-        _export.SetResourceReference(StyleProperty, "LinkButton");
-        _export.Margin = new Thickness(0, 2, -10, 0);
-        _export.Click += (_, _) => Export();
+        // ClipToBounds is a rectangle: clip the table to the frame's rounded inside so row fills don't poke out of the corners.
+        table.SizeChanged += (_, e) =>
+        {
+            var radius = Math.Max(0, frame.CornerRadius.TopLeft - 1);
+            table.Clip = new RectangleGeometry(new Rect(0, 0, e.NewSize.Width, e.NewSize.Height), radius, radius);
+        };
 
         var root = new Grid { Margin = new Thickness(16, 6, 16, 4) };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Grid.SetRow(frame, 1);
-        Grid.SetRow(noteBox, 2);
-        Grid.SetRow(_export, 3);
         root.Children.Add(header);
         root.Children.Add(frame);
-        root.Children.Add(noteBox);
-        root.Children.Add(_export);
         Content = root;
 
         _timer.Tick += (_, _) => { if (_window is not { IsRevealed: false }) Refresh(); };
         _live.Changed += Refresh;
-        _themes.Applied += Redraw;
-        AppIcons.Updated += Redraw;
+        _themes.Applied += () => { if (_started) Redraw(); }; // a stopped view redraws from fresh data when it starts again
+        AppIcons.Updated += () => { if (_started) Redraw(); };
         Unloaded += (_, _) => Stop();
         Redraw(); // static text and empty table; data follows in Start
     }
@@ -170,33 +176,42 @@ public sealed class AllView : UserControl
         Redraw();
     }
 
+    private void SetLayout(bool icons)
+    {
+        _icons = icons;
+        SettingsStore.Set(_dbPath, LayoutKey, icons ? "icons" : "labeled");
+        Redraw();
+    }
+
     // ---- drawing ----
 
     private void Redraw()
     {
         _caption.Text = Str(AllStringKeys.Caption);
-        _export.Content = Str(AllStringKeys.Export);
+        _layoutGlyph.SetResourceReference(Shape.StrokeProperty, _icons ? "Brush.Accent" : "Brush.TextMuted");
+        System.Windows.Automation.AutomationProperties.SetName(_layoutToggle, Str(_icons ? AllStringKeys.LayoutIcons : AllStringKeys.LayoutLabeled));
         BuildHead();
+        BuildSorted();
         var r = _result;
         if (r is null)
         {
             _total.Text = "";
             _counts.Inlines.Clear();
             _rows.Children.Clear();
+            _rowBoxes.Clear();
             _totals.Children.Clear();
-            _note.Inlines.Clear();
             return;
         }
         _total.Text = Str(AllStringKeys.TotalHours, AllFormat.Hours(r.Totals.Seconds));
         SetBold(_counts, [(r.Apps.Count.ToString(En), true), (Str(AllStringKeys.TrackedSuffix), false),
             (r.Retired.Count.ToString(En), true), (Str(AllStringKeys.RetiredSuffix), false)]);
-        SetBold(_sorted, [(Str(AllStringKeys.SortedBy), false), (ColumnName(_sort.Column).ToLowerInvariant(), true), (" " + Arrow(_sort.Descending), false)]);
 
         AppIcons.Load(_dbPath, r.Apps.Select(a => a.AppId));
         var sorted = AllSorting.Apply(r.Apps, _sort);
         if (_selected is not { } sel || sorted.All(a => a.AppId != sel)) _selected = sorted.Count > 0 ? sorted[0].AppId : null;
 
         _rows.Children.Clear();
+        _rowBoxes.Clear();
         if (sorted.Count == 0 && r.Retired.Count == 0)
         {
             var empty = Label();
@@ -205,179 +220,248 @@ public sealed class AllView : UserControl
             empty.Margin = new Thickness(12);
             _rows.Children.Add(empty);
         }
-        for (var i = 0; i < sorted.Count; i++) _rows.Children.Add(AppRow(sorted[i], i, sorted[i].AppId == _selected, r.Apps.Max(a => a.Seconds)));
+        var nowUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        for (var i = 0; i < sorted.Count; i++) _rows.Children.Add(AppRow(sorted[i], sorted[i].AppId == _selected, nowUtc));
         if (r.Retired.Count > 0)
         {
             var head = Label();
             head.Text = Str(AllStringKeys.RetiredHeader).ToUpper(CultureInfo.CurrentCulture);
-            head.Margin = new Thickness(10, 8, 10, 4);
+            head.Margin = new Thickness(16, 8, 16, 4);
             _rows.Children.Add(head);
             foreach (var x in r.Retired) _rows.Children.Add(RetiredRow(x));
         }
         BuildTotals(r);
-        BuildNote(r);
     }
 
+    /// <summary>"APP" on the left and "HOURS ↓" on the right (accent while the list is sorted by hours).</summary>
     private void BuildHead()
     {
         _head.Children.Clear();
-        for (var i = 0; i < Columns.Length; i++)
+        _head.ColumnDefinitions.Clear();
+        _head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        _head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var app = HeadLabel(Str(AllStringKeys.ColApp), _sort.Column == AllColumn.App ? Arrow(_sort.Descending) : "", _sort.Column == AllColumn.App);
+        var hours = HeadLabel(Str(AllStringKeys.ColHours), _sort.Column == AllColumn.Hours ? Arrow(_sort.Descending) : "", _sort.Column == AllColumn.Hours);
+        app.HorizontalAlignment = HorizontalAlignment.Left;
+        hours.HorizontalAlignment = HorizontalAlignment.Right;
+        app.Margin = new Thickness(16, 0, 0, 0);
+        hours.Margin = new Thickness(0, 0, 16, 0);
+        Grid.SetColumn(hours, 1);
+        _head.Children.Add(app);
+        _head.Children.Add(hours);
+    }
+
+    private static TextBlock HeadLabel(string name, string arrow, bool active)
+    {
+        var t = new TextBlock { Text = (name.ToUpper(CultureInfo.CurrentCulture) + (arrow.Length > 0 ? " " + arrow : "")), FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        t.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        t.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+        t.SetResourceReference(TextBlock.ForegroundProperty, active ? "Brush.Accent" : "Brush.TextMuted");
+        return t;
+    }
+
+    /// <summary>"sorted by <b>hours</b> ↓": the name steps to the next sort column, the arrow flips the direction.</summary>
+    private void BuildSorted()
+    {
+        _sorted.Children.Clear();
+        _sorted.Children.Add(Muted(Str(AllStringKeys.SortedBy)));
+        var name = Clickable(ColumnName(_sort.Column).ToLowerInvariant(), Str(AllStringKeys.ChangeSort), () => { _sort = _sort.Next(); Redraw(); });
+        name.FontWeight = FontWeights.SemiBold;
+        _sorted.Children.Add(name);
+        _sorted.Children.Add(Muted(" "));
+        _sorted.Children.Add(Clickable(Arrow(_sort.Descending), Str(AllStringKeys.FlipSort), () => { _sort = _sort with { Descending = !_sort.Descending }; Redraw(); }));
+    }
+
+    private static TextBlock Muted(string text)
+    {
+        var t = Label();
+        t.Text = text;
+        return t;
+    }
+
+    private static TextBlock Clickable(string text, string automationName, Action onClick)
+    {
+        var t = Label();
+        t.Text = text;
+        t.Cursor = System.Windows.Input.Cursors.Hand;
+        t.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+        System.Windows.Automation.AutomationProperties.SetName(t, automationName);
+        t.MouseLeftButtonUp += (_, e) => { onClick(); e.Handled = true; };
+        return t;
+    }
+
+    // ---- rows ----
+
+    private FrameworkElement AppRow(AllAppRow a, bool selected, long nowUtc)
+    {
+        var brush = AppBrush(a.AppId);
+        var grid = new Grid { Margin = new Thickness(16, 0, 16, 0) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var tile = Tile(a.Name, a.AppId, brush, 32);
+        grid.Children.Add(tile);
+
+        var name = new TextBlock { Text = a.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+        name.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        name.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
+        var nameRow = new StackPanel { Orientation = Orientation.Horizontal };
+        nameRow.Children.Add(name);
+        if (a.Background) // why this app ranks below the others
         {
-            var col = Columns[i];
-            var active = col == _sort.Column;
-            var label = ColumnName(col).ToUpper(CultureInfo.CurrentCulture) + (active ? " " + Arrow(_sort.Descending) : "");
-            var text = new TextBlock { Text = label, FontWeight = FontWeights.Bold, HorizontalAlignment = i == 0 ? HorizontalAlignment.Left : HorizontalAlignment.Right, Margin = new Thickness(-6, 0, -6, 0) };
-            text.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
-            text.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
-            var b = new Button { Content = text, HorizontalAlignment = HorizontalAlignment.Stretch };
-            b.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.TableHead");
-            b.SetResourceReference(StyleProperty, "LinkButton");
-            b.SetResourceReference(Control.ForegroundProperty, active ? "Brush.Accent" : "Brush.TextMuted");
-            System.Windows.Automation.AutomationProperties.SetName(b, Str(AllStringKeys.SortBy, ColumnName(col)));
-            b.Click += (_, _) => { _sort = _sort.Tap(col); Redraw(); };
-            Grid.SetColumn(b, i);
-            _head.Children.Add(b);
-            if (i < Columns.Length - 1) _head.Children.Add(ResizeHandle(i));
+            var badge = BackgroundBadge.CreateIcon(); // icon only: the text pill squeezed names down to ".."
+            badge.Margin = new Thickness(6, 0, 0, 0);
+            badge.VerticalAlignment = VerticalAlignment.Center;
+            nameRow.Children.Add(badge);
         }
-    }
 
-    // ---- column resizing ----
-
-    private void LoadWidths()
-    {
-        var parts = (SettingsStore.Get(_dbPath, WidthsKey) ?? "").Split(',');
-        var w = parts.Select(p => double.TryParse(p, NumberStyles.Float, En, out var v) && v > 0 && double.IsFinite(v) ? v : 0).ToArray();
-        ColumnWidths = w.Length == DefaultWidths.Length && w.All(v => v > 0) ? w : [.. DefaultWidths];
-    }
-
-    private void SaveWidths() =>
-        SettingsStore.Set(_dbPath, WidthsKey, string.Join(",", ColumnWidths.Select(v => v.ToString("0.###", En))));
-
-    /// <summary>Pushes <see cref="ColumnWidths"/> into a table grid (the header, totals and every row share them).</summary>
-    private static void ApplyWidths(Grid g)
-    {
-        for (var i = 0; i < g.ColumnDefinitions.Count && i < ColumnWidths.Length; i++)
-            g.ColumnDefinitions[i].Width = new GridLength(ColumnWidths[i], GridUnitType.Star);
-    }
-
-    /// <summary>Records <paramref name="before"/> as an undo step if the widths now differ from it.</summary>
-    private static void PushUndo(double[] before)
-    {
-        if (before.SequenceEqual(ColumnWidths)) return;
-        UndoWidths.Push(before);
-        RedoWidths.Clear();
-    }
-
-    private void OnKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-    {
-        if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == 0) return;
-        var shift = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Shift) != 0;
-        var undo = e.Key == System.Windows.Input.Key.Z && !shift;
-        var redo = e.Key == System.Windows.Input.Key.Y || (e.Key == System.Windows.Input.Key.Z && shift);
-        if (!undo && !redo) return;
-        var from = undo ? UndoWidths : RedoWidths;
-        if (from.Count > 0)
+        var avg = a.SessionCount > 0 ? DurationFormat.HoursMinutes((long)Math.Round(a.AverageSessionSeconds)) : Str(AllStringKeys.Never);
+        var last = LastOpenedText(a.LastUsedUtc, nowUtc);
+        var stats = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0) };
+        if (_icons)
         {
-            (undo ? RedoWidths : UndoWidths).Push([.. ColumnWidths]);
-            ColumnWidths = from.Pop();
-            ApplyWidthsEverywhere();
-            SaveWidths();
+            stats.Children.Add(IconStat(ClockPath, avg, Str(AllStringKeys.ColAvgSession)));
+            stats.Children.Add(IconStat(RestorePath, last, Str(AllStringKeys.ColLastOpened)));
         }
-        e.Handled = true;
-    }
-
-    private void ApplyWidthsEverywhere()
-    {
-        ApplyWidths(_head);
-        ApplyWidths(_totals);
-        foreach (var row in _rows.Children)
-            if (row is Border { Child: Grid g }) ApplyWidths(g);
-    }
-
-    /// <summary>A thin drag target on the right edge of header column <paramref name="index"/>: moves the edge between it and the next column.</summary>
-    private FrameworkElement ResizeHandle(int index)
-    {
-        var h = new Border { Width = 8, HorizontalAlignment = HorizontalAlignment.Right, Background = Brushes.Transparent, Cursor = System.Windows.Input.Cursors.SizeWE };
-        Grid.SetColumn(h, index);
-        Panel.SetZIndex(h, 1);
-        double startX = 0, left = 0, right = 0;
-        double[] before = [];
-        h.MouseLeftButtonDown += (_, e) =>
+        else
         {
-            if (e.ClickCount == 2) { var before = ColumnWidths; ColumnWidths = [.. DefaultWidths]; PushUndo(before); ApplyWidthsEverywhere(); SaveWidths(); e.Handled = true; return; }
-            startX = e.GetPosition(_head).X;
-            left = ColumnWidths[index];
-            right = ColumnWidths[index + 1];
-            before = [.. ColumnWidths];
-            h.CaptureMouse();
-            e.Handled = true;
-        };
-        h.MouseMove += (_, e) =>
-        {
-            if (!h.IsMouseCaptured || _head.ActualWidth <= 0) return;
-            var perPx = ColumnWidths.Sum() / _head.ActualWidth;
-            var min = MinColumnPx * perPx;
-            var pair = left + right;
-            var l = Math.Clamp(left + (e.GetPosition(_head).X - startX) * perPx, Math.Min(min, pair / 2), Math.Max(pair - min, pair / 2));
-            ColumnWidths[index] = l;
-            ColumnWidths[index + 1] = pair - l;
-            ApplyWidthsEverywhere();
-        };
-        h.MouseLeftButtonUp += (_, _) => { if (h.IsMouseCaptured) { h.ReleaseMouseCapture(); PushUndo(before); SaveWidths(); } };
-        return h;
-    }
+            stats.Children.Add(LabeledStat(Str(AllStringKeys.ColAvgSession), avg));
+            stats.Children.Add(LabeledStat(Str(AllStringKeys.ColLastOpened), last));
+        }
+        var middle = new StackPanel { Margin = new Thickness(12, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
+        middle.Children.Add(nameRow);
+        middle.Children.Add(stats);
+        // The badge sits right after the name; the name gives up width (and trims) before the badge is pushed out.
+        var reserve = a.Background ? 26 : 0;
+        middle.SizeChanged += (_, _) => name.MaxWidth = Math.Max(40, middle.ActualWidth - reserve);
+        Grid.SetColumn(middle, 1);
+        grid.Children.Add(middle);
 
-    private FrameworkElement AppRow(AllAppRow a, int index, bool selected, long maxSeconds)
-    {
-        var grid = Columns2();
-        grid.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.Table");
-        grid.Children.Add(NameCell(a.Name, AppBrush(a.AppId), dashed: false, a.AppId, a.Background));
-        AddNumber(grid, 1, AllFormat.Hours(a.Seconds), bold: true, "Brush.Text");
-        AddNumber(grid, 2, a.DaysUsed.ToString(En), bold: false, "Brush.TextSoft");
-        AddNumber(grid, 3, AllFormat.AveragePerDay(a.AverageSecondsPerDay), bold: false, "Brush.TextSoft");
-
-        // Share: a 30 x 4 bar scaled to the biggest app, then the percentage.
-        var track = new Border { Width = 30, Height = 4, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
-        track.SetResourceReference(Border.BackgroundProperty, "Brush.BorderSoft");
-        track.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Tiny");
-        var fill = new Border { Height = 4, HorizontalAlignment = HorizontalAlignment.Left, Width = maxSeconds > 0 ? 30.0 * a.Seconds / maxSeconds : 0 };
-        fill.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Tiny");
-        fill.SetResourceReference(Border.BackgroundProperty, AppBrush(a.AppId));
-        track.Child = fill;
-        var pct = Cell(AllFormat.Share(a.Share), "Brush.TextSoft", "Double.FontSize.Small");
-        pct.Width = 32;
-        pct.TextAlignment = TextAlignment.Right;
-        var share = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
-        share.Children.Add(track);
-        share.Children.Add(pct);
-        Grid.SetColumn(share, 4);
-        grid.Children.Add(share);
+        var hours = HoursFigure(AllFormat.Hours(a.Seconds), big: true, _icons);
+        Grid.SetColumn(hours, 2);
+        grid.Children.Add(hours);
 
         var box = Line("Brush.BorderSoft", bottom: true);
+        box.Padding = new Thickness(0, _icons ? 5 : 4, 0, _icons ? 5 : 4);
         box.Cursor = System.Windows.Input.Cursors.Hand;
-        box.SetResourceReference(Border.BackgroundProperty, selected ? "Brush.BorderSoft" : index % 2 == 1 ? "Brush.Panel" : "Brush.Surface");
+        box.SetResourceReference(Border.BackgroundProperty, selected ? "Brush.BorderSoft" : "Brush.Surface");
         box.Child = grid;
         var id = a.AppId;
-        box.MouseLeftButtonUp += (_, _) => { _selected = id; Redraw(); };
+        _rowBoxes[id] = box;
+        box.MouseLeftButtonUp += (_, _) => SelectRow(id);
         box.MouseLeftButtonDown += (_, e) => { if (e.ClickCount == 2) _openDetail?.Invoke(id); }; // double-click: app detail
         return box;
     }
 
+    /// <summary>Moves the selection highlight between two rows; the table is not rebuilt for it.</summary>
+    private void SelectRow(long id)
+    {
+        if (_selected == id) return;
+        if (_selected is { } old && _rowBoxes.TryGetValue(old, out var oldBox)) oldBox.SetResourceReference(Border.BackgroundProperty, "Brush.Surface");
+        _selected = id;
+        if (_rowBoxes.TryGetValue(id, out var box)) box.SetResourceReference(Border.BackgroundProperty, "Brush.BorderSoft");
+    }
+
+    /// <summary>The app's own icon at full tile size, or a coloured tile with its first letter until one is cached.</summary>
+    private static Border Tile(string name, long appId, string brushKey, double size)
+    {
+        var tile = new Border { Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center };
+        tile.SetResourceReference(Border.BackgroundProperty, brushKey);
+        tile.CornerRadius = new CornerRadius(size / 4);
+        var letter = new TextBlock
+        {
+            Text = name.Length > 0 ? char.ToUpperInvariant(name[0]).ToString() : "?",
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            FontWeight = FontWeights.Bold, FontSize = size * 0.42, Foreground = new SolidColorBrush(Color.FromRgb(0x14, 0x18, 0x1A)),
+        };
+        letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        if (!AppIcons.TryFill(tile, appId)) tile.Child = letter;
+        return tile;
+    }
+
+    private static FrameworkElement LabeledStat(string label, string value)
+    {
+        var l = Label();
+        l.Text = label.ToUpper(CultureInfo.CurrentCulture);
+        l.FontSize = 9;
+        l.TextTrimming = TextTrimming.CharacterEllipsis;
+        var v = Cell(value, "Brush.TextSoft", "Double.FontSize.Small");
+        v.TextTrimming = TextTrimming.CharacterEllipsis;
+        var s = new StackPanel { Margin = new Thickness(0, 0, 18, 0) };
+        s.Children.Add(l);
+        s.Children.Add(v);
+        return s;
+    }
+
+    private static FrameworkElement IconStat(string pathData, string value, string automationName)
+    {
+        var icon = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse(pathData), StrokeThickness = 1.8, Width = 11, Height = 11, Stretch = Stretch.Uniform,
+            StrokeLineJoin = PenLineJoin.Round, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0),
+        };
+        icon.SetResourceReference(Shape.StrokeProperty, "Brush.TextMuted");
+        var v = Cell(value, "Brush.TextSoft", "Double.FontSize.Small");
+        v.TextTrimming = TextTrimming.CharacterEllipsis;
+        var s = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 16, 0), ToolTip = automationName };
+        System.Windows.Automation.AutomationProperties.SetName(s, automationName);
+        s.Children.Add(icon);
+        s.Children.Add(v);
+        return s;
+    }
+
+    /// <summary>"42 h": the figure in the accent colour, the unit small and muted.</summary>
+    private static FrameworkElement HoursFigure(string hours, bool big, bool tight = false)
+    {
+        var num = new TextBlock { Text = hours, FontWeight = FontWeights.Bold, FontSize = big ? 18 : 14, VerticalAlignment = VerticalAlignment.Center };
+        num.SetResourceReference(TextBlock.ForegroundProperty, big ? "Brush.Accent" : "Brush.Text");
+        num.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
+        var unit = new TextBlock { Text = " h", FontSize = big ? 12 : 12, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, big ? 3 : 1) };
+        unit.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+        unit.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
+        var s = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        s.Children.Add(num);
+        s.Children.Add(unit);
+        return s;
+    }
+
+    private static string LastOpenedText(long lastUtc, long nowUtc)
+    {
+        if (lastUtc <= 0) return Str(AllStringKeys.Never);
+        var age = nowUtc - lastUtc;
+        if (age < 60) return Str(AllStringKeys.JustNow);
+        if (age < 3600) return Str(AllStringKeys.MinutesAgo, (age / 60).ToString(En));
+        var day = DateOnly.FromDateTime(Local(lastUtc));
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        if (day == today) return Str(AllStringKeys.HoursAgo, (age / 3600).ToString(En));
+        if (day == today.AddDays(-1)) return Str(AppDetailStringKeys.Yesterday);
+        return day.ToString(day.Year == today.Year ? "d MMM" : "d MMM yyyy", En);
+    }
+
     private FrameworkElement RetiredRow(AllRetiredRow x)
     {
-        var grid = Columns2();
-        grid.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.TableRetired");
+        var grid = new Grid { Margin = new Thickness(16, 0, 16, 0) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var name = new TextBlock { Text = x.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
+        name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+        name.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+        name.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
+        var stopped = Label();
+        stopped.Text = Str(AllStringKeys.Stopped, x.StoppedDate.ToString("d MMM", En));
+        stopped.TextTrimming = TextTrimming.CharacterEllipsis;
+        var left = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        left.Children.Add(name);
+        left.Children.Add(stopped);
+        var hours = HoursFigure(AllFormat.Hours(x.Seconds), big: false);
+        Grid.SetColumn(hours, 1);
+        grid.Children.Add(left);
+        grid.Children.Add(hours);
         grid.SetResourceReference(UIElement.OpacityProperty, "Double.Opacity.Retired");
-        grid.Children.Add(NameCell(x.Name, "Brush.TextMuted", dashed: true));
-        AddNumber(grid, 1, AllFormat.Hours(x.Seconds), bold: false, "Brush.Text");
-        AddNumber(grid, 2, x.DaysUsed.ToString(En), bold: false, "Brush.Text");
-        AddNumber(grid, 3, AllFormat.AveragePerDay(x.AverageSecondsPerDay), bold: false, "Brush.Text");
-        var stopped = Cell(Str(AllStringKeys.Stopped, x.StoppedDate.ToString("d MMM", En)), "Brush.TextMuted", "Double.FontSize.Small");
-        stopped.HorizontalAlignment = HorizontalAlignment.Right;
-        stopped.Margin = new Thickness(0, 0, 10, 0);
-        Grid.SetColumn(stopped, 4);
-        grid.Children.Add(stopped);
         var box = Line("Brush.BorderSoft", bottom: true);
+        box.Padding = new Thickness(0, 8, 0, 8);
         box.Child = grid;
         return box;
     }
@@ -385,28 +469,19 @@ public sealed class AllView : UserControl
     private void BuildTotals(AllResult r)
     {
         _totals.Children.Clear();
-        var name = Cell(Str(AllStringKeys.TotalRow), "Brush.Text", "Double.FontSize.Small");
+        _totals.ColumnDefinitions.Clear();
+        _totals.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        _totals.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var name = Cell(Str(AllStringKeys.TotalRow), "Brush.Text", "Double.FontSize.Body");
         name.FontWeight = FontWeights.Bold;
-        name.Margin = new Thickness(10, 0, 0, 0);
-        name.VerticalAlignment = VerticalAlignment.Center;
+        name.Margin = new Thickness(16, 0, 8, 0);
+        name.TextTrimming = TextTrimming.CharacterEllipsis;
+        var hours = Cell(Str(AllStringKeys.Hours, AllFormat.Hours(r.Totals.Seconds)), "Brush.Accent", "Double.FontSize.Body");
+        hours.FontWeight = FontWeights.Bold;
+        hours.Margin = new Thickness(0, 0, 16, 0);
+        Grid.SetColumn(hours, 1);
         _totals.Children.Add(name);
-        AddNumber(_totals, 1, AllFormat.Hours(r.Totals.Seconds), bold: true, "Brush.Accent", totals: true);
-        AddNumber(_totals, 2, r.Totals.DaysUsed.ToString(En), bold: false, "Brush.TextSoft", totals: true);
-        AddNumber(_totals, 3, AllFormat.AveragePerDay(r.Totals.AverageSecondsPerDay), bold: false, "Brush.TextSoft", totals: true);
-        AddNumber(_totals, 4, AllFormat.Share(r.Totals.Seconds > 0 ? 1 : 0), bold: false, "Brush.TextSoft", totals: true);
-    }
-
-    private void BuildNote(AllResult r)
-    {
-        var a = r.Apps.FirstOrDefault(x => x.AppId == _selected);
-        if (a is null) { _note.Inlines.Clear(); return; }
-        var now = DateTime.Now;
-        string Month(AllBestMonth m) => new DateTime(m.Year, m.Month, 1).ToString(m.Year == now.Year ? "MMM" : "MMM yyyy", En);
-        var text = a.FirstTracked is { } first && a.BestMonth is { } best
-            ? Str(AllStringKeys.Note, first.ToString(first.Year == now.Year ? "d MMM" : "d MMM yyyy", En), Month(best),
-                AllFormat.Hours(best.Seconds), DurationFormat.HoursMinutes(a.LongestSessionSeconds))
-            : Str(AllStringKeys.NoteNone);
-        SetBold(_note, [(a.Name, true), (text, false)]);
+        _totals.Children.Add(hours);
     }
 
     // ---- helpers ----
@@ -417,19 +492,14 @@ public sealed class AllView : UserControl
     {
         AllColumn.App => AllStringKeys.ColApp,
         AllColumn.Hours => AllStringKeys.ColHours,
+        AllColumn.AvgSession => AllStringKeys.ColAvgSession,
+        AllColumn.LastOpened => AllStringKeys.ColLastOpened,
         AllColumn.DaysUsed => AllStringKeys.ColDays,
         AllColumn.AvgPerDay => AllStringKeys.ColAvg,
         _ => AllStringKeys.ColShare,
     });
 
     private static string Arrow(bool descending) => Str(descending ? AllStringKeys.ArrowDesc : AllStringKeys.ArrowAsc);
-
-    private static Grid Columns2()
-    {
-        var g = new Grid();
-        foreach (var w in ColumnWidths) g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(w, GridUnitType.Star) });
-        return g;
-    }
 
     private static Border Line(string brushKey, bool bottom)
     {
@@ -445,49 +515,6 @@ public sealed class AllView : UserControl
         t.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
         t.SetResourceReference(TextBlock.FontSizeProperty, sizeKey);
         return t;
-    }
-
-    private static void AddNumber(Grid grid, int column, string text, bool bold, string brushKey, bool totals = false)
-    {
-        var t = Cell(text, brushKey, column == 4 && totals ? "Double.FontSize.Small" : "Double.FontSize.Body");
-        t.HorizontalAlignment = HorizontalAlignment.Right;
-        t.Margin = new Thickness(0, 0, 10, 0);
-        if (bold) t.FontWeight = FontWeights.Bold;
-        Grid.SetColumn(t, column);
-        grid.Children.Add(t);
-    }
-
-    private static FrameworkElement NameCell(string name, string brushKey, bool dashed, long? appId = null, bool background = false)
-    {
-        var dot = new Rectangle { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
-        dot.SetResourceReference(FrameworkElement.WidthProperty, "Double.Size.Swatch");
-        dot.SetResourceReference(FrameworkElement.HeightProperty, "Double.Size.Swatch");
-        dot.SetResourceReference(Rectangle.RadiusXProperty, "Double.Radius.Tiny");
-        dot.SetResourceReference(Rectangle.RadiusYProperty, "Double.Radius.Tiny");
-        if (dashed)
-        {
-            dot.SetResourceReference(Shape.StrokeProperty, brushKey);
-            dot.StrokeThickness = 1;
-            dot.StrokeDashArray = new DoubleCollection { 2, 2 };
-        }
-        else dot.SetResourceReference(Shape.FillProperty, brushKey);
-        var text = new TextBlock { Text = name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        text.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
-        text.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
-        text.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
-        var row = new DockPanel { Margin = new Thickness(10, 0, 4, 0), LastChildFill = true };
-        FrameworkElement lead = dot;
-        if (appId is { } id && AppIcons.Icon(id, 16) is { } icon) { icon.Margin = new Thickness(0, 0, 8, 0); lead = icon; }
-        DockPanel.SetDock(lead, Dock.Left);
-        row.Children.Add(lead);
-        if (background) // why this app ranks below the others
-        {
-            var badge = BackgroundBadge.CreateIcon(); // icon only: the text pill squeezed names down to ".."
-            DockPanel.SetDock(badge, Dock.Right);
-            row.Children.Add(badge);
-        }
-        row.Children.Add(text);
-        return row;
     }
 
     private static TextBlock Label()
@@ -513,27 +540,5 @@ public sealed class AllView : UserControl
             }
             target.Inlines.Add(run);
         }
-    }
-
-    // ---- export ----
-
-    private void Export()
-    {
-        if (_result is not { } r) return;
-        var sort = _sort;
-        if (_window is not null) _window.KeepOpen = true; // the file dialog deactivates the flyout (decision 55)
-        try
-        {
-            var dlg = new SaveFileDialog { Title = Str(AllStringKeys.Export), FileName = AllExport.FileName, Filter = "CSV (*.csv)|*.csv" };
-            if (dlg.ShowDialog() != true) return;
-            AllExport.Write(r, sort, dlg.FileName);
-            _export.Content = Str(AllStringKeys.ExportDone);
-            var reset = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-            reset.Tick += (_, _) => { reset.Stop(); _export.Content = Str(AllStringKeys.Export); };
-            reset.Start();
-        }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
-        finally { if (_window is not null) _window.KeepOpen = false; }
     }
 }

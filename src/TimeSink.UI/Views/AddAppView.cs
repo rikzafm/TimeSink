@@ -27,6 +27,7 @@ public sealed partial class AddAppView : UserControl
         public bool Done;
         public Border Tile = null!;
         public Button Button = null!;
+        public TextBlock? Open;
     }
 
     private static readonly ControlTemplate Flat = (ControlTemplate)XamlReader.Parse(
@@ -49,6 +50,7 @@ public sealed partial class AddAppView : UserControl
     private List<Row> _rows = [];
     private bool _loading;
     private ContentControl _body = null!;
+    private UIElement _shell = null!;
     private string _tab = "Running";
     private readonly Dictionary<string, RadioButton> _tabButtons = new();
     private readonly HashSet<string> _addedElsewhere = new(StringComparer.OrdinalIgnoreCase); // added from Installed/Browse in this visit
@@ -59,10 +61,39 @@ public sealed partial class AddAppView : UserControl
         _dbPath = dbPath;
         _close = close;
         SetResourceReference(BackgroundProperty, "Brush.Surface");
-        Content = BuildShell();
+        Content = _shell = BuildShell();
         _timer.Tick += (_, _) => Refresh();
-        Loaded += (_, _) => { _themes.Applied += Redraw; Refresh(); _timer.Start(); };
+        Loaded += (_, _) => { _themes.Applied += Redraw; Redraw(); Refresh(); _timer.Start(); };
         Unloaded += (_, _) => { _themes.Applied -= Redraw; _timer.Stop(); };
+    }
+
+    /// <summary>
+    /// The view is kept between visits (icons, the installed list and the built Running tab survive); this drops everything
+    /// that belonged to the previous visit and refreshes what may have changed while it was closed.
+    /// </summary>
+    public void OnShown()
+    {
+        _session.Clear();
+        _addedElsewhere.Clear();
+        _query = "";
+        _trackedQuery = "";
+        _openId = null;
+        _mode = "";
+        _mergeSource = null;
+        _mergePicked.Clear();
+        _restoreOffset = false;
+        _settingsId = null;
+        _settingsReturn = null;
+        _settingsScroll = null;
+        _settingsAsk = "";
+        _clearStep = 0;
+        _libraryLoaded = false;
+        Content = _shell;
+        UpdateCount();
+        _rows.RemoveAll(r => r.Done);
+        if (_tab != "Running") _tabButtons["Running"].IsChecked = true; // Checked rebuilds the Running body
+        else Render();
+        LoadInstalled(); // quiet re-scan: swaps the list only when it differs
     }
 
     // ---- shell: header, tabs, body, footer ----------------------------------------------------------------
@@ -142,11 +173,15 @@ public sealed partial class AddAppView : UserControl
         }
     }
 
+    // built once: _list is a single shared panel, so a fresh host per visit would add it to a second parent and throw
+    private UIElement? _runningTab;
+
     private UIElement BuildRunningTab()
     {
+        if (_runningTab is not null) return _runningTab;
         var host = new StackPanel { Margin = new Thickness(12, 12, 12, 0) };
         host.Children.Add(_list);
-        return new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = host };
+        return _runningTab = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = host };
     }
 
     // ---- data ---------------------------------------------------------------------------------------------
@@ -182,10 +217,29 @@ public sealed partial class AddAppView : UserControl
             // rows tracked in this visit stay on screen as "Tracking ✓" (the exclusion list no longer returns them)
             var merged = fresh.Where(r => !_session.ContainsKey(r.App.ExePath)).Concat(_session.Values)
                 .OrderBy(r => r.App.StartUtc).ToList();
+            if (SameRows(_rows, merged))
+            {
+                // nothing opened or closed: keep the rows (and their decoded icons) and only move the "open for" clocks
+                var tickNow = DateTimeOffset.UtcNow;
+                foreach (var row in _rows) if (row.Open is not null) row.Open.Text = OpenForText(row, tickNow);
+                return;
+            }
             _rows = merged;
             Render();
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }
+
+    private static bool SameRows(List<Row> old, List<Row> now)
+    {
+        if (old.Count != now.Count) return false;
+        for (var i = 0; i < old.Count; i++)
+            if (!string.Equals(old[i].App.ExePath, now[i].App.ExePath, StringComparison.OrdinalIgnoreCase) || old[i].Done != now[i].Done)
+                return false;
+        return true;
+    }
+
+    private static string OpenForText(Row row, DateTimeOffset now) =>
+        TimeText.Str(AddAppStrings.OpenFor, DurationFormat.HoursMinutes((long)(now - row.App.StartUtc).TotalSeconds));
 
     private void Track(Row row)
     {
@@ -258,7 +312,8 @@ public sealed partial class AddAppView : UserControl
         name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
         name.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         name.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
-        var open = new TextBlock { Text = TimeText.Str(AddAppStrings.OpenFor, DurationFormat.HoursMinutes((long)(now - row.App.StartUtc).TotalSeconds)) };
+        var open = new TextBlock { Text = OpenForText(row, now) };
+        row.Open = open;
         open.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
         open.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         open.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
@@ -387,15 +442,23 @@ public sealed partial class AddAppView : UserControl
         return t;
     }
 
-    private Button IconButton(string pathData, string brushKey)
+    /// <summary>A flat glyph button. A <paramref name="subtle"/> one is small and dimmed until hovered (the close X, the unmerge X).</summary>
+    private Button IconButton(string pathData, string brushKey, bool subtle = false)
     {
+        var size = subtle ? 11 : 18;
         var path = new System.Windows.Shapes.Path
         {
-            Data = Geometry.Parse(pathData), StrokeThickness = 2.2, Width = 18, Height = 18, Stretch = Stretch.Uniform,
+            Data = Geometry.Parse(pathData), StrokeThickness = subtle ? 1.8 : 2.2, Width = size, Height = size, Stretch = Stretch.Uniform,
             StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
         };
         path.SetResourceReference(Shape.StrokeProperty, brushKey);
         var b = new Button { Template = Flat, Content = path, Width = 34, Height = 34, Cursor = System.Windows.Input.Cursors.Hand, Focusable = false, Background = Brushes.Transparent, BorderBrush = Brushes.Transparent };
+        if (subtle)
+        {
+            path.Opacity = 0.55;
+            b.MouseEnter += (_, _) => path.Opacity = 1;
+            b.MouseLeave += (_, _) => path.Opacity = 0.55;
+        }
         return b;
     }
 }

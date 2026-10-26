@@ -21,6 +21,28 @@ public sealed class AllSortingTests : IDisposable
     }
 
     [Fact]
+    public void Next_steps_through_hours_app_avg_session_and_last_opened_then_wraps()
+    {
+        var s = AllSort.Default.Next();
+        s.Should().Be(new AllSort(AllColumn.App, false));
+        s = s.Next();
+        s.Should().Be(new AllSort(AllColumn.AvgSession, true));
+        s = s.Next();
+        s.Should().Be(new AllSort(AllColumn.LastOpened, true));
+        s.Next().Should().Be(AllSort.Default);
+    }
+
+    [Fact]
+    public void Avg_session_and_last_opened_sort_by_their_own_values()
+    {
+        AllAppRow Row(long id, string name, long secs, int sessions, long last) =>
+            new(id, name, secs, 1, 0, 0, null, null, 0, false, sessions, last);
+        var rows = new[] { Row(1, "A", 7200, 4, 300), Row(2, "B", 7200, 1, 100), Row(3, "C", 100, 0, 0) };
+        Names(AllSorting.Apply(rows, new AllSort(AllColumn.AvgSession, true))).Should().Equal("B", "A", "C");
+        Names(AllSorting.Apply(rows, new AllSort(AllColumn.LastOpened, true))).Should().Equal("A", "B", "C");
+    }
+
+    [Fact]
     public void Tapping_a_new_numeric_column_sorts_high_to_low_and_tapping_again_flips()
     {
         var s = AllSort.Default.Tap(AllColumn.AvgPerDay);

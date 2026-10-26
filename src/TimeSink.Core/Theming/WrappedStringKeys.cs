@@ -49,6 +49,9 @@ public static class WrappedStringKeys
     public const string GachaHeadline = "wrapGachaHeadline";
     public const string NoGames = "wrapNoGames";
     public const string NoGacha = "wrapNoGacha";
+    public const string CardNameLongest = "wrapCardNameLongest";
+    public const string Card6Label = "wrapCard6Label";
+    public const string LongestHeadline = "wrapLongestHeadline";
     public const string Prev = "wrapPrev";
     public const string Next = "wrapNext";
     public const string GoTo = "wrapGoTo";
@@ -64,5 +67,6 @@ public static class WrappedStringKeys
         Peak, PeakValue, PeakSub, Noon, NoonSub, NoonSubEarly, CardNameTotal, CardNameTop, CardNameHabits, Prev, Next, GoTo,
         Save, SaveDone, SaveTitle, SaveFilter,
         CardNameGames, CardNameGacha, Card4Label, GamesHeadline, Card5Label, GachaHeadline, NoGames, NoGacha,
+        CardNameLongest, Card6Label, LongestHeadline,
     ];
 }

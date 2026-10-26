@@ -89,16 +89,16 @@ public static class InstalledCatalog
                || name.StartsWith("uninstall", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Case-insensitive substring match on name or publisher; a blank query returns everything.</summary>
+    /// <summary>Fuzzy match on name or the label shown under it (publisher, or "Steam" for Steam games), best match first; a blank query returns everything in list order.</summary>
     public static IReadOnlyList<InstalledApp> Search(IEnumerable<InstalledApp> apps, string? query)
     {
-        var q = (query ?? "").Trim();
-        if (q.Length == 0) return apps.ToList();
-        return apps.Where(a => Contains(a.Name, q) || (a.Publisher is not null && Contains(a.Publisher, q))).ToList();
+        if (string.IsNullOrWhiteSpace(query)) return apps.ToList();
+        return apps
+            .Select(a => (App: a, Score: FuzzySearch.Score(query, a.Name, a.IsSteam ? InstalledApp.SteamSource : a.Publisher)))
+            .Where(x => x.Score is not null)
+            .OrderByDescending(x => x.Score).ThenBy(x => SortKey(x.App.Name), StringComparer.Ordinal)
+            .Select(x => x.App).ToList();
     }
-
-    private static bool Contains(string text, string q) =>
-        Fold(text).Contains(Fold(q), StringComparison.Ordinal);
 
     /// <summary>A-Z groups in order, digits and symbols together under "#" at the end.</summary>
     public static IReadOnlyList<InstalledGroup> Group(IEnumerable<InstalledApp> apps)

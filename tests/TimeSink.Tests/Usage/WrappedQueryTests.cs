@@ -46,6 +46,14 @@ public sealed class WrappedQueryTests : IDisposable
     }
 
     [Fact]
+    public void Longest_sessions_list_each_app_once_by_its_best_session()
+    {
+        var r = Run();
+        // Alpha's open session (08:00 to now = 7.5 h) beats its other sessions, so Alpha appears once.
+        r.LongestSessions!.Select(a => (a.Name, a.Seconds)).Should().Equal(("Alpha", 27000L), ("Beta", 3600L), ("Gamma", 1800L), ("Delta", 600L));
+    }
+
+    [Fact]
     public void Longest_streak_uses_local_days_and_reports_its_span()
     {
         var r = Run();

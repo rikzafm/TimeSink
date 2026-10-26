@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using TimeSink.Core.Apps;
 using TimeSink.UI.Services;
 
@@ -19,6 +20,7 @@ public sealed partial class AddAppView
     private readonly Dictionary<string, UIElement> _groupHeaders = new();
     private readonly Dictionary<string, List<(Border Tile, string Name)>> _tiles = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<LibraryApp> _library = [];
+    private IReadOnlyList<MergedAlias> _aliases = [];
 
     private UIElement BuildInstalledTab()
     {
@@ -37,12 +39,17 @@ public sealed partial class AddAppView
         hint.IsHitTestVisible = false;
         hint.VerticalAlignment = VerticalAlignment.Center;
         hint.Visibility = _query.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        // Typing waits a beat before the list is rebuilt (every row is rebuilt, so per-key rebuilds queue up).
+        var debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        debounce.Tick += (_, _) => { debounce.Stop(); RenderInstalled(reload: false); };
         box.TextChanged += (_, _) =>
         {
             _query = box.Text;
             hint.Visibility = _query.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-            RenderInstalled();
+            debounce.Stop();
+            debounce.Start();
         };
+        box.Unloaded += (_, _) => debounce.Stop();
         var magnifier = new System.Windows.Shapes.Path
         {
             Data = Geometry.Parse("M11,4 A7,7 0 1 0 11,18 A7,7 0 1 0 11,4 M20,20 L16.5,16.5"), StrokeThickness = 2, Width = 16, Height = 16,
@@ -92,9 +99,12 @@ public sealed partial class AddAppView
         }).ContinueWith(t =>
         {
             _installedLoading = false;
+            // a re-scan on reopen: an empty result (scan failed) or an identical one leaves the cached list and its rows alone
+            if (_installed is not null && (t.Result.Count == 0 || _installed.SequenceEqual(t.Result))) return;
             _installed = t.Result;
             if (_tab == "Installed") RenderInstalled();
             else if (_tab == "Tracked" && _mergeSource is not null) ShowTracked(); // merge picker was waiting for the list
+            else if (_tab == "Tracked") RenderTracked(); // rows were waiting for publishers
             LoadInstalledIcons(t.Result);
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }
@@ -120,7 +130,13 @@ public sealed partial class AddAppView
         });
     }
 
-    private void RenderInstalled()
+    private bool _libraryLoaded;
+    private HashSet<long> _trivialRetired = [];
+
+    private void RenderInstalled() => RenderInstalled(reload: true);
+
+    /// <param name="reload">Re-read the library from the database; a search keystroke reuses what the last render read.</param>
+    private void RenderInstalled(bool reload)
     {
         if (_instList is null) return;
         var offset = _instScroll.VerticalOffset;
@@ -128,7 +144,18 @@ public sealed partial class AddAppView
         _rail.Children.Clear();
         _groupHeaders.Clear();
         _tiles.Clear();
-        try { using var lib = AppLibrary.Open(_dbPath); _library = lib.Library(); } catch { _library = []; }
+        if (reload || !_libraryLoaded)
+        {
+            try
+            {
+                using var lib = AppLibrary.Open(_dbPath);
+                _library = lib.Library();
+                _aliases = lib.MergedAliases();
+                _trivialRetired = lib.TrivialRetired();
+            }
+            catch { _library = []; _aliases = []; _trivialRetired = []; }
+            _libraryLoaded = true;
+        }
 
         if (_installed is null)
         {
@@ -144,7 +171,9 @@ public sealed partial class AddAppView
             _instList.Children.Add(none);
         }
 
-        var groups = InstalledCatalog.Group(shown);
+        var ranked = _query.Trim().Length > 0; // a search lists best match first, without A-Z groups
+        var groups = ranked ? [] : InstalledCatalog.Group(shown);
+        if (ranked) foreach (var app in shown) _instList.Children.Add(Cached(InstalledRow(app)));
         foreach (var g in groups)
         {
             var head = Text(null, "Double.FontSize.Small", "Brush.TextMuted");
@@ -170,9 +199,7 @@ public sealed partial class AddAppView
         }
 
         // apps stopped earlier (history kept): restorable from here, whether or not they are installed
-        HashSet<long> trivial;
-        try { using var lib = AppLibrary.Open(_dbPath); trivial = lib.TrivialRetired(); } catch { trivial = []; }
-        var retired = _library.Where(a => a.State == "retired" && !trivial.Contains(a.Id)).OrderByDescending(a => a.RetiredUtc).ToList();
+        var retired = _library.Where(a => a.State == "retired" && !_trivialRetired.Contains(a.Id)).OrderByDescending(a => a.RetiredUtc).ToList();
         if (retired.Count > 0 && _query.Trim().Length == 0)
         {
             var head = Text("Str.AddRetiredHeader", "Double.FontSize.Small", "Brush.TextMuted");
@@ -202,9 +229,14 @@ public sealed partial class AddAppView
 
     // ---- rows ---------------------------------------------------------------------------------------------
 
+    // a merged app is the app it counts under, so it reads as tracked (or stopped) with that app
     private LibraryApp? StateOf(string exePath, string? family) =>
         _library.FirstOrDefault(a => string.Equals(a.ExePath, exePath, StringComparison.OrdinalIgnoreCase))
-        ?? (family is null ? null : _library.FirstOrDefault(a => a.State == "tracked" && string.Equals(a.PackageFamily, family, StringComparison.OrdinalIgnoreCase)));
+        ?? KeeperOf(_aliases.FirstOrDefault(m => string.Equals(m.ExePath, exePath, StringComparison.OrdinalIgnoreCase)))
+        ?? (family is null ? null : _library.FirstOrDefault(a => a.State == "tracked" && string.Equals(a.PackageFamily, family, StringComparison.OrdinalIgnoreCase)))
+        ?? (family is null ? null : KeeperOf(_aliases.FirstOrDefault(m => string.Equals(m.PackageFamily, family, StringComparison.OrdinalIgnoreCase))));
+
+    private LibraryApp? KeeperOf(MergedAlias? alias) => alias is null ? null : _library.FirstOrDefault(a => a.Id == alias.CanonicalId);
 
     private UIElement InstalledRow(InstalledApp app) => AppRow(app.Name, app.ExePath, app, StateOf(app.ExePath, app.PackageFamily));
 
@@ -323,6 +355,7 @@ public sealed partial class AddAppView
     }
 
     private const string IconGamepad = "M7,8 L17,8 C20,8 21.5,11 21,15 C20.7,17.5 18.5,18 17.5,16.5 L16,15 L8,15 L6.5,16.5 C5.5,18 3.3,17.5 3,15 C2.5,11 4,8 7,8 Z M8,10.5 L8,13 M6.8,11.7 L9.2,11.7 M16.5,11 L16.6,11 M18,12.5 L18.1,12.5";
+    private const string IconApps = "M5,5 L10,5 L10,10 L5,10 Z M14,5 L19,5 L19,10 L14,10 Z M5,14 L10,14 L10,19 L5,19 Z M14,14 L19,14 L19,19 L14,19 Z";
     private const string IconSparkle = "M12,3 L14,10 L21,12 L14,14 L12,21 L10,14 L3,12 L10,10 Z";
 
     /// <summary>The per-row game-type button: cycles Other, Game, Gacha (what Year > Wrapped counts the app as); lit unless Other.</summary>

@@ -17,7 +17,13 @@ public sealed record AllAppRow(
     DateOnly? FirstTracked,
     AllBestMonth? BestMonth,
     long LongestSessionSeconds,
-    bool Background = false);
+    bool Background = false,
+    int SessionCount = 0,
+    long LastUsedUtc = 0)
+{
+    /// <summary>Mean length of one session in seconds (0 when the app never ran).</summary>
+    public double AverageSessionSeconds => SessionCount > 0 ? Seconds / (double)SessionCount : 0;
+}
 
 /// <summary>A retired app: listed below the table, dimmed, never part of the totals or shares.</summary>
 public sealed record AllRetiredRow(

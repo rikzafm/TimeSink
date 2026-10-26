@@ -92,6 +92,12 @@ public static class WrappedQuery
             return new WrappedKindTop(list.Take(PodiumSize).ToList(), list.Skip(PodiumSize).Take(OthersSize).ToList(), list.Sum(a => a.Seconds));
         }
 
+        // One entry per app group: its single longest session that ended this year (a session counts whole, as in All).
+        var longest = segs.Where(s => s.End > yearStart && UsageRank.Tier(apps, s.Group) == 0)
+            .GroupBy(s => s.Group).Select(g => new WrappedApp(g.Key, NameOf(apps, g.Key), g.Max(s => s.End - s.Start)))
+            .Where(a => a.Seconds > 0).OrderByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Take(PodiumSize).ToList();
+
         // Longest run of consecutive local days with any tracked time (earliest wins a tie).
         int bestLen = 0, bestStartDay = 0, runLen = 0, runStart = 0, prevDay = int.MinValue;
         foreach (var day in perDay.Where(kv => kv.Value > 0).Select(kv => kv.Key).OrderBy(d => d))
@@ -135,7 +141,7 @@ public static class WrappedQuery
             bestLen == 0 ? null : DateOnly.FromDayNumber(719162 + bestStartDay + bestLen - 1),
             busiest, busiestSecs, delta, peak, peakSecs,
             total == 0 ? 0 : (int)Math.Round(beforeNoon * 100.0 / total, MidpointRounding.AwayFromZero),
-            TopOf(Apps.AppKind.Game), TopOf(Apps.AppKind.Gacha));
+            TopOf(Apps.AppKind.Game), TopOf(Apps.AppKind.Gacha), longest);
     }
 
     private static long Mod(long a, long m) => (a % m + m) % m;

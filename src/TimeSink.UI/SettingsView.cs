@@ -7,6 +7,7 @@ using System.Windows.Threading;
 using TimeSink.Core.Icons;
 using TimeSink.Core.Ipc;
 using TimeSink.Core.Settings;
+using TimeSink.UI.Services;
 using TimeSink.UI.Theming;
 using TimeSink.UI.Views;
 using static TimeSink.UI.Services.TimeText;
@@ -208,7 +209,7 @@ public sealed partial class SettingsView : Grid
     private void Persist(SettingRow row, string value)
     {
         var path = _dbPath;
-        Task.Run(() => SettingsCatalogue.Write(path, row, value));
+        SerialWriter.Run(() => SettingsCatalogue.Write(path, row, value));
     }
 
     private void ApplyAppearance(SettingRow row, string value)

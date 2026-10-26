@@ -1,14 +1,25 @@
 namespace TimeSink.Core.Usage;
 
-public enum AllColumn { App, Hours, DaysUsed, AvgPerDay, Share }
+public enum AllColumn { App, Hours, DaysUsed, AvgPerDay, Share, AvgSession, LastOpened }
 
 /// <summary>
-/// The table's sort state. Tapping a header sorts by it (App A-Z, numbers high to low); tapping the active header
-/// flips the direction. Default is hours, high to low.
+/// The table's sort state. Tapping a column sorts by it (App A-Z, numbers high to low, last opened newest first);
+/// tapping the active column flips the direction. <see cref="Next"/> steps through the columns the All tab offers.
+/// Default is hours, high to low.
 /// </summary>
 public readonly record struct AllSort(AllColumn Column, bool Descending)
 {
     public static AllSort Default => new(AllColumn.Hours, true);
+
+    private static readonly AllColumn[] Cycle = [AllColumn.Hours, AllColumn.App, AllColumn.AvgSession, AllColumn.LastOpened];
+
+    /// <summary>The next column in Hours, App, Avg session, Last opened order (wrapping), in that column's natural direction.</summary>
+    public AllSort Next()
+    {
+        var i = Array.IndexOf(Cycle, Column);
+        var column = Cycle[(i + 1) % Cycle.Length]; // not in the cycle (-1) starts at Hours
+        return new AllSort(column, Descending: column != AllColumn.App);
+    }
 
     public AllSort Tap(AllColumn column) =>
         column == Column ? this with { Descending = !Descending } : new AllSort(column, Descending: column != AllColumn.App);
@@ -32,6 +43,8 @@ public static class AllSorting
             AllColumn.Hours => Order(rows, r => r.Seconds, Comparer<long>.Default, sort.Descending),
             AllColumn.DaysUsed => Order(rows, r => r.DaysUsed, Comparer<int>.Default, sort.Descending),
             AllColumn.AvgPerDay => Order(rows, r => r.AverageSecondsPerDay, Comparer<double>.Default, sort.Descending),
+            AllColumn.AvgSession => Order(rows, r => r.AverageSessionSeconds, Comparer<double>.Default, sort.Descending),
+            AllColumn.LastOpened => Order(rows, r => r.LastUsedUtc, Comparer<long>.Default, sort.Descending),
             _ => Order(rows, r => r.Share, Comparer<double>.Default, sort.Descending),
         };
         return ordered.ThenBy(r => r.Name, byName).ToList();

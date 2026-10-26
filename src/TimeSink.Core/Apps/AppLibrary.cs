@@ -14,6 +14,8 @@ public sealed record MergedApp(long Id, string ExePath, string DisplayName, long
 /// <summary>A tracked app as the Tracked tab shows it: merged aliases listed under it, <c>Seconds</c> including them.</summary>
 public sealed record TrackedEntry(long Id, string ExePath, string DisplayName, long AddedUtc, long Seconds, IReadOnlyList<MergedApp> Merged, bool Background = false, AppKind Kind = AppKind.Other);
 
+public sealed record MergedAlias(string ExePath, string? PackageFamily, long CanonicalId);
+
 public enum AddOutcome { Added, AlreadyTracked, Restored }
 
 public sealed record AddResult(long AppId, AddOutcome Outcome);
@@ -48,7 +50,8 @@ public sealed class AppLibrary : IDisposable
         using var tx = _c.BeginTransaction();
         AddResult result;
 
-        using (var find = Cmd("SELECT id, state FROM apps WHERE exe_path = $p", tx))
+        // a merged alias is the app it counts under: tracked with it, restored with it
+        using (var find = Cmd("SELECT COALESCE(canonical_id, id), COALESCE((SELECT k.state FROM apps k WHERE k.id = apps.canonical_id), state) FROM apps WHERE exe_path = $p", tx))
         {
             find.Parameters.AddWithValue("$p", app.ExePath);
             using var r = find.ExecuteReader();
@@ -62,7 +65,7 @@ public sealed class AppLibrary : IDisposable
                     tx.Commit();
                     return new AddResult(id, AddOutcome.AlreadyTracked);
                 }
-                using var up = Cmd("UPDATE apps SET state='tracked', retired_utc=NULL, added_utc=$t, package_family=COALESCE($f, package_family) WHERE id=$id", tx);
+                using var up = Cmd("UPDATE apps SET state='tracked', retired_utc=NULL, added_utc=$t, package_family=COALESCE($f, package_family) WHERE id=$id OR canonical_id=$id", tx);
                 up.Parameters.AddWithValue("$t", nowUtc);
                 up.Parameters.AddWithValue("$f", (object?)app.PackageFamily ?? DBNull.Value);
                 up.Parameters.AddWithValue("$id", id);
@@ -191,12 +194,78 @@ public sealed class AppLibrary : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Makes a merged app the main app of its group: the old main (and every other alias) is merged under it. Type, Background
+    /// flag, goals and the earliest added date move to the new main; history stays on the rows that recorded it.
+    /// </summary>
+    public bool MakeMain(long aliasId)
+    {
+        using var tx = _c.BeginTransaction();
+        long oldMain;
+        using (var find = Cmd("SELECT canonical_id FROM apps WHERE id=$id AND state='tracked'", tx))
+        {
+            find.Parameters.AddWithValue("$id", aliasId);
+            if (find.ExecuteScalar() is not long main) return false;
+            oldMain = main;
+        }
+        using (var move = Cmd(@"UPDATE apps SET
+                is_background = (SELECT is_background FROM apps WHERE id=$old),
+                kind = (SELECT kind FROM apps WHERE id=$old),
+                added_utc = MIN(added_utc, (SELECT added_utc FROM apps WHERE id=$old))
+            WHERE id=$new", tx))
+        {
+            move.Parameters.AddWithValue("$old", oldMain);
+            move.Parameters.AddWithValue("$new", aliasId);
+            move.ExecuteNonQuery();
+        }
+        using (var re = Cmd("UPDATE apps SET canonical_id=$new WHERE id=$old OR canonical_id=$old", tx))
+        {
+            re.Parameters.AddWithValue("$old", oldMain);
+            re.Parameters.AddWithValue("$new", aliasId);
+            re.ExecuteNonQuery();
+        }
+        using (var top = Cmd("UPDATE apps SET canonical_id=NULL WHERE id=$new", tx))
+        {
+            top.Parameters.AddWithValue("$new", aliasId);
+            top.ExecuteNonQuery();
+        }
+        using (var goals = Cmd("UPDATE OR IGNORE goals SET app_id=$new WHERE app_id=$old", tx))
+        {
+            goals.Parameters.AddWithValue("$old", oldMain);
+            goals.Parameters.AddWithValue("$new", aliasId);
+            goals.ExecuteNonQuery();
+        }
+        tx.Commit();
+        return true;
+    }
+
     /// <summary>Makes a merged app a separate tracked app again.</summary>
     public void Unmerge(long aliasId)
     {
         using var cmd = Cmd("UPDATE apps SET canonical_id=NULL WHERE id=$id");
         cmd.Parameters.AddWithValue("$id", aliasId);
         cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Deletes the recorded time of an app and of everything merged into it. A session that is still open is kept, so a
+    /// running app keeps counting from now.
+    /// </summary>
+    public void ClearHistory(long appId)
+    {
+        using var tx = _c.BeginTransaction();
+        const string ids = "SELECT id FROM apps WHERE id=$id OR canonical_id=$id";
+        using (var s = Cmd($"DELETE FROM sessions WHERE end_utc IS NOT NULL AND app_id IN ({ids})", tx))
+        {
+            s.Parameters.AddWithValue("$id", appId);
+            s.ExecuteNonQuery();
+        }
+        using (var d = Cmd($"DELETE FROM daily_usage WHERE app_id IN ({ids})", tx))
+        {
+            d.Parameters.AddWithValue("$id", appId);
+            d.ExecuteNonQuery();
+        }
+        tx.Commit();
     }
 
     /// <summary>Every known app (tracked and retired); merged aliases are not listed.</summary>
@@ -209,6 +278,16 @@ public sealed class AppLibrary : IDisposable
             list.Add(new LibraryApp(r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2), r.GetString(3), r.GetString(4),
                 r.IsDBNull(5) ? null : r.GetInt64(5), r.GetInt64(6) != 0,
                 AppKinds.Resolve(r.IsDBNull(7) ? null : r.GetInt64(7), r.GetString(1), r.GetString(3))));
+        return list;
+    }
+
+    /// <summary>Exe path and package family of every merged alias with the app it counts under, so a merged app is recognised as tracked (or stopped) with its keeper.</summary>
+    public IReadOnlyList<MergedAlias> MergedAliases()
+    {
+        var list = new List<MergedAlias>();
+        using var cmd = Cmd("SELECT exe_path, package_family, canonical_id FROM apps WHERE canonical_id IS NOT NULL");
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) list.Add(new MergedAlias(r.GetString(0), r.IsDBNull(1) ? null : r.GetString(1), r.GetInt64(2)));
         return list;
     }
 

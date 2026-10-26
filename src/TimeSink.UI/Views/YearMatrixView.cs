@@ -119,8 +119,8 @@ public sealed class YearMatrixView : UserControl, IYearSubView
 
         _timer.Tick += (_, _) => Refresh();
         _live.Changed += Refresh;
-        _themes.Applied += Redraw;
-        AppIcons.Updated += Redraw;
+        _themes.Applied += () => { if (_started) Redraw(); }; // a stopped view redraws from fresh data when it starts again
+        AppIcons.Updated += () => { if (_started) Redraw(); };
         Unloaded += (_, _) => Stop();
         Redraw(); // static text and empty grid; data follows in Start
     }

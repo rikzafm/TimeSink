@@ -20,7 +20,7 @@ public static class SteamAutoTracker
         if (!Enabled(SettingsStore.Get(dbPath, SettingKey))) return 0;
         using var lib = AppLibrary.Open(dbPath);
 
-        var known = lib.Library().Select(a => a.ExePath).Concat(lib.ExcludedFromRunning().Paths).ToList();
+        var known = lib.Library().Select(a => a.ExePath).Concat(lib.MergedAliases().Select(a => a.ExePath)).Concat(lib.ExcludedFromRunning().Paths).ToList();
         bool IsKnown(string installDir)
         {
             var prefix = installDir.TrimEnd('\\') + "\\";

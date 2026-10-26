@@ -92,6 +92,13 @@ public sealed class InstalledAppsTests : IDisposable
     }
 
     [Fact]
+    public void Search_matches_the_steam_label_of_steam_games()
+    {
+        var game = new InstalledApp("Hades", @"C:\h.exe", null, null, null, InstalledApp.SteamSource);
+        InstalledCatalog.Search([game, .. Sample], "steam").Select(a => a.Name).Should().Equal("Hades");
+    }
+
+    [Fact]
     public void Search_matches_name_or_publisher_case_insensitively_and_blank_returns_everything()
     {
         InstalledCatalog.Search(Sample, "  OBS ").Select(a => a.Name).Should().BeEquivalentTo("OBS Studio", "Obsidian"); // publisher "OBS Project"

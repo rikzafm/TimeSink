@@ -29,8 +29,20 @@ public static class AllStringKeys
     public const string Export = "allExport";
     public const string ExportDone = "allExportDone";
 
+    public const string ColAvgSession = "allColAvgSession";
+    public const string ColLastOpened = "allColLastOpened";
+    public const string JustNow = "allJustNow";
+    public const string MinutesAgo = "allMinutesAgo";
+    public const string HoursAgo = "allHoursAgo";
+    public const string Never = "allNever";
+    public const string LayoutLabeled = "allLayoutLabeled";
+    public const string LayoutIcons = "allLayoutIcons";
+    public const string ChangeSort = "allChangeSort";
+    public const string FlipSort = "allFlipSort";
+
     public static readonly IReadOnlyList<string> All =
     [
+        ColAvgSession, ColLastOpened, JustNow, MinutesAgo, HoursAgo, Never, LayoutLabeled, LayoutIcons, ChangeSort, FlipSort,
         Caption, TotalHours, TrackedSuffix, RetiredSuffix, SortedBy, SortBy, ColApp, ColHours, ColDays, ColAvg, ColShare,
         RetiredHeader, Stopped, TotalRow, Note, NoteNone, Hours, Empty, ArrowDesc, ArrowAsc, Export, ExportDone,
     ];

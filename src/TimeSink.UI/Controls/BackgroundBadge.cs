@@ -19,7 +19,7 @@ public static class BackgroundBadge
         return badge;
     }
 
-    /// <summary>Icon-only form for tight rows (the All table): the layers icon, with the explanation as a tooltip.</summary>
+    /// <summary>Icon-only form for tight rows (the All table): the layers icon, with "Background App" as a tooltip.</summary>
     public static FrameworkElement CreateIcon()
     {
         var path = new System.Windows.Shapes.Path
@@ -29,9 +29,9 @@ public static class BackgroundBadge
             StrokeLineJoin = System.Windows.Media.PenLineJoin.Round,
         };
         path.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Brush.TextMuted");
-        var box = new Viewbox { Width = 14, Height = 14, Child = new Canvas { Width = 24, Height = 24, Children = { path } }, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Cursor = System.Windows.Input.Cursors.Help };
+        var box = new Viewbox { Width = 14, Height = 14, Child = new Canvas { Width = 24, Height = 24, Background = System.Windows.Media.Brushes.Transparent, Children = { path } }, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         var tip = new ToolTip();
-        tip.SetResourceReference(ContentControl.ContentProperty, "Str.AddBackgroundTip");
+        tip.SetResourceReference(ContentControl.ContentProperty, "Str.AddBackgroundApp");
         tip.SetResourceReference(Control.BackgroundProperty, "Brush.Panel");
         tip.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
         tip.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");

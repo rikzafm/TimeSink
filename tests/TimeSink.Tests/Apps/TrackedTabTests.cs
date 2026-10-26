@@ -98,6 +98,27 @@ public sealed class TrackedTabTests : IDisposable
     }
 
     [Fact]
+    public void MakeMain_swaps_the_keeper_and_carries_the_other_aliases_and_the_background_flag()
+    {
+        using var lib = AppLibrary.Open(_path);
+        var a = Add(lib, @"C:\a.exe", "A", 1);
+        var b = Add(lib, @"C:\b.exe", "B", 2);
+        var c = Add(lib, @"C:\c.exe", "C", 4);
+        lib.Merge(b, a);
+        lib.Merge(c, a);
+        lib.SetBackground(a, true);
+
+        lib.MakeMain(a).Should().BeFalse("a is already the main app");
+        lib.MakeMain(b).Should().BeTrue();
+
+        var only = lib.Tracked().Should().ContainSingle().Subject;
+        only.Id.Should().Be(b);
+        only.Seconds.Should().Be(7);
+        only.Background.Should().BeTrue();
+        only.Merged.Select(m => m.Id).Should().BeEquivalentTo([a, c]);
+    }
+
+    [Fact]
     public void Stopping_and_restoring_a_merged_app_carries_its_aliases()
     {
         using var lib = AppLibrary.Open(_path);
@@ -110,6 +131,22 @@ public sealed class TrackedTabTests : IDisposable
         lib.ExcludedFromRunning().Paths.Should().NotContain(@"C:\b.exe");
 
         lib.Restore(a, 300);
+        lib.Tracked().Should().ContainSingle().Which.Merged.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void A_merged_app_counts_as_tracked_with_its_keeper()
+    {
+        using var lib = AppLibrary.Open(_path);
+        var a = Add(lib, @"C:\a.exe", "A", 1);
+        var b = Add(lib, @"C:\b.exe", "B", 2);
+        lib.Merge(b, a);
+
+        lib.MergedAliases().Should().ContainSingle().Which.Should().Be(new MergedAlias(@"C:\b.exe", null, a));
+        lib.AddTracked(new NewApp(@"C:\b.exe", "B", null), 50, null).Should().Be(new AddResult(a, AddOutcome.AlreadyTracked));
+
+        lib.Retire(a, 200);
+        lib.AddTracked(new NewApp(@"C:\b.exe", "B", null), 300, null).Should().Be(new AddResult(a, AddOutcome.Restored));
         lib.Tracked().Should().ContainSingle().Which.Merged.Should().ContainSingle();
     }
 }

@@ -33,10 +33,26 @@ public static class AppDetailStringKeys
     public const string Footnote = "detailFootnote";
     public const string FootnoteNone = "detailFootnoteNone";
 
+    public const string ViewCalendar = "detailViewCalendar";
+    public const string ViewBars = "detailViewBars";
+    public const string RangeAll = "detailRangeAll";
+    public const string RangeYear = "detailRangeYear";
+    public const string RangeMonth = "detailRangeMonth";
+    public const string RangeWeek = "detailRangeWeek";
+    public const string PrevPeriod = "detailPrevPeriod";
+    public const string NextPeriod = "detailNextPeriod";
+    public const string AllTime = "detailAllTime";
+    public const string BarsHint = "detailBarsHint";
+    public const string BarTip = "detailBarTip";
+    public const string TimeOfDay = "detailTimeOfDay";
+    public const string OpenedAround = "detailOpenedAround";
+    public const string OpenedNone = "detailOpenedNone";
+
     public static readonly IReadOnlyList<string> All =
     [
         Back, Meta, LastOpened, AvgSession, TimesOpened, Today, Yesterday, RunningNow, LastSub, LastSubRunning, Never,
         Longest, TotalIn, YearCaption, YearHours, PrevYear, NextYear, Hint, DayTracked, SessionOne, SessionMany,
-        NotOpened, BeforeTracking, NotYet, Footnote, FootnoteNone,
+        NotOpened, BeforeTracking, NotYet, Footnote, FootnoteNone, ViewCalendar, ViewBars, RangeAll, RangeYear, RangeMonth,
+        RangeWeek, PrevPeriod, NextPeriod, AllTime, BarsHint, BarTip, TimeOfDay, OpenedAround, OpenedNone,
     ];
 }

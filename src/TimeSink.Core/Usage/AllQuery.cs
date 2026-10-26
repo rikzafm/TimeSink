@@ -20,6 +20,8 @@ public static class AllQuery
         public long RetiredUtc;
         public long Seconds;
         public long Longest;
+        public int Sessions;
+        public long LastUsed; // end of the latest session; "now" while it runs
         public readonly SortedSet<DateOnly> Days = [];
         public readonly Dictionary<(int, int), long> Months = [];
     }
@@ -82,7 +84,10 @@ public static class AllQuery
                 }
                 else end = r.GetInt64(2);
                 if (end <= start) continue;
-                Add(groups[gid], start, end, zone);
+                var group = groups[gid];
+                group.Sessions++;
+                group.LastUsed = Math.Max(group.LastUsed, end);
+                Add(group, start, end, zone);
             }
         }
 
@@ -97,7 +102,7 @@ public static class AllQuery
 
         var apps = groups.Values.Where(g => !g.Retired).OrderBy(g => g.Id).Select(g => new AllAppRow(
             g.Id, g.Name, g.Seconds, g.Days.Count, Average(g.Seconds, g.Days.Count), total > 0 ? g.Seconds / (double)total : 0,
-            g.Days.Count > 0 ? g.Days.Min : null, BestMonth(g), g.Longest, g.Background)).ToList();
+            g.Days.Count > 0 ? g.Days.Min : null, BestMonth(g), g.Longest, g.Background, g.Sessions, g.LastUsed)).ToList();
         var retired = groups.Values.Where(g => g.Retired && g.Seconds >= TimeSink.Core.Apps.AppLibrary.MinRetiredSeconds).OrderByDescending(g => g.RetiredUtc).ThenBy(g => g.Id).Select(g => new AllRetiredRow(
             g.Id, g.Name, g.Seconds, g.Days.Count, Average(g.Seconds, g.Days.Count),
             LocalDays.DateOf(g.RetiredUtc, zone))).ToList();

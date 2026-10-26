@@ -136,6 +136,8 @@ public static class AppDetailQuery
         }
 
         return new AppDetailResult(appId, name, exe ?? "", first, lastOpened, total, segs.Count,
-            segs.Count > 0 ? total / segs.Count : 0, longest, shown, firstYear, today.Year, yearSeconds, peak, days, background);
+            segs.Count > 0 ? total / segs.Count : 0, longest, shown, firstYear, today.Year, yearSeconds, peak, days, background,
+            daySeconds,
+            segs.Select(s => new AppDetailOpen(LocalDays.DateOf(s.Start, zone), TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(s.Start), zone).Hour)).ToList());
     }
 }

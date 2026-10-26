@@ -67,6 +67,7 @@ public static class StringKeys
     public const string MonthLess = "monthLess";
     public const string MonthMore = "monthMore";
     public const string MonthMostly = "monthMostly";
+    public const string MonthSpread = "monthSpread";
     public const string MonthDayEmpty = "monthDayEmpty";
     public const string MonthEmpty = "monthEmpty";
     public const string MonthNewApp = "monthNewApp";
@@ -76,7 +77,7 @@ public static class StringKeys
     public static readonly IReadOnlyList<string> MonthKeys =
     [
         MonthCombined, MonthSpanSoFar, MonthSpanFull, MonthDeltaVs, MonthAvgPrefix, MonthAvgSuffix, MonthBestPrefix,
-        MonthWeek, MonthLess, MonthMore, MonthMostly, MonthDayEmpty, MonthEmpty, MonthNewApp, MonthExport, MonthExportDone,
+        MonthWeek, MonthLess, MonthMore, MonthMostly, MonthSpread,MonthDayEmpty, MonthEmpty, MonthNewApp, MonthExport, MonthExportDone,
     ];
 
     // Week view.
