@@ -31,6 +31,7 @@ public sealed class AppCatalogue
     private readonly HashSet<string> _addedElsewhere = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, byte[]?> _icons = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<InstalledApp>? _installed; // the slow scan, taken lazily once per visit
+    private IReadOnlyList<InstalledApp>? _lastInstalled; // survives NewVisit, so a reopened screen can draw at once
 
     public AppCatalogue(string dbPath, IDesktop desktop)
     {
@@ -114,6 +115,76 @@ public sealed class AppCatalogue
         return CatalogueOutcome.Done;
     }
 
+    /// <summary>A snapshot of the tracked and Retired apps, read now. Empty with <see cref="CatalogueOutcome.Unavailable"/> when the database is busy or missing.</summary>
+    public LibraryState Library()
+    {
+        try
+        {
+            using var lib = AppLibrary.Open(_dbPath);
+            return new LibraryState(CatalogueOutcome.Done, lib.Library(), lib.MergedAliases(), lib.TrivialRetired());
+        }
+        catch (Exception e) when (IsBusyOrMissing(e)) { return new LibraryState(CatalogueOutcome.Unavailable, [], [], new HashSet<long>()); }
+    }
+
+    /// <summary>
+    /// Starts tracking an app that is not running (picked from the Installed list or a file): it counts towards "Added N".
+    /// <paramref name="iconPng"/> is stored as its icon. On <see cref="CatalogueOutcome.Unavailable"/> nothing changed.
+    /// </summary>
+    public CatalogueOutcome AddApp(NewApp app, byte[]? iconPng)
+    {
+        try
+        {
+            using var lib = AppLibrary.Open(_dbPath);
+            lib.AddTracked(app, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), iconPng);
+        }
+        catch (Exception e) when (IsBusyOrMissing(e)) { return CatalogueOutcome.Unavailable; }
+        NoteAddedElsewhere(app.ExePath);
+        return CatalogueOutcome.Done;
+    }
+
+    /// <summary>Stops tracking the app, keeping its history; it no longer counts as added in this visit.</summary>
+    public CatalogueOutcome Retire(LibraryApp app)
+    {
+        try
+        {
+            using var lib = AppLibrary.Open(_dbPath);
+            lib.Retire(app.Id, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        }
+        catch (Exception e) when (IsBusyOrMissing(e)) { return CatalogueOutcome.Unavailable; }
+        NoteStopped(app.ExePath);
+        return CatalogueOutcome.Done;
+    }
+
+    /// <summary>Tracks a Retired app again; it counts towards "Added N".</summary>
+    public CatalogueOutcome Restore(LibraryApp app)
+    {
+        try
+        {
+            using var lib = AppLibrary.Open(_dbPath);
+            lib.Restore(app.Id, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        }
+        catch (Exception e) when (IsBusyOrMissing(e)) { return CatalogueOutcome.Unavailable; }
+        NoteAddedElsewhere(app.ExePath);
+        return CatalogueOutcome.Done;
+    }
+
+    /// <summary>Sets what Year > Wrapped counts the app as.</summary>
+    public CatalogueOutcome SetKind(long appId, AppKind kind) => Apply(lib => lib.SetKind(appId, kind));
+
+    /// <summary>Sets whether the app ranks after the others.</summary>
+    public CatalogueOutcome SetBackground(long appId, bool background) => Apply(lib => lib.SetBackground(appId, background));
+
+    private CatalogueOutcome Apply(Action<AppLibrary> change)
+    {
+        try
+        {
+            using var lib = AppLibrary.Open(_dbPath);
+            change(lib);
+        }
+        catch (Exception e) when (IsBusyOrMissing(e)) { return CatalogueOutcome.Unavailable; }
+        return CatalogueOutcome.Done;
+    }
+
     /// <summary>An app was added from the Installed, Browse or merge views: it counts towards "Added N".</summary>
     public void NoteAddedElsewhere(string exePath)
     {
@@ -137,8 +208,8 @@ public sealed class AppCatalogue
         {
             _trackedThisVisit.Clear();
             _addedElsewhere.Clear();
-            _installed = null;
         }
+        lock (_scanGate) _installed = null;
     }
 
     /// <summary>
@@ -173,7 +244,7 @@ public sealed class AppCatalogue
         }
         catch (Exception e) when (IsBusyOrMissing(e)) { return null; }
 
-        foreach (var i in InstalledScan())
+        foreach (var i in Installed())
         {
             if (IsKnown(i, library, aliases)) continue; // already tracked, stopped or merged
             var key = "i" + i.ExePath.ToLowerInvariant();
@@ -183,9 +254,25 @@ public sealed class AppCatalogue
         return new MergePlan(this, _dbPath, _desktop, main.Id, main.DisplayName, sorted);
     }
 
-    private IReadOnlyList<InstalledApp> InstalledScan()
+    /// <summary>
+    /// Every installed app, from the one scan of this visit (shared with the merge plan). The first call of a visit
+    /// runs the scan, so call from a pool thread. An empty scan (it failed) keeps the list of the last good one.
+    /// </summary>
+    public IReadOnlyList<InstalledApp> Installed()
     {
-        lock (_scanGate) return _installed ??= _desktop.ScanInstalled();
+        lock (_scanGate)
+        {
+            if (_installed is not null) return _installed;
+            var scan = _desktop.ScanInstalled();
+            if (scan.Count == 0 && _lastInstalled is { Count: > 0 } last) scan = last;
+            return _installed = _lastInstalled = scan;
+        }
+    }
+
+    /// <summary>The newest scan, possibly from an earlier visit, or null before the first one; never scans.</summary>
+    public IReadOnlyList<InstalledApp>? LastInstalled
+    {
+        get { lock (_scanGate) return _lastInstalled; }
     }
 
     // a merged app is the app it counts under, so it reads as tracked (or stopped) with that app

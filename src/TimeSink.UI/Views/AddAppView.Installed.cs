@@ -11,7 +11,6 @@ namespace TimeSink.UI.Views;
 /// <summary>Installed tab: A-Z list of Start Menu and packaged apps with search, letter rail, and stop/restore.</summary>
 public sealed partial class AddAppView
 {
-    private IReadOnlyList<InstalledApp>? _installed;
     private bool _installedLoading;
     private string _query = "";
     private ScrollViewer _instScroll = null!;
@@ -19,8 +18,7 @@ public sealed partial class AddAppView
     private StackPanel _rail = null!;
     private readonly Dictionary<string, UIElement> _groupHeaders = new();
     private readonly Dictionary<string, List<(Border Tile, string Name)>> _tiles = new(StringComparer.OrdinalIgnoreCase);
-    private IReadOnlyList<LibraryApp> _library = [];
-    private IReadOnlyList<MergedAlias> _aliases = [];
+    private LibraryState _library = null!; // read by RenderInstalled before any row asks
 
     private UIElement BuildInstalledTab()
     {
@@ -84,7 +82,7 @@ public sealed partial class AddAppView
         Grid.SetRow(body, 1);
         root.Children.Add(body);
 
-        if (_installed is null) LoadInstalled();
+        if (_catalogue.LastInstalled is null) LoadInstalled();
         RenderInstalled();
         return root;
     }
@@ -93,15 +91,15 @@ public sealed partial class AddAppView
     {
         if (_installedLoading) return;
         _installedLoading = true;
+        var before = _catalogue.LastInstalled; // the catalogue scans once per visit and shares it with the merge plan
         Task.Run(() =>
         {
-            try { return InstalledAppsService.Load(); } catch { return (IReadOnlyList<InstalledApp>)[]; }
+            try { return _catalogue.Installed(); } catch { return (IReadOnlyList<InstalledApp>)[]; }
         }).ContinueWith(t =>
         {
             _installedLoading = false;
             // a re-scan on reopen: an empty result (scan failed) or an identical one leaves the cached list and its rows alone
-            if (_installed is not null && (t.Result.Count == 0 || _installed.SequenceEqual(t.Result))) return;
-            _installed = t.Result;
+            if (before is not null && (t.Result.Count == 0 || before.SequenceEqual(t.Result))) return;
             if (_tab == "Installed") RenderInstalled();
             else if (_tab == "Tracked" && _mergePlan is null && _mergeOpening is null) RenderTracked(); // rows were waiting for publishers
             LoadInstalledIcons(t.Result);
@@ -130,7 +128,6 @@ public sealed partial class AddAppView
     }
 
     private bool _libraryLoaded;
-    private HashSet<long> _trivialRetired = [];
 
     private void RenderInstalled() => RenderInstalled(reload: true);
 
@@ -145,24 +142,17 @@ public sealed partial class AddAppView
         _tiles.Clear();
         if (reload || !_libraryLoaded)
         {
-            try
-            {
-                using var lib = AppLibrary.Open(_dbPath);
-                _library = lib.Library();
-                _aliases = lib.MergedAliases();
-                _trivialRetired = lib.TrivialRetired();
-            }
-            catch { _library = []; _aliases = []; _trivialRetired = []; }
+            _library = _catalogue.Library();
             _libraryLoaded = true;
         }
 
-        if (_installed is null)
+        if (_catalogue.LastInstalled is not { } installed)
         {
             _instList.Children.Add(Note("Str.AddInstalledLoading"));
             return;
         }
-        var shown = InstalledCatalog.Search(_installed, _query);
-        if (_installed.Count == 0) _instList.Children.Add(Note("Str.AddInstalledEmpty"));
+        var shown = InstalledCatalog.Search(installed, _query);
+        if (installed.Count == 0) _instList.Children.Add(Note("Str.AddInstalledEmpty"));
         else if (shown.Count == 0)
         {
             var none = Note(null);
@@ -198,14 +188,14 @@ public sealed partial class AddAppView
         }
 
         // apps stopped earlier (history kept): restorable from here, whether or not they are installed
-        var retired = _library.Where(a => a.State == "retired" && !_trivialRetired.Contains(a.Id)).OrderByDescending(a => a.RetiredUtc).ToList();
+        var retired = _library.Retired;
         if (retired.Count > 0 && _query.Trim().Length == 0)
         {
             var head = Text("Str.AddRetiredHeader", "Double.FontSize.Small", "Brush.TextMuted");
             head.Margin = new Thickness(8, 16, 0, 4);
             _instList.Children.Add(head);
             foreach (var r in retired)
-                _instList.Children.Add(Cached(AppRow(r.DisplayName, r.ExePath, null, StateOf(r.ExePath, r.PackageFamily))));
+                _instList.Children.Add(Cached(AppRow(r.DisplayName, r.ExePath, null, _library.StateOf(r.ExePath, r.PackageFamily))));
         }
 
         _instScroll.ScrollToVerticalOffset(offset);
@@ -228,16 +218,7 @@ public sealed partial class AddAppView
 
     // ---- rows ---------------------------------------------------------------------------------------------
 
-    // a merged app is the app it counts under, so it reads as tracked (or stopped) with that app
-    private LibraryApp? StateOf(string exePath, string? family) =>
-        _library.FirstOrDefault(a => string.Equals(a.ExePath, exePath, StringComparison.OrdinalIgnoreCase))
-        ?? KeeperOf(_aliases.FirstOrDefault(m => string.Equals(m.ExePath, exePath, StringComparison.OrdinalIgnoreCase)))
-        ?? (family is null ? null : _library.FirstOrDefault(a => a.State == "tracked" && string.Equals(a.PackageFamily, family, StringComparison.OrdinalIgnoreCase)))
-        ?? (family is null ? null : KeeperOf(_aliases.FirstOrDefault(m => string.Equals(m.PackageFamily, family, StringComparison.OrdinalIgnoreCase))));
-
-    private LibraryApp? KeeperOf(MergedAlias? alias) => alias is null ? null : _library.FirstOrDefault(a => a.Id == alias.CanonicalId);
-
-    private UIElement InstalledRow(InstalledApp app) => AppRow(app.Name, app.ExePath, app, StateOf(app.ExePath, app.PackageFamily));
+    private UIElement InstalledRow(InstalledApp app) => AppRow(app.Name, app.ExePath, app, _library.StateOf(app.ExePath, app.PackageFamily));
 
     private UIElement AppRow(string name, string exePath, InstalledApp? app, LibraryApp? lib)
     {
@@ -371,15 +352,13 @@ public sealed partial class AddAppView
 
     private void SetKind(long appId, AppKind kind, Action rerender)
     {
-        try { using var lib = AppLibrary.Open(_dbPath); lib.SetKind(appId, kind); }
-        catch { return; }
+        if (_catalogue.SetKind(appId, kind) == CatalogueOutcome.Unavailable) return;
         rerender();
     }
 
     private void SetBackground(long appId, bool background, Action rerender)
     {
-        try { using var lib = AppLibrary.Open(_dbPath); lib.SetBackground(appId, background); }
-        catch { return; }
+        if (_catalogue.SetBackground(appId, background) == CatalogueOutcome.Unavailable) return;
         rerender();
     }
 
@@ -390,14 +369,8 @@ public sealed partial class AddAppView
         var cached = _iconCache.GetValueOrDefault(app.ExePath);
         Task.Run(() => cached ?? IconService.ExtractPng(app.ExePath, app.Aumid, app.IconFile, TileIconPx)).ContinueWith(t =>
         {
-            try
-            {
-                using var lib = AppLibrary.Open(_dbPath);
-                lib.AddTracked(app.ToNewApp(), DateTimeOffset.UtcNow.ToUnixTimeSeconds(), t.Result);
-            }
-            catch { return; }
+            if (_catalogue.AddApp(app.ToNewApp(), t.Result) == CatalogueOutcome.Unavailable) return;
             _iconCache[app.ExePath] = t.Result;
-            _catalogue.NoteAddedElsewhere(app.ExePath);
             UpdateCount();
             RenderInstalled();
         }, TaskScheduler.FromCurrentSynchronizationContext());
@@ -405,18 +378,14 @@ public sealed partial class AddAppView
 
     private void Retire(LibraryApp app)
     {
-        try { using var lib = AppLibrary.Open(_dbPath); lib.Retire(app.Id, DateTimeOffset.UtcNow.ToUnixTimeSeconds()); }
-        catch { return; }
-        _catalogue.NoteStopped(app.ExePath);
+        if (_catalogue.Retire(app) == CatalogueOutcome.Unavailable) return;
         UpdateCount();
         RenderInstalled();
     }
 
     private void Restore(LibraryApp app)
     {
-        try { using var lib = AppLibrary.Open(_dbPath); lib.Restore(app.Id, DateTimeOffset.UtcNow.ToUnixTimeSeconds()); }
-        catch { return; }
-        _catalogue.NoteAddedElsewhere(app.ExePath);
+        if (_catalogue.Restore(app) == CatalogueOutcome.Unavailable) return;
         UpdateCount();
         RenderInstalled();
     }

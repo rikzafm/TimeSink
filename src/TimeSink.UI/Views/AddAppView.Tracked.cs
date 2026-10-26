@@ -127,7 +127,7 @@ public sealed partial class AddAppView
     {
         var todo = _tracked.Where(a => _trackedIconsHiRes.Add(a.Id)).ToList();
         if (todo.Count == 0) return;
-        var aumids = (_installed ?? Array.Empty<InstalledApp>()).GroupBy(i => i.ExePath, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        var aumids = (_catalogue.LastInstalled ?? Array.Empty<InstalledApp>()).GroupBy(i => i.ExePath, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         Task.Run(() =>
         {
             var found = new Dictionary<long, byte[]>();
@@ -258,8 +258,8 @@ public sealed partial class AddAppView
     /// <summary>The publisher from the installed-apps scan (matched by exe path); null until the scan has loaded or when the app is not in it.</summary>
     private string? PublisherOf(TrackedEntry app)
     {
-        if (_installed is null) { LoadInstalled(); return null; }
-        var inst = _installed.FirstOrDefault(i => string.Equals(i.ExePath, app.ExePath, StringComparison.OrdinalIgnoreCase));
+        if (_catalogue.LastInstalled is not { } installed) { LoadInstalled(); return null; }
+        var inst = installed.FirstOrDefault(i => string.Equals(i.ExePath, app.ExePath, StringComparison.OrdinalIgnoreCase));
         if (inst is null) return null;
         return inst.IsSteam ? InstalledApp.SteamSource : inst.Publisher is { Length: > 0 } pub ? pub : null;
     }

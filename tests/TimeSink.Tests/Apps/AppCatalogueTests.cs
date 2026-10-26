@@ -308,6 +308,159 @@ public sealed class AppCatalogueTests : IDisposable
     }
 
     [Fact]
+    public void The_installed_list_and_the_merge_plan_share_one_scan_per_visit()
+    {
+        var main = Track(@"c:\a\main.exe", "Main");
+        _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Fresh"));
+        var cat = Catalogue();
+
+        cat.Installed().Select(i => i.Name).Should().Equal("Fresh");
+        cat.OpenMergePlan(main);
+        cat.Installed();
+
+        _desktop.ScanCalls.Should().Be(1);
+        cat.NewVisit();
+        cat.Installed();
+        _desktop.ScanCalls.Should().Be(2);
+    }
+
+    [Fact]
+    public void The_last_scan_stays_available_into_the_next_visit_and_an_empty_rescan_does_not_replace_it()
+    {
+        _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Fresh"));
+        var cat = Catalogue();
+        cat.LastInstalled.Should().BeNull();
+        cat.Installed();
+
+        cat.NewVisit();
+        cat.LastInstalled!.Select(i => i.Name).Should().Equal("Fresh");
+        _desktop.Installed.Clear(); // the scan failed
+        cat.Installed().Select(i => i.Name).Should().Equal("Fresh");
+    }
+
+    [Fact]
+    public void The_library_tells_tracked_retired_and_unknown_apps_apart()
+    {
+        Track(@"c:\a\live.exe", "Live");
+        Retire(@"c:\a\gone.exe", "Gone");
+
+        var library = Catalogue().Library();
+
+        library.Outcome.Should().Be(CatalogueOutcome.Done);
+        library.StateOf(@"C:\A\LIVE.EXE", null)!.State.Should().Be("tracked");
+        library.StateOf(@"c:\a\gone.exe", null)!.State.Should().Be("retired");
+        library.StateOf(@"c:\a\never.exe", null).Should().BeNull();
+    }
+
+    [Fact]
+    public void A_merged_app_reads_as_the_app_it_counts_under_by_path_or_package_family()
+    {
+        var main = Track(@"c:\a\main.exe", "Main");
+        var old = Track(@"c:\a\old.exe", "Old", family: "Fam.Old");
+        using (var lib = AppLibrary.Open(_path)) lib.Merge(old, main);
+        var other = Track(@"c:\a\other.exe", "Other", family: "Fam.Other");
+
+        var library = Catalogue().Library();
+
+        library.StateOf(@"c:\a\old.exe", null)!.Id.Should().Be(main);
+        library.StateOf(@"c:\z\old2.exe", "Fam.Old")!.Id.Should().Be(main);
+        library.StateOf(@"c:\z\other2.exe", "fam.other")!.Id.Should().Be(other);
+    }
+
+    [Fact]
+    public void A_package_family_does_not_match_a_stopped_app()
+    {
+        var id = Track(@"c:\a\fam.exe", "Fam", family: "Fam.X");
+        using (var lib = AppLibrary.Open(_path)) lib.Retire(id, 300);
+
+        Catalogue().Library().StateOf(@"c:\z\fam2.exe", "Fam.X").Should().BeNull();
+    }
+
+    [Fact]
+    public void The_library_lists_stopped_apps_with_real_history_most_recently_stopped_first()
+    {
+        var first = Track(@"c:\a\first.exe", "First", 7200);
+        var second = Track(@"c:\a\second.exe", "Second", 7200);
+        Track(@"c:\a\blip.exe", "Blip", 60);
+        using (var lib = AppLibrary.Open(_path))
+        {
+            lib.Retire(first, 500);
+            lib.Retire(second, 900);
+            lib.Retire(lib.Library().Single(a => a.DisplayName == "Blip").Id, 950);
+        }
+
+        Catalogue().Library().Retired.Select(a => a.DisplayName).Should().Equal("Second", "First");
+    }
+
+    [Fact]
+    public void A_busy_or_missing_database_gives_an_empty_library()
+    {
+        var library = Catalogue(Path.Combine(_dir, "nope", "missing.db")).Library();
+
+        library.Outcome.Should().Be(CatalogueOutcome.Unavailable);
+        library.Retired.Should().BeEmpty();
+        library.StateOf(@"c:\a\x.exe", null).Should().BeNull();
+    }
+
+    [Fact]
+    public void Adding_an_app_tracks_it_with_its_icon_and_counts_it_as_added()
+    {
+        var cat = Catalogue();
+
+        cat.AddApp(new NewApp(@"c:\b\fresh.exe", "Fresh", null), [9, 8]).Should().Be(CatalogueOutcome.Done);
+
+        var app = cat.Library().StateOf(@"c:\b\fresh.exe", null)!;
+        app.State.Should().Be("tracked");
+        using var lib = AppLibrary.Open(_path);
+        lib.GetIcon(app.Id).Should().Equal(9, 8);
+        cat.AddedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void Retiring_and_restoring_change_the_state_and_the_count()
+    {
+        var id = Track(@"c:\a\one.exe", "One");
+        var cat = Catalogue();
+        cat.AddApp(new NewApp(@"c:\a\one.exe", "One", null), null); // counted as added this visit
+        var app = cat.Library().StateOf(@"c:\a\one.exe", null)!;
+
+        cat.Retire(app).Should().Be(CatalogueOutcome.Done);
+        cat.Library().StateOf(@"c:\a\one.exe", null)!.State.Should().Be("retired");
+        cat.AddedCount.Should().Be(0);
+
+        cat.Restore(app).Should().Be(CatalogueOutcome.Done);
+        cat.Library().StateOf(@"c:\a\one.exe", null)!.Should().Match<LibraryApp>(a => a.Id == id && a.State == "tracked");
+        cat.AddedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void Adding_retiring_and_restoring_with_the_database_missing_give_an_outcome_and_change_nothing()
+    {
+        var cat = Catalogue(Path.Combine(_dir, "nope", "missing.db"));
+        var app = new LibraryApp(1, @"c:\a\one.exe", null, "One", "tracked", null);
+
+        cat.AddApp(new NewApp(@"c:\a\one.exe", "One", null), null).Should().Be(CatalogueOutcome.Unavailable);
+        cat.Retire(app).Should().Be(CatalogueOutcome.Unavailable);
+        cat.Restore(app).Should().Be(CatalogueOutcome.Unavailable);
+        cat.AddedCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void The_kind_and_background_switches_apply_and_report_a_missing_database()
+    {
+        var id = Track(@"c:\a\one.exe", "One");
+        var cat = Catalogue();
+
+        cat.SetKind(id, AppKind.Gacha).Should().Be(CatalogueOutcome.Done);
+        cat.SetBackground(id, true).Should().Be(CatalogueOutcome.Done);
+
+        cat.Library().StateOf(@"c:\a\one.exe", null).Should().Match<LibraryApp>(a => a.Kind == AppKind.Gacha && a.Background);
+        var missing = Catalogue(Path.Combine(_dir, "nope", "missing.db"));
+        missing.SetKind(id, AppKind.Game).Should().Be(CatalogueOutcome.Unavailable);
+        missing.SetBackground(id, false).Should().Be(CatalogueOutcome.Unavailable);
+    }
+
+    [Fact]
     public void Opening_a_plan_for_an_app_that_is_not_a_Main_app_or_with_the_database_missing_gives_nothing()
     {
         var main = Track(@"c:\a\main.exe", "Main");

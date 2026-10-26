@@ -150,13 +150,7 @@ public sealed partial class AddAppView
         }
         Task.Run(() => IconService.ExtractPng(app.ExePath, null, null, TileIconPx)).ContinueWith(t =>
         {
-            try
-            {
-                using var lib = AppLibrary.Open(_dbPath);
-                lib.AddTracked(app, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), t.Result);
-            }
-            catch { return; }
-            _catalogue.NoteAddedElsewhere(app.ExePath);
+            if (_catalogue.AddApp(app, t.Result) == CatalogueOutcome.Unavailable) return;
             UpdateCount();
             ShowStatus(app.DisplayName + " · " + TimeText.Str(AddAppStrings.Tracking), error: false);
         }, TaskScheduler.FromCurrentSynchronizationContext());
