@@ -29,52 +29,14 @@ public static class AppDetailQuery
         var nowUtc = now.ToUnixTimeSeconds();
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
 
-        string? name = null, exe = null;
-        var background = false;
-        var members = new HashSet<long>();
-        using (var cmd = c.CreateCommand())
-        {
-            cmd.CommandText = "SELECT id, canonical_id, display_name, state, exe_path, is_background FROM apps";
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
-            {
-                var id = r.GetInt64(0);
-                if (id == appId)
-                {
-                    if (!r.IsDBNull(1) || r.GetString(3) != "tracked") return null; // aliases are shown under their canonical app
-                    name = r.GetString(2);
-                    exe = Path.GetFileName(r.GetString(4));
-                    background = r.GetInt64(5) != 0;
-                    members.Add(id);
-                }
-                else if (!r.IsDBNull(1) && r.GetInt64(1) == appId) members.Add(id);
-            }
-        }
-        if (name is null) return null;
+        // Retired apps are loaded so a retired alias of this app still counts, as it does on the All tab.
+        var apps = UsageLoader.LoadApps(c, includeRetired: true);
+        if (!apps.TryGetValue(appId, out var app) || app.Retired || app.Group != appId) return null; // aliases are shown under their canonical app
+        var name = app.Name;
+        var exe = Path.GetFileName(app.ExePath);
+        var background = app.Background;
 
-        var segs = new List<UsageSeg>();
-        using (var cmd = c.CreateCommand())
-        {
-            cmd.CommandText = "SELECT app_id, start_utc, end_utc, last_seen_utc FROM sessions WHERE start_utc <= $now ORDER BY start_utc";
-            cmd.Parameters.AddWithValue("$now", nowUtc);
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
-            {
-                var id = r.GetInt64(0);
-                if (!members.Contains(id)) continue;
-                var start = r.GetInt64(1);
-                long end;
-                var live = false;
-                if (r.IsDBNull(2))
-                {
-                    live = running is null || running.Contains(id);
-                    end = live ? Math.Max(nowUtc, start) : Math.Clamp(r.GetInt64(3), start, nowUtc);
-                }
-                else end = r.GetInt64(2);
-                if (end <= start) continue;
-                segs.Add(new UsageSeg(appId, id, start, end, live, false));
-            }
-        }
+        var segs = UsageLoader.LoadSegments(c, 0, nowUtc, apps, running).Where(s => s.Group == appId && s.End > s.Start).ToList();
 
         var daySeconds = new Dictionary<DateOnly, long>();
         var daySessions = new Dictionary<DateOnly, int>();

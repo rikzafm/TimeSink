@@ -3,8 +3,9 @@ using TimeSink.Core.Apps;
 
 namespace TimeSink.Core.Usage;
 
-/// <summary>A tracked app as the usage queries see it. <c>Group</c> is the canonical app id (merged apps share it).</summary>
-internal sealed record UsageApp(long Id, long Group, string Name, long AddedUtc, bool Background = false, AppKind Kind = AppKind.Other);
+/// <summary>An app as the usage queries see it. <c>Group</c> is the canonical app id (merged apps share it). <c>Retired</c> is only ever true when the loader was asked for retired apps.</summary>
+internal sealed record UsageApp(long Id, long Group, string Name, long AddedUtc, bool Background = false, AppKind Kind = AppKind.Other,
+    bool Retired = false, long RetiredUtc = 0, string ExePath = "");
 
 /// <summary>Background apps (Steam, Wallpaper Engine) rank after every other app; the flag lives on the canonical app of a merged group.</summary>
 internal static class UsageRank
@@ -18,23 +19,25 @@ internal static class UsageRank
 internal readonly record struct UsageSeg(long Group, long AppId, long Start, long End, bool Open, bool Sleep);
 
 /// <summary>
-/// The apps and sessions loaders shared by the Today, Month, Year and Wrapped queries (decision 56): retired and unknown
-/// apps are excluded, merged apps share their canonical group, and an open session counts to <c>now</c> when the Agent
-/// reports its app running (or when <c>running</c> is null) and otherwise only to its last heartbeat.
+/// The apps and sessions loaders shared by every usage query (decision 56): unknown apps are excluded, and retired apps
+/// too unless the caller asks for them (the All tab), merged apps share their canonical group, and an open session counts
+/// to <c>now</c> when the Agent reports its app running (or when <c>running</c> is null) and otherwise only to its last heartbeat.
 /// </summary>
 internal static class UsageLoader
 {
-    public static Dictionary<long, UsageApp> LoadApps(SqliteConnection c)
+    public static Dictionary<long, UsageApp> LoadApps(SqliteConnection c, bool includeRetired = false)
     {
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name, added_utc, is_background, exe_path, kind FROM apps WHERE state = 'tracked'";
+        cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name, added_utc, is_background, exe_path, kind, state, retired_utc FROM apps"
+            + (includeRetired ? "" : " WHERE state = 'tracked'");
         using var r = cmd.ExecuteReader();
         var d = new Dictionary<long, UsageApp>();
         while (r.Read()) d[r.GetInt64(0)] = new UsageApp(r.GetInt64(0), r.GetInt64(1), r.GetString(2), r.GetInt64(3), r.GetInt64(4) != 0,
-            AppKinds.Resolve(r.IsDBNull(6) ? null : r.GetInt64(6), r.GetString(5), r.GetString(2)));
+            AppKinds.Resolve(r.IsDBNull(6) ? null : r.GetInt64(6), r.GetString(5), r.GetString(2)),
+            r.GetString(7) == "retired", r.IsDBNull(8) ? 0 : r.GetInt64(8), r.GetString(5));
         // A tracked alias whose canonical row is retired/absent still names its own group.
         foreach (var a in d.Values.ToList())
-            if (!d.ContainsKey(a.Group) && a.Group != a.Id) d[a.Id] = a with { Group = a.Id };
+            if (a.Group != a.Id && (!d.TryGetValue(a.Group, out var main) || (main.Retired && !a.Retired))) d[a.Id] = a with { Group = a.Id };
         return d;
     }
 

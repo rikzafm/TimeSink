@@ -78,6 +78,16 @@ public sealed class AllQueryTests : IDisposable
     }
 
     [Fact]
+    public void A_tracked_alias_of_a_retired_main_app_is_its_own_row_not_part_of_the_retired_one()
+    {
+        _f.Exec("INSERT INTO apps(id, canonical_id, exe_path, display_name, added_utc) VALUES (901, (SELECT id FROM apps WHERE display_name = 'Old'), 'old2.exe', 'Old Beta', 0)");
+        _f.Session(901, U(2026, 3, 11, 9), U(2026, 3, 11, 10));
+        var r = Run();
+        r.Apps.Single(a => a.Name == "Old Beta").Seconds.Should().Be(3600);
+        r.Retired.Single().Seconds.Should().Be(82800);
+    }
+
+    [Fact]
     public void Merged_apps_are_one_row_under_the_canonical_app()
     {
         _f.Exec("INSERT INTO apps(id, canonical_id, exe_path, display_name, added_utc) VALUES (900, " + _f.Chrome + ", 'c:\\chrome-beta.exe', 'Chrome Beta', 0)");

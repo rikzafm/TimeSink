@@ -35,53 +35,22 @@ public static class AllQuery
     public static AllResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
         var nowUtc = now.ToUnixTimeSeconds();
-        var groups = new Dictionary<long, Group>();
-        var groupOf = new Dictionary<long, long>();
-        using (var cmd = c.CreateCommand())
+        var usageApps = UsageLoader.LoadApps(c, includeRetired: true);
+        var groups = usageApps.Values.Where(a => a.Group == a.Id).ToDictionary(a => a.Id, a => new Group
         {
-            cmd.CommandText = "SELECT id, canonical_id, display_name, state, retired_utc, is_background FROM apps ORDER BY id";
-            using var r = cmd.ExecuteReader();
-            var aliases = new List<(long Id, long Canonical)>();
-            while (r.Read())
-            {
-                var id = r.GetInt64(0);
-                if (!r.IsDBNull(1)) { aliases.Add((id, r.GetInt64(1))); continue; }
-                groups[id] = new Group
-                {
-                    Id = id, Name = r.GetString(2), Retired = r.GetString(3) == "retired",
-                    RetiredUtc = r.IsDBNull(4) ? 0 : r.GetInt64(4), Background = r.GetInt64(5) != 0,
-                };
-                groupOf[id] = id;
-            }
-            foreach (var (id, canonical) in aliases)
-                if (groups.ContainsKey(canonical)) groupOf[id] = canonical;
-        }
+            Id = a.Id, Name = a.Name, Retired = a.Retired, RetiredUtc = a.RetiredUtc, Background = a.Background,
+        });
 
+        var loaded = UsageLoader.LoadSegments(c, 0, nowUtc, usageApps, running);
         var segs = new List<UsageSeg>();
-        using (var cmd = c.CreateCommand())
+        foreach (var seg in loaded)
         {
-            cmd.CommandText = "SELECT app_id, start_utc, end_utc, last_seen_utc FROM sessions WHERE start_utc <= $now ORDER BY start_utc";
-            cmd.Parameters.AddWithValue("$now", nowUtc);
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
-            {
-                var appId = r.GetInt64(0);
-                if (!groupOf.TryGetValue(appId, out var gid)) continue;
-                var start = r.GetInt64(1);
-                long end;
-                if (r.IsDBNull(2))
-                {
-                    if (running is null || running.Contains(appId)) end = Math.Max(nowUtc, start);
-                    else end = Math.Clamp(r.GetInt64(3), start, nowUtc);
-                }
-                else end = r.GetInt64(2);
-                if (end <= start) continue;
-                var group = groups[gid];
-                group.Sessions++;
-                group.LastUsed = Math.Max(group.LastUsed, end);
-                group.Longest = Math.Max(group.Longest, end - start);
-                segs.Add(new UsageSeg(gid, appId, start, end, false, false));
-            }
+            if (seg.End <= seg.Start) continue;
+            var group = groups[seg.Group];
+            group.Sessions++;
+            group.LastUsed = Math.Max(group.LastUsed, seg.End);
+            group.Longest = Math.Max(group.Longest, seg.End - seg.Start);
+            segs.Add(seg);
         }
         AddDays(groups, segs, zone);
 
@@ -102,8 +71,7 @@ public static class AllQuery
             LocalDays.DateOf(g.RetiredUtc, zone))).ToList();
 
         // The footer total is PC uptime, not the app sum.
-        var trackedApps = UsageLoader.LoadApps(c);
-        var uptime = UsageUptime.PerDay(UsageLoader.LoadSegments(c, 0, nowUtc, trackedApps, running), zone, nowUtc, onSinceUtc).Values.Sum();
+        var uptime = UsageUptime.PerDay(loaded.Where(s => !usageApps[s.AppId].Retired).ToList(), zone, nowUtc, onSinceUtc).Values.Sum();
         return new AllResult(apps, retired, new AllTotals(uptime, trackedDays.Count, Average(uptime, trackedDays.Count)));
     }
 

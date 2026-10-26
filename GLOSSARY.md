@@ -26,6 +26,10 @@ _Avoid_: Alias, child app, duplicate
 Any app the merge picker offers for folding into a Main app: a Tracked, Retired, already Merged or merely installed app.
 _Avoid_: Merge target, option
 
+**Palette slot**:
+The index into the theme's `apps` colours that an app always uses, derived from its Main app id. Every view colours an app by its Palette slot.
+_Avoid_: Color index, palette index, app colour
+
 ### Usage
 
 **Session**:
