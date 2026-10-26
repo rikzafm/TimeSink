@@ -27,18 +27,14 @@ public sealed partial class AddAppView
     private long? _openId;
     private string _mode = ""; // "", "rename", "stop"
     private string _draft = "";
-    private long? _mergeSource;
-    private readonly HashSet<string> _mergePicked = new(); // keys of the ticked MergeCandidates
+    private MergePlan? _mergePlan;      // the open merge screen's plan (Candidates, ticks, confirm) lives in AppCatalogue
+    private long? _mergeOpening;        // Main app whose plan is being opened on a pool thread
     private List<(Border Tile, string Name, string ExePath)> _mergeTiles = [];
     private double _listOffset;            // Tracked list scroll position when Merge… was opened
     private bool _restoreOffset;
     private string _mergeFilter = "Tracked";  // Tracked | Untracked | All
 
-    /// <summary>One app the merge picker can offer: tracked, stopped (history kept) or merely installed.</summary>
-    private sealed record MergeCandidate(string Key, string Name, string ExePath, string Sub, byte[]? Png, bool Tracked,
-        TrackedEntry? Entry, LibraryApp? Stopped, InstalledApp? Installed, MergedApp? Merged = null);
-
-    private void ShowTracked() => _body.Content = _mergeSource is null ? BuildTrackedTab() : BuildMergeScreen();
+    private void ShowTracked() => _body.Content = _mergePlan is null ? BuildTrackedTab() : BuildMergeScreen(_mergePlan);
 
     private UIElement BuildTrackedTab()
     {
@@ -360,41 +356,39 @@ public sealed partial class AddAppView
 
     // ---- merge screen -------------------------------------------------------------------------------------
 
-    private List<MergeCandidate> MergeCandidates(TrackedEntry keeper)
+    /// <summary>
+    /// Opens the merge screen for a Main app. The plan (and the first installed-apps scan) is built on a pool thread, so a
+    /// loading note shows meanwhile; if the app is gone or the database is busy the Tracked tab shows instead.
+    /// </summary>
+    private void OpenMergeScreen(long mainId)
     {
-        var list = _tracked.Where(a => a.Id != keeper.Id)
-            .Select(a => new MergeCandidate("t" + a.Id, a.DisplayName, a.ExePath, DurationFormat.HoursMinutes(a.Seconds), _trackedIcons.GetValueOrDefault(a.Id), true, a, null, null))
-            .ToList();
-        try
+        _mergePlan = null;
+        _mergeOpening = mainId;
+        _body.Content = Note("Str.AddInstalledLoading");
+        var known = new Dictionary<string, byte[]?>(_iconCache, StringComparer.OrdinalIgnoreCase);
+        Task.Run(() => _catalogue.OpenMergePlan(mainId, known)).ContinueWith(t =>
         {
-            using var lib = AppLibrary.Open(_dbPath);
-            // already merged into the keeper: listed ticked, so unticking unmerges
-            foreach (var m in keeper.Merged)
-                list.Add(new MergeCandidate("m" + m.Id, m.DisplayName, m.ExePath, DurationFormat.HoursMinutes(m.Seconds), lib.GetIcon(m.Id), true, null, null, null, m));
-            _library = lib.Library();
-            var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows) + System.IO.Path.DirectorySeparatorChar;
-            // stopped apps with history, minus Windows' own processes (explorer.exe and friends), which the Installed tab never lists
-            var trivial = lib.TrivialRetired();
-            foreach (var r in _library.Where(a => a.State == "retired" && !trivial.Contains(a.Id) && !a.ExePath.StartsWith(windows, StringComparison.OrdinalIgnoreCase)))
-                list.Add(new MergeCandidate("s" + r.Id, r.DisplayName, r.ExePath, TimeText.Str(AddAppStrings.SubStopped), lib.GetIcon(r.Id), false, null, r, null));
-        }
-        catch { _library = []; }
-        if (_installed is null) LoadInstalled();
-        foreach (var i in _installed ?? [])
-        {
-            if (StateOf(i.ExePath, i.PackageFamily) is not null) continue; // already tracked or stopped
-            list.Add(new MergeCandidate("i" + i.ExePath.ToLowerInvariant(), i.Name, i.ExePath, i.IsSteam ? InstalledApp.SteamSource : i.Publisher is { Length: > 0 } pub ? pub : TimeText.Str(AddAppStrings.SubInstalled),
-                _iconCache.GetValueOrDefault(i.ExePath), false, null, null, i));
-        }
-        return list.OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+            if (_mergeOpening != mainId) return; // the user went elsewhere meanwhile
+            _mergeOpening = null;
+            _mergePlan = t.IsCompletedSuccessfully ? t.Result : null;
+            if (_tab == "Tracked") ShowTracked();
+        }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
-    private UIElement BuildMergeScreen()
+    /// <summary>The line under a Candidate's name.</summary>
+    private static string SubOf(MergeCandidate c) => c.Kind switch
     {
-        LoadTracked();
-        var keeper = _tracked.FirstOrDefault(a => a.Id == _mergeSource);
-        if (keeper is null) { _mergeSource = null; return BuildTrackedTab(); }
-        var candidates = MergeCandidates(keeper);
+        CandidateKind.Tracked or CandidateKind.Merged => DurationFormat.HoursMinutes(c.Seconds),
+        CandidateKind.Retired => TimeText.Str(AddAppStrings.SubStopped),
+        _ => c.Installed!.IsSteam ? InstalledApp.SteamSource : c.Installed.Publisher is { Length: > 0 } pub ? pub : TimeText.Str(AddAppStrings.SubInstalled),
+    };
+
+    /// <summary>A tracked Candidate shows the tile-resolution logo when this process already extracted it.</summary>
+    private byte[]? PngOf(MergeCandidate c) => c.Kind == CandidateKind.Tracked ? _trackedIcons.GetValueOrDefault(c.AppId) : c.Png;
+
+    private UIElement BuildMergeScreen(MergePlan plan)
+    {
+        var candidates = plan.Candidates;
         var query = "";
         _mergeTiles = [];
 
@@ -406,7 +400,7 @@ public sealed partial class AddAppView
 
         var head = new StackPanel { Margin = new Thickness(20, 14, 20, 0) };
         var title = Text(null, "Double.FontSize.Title", "Brush.Text");
-        title.Text = TimeText.Str(AddAppStrings.MergeTitle, keeper.DisplayName);
+        title.Text = TimeText.Str(AddAppStrings.MergeTitle, plan.MainName);
         title.FontWeight = FontWeights.Bold;
         title.TextTrimming = TextTrimming.CharacterEllipsis;
         var sub = Text("Str.AddMergeSub", "Double.FontSize.Small", "Brush.TextMuted");
@@ -433,22 +427,21 @@ public sealed partial class AddAppView
         note.Margin = new Thickness(20, 0, 20, 8);
         note.TextWrapping = TextWrapping.Wrap;
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(14, 0, 14, 12) };
-        var cancel = Button(AddAppStrings.Cancel, BtnKind.Outline, () => { _mergeSource = null; _restoreOffset = true; ShowTracked(); ReturnToSettings(); });
+        var cancel = Button(AddAppStrings.Cancel, BtnKind.Outline, () => { _mergePlan = null; _restoreOffset = true; ShowTracked(); ReturnToSettings(); });
         cancel.Margin = new Thickness(0, 0, 8, 0);
-        var go = Button(AddAppStrings.Merge, BtnKind.Ghost, () => ConfirmMerge(keeper, candidates));
+        var go = Button(AddAppStrings.Merge, BtnKind.Ghost, () => ConfirmMerge(plan));
         buttons.Children.Add(cancel);
         buttons.Children.Add(go);
 
-        bool InFilter(MergeCandidate c) => _mergeFilter == "All" || (_mergeFilter == "Tracked") == c.Tracked;
-        bool WasMerged(MergeCandidate c) => c.Merged is not null;
+        bool InFilter(MergeCandidate c) => _mergeFilter == "All" || (_mergeFilter == "Tracked") == c.IsTracked;
 
         void Render()
         {
             segments.Children.Clear();
             foreach (var (tag, key, count) in new[]
             {
-                ("Tracked", AddAppStrings.TabTracked, candidates.Count(c => c.Tracked)),
-                ("Untracked", AddAppStrings.FilterUntracked, candidates.Count(c => !c.Tracked)),
+                ("Tracked", AddAppStrings.TabTracked, candidates.Count(c => c.IsTracked)),
+                ("Untracked", AddAppStrings.FilterUntracked, candidates.Count(c => !c.IsTracked)),
                 ("All", AddAppStrings.FilterAll, candidates.Count),
             })
             {
@@ -490,25 +483,23 @@ public sealed partial class AddAppView
                 list.Children.Add(none);
             }
             foreach (var c in shown)
-                list.Children.Add(MergeTargetRow(c, _mergePicked.Contains(c.Key), () =>
+                list.Children.Add(MergeTargetRow(c, plan.IsTicked(c.Key), () =>
                 {
-                    if (!_mergePicked.Remove(c.Key)) _mergePicked.Add(c.Key);
+                    plan.Toggle(c.Key);
                     Render();
                 }));
 
-            var adds = candidates.Count(c => !WasMerged(c) && _mergePicked.Contains(c.Key));
-            var removes = candidates.Count(c => WasMerged(c) && !_mergePicked.Contains(c.Key));
-            var startsTracking = candidates.Any(c => !c.Tracked && _mergePicked.Contains(c.Key));
+            var (adds, removes, startsTracking) = plan.Summary;
+            var changed = plan.Summary.Changed;
             note.Visibility = startsTracking ? Visibility.Visible : Visibility.Collapsed;
-            note.Text = TimeText.Str(AddAppStrings.MergeStarts, keeper.DisplayName);
-            var changed = adds + removes > 0;
+            note.Text = TimeText.Str(AddAppStrings.MergeStarts, plan.MainName);
             go.SetResourceReference(Control.BackgroundProperty, changed ? "Brush.Accent" : "Brush.SurfaceAlt");
             go.SetResourceReference(Control.ForegroundProperty, changed ? "Brush.OnAccent" : "Brush.TextMuted");
             go.SetResourceReference(Control.BorderBrushProperty, changed ? "Brush.Accent" : "Brush.Border");
             go.FontWeight = changed ? FontWeights.Bold : FontWeights.SemiBold;
             go.IsHitTestVisible = changed;
             if (!changed) go.SetResourceReference(ContentControl.ContentProperty, "Str.AddMerge");
-            else if (removes == 0) go.Content = TimeText.Str(AddAppStrings.MergeCount, adds, keeper.DisplayName.Length > 20 ? keeper.DisplayName[..19] + "…" : keeper.DisplayName);
+            else if (removes == 0) go.Content = TimeText.Str(AddAppStrings.MergeCount, adds, plan.MainName.Length > 20 ? plan.MainName[..19] + "…" : plan.MainName);
             else go.SetResourceReference(ContentControl.ContentProperty, "Str.AddSaveChanges");
         }
         Render();
@@ -528,7 +519,7 @@ public sealed partial class AddAppView
     /// <summary>Extracts the logos of installed candidates one by one, top of the list first; rows already on screen swap their letter for the logo.</summary>
     private void LoadMergeIcons(IReadOnlyList<MergeCandidate> candidates, List<(Border Tile, string Name, string ExePath)> tiles)
     {
-        var todo = candidates.Where(c => c.Installed is not null && !_iconCache.ContainsKey(c.ExePath)).Select(c => c.Installed!).ToList();
+        var todo = candidates.Where(c => c.Kind == CandidateKind.Installed && !_iconCache.ContainsKey(c.ExePath)).Select(c => c.Installed!).ToList();
         if (todo.Count == 0) return;
         Task.Run(() =>
         {
@@ -565,16 +556,16 @@ public sealed partial class AddAppView
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var tile = MakeTile(t.Name, t.ExePath, t.Png);
+        var tile = MakeTile(t.Name, t.ExePath, PngOf(t));
         tile.Margin = new Thickness(0, 0, 12, 0);
-        if (t.Installed is not null) _mergeTiles.Add((tile, t.Name, t.ExePath)); // icons arrive in the background and fill these
+        if (t.Kind == CandidateKind.Installed) _mergeTiles.Add((tile, t.Name, t.ExePath)); // icons arrive in the background and fill these
         var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         var n = Text(null, "Double.FontSize.Body", "Brush.Text");
         n.Text = t.Name;
         n.FontWeight = FontWeights.SemiBold;
         n.TextTrimming = TextTrimming.CharacterEllipsis;
         var s = Text(null, "Double.FontSize.Small", "Brush.TextMuted");
-        s.Text = t.Sub;
+        s.Text = SubOf(t);
         s.TextTrimming = TextTrimming.CharacterEllipsis;
         texts.Children.Add(n);
         texts.Children.Add(s);
@@ -609,44 +600,13 @@ public sealed partial class AddAppView
         return row;
     }
 
-    /// <summary>
-    /// Folds every newly ticked app into <paramref name="keeper"/> (a stopped or merely installed one is tracked first)
-    /// and unmerges every merged app that was unticked.
-    /// </summary>
-    private void ConfirmMerge(TrackedEntry keeper, IReadOnlyList<MergeCandidate> candidates)
+    /// <summary>Confirms the plan; if the database is busy the screen stays as it is so the user can retry.</summary>
+    private void ConfirmMerge(MergePlan plan)
     {
-        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        try
-        {
-            using var lib = AppLibrary.Open(_dbPath);
-            foreach (var c in candidates)
-            {
-                var ticked = _mergePicked.Contains(c.Key);
-                if (c.Merged is not null)
-                {
-                    if (!ticked) lib.Unmerge(c.Merged.Id);
-                    continue;
-                }
-                if (!ticked) continue;
-
-                long id;
-                if (c.Entry is not null) id = c.Entry.Id;
-                else if (c.Stopped is not null) { lib.Restore(c.Stopped.Id, now); id = c.Stopped.Id; }
-                else
-                {
-                    var app = c.Installed!;
-                    var png = c.Png ?? IconService.ExtractPng(app.ExePath, app.Aumid, app.IconFile);
-                    id = lib.AddTracked(app.ToNewApp(), now, png).AppId;
-                }
-                if (!lib.Merge(id, keeper.Id)) continue;
-                if (!c.Tracked) _catalogue.NoteAddedElsewhere(c.ExePath);
-            }
-        }
-        catch { return; }
-        _mergeSource = null;
-        _mergePicked.Clear();
+        if (plan.Confirm() == CatalogueOutcome.Unavailable) return;
+        _mergePlan = null;
         _restoreOffset = true;
-        _openId = keeper.Id;
+        _openId = plan.MainId;
         _mode = "";
         UpdateCount();
         ShowTracked();

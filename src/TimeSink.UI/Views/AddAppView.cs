@@ -76,8 +76,8 @@ public sealed partial class AddAppView : UserControl
         _trackedQuery = "";
         _openId = null;
         _mode = "";
-        _mergeSource = null;
-        _mergePicked.Clear();
+        _mergePlan = null;
+        _mergeOpening = null;
         _restoreOffset = false;
         _settingsId = null;
         _settingsReturn = null;
@@ -165,7 +165,7 @@ public sealed partial class AddAppView : UserControl
         {
             case "Running": _body.Content = BuildRunningTab(); Render(); Refresh(); break;
             case "Installed": _body.Content = BuildInstalledTab(); break;
-            case "Tracked": _mergeSource = null; _openId = null; _mode = ""; ShowTracked(); break;
+            case "Tracked": _mergePlan = null; _mergeOpening = null; _openId = null; _mode = ""; ShowTracked(); break;
             default: _body.Content = BuildBrowseTab(); break;
         }
     }

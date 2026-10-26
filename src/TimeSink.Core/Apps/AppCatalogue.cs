@@ -26,9 +26,11 @@ public sealed class AppCatalogue
     private readonly string _dbPath;
     private readonly IDesktop _desktop;
     private readonly object _gate = new();
+    private readonly object _scanGate = new();
     private readonly Dictionary<string, RunningCandidate> _trackedThisVisit = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _addedElsewhere = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, byte[]?> _icons = new(StringComparer.OrdinalIgnoreCase);
+    private IReadOnlyList<InstalledApp>? _installed; // the slow scan, taken lazily once per visit
 
     public AppCatalogue(string dbPath, IDesktop desktop)
     {
@@ -135,8 +137,67 @@ public sealed class AppCatalogue
         {
             _trackedThisVisit.Clear();
             _addedElsewhere.Clear();
+            _installed = null;
         }
     }
 
-    private static bool IsBusyOrMissing(Exception e) => e is SqliteException or IOException;
+    /// <summary>
+    /// Opens a merge for the Main app <paramref name="mainId"/>: the other Tracked apps, the apps already Merged into it
+    /// (ticked), Retired apps with real history (not trivial ones, not Windows' own processes) and installed apps not
+    /// yet known. Null when that app is not a Tracked Main app or the database is busy or missing. The first call of a
+    /// visit runs the installed-apps scan, so call from a pool thread. <paramref name="knownIcons"/> (by exe path)
+    /// supplies icons already extracted for installed apps.
+    /// </summary>
+    public MergePlan? OpenMergePlan(long mainId, IReadOnlyDictionary<string, byte[]?>? knownIcons = null)
+    {
+        TrackedEntry main;
+        var list = new List<MergeCandidate>();
+        IReadOnlyList<LibraryApp> library;
+        IReadOnlyList<MergedAlias> aliases;
+        try
+        {
+            using var lib = AppLibrary.Open(_dbPath);
+            var tracked = lib.Tracked();
+            if (tracked.FirstOrDefault(a => a.Id == mainId) is not { } found) return null;
+            main = found;
+            foreach (var a in tracked.Where(a => a.Id != mainId))
+                list.Add(new MergeCandidate("t" + a.Id, CandidateKind.Tracked, a.DisplayName, a.ExePath, a.Id, a.Seconds, null, lib.GetIcon(a.Id)));
+            foreach (var m in main.Merged)
+                list.Add(new MergeCandidate("m" + m.Id, CandidateKind.Merged, m.DisplayName, m.ExePath, m.Id, m.Seconds, null, lib.GetIcon(m.Id)));
+            library = lib.Library();
+            aliases = lib.MergedAliases();
+            var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows) + Path.DirectorySeparatorChar;
+            var trivial = lib.TrivialRetired();
+            foreach (var r in library.Where(a => a.State == "retired" && !trivial.Contains(a.Id) && !a.ExePath.StartsWith(windows, StringComparison.OrdinalIgnoreCase)))
+                list.Add(new MergeCandidate("s" + r.Id, CandidateKind.Retired, r.DisplayName, r.ExePath, r.Id, 0, null, lib.GetIcon(r.Id)));
+        }
+        catch (Exception e) when (IsBusyOrMissing(e)) { return null; }
+
+        foreach (var i in InstalledScan())
+        {
+            if (IsKnown(i, library, aliases)) continue; // already tracked, stopped or merged
+            var key = "i" + i.ExePath.ToLowerInvariant();
+            list.Add(new MergeCandidate(key, CandidateKind.Installed, i.Name, i.ExePath, 0, 0, i, knownIcons?.GetValueOrDefault(i.ExePath)));
+        }
+        var sorted = list.OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        return new MergePlan(this, _dbPath, _desktop, main.Id, main.DisplayName, sorted);
+    }
+
+    private IReadOnlyList<InstalledApp> InstalledScan()
+    {
+        lock (_scanGate) return _installed ??= _desktop.ScanInstalled();
+    }
+
+    // a merged app is the app it counts under, so it reads as tracked (or stopped) with that app
+    private static bool IsKnown(InstalledApp i, IReadOnlyList<LibraryApp> library, IReadOnlyList<MergedAlias> aliases)
+    {
+        bool Same(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+        if (library.Any(a => Same(a.ExePath, i.ExePath))) return true;
+        if (aliases.Any(m => Same(m.ExePath, i.ExePath))) return true;
+        if (i.PackageFamily is null) return false;
+        return library.Any(a => a.State == "tracked" && Same(a.PackageFamily, i.PackageFamily))
+            || aliases.Any(m => Same(m.PackageFamily, i.PackageFamily));
+    }
+
+    private static bool IsBusyOrMissing(Exception e) => MergePlan.IsBusyOrMissing(e);
 }

@@ -47,7 +47,7 @@ public sealed partial class AddAppView
         _settingsScroll = null;
         _clearStep = 0;
         Content = _shell;
-        if (_trackedList is not null && _tab == "Tracked" && _mergeSource is null) RenderTracked();
+        if (_trackedList is not null && _tab == "Tracked" && _mergePlan is null) RenderTracked();
     }
 
     /// <summary>Back to the settings screen after the merge screen it opened is done.</summary>
@@ -322,11 +322,8 @@ public sealed partial class AddAppView
             _settingsReturn = app.Id;
             _settingsId = null;
             Content = _shell;
-            _mergeSource = app.Id;
-            _mergePicked.Clear();
-            foreach (var m in app.Merged) _mergePicked.Add("m" + m.Id);
             _mergeFilter = "Tracked";
-            ShowTracked();
+            OpenMergeScreen(app.Id);
         });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal };
         if (app.Merged.Count > 0)

@@ -103,8 +103,7 @@ public sealed partial class AddAppView
             if (_installed is not null && (t.Result.Count == 0 || _installed.SequenceEqual(t.Result))) return;
             _installed = t.Result;
             if (_tab == "Installed") RenderInstalled();
-            else if (_tab == "Tracked" && _mergeSource is not null) ShowTracked(); // merge picker was waiting for the list
-            else if (_tab == "Tracked") RenderTracked(); // rows were waiting for publishers
+            else if (_tab == "Tracked" && _mergePlan is null && _mergeOpening is null) RenderTracked(); // rows were waiting for publishers
             LoadInstalledIcons(t.Result);
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }

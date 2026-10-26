@@ -16,5 +16,9 @@ internal sealed class Win32Desktop : IDesktop
     public byte[]? ExtractIcon(string exePath, string? aumid, string? imageFile, int size) =>
         IconService.ExtractPng(exePath, aumid, imageFile, size);
 
-    public IReadOnlyList<InstalledApp> ScanInstalled() => InstalledAppsService.Load();
+    public IReadOnlyList<InstalledApp> ScanInstalled()
+    {
+        try { return InstalledAppsService.Load(); }
+        catch { return []; } // as the Installed tab does: a failed scan lists nothing rather than breaking the screen
+    }
 }
