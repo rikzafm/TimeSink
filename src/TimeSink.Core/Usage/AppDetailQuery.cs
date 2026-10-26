@@ -20,16 +20,7 @@ public static class AppDetailQuery
 
     public static AppDetailResult? Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, long appId, int year, IReadOnlyCollection<long>? running = null)
     {
-        using var c = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false,
-        }.ToString());
-        c.Open();
-        using (var p = c.CreateCommand())
-        {
-            p.CommandText = "PRAGMA busy_timeout=2000";
-            p.ExecuteNonQuery();
-        }
+        using var c = UsageDb.OpenReadOnly(dbPath);
         return Run(c, now, zone, appId, year, running);
     }
 
@@ -61,7 +52,7 @@ public static class AppDetailQuery
         }
         if (name is null) return null;
 
-        var segs = new List<(long Start, long End, bool Running)>();
+        var segs = new List<UsageSeg>();
         using (var cmd = c.CreateCommand())
         {
             cmd.CommandText = "SELECT app_id, start_utc, end_utc, last_seen_utc FROM sessions WHERE start_utc <= $now ORDER BY start_utc";
@@ -81,30 +72,20 @@ public static class AppDetailQuery
                 }
                 else end = r.GetInt64(2);
                 if (end <= start) continue;
-                segs.Add((start, end, live));
+                segs.Add(new UsageSeg(appId, id, start, end, live, false));
             }
         }
 
         var daySeconds = new Dictionary<DateOnly, long>();
         var daySessions = new Dictionary<DateOnly, int>();
         long total = 0, longest = 0;
-        foreach (var (start, end, _) in segs)
+        foreach (var seg in segs) longest = Math.Max(longest, seg.End - seg.Start);
+        foreach (var slice in UsageWindow.Slices(segs, zone))
         {
-            longest = Math.Max(longest, end - start);
-            var day = LocalDays.DateOf(start, zone);
-            var last = LocalDays.DateOf(end - 1, zone);
-            while (day <= last)
-            {
-                var a = Math.Max(start, LocalDays.StartOf(day, zone));
-                var b = Math.Min(end, LocalDays.StartOf(day.AddDays(1), zone));
-                if (b > a)
-                {
-                    daySeconds[day] = daySeconds.GetValueOrDefault(day) + (b - a);
-                    daySessions[day] = daySessions.GetValueOrDefault(day) + 1;
-                    total += b - a;
-                }
-                day = day.AddDays(1);
-            }
+            var secs = slice.End - slice.Start;
+            daySeconds[slice.Day] = daySeconds.GetValueOrDefault(slice.Day) + secs;
+            daySessions[slice.Day] = daySessions.GetValueOrDefault(slice.Day) + 1;
+            total += secs;
         }
 
         DateOnly? first = daySeconds.Count > 0 ? daySeconds.Keys.Min() : null;
@@ -115,7 +96,7 @@ public static class AppDetailQuery
         if (segs.Count > 0)
         {
             var s = segs.MaxBy(x => x.Start);
-            lastOpened = new AppDetailLast(s.Start, s.End - s.Start, s.Running);
+            lastOpened = new AppDetailLast(s.Start, s.End - s.Start, s.Open);
         }
 
         long yearSeconds = 0, peak = 0;

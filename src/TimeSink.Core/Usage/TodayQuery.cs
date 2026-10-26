@@ -22,29 +22,16 @@ public static class TodayQuery
     /// <param name="onSinceUtc">When the PC became usable (sign-in); starts the live day's uptime. Null: first tracked session.</param>
     public static TodayResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null, long? onSinceUtc = null)
     {
-        using var c = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false,
-        }.ToString());
-        c.Open();
-        using (var p = c.CreateCommand())
-        {
-            p.CommandText = "PRAGMA busy_timeout=2000";
-            p.ExecuteNonQuery();
-        }
+        using var c = UsageDb.OpenReadOnly(dbPath);
         return Run(c, now, zone, running, forDay, onSinceUtc);
     }
 
     /// <summary>The local date of the first tracked app, or null when nothing is tracked yet.</summary>
     public static DateOnly? FirstDate(string dbPath, TimeZoneInfo zone)
     {
-        using var c = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false,
-        }.ToString());
-        c.Open();
+        using var c = UsageDb.OpenReadOnly(dbPath);
         var apps = UsageLoader.LoadApps(c);
-        return apps.Count == 0 ? null : LocalDate(apps.Values.Min(a => a.AddedUtc), zone);
+        return apps.Count == 0 ? null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
     }
 
     public static TodayResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null, long? onSinceUtc = null)
@@ -53,23 +40,23 @@ public static class TodayQuery
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
         var date = forDay is { } want && want < today ? want : today;
         var isToday = date == today;
-        var d0 = DayStart(date, zone);
-        var d1 = DayStart(date.AddDays(1), zone);
+        var d0 = LocalDays.StartOf(date, zone);
+        var d1 = LocalDays.StartOf(date.AddDays(1), zone);
 
         var apps = UsageLoader.LoadApps(c);
-        var segs = UsageLoader.LoadSegments(c, DayStart(date.AddDays(-TypicalWeeks * 7), zone), nowUtc, apps, running);
+        var segs = UsageLoader.LoadSegments(c, LocalDays.StartOf(date.AddDays(-TypicalWeeks * 7), zone), nowUtc, apps, running);
         var byGroup = segs.ToLookup(s => s.Group);
 
         // Hourly chart + typical day.
         var todayHours = HourSums(segs, d0, d1, zone);
-        var firstDate = apps.Count == 0 ? (DateOnly?)null : LocalDate(apps.Values.Min(a => a.AddedUtc), zone);
+        var firstDate = apps.Count == 0 ? (DateOnly?)null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
         var typical = new double[Hours];
         var typicalDays = 0;
         for (var k = 1; k <= TypicalWeeks; k++)
         {
             var day = date.AddDays(-7 * k);
             if (firstDate is null || day < firstDate) continue;
-            var sums = HourSums(segs, DayStart(day, zone), DayStart(day.AddDays(1), zone), zone);
+            var sums = HourSums(segs, LocalDays.StartOf(day, zone), LocalDays.StartOf(day.AddDays(1), zone), zone);
             for (var h = 0; h < Hours; h++) typical[h] += sums[h];
             typicalDays++;
         }
@@ -89,7 +76,7 @@ public static class TodayQuery
             if (seconds == 0 && open.Count == 0) continue;
 
             var closedToday = groupSegs.Where(s => !s.Open && s.End >= d0 && s.End < d1).ToList();
-            var added = LocalDate(apps.Values.Where(a => a.Group == g.Key).Min(a => a.AddedUtc), zone);
+            var added = LocalDays.DateOf(apps.Values.Where(a => a.Group == g.Key).Min(a => a.AddedUtc), zone);
             double? avg = null;
             var avgDays = 0;
             long avgSum = 0;
@@ -98,8 +85,8 @@ public static class TodayQuery
                 var day = date.AddDays(-k);
                 if (day < added) continue;
                 avgDays++;
-                var a = DayStart(day, zone);
-                var b = DayStart(day.AddDays(1), zone);
+                var a = LocalDays.StartOf(day, zone);
+                var b = LocalDays.StartOf(day.AddDays(1), zone);
                 avgSum += groupSegs.Sum(s => Overlap(s, a, b));
             }
             if (avgDays > 0) avg = avgSum / (double)avgDays;
@@ -129,7 +116,7 @@ public static class TodayQuery
         if (best != default && Overlap(best, d0, d1) > 0) longest = new LongestSessionTile(best.Group, NameOf(apps, best.Group), Overlap(best, d0, d1));
 
         var total = rows.Sum(r => r.Seconds);
-        var y0 = DayStart(date.AddDays(-1), zone);
+        var y0 = LocalDays.StartOf(date.AddDays(-1), zone);
         // Same wall-clock time yesterday (a DST change makes elapsed time differ from clock time).
         // A past day is compared with the whole day before it.
         var cut = isToday ? Math.Min(LocalDays.AtTime(date.AddDays(-1), TimeZoneInfo.ConvertTime(now, zone).TimeOfDay, zone), d0) : d0;
@@ -168,17 +155,5 @@ public static class TodayQuery
             t = next;
         }
         return sums;
-    }
-
-    private static DateOnly LocalDate(long utc, TimeZoneInfo zone) =>
-        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(utc), zone).DateTime);
-
-    /// <summary>UTC unix seconds of local midnight (DST-aware; a skipped midnight moves to the first valid hour).</summary>
-    private static long DayStart(DateOnly date, TimeZoneInfo zone)
-    {
-        var local = date.ToDateTime(TimeOnly.MinValue);
-        while (zone.IsInvalidTime(local)) local = local.AddHours(1);
-        var offset = zone.IsAmbiguousTime(local) ? zone.GetAmbiguousTimeOffsets(local).Max() : zone.GetUtcOffset(local);
-        return new DateTimeOffset(local, offset).ToUnixTimeSeconds();
     }
 }

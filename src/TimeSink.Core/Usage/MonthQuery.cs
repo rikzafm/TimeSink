@@ -32,16 +32,7 @@ public static class MonthQuery
     public static MonthResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, int year, int month,
         DayOfWeek weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
-        using var c = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false,
-        }.ToString());
-        c.Open();
-        using (var p = c.CreateCommand())
-        {
-            p.CommandText = "PRAGMA busy_timeout=2000";
-            p.ExecuteNonQuery();
-        }
+        using var c = UsageDb.OpenReadOnly(dbPath);
         return Run(c, now, zone, year, month, weekStart, running, onSinceUtc);
     }
 

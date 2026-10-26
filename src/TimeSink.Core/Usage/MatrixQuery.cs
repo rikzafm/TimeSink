@@ -13,9 +13,6 @@ public static class MatrixQuery
     private const int TopApps = 3;
     private const int TrendWindow = 3;
 
-    private sealed record App(long Id, long Group, string Name, long AddedUtc, bool Background);
-    private readonly record struct Seg(long Group, long Start, long End);
-
     /// <summary>Colour level of <paramref name="seconds"/> against the app's best month: under 30%, 55%, 75%, 90%, else top.</summary>
     public static int Level(long seconds, long best)
     {
@@ -26,16 +23,7 @@ public static class MatrixQuery
 
     public static MatrixResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
-        using var c = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false,
-        }.ToString());
-        c.Open();
-        using (var p = c.CreateCommand())
-        {
-            p.CommandText = "PRAGMA busy_timeout=2000";
-            p.ExecuteNonQuery();
-        }
+        using var c = UsageDb.OpenReadOnly(dbPath);
         return Run(c, now, zone, running, onSinceUtc);
     }
 
@@ -44,7 +32,7 @@ public static class MatrixQuery
         var nowUtc = now.ToUnixTimeSeconds();
         var today = LocalDays.DateOf(nowUtc, zone);
         var year = today.Year;
-        var apps = LoadApps(c);
+        var apps = UsageLoader.LoadApps(c);
         DateOnly? started = apps.Count == 0 ? null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
         if (started is null) return new MatrixResult(year, nowUtc, null, 1, [], [], 0);
         var first = started is { } s && s.Year == year ? s.Month : 1;
@@ -54,8 +42,9 @@ public static class MatrixQuery
         var bounds = new long[count + 1];
         for (var i = 0; i <= count; i++) bounds[i] = LocalDays.StartOf(new DateOnly(year, first, 1).AddMonths(i), zone);
 
+        var segs = UsageLoader.LoadSegments(c, bounds[0], nowUtc, apps, running);
         var perApp = new Dictionary<long, long[]>();
-        foreach (var seg in LoadSegments(c, bounds[0], nowUtc, apps, running))
+        foreach (var seg in segs)
         {
             for (var i = 0; i < count; i++)
             {
@@ -68,8 +57,7 @@ public static class MatrixQuery
 
         // Month totals and the headline are PC uptime (decision 125); the per-app cells stay per-app.
         var uptimeByMonth = new long[count];
-        var uptimeApps = UsageLoader.LoadApps(c);
-        foreach (var (day, secs) in UsageUptime.PerDay(UsageLoader.LoadSegments(c, bounds[0], nowUtc, uptimeApps, running), zone, nowUtc, onSinceUtc))
+        foreach (var (day, secs) in UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc))
         {
             var idx = (day.Year - year) * 12 + day.Month - first;
             if (idx >= 0 && idx < count) uptimeByMonth[idx] += secs;
@@ -77,14 +65,14 @@ public static class MatrixQuery
         var grand = uptimeByMonth.Sum();
         var rows = perApp.Where(kv => kv.Value.Sum() > 0)
             .Select(kv => BuildRow(kv.Key, NameOf(apps, kv.Key), kv.Value, first, grand))
-            .OrderBy(r => Tier(apps, r.AppId)).ThenByDescending(r => r.TotalSeconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+            .OrderBy(r => UsageRank.Tier(apps, r.AppId)).ThenByDescending(r => r.TotalSeconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
 
         var months = new List<MatrixMonth>(count);
         for (var i = 0; i < count; i++)
         {
             var idx = i;
             var top = rows.Where(r => r.Cells[idx].Seconds > 0)
-                .OrderBy(r => Tier(apps, r.AppId)).ThenByDescending(r => r.Cells[idx].Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(r => UsageRank.Tier(apps, r.AppId)).ThenByDescending(r => r.Cells[idx].Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)
                 .Take(TopApps).Select(r => new YearAppShare(r.AppId, r.Name, r.Cells[idx].Seconds)).ToList();
             months.Add(new MatrixMonth(first + i, uptimeByMonth[idx], top));
         }
@@ -111,45 +99,5 @@ public static class MatrixQuery
         return new MatrixRow(id, name, cells, total, share, firstMonth + peak, best, trend);
     }
 
-    private static int Tier(Dictionary<long, App> apps, long group) => apps.TryGetValue(group, out var a) && a.Background ? 1 : 0;
-
-    private static string NameOf(Dictionary<long, App> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
-
-    private static Dictionary<long, App> LoadApps(SqliteConnection c)
-    {
-        using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name, added_utc, is_background FROM apps WHERE state = 'tracked'";
-        using var r = cmd.ExecuteReader();
-        var d = new Dictionary<long, App>();
-        while (r.Read()) d[r.GetInt64(0)] = new App(r.GetInt64(0), r.GetInt64(1), r.GetString(2), r.GetInt64(3), r.GetInt64(4) != 0);
-        // A tracked alias whose canonical row is retired/absent still names its own group.
-        foreach (var a in d.Values.ToList())
-            if (!d.ContainsKey(a.Group) && a.Group != a.Id) d[a.Id] = a with { Group = a.Id };
-        return d;
-    }
-
-    private static List<Seg> LoadSegments(SqliteConnection c, long from, long nowUtc, Dictionary<long, App> apps, IReadOnlyCollection<long>? running)
-    {
-        using var cmd = c.CreateCommand();
-        cmd.CommandText = """
-            SELECT app_id, start_utc, end_utc, last_seen_utc FROM sessions
-            WHERE start_utc <= $now AND (end_utc IS NULL OR end_utc >= $from) ORDER BY start_utc
-            """;
-        cmd.Parameters.AddWithValue("$now", nowUtc);
-        cmd.Parameters.AddWithValue("$from", from);
-        using var r = cmd.ExecuteReader();
-        var list = new List<Seg>();
-        while (r.Read())
-        {
-            var appId = r.GetInt64(0);
-            if (!apps.TryGetValue(appId, out var app)) continue; // retired or unknown
-            var start = r.GetInt64(1);
-            long end;
-            if (r.IsDBNull(2))
-                end = running is null || running.Contains(appId) ? Math.Max(nowUtc, start) : Math.Clamp(r.GetInt64(3), start, nowUtc);
-            else end = r.GetInt64(2);
-            list.Add(new Seg(app.Group, start, end));
-        }
-        return list;
-    }
+    private static string NameOf(Dictionary<long, UsageApp> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
 }

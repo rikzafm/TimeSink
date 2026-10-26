@@ -28,16 +28,7 @@ public static class AllQuery
 
     public static AllResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
-        using var c = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false,
-        }.ToString());
-        c.Open();
-        using (var p = c.CreateCommand())
-        {
-            p.CommandText = "PRAGMA busy_timeout=2000";
-            p.ExecuteNonQuery();
-        }
+        using var c = UsageDb.OpenReadOnly(dbPath);
         return Run(c, now, zone, running, onSinceUtc);
     }
 
@@ -87,7 +78,15 @@ public static class AllQuery
                 var group = groups[gid];
                 group.Sessions++;
                 group.LastUsed = Math.Max(group.LastUsed, end);
-                Add(group, start, end, zone);
+                group.Longest = Math.Max(group.Longest, end - start);
+                foreach (var slice in UsageWindow.Slices([new UsageSeg(gid, appId, start, end, false, false)], zone))
+                {
+                    var s = slice.End - slice.Start;
+                    group.Seconds += s;
+                    group.Days.Add(slice.Day);
+                    var key = (slice.Day.Year, slice.Day.Month);
+                    group.Months[key] = group.Months.GetValueOrDefault(key) + s;
+                }
             }
         }
 
@@ -119,25 +118,4 @@ public static class AllQuery
         g.Months.Count == 0 ? null
             : g.Months.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key.Item1).ThenBy(kv => kv.Key.Item2)
                 .Select(kv => new AllBestMonth(kv.Key.Item1, kv.Key.Item2, kv.Value)).First();
-
-    private static void Add(Group g, long start, long end, TimeZoneInfo zone)
-    {
-        g.Longest = Math.Max(g.Longest, end - start);
-        var day = LocalDays.DateOf(start, zone);
-        var last = LocalDays.DateOf(end - 1, zone);
-        while (day <= last)
-        {
-            var a = Math.Max(start, LocalDays.StartOf(day, zone));
-            var b = Math.Min(end, LocalDays.StartOf(day.AddDays(1), zone));
-            if (b > a)
-            {
-                var s = b - a;
-                g.Seconds += s;
-                g.Days.Add(day);
-                var key = (day.Year, day.Month);
-                g.Months[key] = g.Months.GetValueOrDefault(key) + s;
-            }
-            day = day.AddDays(1);
-        }
-    }
 }

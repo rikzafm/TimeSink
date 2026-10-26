@@ -25,3 +25,13 @@ _Avoid_: Alias, child app, duplicate
 **Candidate**:
 Any app the merge picker offers for folding into a Main app: a Tracked, Retired, already Merged or merely installed app.
 _Avoid_: Merge target, option
+
+### Usage
+
+**Session**:
+One continuous run of a Tracked app. The sum of its Sessions is the app's running time.
+_Avoid_: Run, launch, visit
+
+**Local day**:
+A calendar day in the user's time zone. It lasts 23 or 25 hours when daylight saving changes.
+_Avoid_: Day (unqualified), UTC day

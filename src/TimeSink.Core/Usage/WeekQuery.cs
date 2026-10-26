@@ -17,16 +17,7 @@ public static class WeekQuery
 
     public static WeekResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, int weeksBack = 0)
     {
-        using var c = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false,
-        }.ToString());
-        c.Open();
-        using (var p = c.CreateCommand())
-        {
-            p.CommandText = "PRAGMA busy_timeout=2000";
-            p.ExecuteNonQuery();
-        }
+        using var c = UsageDb.OpenReadOnly(dbPath);
         return Run(c, now, zone, weekStart, running, onSinceUtc, weeksBack);
     }
 
@@ -48,23 +39,11 @@ public static class WeekQuery
         // App seconds per local day (all apps, for the streak) and per (app group, day); the columns show PC uptime.
         var perDay = new Dictionary<DateOnly, long>();
         var perGroupDay = new Dictionary<(long, DateOnly), long>();
-        foreach (var s in segs)
+        foreach (var slice in UsageWindow.Slices(segs, zone))
         {
-            var day = LocalDays.DateOf(s.Start, zone);
-            var dayStart = LocalDays.StartOf(day, zone);
-            while (dayStart < s.End)
-            {
-                var next = day.AddDays(1);
-                var dayEnd = LocalDays.StartOf(next, zone);
-                var overlap = Math.Min(s.End, dayEnd) - Math.Max(s.Start, dayStart);
-                if (overlap > 0)
-                {
-                    perDay[day] = perDay.GetValueOrDefault(day) + overlap;
-                    perGroupDay[(s.Group, day)] = perGroupDay.GetValueOrDefault((s.Group, day)) + overlap;
-                }
-                day = next;
-                dayStart = dayEnd;
-            }
+            var overlap = slice.End - slice.Start;
+            perDay[slice.Day] = perDay.GetValueOrDefault(slice.Day) + overlap;
+            perGroupDay[(slice.Seg.Group, slice.Day)] = perGroupDay.GetValueOrDefault((slice.Seg.Group, slice.Day)) + overlap;
         }
 
         var days = Enumerable.Range(0, 7).Select(i =>
