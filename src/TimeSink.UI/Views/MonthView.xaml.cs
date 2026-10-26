@@ -103,11 +103,11 @@ public partial class MonthView : UserControl, ILiveView
         Prev.IsEnabled = _firstTracked is { } ft && first > new DateOnly(ft.Year, ft.Month, 1);
         Next.IsEnabled = !r.IsCurrent && first.AddMonths(1) <= DateOnly.FromDateTime(DateTime.Now);
 
-        Total.Text = DurationFormat.HoursMinutes(r.TotalSeconds);
+        Total.Text = UsageText.HoursMinutes(r.TotalSeconds);
         BuildDelta(r);
-        SetPair(Avg, StringKeys.MonthAvgPrefix, DurationFormat.HoursMinutes((long)Math.Round(r.DailyAverageSeconds)), StringKeys.MonthAvgSuffix);
+        SetPair(Avg, StringKeys.MonthAvgPrefix, UsageText.HoursMinutes((long)Math.Round(r.DailyAverageSeconds)), StringKeys.MonthAvgSuffix);
         if (r.Best is { } b)
-            SetPair(Best, StringKeys.MonthBestPrefix, $"{b.Date.ToString("ddd d", En)} · {DurationFormat.HoursMinutes(b.Seconds)}", null);
+            SetPair(Best, StringKeys.MonthBestPrefix, $"{b.Date.ToString("ddd d", En)} · {UsageText.HoursMinutes(b.Seconds)}", null);
         else Best.Text = "";
 
         // Calendar.
@@ -115,8 +115,8 @@ public partial class MonthView : UserControl, ILiveView
         names.Add(Str(StringKeys.MonthWeek));
         Calendar.Headers = names;
         Calendar.Rows = r.Weeks.Select(w => (IReadOnlyList<CalendarCell?>)w.Days
-            .Select(d => d is null ? null : new CalendarCell(d.Date, d.Heat, ShortHours(d.Seconds), d.IsFuture, d.IsToday)).ToList()).ToList();
-        Calendar.RowTotals = r.Weeks.Select(w => w.TotalSeconds > 0 ? ShortHours(w.TotalSeconds) : "").ToList();
+            .Select(d => d is null ? null : new CalendarCell(d.Date, d.Heat, UsageText.MonthCell(d.Seconds), d.IsFuture, d.IsToday)).ToList()).ToList();
+        Calendar.RowTotals = r.Weeks.Select(w => UsageText.MonthCell(w.TotalSeconds)).ToList();
         Calendar.Selected = _selected;
         Calendar.HeatBrushes = Enumerable.Range(0, 5).Select(i => Res("Brush.Heat" + i)).ToList();
         BuildLegend();
@@ -141,7 +141,7 @@ public partial class MonthView : UserControl, ILiveView
         if (r.DeltaPercent is not { } pct || r.DaysCounted == 0) { DeltaPill.Visibility = Visibility.Collapsed; return; }
         DeltaPill.Visibility = Visibility.Visible;
         var prev = r.FirstDay.AddMonths(-1).ToString("MMM", En);
-        Delta.Text = Str(StringKeys.MonthDeltaVs, Percent(pct), prev);
+        Delta.Text = Str(StringKeys.MonthDeltaVs, UsageText.DeltaOfRatio(pct), prev);
         var key = pct >= 0 ? "Brush.Accent" : "Brush.Warning";
         Delta.SetResourceReference(TextBlock.ForegroundProperty, key);
         var tint = Res(key).Clone();
@@ -176,7 +176,7 @@ public partial class MonthView : UserControl, ILiveView
     {
         var day = r.Days.FirstOrDefault(d => d.Date == _selected) ?? r.Days[0];
         SelDate.Text = day.Date.ToString("ddd, d MMM", En);
-        SelTotal.Text = DurationFormat.HoursMinutes(day.Seconds);
+        SelTotal.Text = UsageText.HoursMinutes(day.Seconds);
         var top = day.Apps.OrderByDescending(a => a.Seconds).Take(MaxBarSegments).ToList();
         _barLabels = top.Select(a => (a.Name, a.Seconds)).ToList();
         var segments = top.Select(a => ((double)a.Seconds, Res(_themes.AppBrushKey(a.AppId)))).ToList();
@@ -192,7 +192,7 @@ public partial class MonthView : UserControl, ILiveView
         var byTime = day.Apps.OrderByDescending(a => a.Seconds).ToList();
         _defaultNote = byTime.Count == 0 ? Str(StringKeys.MonthDayEmpty)
             : byTime.Count == 1 || byTime[0].Seconds * 2 >= byTime[1].Seconds * 3
-                ? Str(StringKeys.MonthMostly, byTime[0].Name, DurationFormat.HoursMinutes(byTime[0].Seconds))
+                ? Str(StringKeys.MonthMostly, byTime[0].Name, UsageText.HoursMinutes(byTime[0].Seconds))
                 : Str(StringKeys.MonthSpread, byTime.Count);
         ShowBarNote(-1);
     }
@@ -201,7 +201,7 @@ public partial class MonthView : UserControl, ILiveView
     {
         if (index < 0) index = SelBar.PinnedIndex;
         SelNote.Text = index >= 0 && index < _barLabels.Count
-            ? $"{_barLabels[index].Name} · {DurationFormat.HoursMinutes(_barLabels[index].Seconds)}"
+            ? $"{_barLabels[index].Name} · {UsageText.HoursMinutes(_barLabels[index].Seconds)}"
             : _defaultNote;
     }
 
@@ -237,8 +237,8 @@ public partial class MonthView : UserControl, ILiveView
             time.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextSoft");
             time.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
             time.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
-            time.Inlines.Add(new System.Windows.Documents.Run(DurationFormat.HoursMinutes(app.Seconds) + " "));
-            var deltaRun = new System.Windows.Documents.Run(app.DeltaPercent is { } p ? Percent(p) : Str(StringKeys.MonthNewApp)) { FontWeight = FontWeights.SemiBold };
+            time.Inlines.Add(new System.Windows.Documents.Run(UsageText.HoursMinutes(app.Seconds) + " "));
+            var deltaRun = new System.Windows.Documents.Run(app.DeltaPercent is { } p ? UsageText.DeltaOfRatio(p) : Str(StringKeys.MonthNewApp)) { FontWeight = FontWeights.SemiBold };
             deltaRun.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty,
                 app.DeltaPercent is null ? "Brush.TextMuted" : app.DeltaPercent >= 0 ? "Brush.Accent" : "Brush.Warning");
             time.Inlines.Add(deltaRun);
@@ -274,20 +274,6 @@ public partial class MonthView : UserControl, ILiveView
             row.Children.Add(body);
             TopApps.Children.Add(row);
         }
-    }
-
-    private static string Percent(double fraction)
-    {
-        var p = (int)Math.Round(fraction * 100, MidpointRounding.AwayFromZero);
-        return (p >= 0 ? "+" : "") + p.ToString(En) + "%";
-    }
-
-    /// <summary>"7h" for an hour or more, "42m" under an hour, blank for none (cell text).</summary>
-    private static string ShortHours(long seconds)
-    {
-        if (seconds <= 0) return "";
-        if (seconds < 3600) return (seconds / 60).ToString(En) + "m";
-        return ((int)Math.Round(seconds / 3600.0, MidpointRounding.AwayFromZero)).ToString(En) + "h";
     }
 
     private static string Ordinal(int n)

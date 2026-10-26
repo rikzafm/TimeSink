@@ -172,17 +172,17 @@ public partial class TodayView : UserControl, ILiveView
         var r = _result!;
         var elapsed = ElapsedSinceSnapshot;
         var uptime = r.UptimeSeconds + (_day is null ? elapsed : 0); // the PC is on while the view is live
-        TotalMain.Text = DurationFormat.HoursMinutes(uptime);
+        TotalMain.Text = UsageText.HoursMinutes(uptime);
         TotalSeconds.Text = $"{uptime % 60:00}s";
-        CombinedText.Text = Str(StringKeys.TodayCombined, DurationFormat.HoursMinutes(r.TotalSeconds + elapsed * r.OpenSessionCount));
+        CombinedText.Text = Str(StringKeys.TodayCombined, UsageText.HoursMinutes(r.TotalSeconds + elapsed * r.OpenSessionCount));
         var nowUtc = r.NowUtc + elapsed;
         Chart.NowFraction = _day is null ? Fraction(r, nowUtc) : 0;
         Chart.NowLabel = Clock(nowUtc);
         foreach (var (_, (time, status, row)) in _rowViews)
         {
             if (!row.IsRunning) continue;
-            time.Text = DurationFormat.HoursMinutes(row.Seconds + elapsed);
-            status.Text = Str(StringKeys.StatusRunning, DurationFormat.HoursMinutes(nowUtc - row.RunningSinceUtc!.Value));
+            time.Text = UsageText.HoursMinutes(row.Seconds + elapsed);
+            status.Text = Str(StringKeys.StatusRunning, UsageText.HoursMinutes(nowUtc - row.RunningSinceUtc!.Value));
         }
     }
 
@@ -216,9 +216,9 @@ public partial class TodayView : UserControl, ILiveView
         TileLongestIcon.Content = icon;
         TileLongestIcon.ToolTip = icon is null ? null : r.Longest!.AppName;
         TileLongest.Text = r.Longest is { } l
-            ? icon is null ? Str(StringKeys.TileLongestValue, DurationFormat.HoursMinutes(l.Seconds), l.AppName) : DurationFormat.HoursMinutes(l.Seconds)
+            ? icon is null ? Str(StringKeys.TileLongestValue, UsageText.HoursMinutes(l.Seconds), l.AppName) : UsageText.HoursMinutes(l.Seconds)
             : Str(StringKeys.TileNone);
-        TileVs.Text = Str(StringKeys.TileVsYesterdayValue, DurationFormat.Signed(r.UptimeVsYesterdaySeconds));
+        TileVs.Text = Str(StringKeys.TileVsYesterdayValue, UsageText.SignedHoursMinutes(r.UptimeVsYesterdaySeconds));
         TileVs.SetResourceReference(TextBlock.ForegroundProperty, r.UptimeVsYesterdaySeconds >= 0 ? "Brush.Accent" : "Brush.Warning");
 
         BuildRows(r);
@@ -240,8 +240,8 @@ public partial class TodayView : UserControl, ILiveView
     {
         if (h < 0 || _result is not { } r) { _tip.IsOpen = false; return; }
         var d = BarDetail.ForHour(r, h, TimeZoneInfo.Local);
-        var lines = new List<string> { $"{HourRange(h)} · " + (d.AppSeconds > 0 ? DurationFormat.HoursMinutes(d.AppSeconds) : "no activity") };
-        lines.AddRange(d.Apps.Take(3).Select(a => $"{a.Name} {DurationFormat.HoursMinutes(a.Seconds)}"));
+        var lines = new List<string> { $"{HourRange(h)} · " + (d.AppSeconds > 0 ? UsageText.HoursMinutes(d.AppSeconds) : "no activity") };
+        lines.AddRange(d.Apps.Take(3).Select(a => $"{a.Name} {UsageText.HoursMinutes(a.Seconds)}"));
         _tip.Content = string.Join(Environment.NewLine, lines);
     }
 
@@ -277,13 +277,13 @@ public partial class TodayView : UserControl, ILiveView
         if (r.HasTypical)
         {
             var diff = (long)Math.Round(d.AppSeconds - d.TypicalAppSeconds);
-            compares.Add(("Typical for this hour", $"{DurationFormat.HoursMinutes((long)Math.Round(d.TypicalAppSeconds))} · {DurationFormat.Signed(diff)}", diff >= 0));
+            compares.Add(("Typical for this hour", $"{UsageText.HoursMinutes((long)Math.Round(d.TypicalAppSeconds))} · {UsageText.SignedHoursMinutes(diff)}", diff >= 0));
         }
         Panel.Show(
             HourRange(h),
-            d.AppSeconds > 0 ? $"{DurationFormat.HoursMinutes(d.AppSeconds)} app time · {d.Sessions.Count} sessions" : "No activity this hour",
+            d.AppSeconds > 0 ? $"{UsageText.HoursMinutes(d.AppSeconds)} app time · {d.Sessions.Count} sessions" : "No activity this hour",
             d.Apps.Select(a => (a.Name, a.Seconds, _themes.AppSlot(a.AppId))).ToList(),
-            d.Sessions.Select(s => (s.AppName, Str(StringKeys.SessionLine, Clock(s.StartUtc), Clock(s.EndUtc)), DurationFormat.HoursMinutes(s.Seconds))).ToList(),
+            d.Sessions.Select(s => (s.AppName, Str(StringKeys.SessionLine, Clock(s.StartUtc), Clock(s.EndUtc)), UsageText.HoursMinutes(s.Seconds))).ToList(),
             compares);
     }
 
@@ -358,10 +358,10 @@ public partial class TodayView : UserControl, ILiveView
         status.Style = (Style)FindResource("Small");
         status.SetResourceReference(TextBlock.ForegroundProperty, row.IsRunning ? "Brush.Accent" : "Brush.TextMuted");
         status.Text = row.IsRunning
-            ? Str(StringKeys.StatusRunning, DurationFormat.HoursMinutes(r.NowUtc + elapsed - row.RunningSinceUtc!.Value))
+            ? Str(StringKeys.StatusRunning, UsageText.HoursMinutes(r.NowUtc + elapsed - row.RunningSinceUtc!.Value))
             : row.LastClosedUtc is { } closed ? Str(StringKeys.StatusClosed, Clock(closed)) : "";
 
-        var time = new TextBlock { Text = DurationFormat.HoursMinutes(row.Seconds + (row.IsRunning ? elapsed : 0)), VerticalAlignment = VerticalAlignment.Top };
+        var time = new TextBlock { Text = UsageText.HoursMinutes(row.Seconds + (row.IsRunning ? elapsed : 0)), VerticalAlignment = VerticalAlignment.Top };
         time.Style = (Style)FindResource("Number");
         time.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Title");
 
@@ -396,7 +396,7 @@ public partial class TodayView : UserControl, ILiveView
             link.Apply!();
             if (i < 0) { stripTip.IsOpen = false; return; }
             var s = row.Sessions[i];
-            stripTip.Content = $"{Clock(s.StartUtc)} – {(s.IsOpen ? Str(StringKeys.SessionNow) : Clock(s.EndUtc))} · {DurationFormat.HoursMinutes(s.Seconds)}";
+            stripTip.Content = $"{Clock(s.StartUtc)} – {(s.IsOpen ? Str(StringKeys.SessionNow) : Clock(s.EndUtc))} · {UsageText.HoursMinutes(s.Seconds)}";
             stripTip.HorizontalOffset = p.X + 8;
             stripTip.IsOpen = true;
         };
@@ -483,9 +483,9 @@ public partial class TodayView : UserControl, ILiveView
         dial.SetResourceReference(SessionDial.NumberFontProperty, "FontFamily.Numbers");
         if (avg is { } mean)
         {
-            var pct = (int)Math.Round((row.Seconds / mean - 1) * 100);
-            dial.CenterText = (pct >= 0 ? "+" : "") + pct + "%";
-            dial.SetResourceReference(SessionDial.CenterBrushProperty, pct >= 0 ? "Brush.Accent" : "Brush.Warning");
+            var delta = UsageText.DeltaOfRatio(row.Seconds / mean - 1);
+            dial.CenterText = delta;
+            dial.SetResourceReference(SessionDial.CenterBrushProperty, delta.StartsWith('-') ? "Brush.Warning" : "Brush.Accent");
         }
         else
         {
@@ -497,8 +497,8 @@ public partial class TodayView : UserControl, ILiveView
         var longest = shown.Count > 0 ? shown.Max(s => s.Seconds) : 0;
         var stats = new StackPanel { Margin = new Thickness(14, 2, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         stats.Children.Add(Stat(StringKeys.DialSessions, shown.Count.ToString(), first: true));
-        stats.Children.Add(Stat(StringKeys.DialLongest, longest > 0 ? DurationFormat.HoursMinutes(longest) : Str(StringKeys.TileNone)));
-        stats.Children.Add(Stat(StringKeys.DialAverage, avg is { } m ? DurationFormat.HoursMinutes((long)Math.Round(m)) : Str(StringKeys.TileNone)));
+        stats.Children.Add(Stat(StringKeys.DialLongest, longest > 0 ? UsageText.HoursMinutes(longest) : Str(StringKeys.TileNone)));
+        stats.Children.Add(Stat(StringKeys.DialAverage, avg is { } m ? UsageText.HoursMinutes((long)Math.Round(m)) : Str(StringKeys.TileNone)));
 
         var top = new StackPanel { Orientation = Orientation.Horizontal };
         top.Children.Add(dial);
@@ -573,7 +573,7 @@ public partial class TodayView : UserControl, ILiveView
     private Border Pill(TodaySession s)
     {
         var span = new Run(Str(StringKeys.SessionLine, Clock(s.StartUtc), s.IsOpen ? Str(StringKeys.SessionNow) : Clock(s.EndUtc)) + " · ");
-        var dur = new Run(DurationFormat.HoursMinutes(s.Seconds)) { FontWeight = FontWeights.SemiBold };
+        var dur = new Run(UsageText.HoursMinutes(s.Seconds)) { FontWeight = FontWeights.SemiBold };
         var text = new TextBlock { Style = (Style)FindResource("Small") };
         text.Inlines.Add(span);
         text.Inlines.Add(dur);

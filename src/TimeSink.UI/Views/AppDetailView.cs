@@ -109,7 +109,7 @@ public sealed class AppDetailView : UserControl
         note.Margin = new Thickness(0, 10, 0, 0);
         note.Text = _bars ? ""
             : r.PeakDaySeconds > 0
-            ? Str(AppDetailStringKeys.Footnote, DurationFormat.HoursMinutes(r.PeakDaySeconds))
+            ? Str(AppDetailStringKeys.Footnote, UsageText.HoursMinutes(r.PeakDaySeconds))
             : Str(AppDetailStringKeys.FootnoteNone, r.Year.ToString(En));
         header.Margin = new Thickness(0, 10, 0, 0);
         tiles.Margin = new Thickness(0, 10, 0, 0);
@@ -250,10 +250,10 @@ public sealed class AppDetailView : UserControl
         var tiles = new[]
         {
             Tile(Str(AppDetailStringKeys.LastOpened), lastValue, lastSub),
-            Tile(Str(AppDetailStringKeys.AvgSession), r.SessionCount > 0 ? DurationFormat.HoursMinutes(r.AverageSessionSeconds) : Str(AppDetailStringKeys.Never),
-                Str(AppDetailStringKeys.Longest, DurationFormat.HoursMinutes(r.LongestSessionSeconds))),
+            Tile(Str(AppDetailStringKeys.AvgSession), r.SessionCount > 0 ? UsageText.HoursMinutes(r.AverageSessionSeconds) : Str(AppDetailStringKeys.Never),
+                Str(AppDetailStringKeys.Longest, UsageText.HoursMinutes(r.LongestSessionSeconds))),
             Tile(Str(AppDetailStringKeys.TimesOpened), r.SessionCount.ToString(En),
-                Str(AppDetailStringKeys.TotalIn, Str(AllStringKeys.Hours, AllFormat.Hours(r.TotalSeconds)))),
+                Str(AppDetailStringKeys.TotalIn, Str(AllStringKeys.Hours, UsageText.Hours(r.TotalSeconds)))),
         };
         for (var i = 0; i < tiles.Length; i++)
         {
@@ -268,12 +268,14 @@ public sealed class AppDetailView : UserControl
     {
         if (last is null) return (Str(AppDetailStringKeys.Never), "");
         if (last.Running) return (Str(AppDetailStringKeys.RunningNow), Str(AppDetailStringKeys.LastSubRunning, Clock(last.StartUtc)));
-        var day = DateOnly.FromDateTime(Local(last.StartUtc));
-        var today = DateOnly.FromDateTime(DateTime.Now);
-        var when = day == today ? Str(AppDetailStringKeys.Today)
-            : day == today.AddDays(-1) ? Str(AppDetailStringKeys.Yesterday)
-            : day.ToString(day.Year == today.Year ? "ddd d MMM" : "d MMM yyyy", En);
-        return (when, Str(AppDetailStringKeys.LastSub, Clock(last.StartUtc), DurationFormat.HoursMinutes(last.Seconds)));
+        var bucket = UsageText.DayOf(last.StartUtc, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), TimeZoneInfo.Local);
+        var when = bucket.Kind switch
+        {
+            DayKind.Today => Str(AppDetailStringKeys.Today),
+            DayKind.Yesterday => Str(AppDetailStringKeys.Yesterday),
+            _ => bucket.Date.ToString(bucket.InCurrentYear ? "ddd d MMM" : "d MMM yyyy", En),
+        };
+        return (when, Str(AppDetailStringKeys.LastSub, Clock(last.StartUtc), UsageText.HoursMinutes(last.Seconds)));
     }
 
     private static FrameworkElement Tile(string label, string value, string sub)
@@ -305,7 +307,7 @@ public sealed class AppDetailView : UserControl
         title.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
         title.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         title.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
-        var hours = new TextBlock { Text = Str(AppDetailStringKeys.YearHours, AllFormat.Hours(r.YearSeconds)), FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Right };
+        var hours = new TextBlock { Text = Str(AppDetailStringKeys.YearHours, UsageText.Hours(r.YearSeconds)), FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Right };
         hours.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
         hours.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
         hours.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
@@ -397,7 +399,7 @@ public sealed class AppDetailView : UserControl
         title.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
         title.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         title.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
-        var hours = new TextBlock { Text = Str(AppDetailStringKeys.YearHours, AllFormat.Hours(d.TotalSeconds)), FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Right };
+        var hours = new TextBlock { Text = Str(AppDetailStringKeys.YearHours, UsageText.Hours(d.TotalSeconds)), FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Right };
         hours.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
         hours.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
         hours.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
@@ -414,7 +416,7 @@ public sealed class AppDetailView : UserControl
 
         var peak = d.Bars.Max(b => b.Seconds);
         var barStrip = BarStrip(d.Bars.Select(b => peak > 0 ? (double)b.Seconds / peak : 0).ToList(), LabelsFor(d.Bars.Select(b => b.Label).ToList()),
-            i => _readout.Text = i is { } k ? Str(AppDetailStringKeys.BarTip, BarName(d.Bars[k]), DurationFormat.HoursMinutes(d.Bars[k].Seconds)) : Str(AppDetailStringKeys.BarsHint),
+            i => _readout.Text = i is { } k ? Str(AppDetailStringKeys.BarTip, BarName(d.Bars[k]), UsageText.HoursMinutes(d.Bars[k].Seconds)) : Str(AppDetailStringKeys.BarsHint),
             height: 120, maxBarWidth: 36);
         barStrip.Margin = new Thickness(0, 12, 0, 0);
 
@@ -586,7 +588,7 @@ public sealed class AppDetailView : UserControl
             name.Text = first.ToString("MMM", En).ToUpperInvariant();
             name.FontSize = 10;
             var total = Label();
-            total.Text = seconds > 0 ? Str("matrixHours", Math.Round(seconds / 3600.0).ToString("0", En)) : "";
+            total.Text = seconds > 0 ? Str("matrixHours", UsageText.Hours(seconds)) : "";
             total.FontSize = 10;
             total.HorizontalAlignment = HorizontalAlignment.Right;
             var label = new Grid { Width = 7 * MonthCells.Cell + 6 * MonthCells.Gap, Margin = new Thickness(0, 0, 0, 5) };
@@ -610,7 +612,7 @@ public sealed class AppDetailView : UserControl
             AppDetailDayKind.Future => Str(AppDetailStringKeys.NotYet, date),
             AppDetailDayKind.BeforeTracking => Str(AppDetailStringKeys.BeforeTracking, date),
             _ when d.Seconds <= 0 => Str(AppDetailStringKeys.NotOpened, date),
-            _ => Str(AppDetailStringKeys.DayTracked, date, DurationFormat.HoursMinutes(d.Seconds),
+            _ => Str(AppDetailStringKeys.DayTracked, date, UsageText.HoursMinutes(d.Seconds),
                 d.Sessions == 1 ? Str(AppDetailStringKeys.SessionOne) : Str(AppDetailStringKeys.SessionMany, d.Sessions)),
         };
     }

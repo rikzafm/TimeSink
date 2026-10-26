@@ -180,7 +180,7 @@ public sealed class AllView : UserControl, ILiveView
             _totals.Children.Clear();
             return;
         }
-        _total.Text = Str(AllStringKeys.TotalHours, AllFormat.Hours(r.Totals.Seconds));
+        _total.Text = Str(AllStringKeys.TotalHours, UsageText.Hours(r.Totals.Seconds));
         SetBold(_counts, [(r.Apps.Count.ToString(En), true), (Str(AllStringKeys.TrackedSuffix), false),
             (r.Retired.Count.ToString(En), true), (Str(AllStringKeys.RetiredSuffix), false)]);
 
@@ -294,7 +294,7 @@ public sealed class AllView : UserControl, ILiveView
             nameRow.Children.Add(badge);
         }
 
-        var avg = a.SessionCount > 0 ? DurationFormat.HoursMinutes((long)Math.Round(a.AverageSessionSeconds)) : Str(AllStringKeys.Never);
+        var avg = a.SessionCount > 0 ? UsageText.HoursMinutes((long)Math.Round(a.AverageSessionSeconds)) : Str(AllStringKeys.Never);
         var last = LastOpenedText(a.LastUsedUtc, nowUtc);
         var stats = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0) };
         if (_icons)
@@ -316,7 +316,7 @@ public sealed class AllView : UserControl, ILiveView
         Grid.SetColumn(middle, 1);
         grid.Children.Add(middle);
 
-        var hours = HoursFigure(AllFormat.Hours(a.Seconds), big: true, _icons);
+        var hours = HoursFigure(UsageText.Hours(a.Seconds), big: true, _icons);
         Grid.SetColumn(hours, 2);
         grid.Children.Add(hours);
 
@@ -411,11 +411,13 @@ public sealed class AllView : UserControl, ILiveView
         var age = nowUtc - lastUtc;
         if (age < 60) return Str(AllStringKeys.JustNow);
         if (age < 3600) return Str(AllStringKeys.MinutesAgo, (age / 60).ToString(En));
-        var day = DateOnly.FromDateTime(Local(lastUtc));
-        var today = DateOnly.FromDateTime(DateTime.Now);
-        if (day == today) return Str(AllStringKeys.HoursAgo, (age / 3600).ToString(En));
-        if (day == today.AddDays(-1)) return Str(AppDetailStringKeys.Yesterday);
-        return day.ToString(day.Year == today.Year ? "d MMM" : "d MMM yyyy", En);
+        var bucket = UsageText.DayOf(lastUtc, nowUtc, TimeZoneInfo.Local);
+        return bucket.Kind switch
+        {
+            DayKind.Today => Str(AllStringKeys.HoursAgo, (age / 3600).ToString(En)),
+            DayKind.Yesterday => Str(AppDetailStringKeys.Yesterday),
+            _ => bucket.Date.ToString(bucket.InCurrentYear ? "d MMM" : "d MMM yyyy", En),
+        };
     }
 
     private FrameworkElement RetiredRow(AllRetiredRow x)
@@ -433,7 +435,7 @@ public sealed class AllView : UserControl, ILiveView
         var left = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
         left.Children.Add(name);
         left.Children.Add(stopped);
-        var hours = HoursFigure(AllFormat.Hours(x.Seconds), big: false);
+        var hours = HoursFigure(UsageText.Hours(x.Seconds), big: false);
         Grid.SetColumn(hours, 1);
         grid.Children.Add(left);
         grid.Children.Add(hours);
@@ -454,7 +456,7 @@ public sealed class AllView : UserControl, ILiveView
         name.FontWeight = FontWeights.Bold;
         name.Margin = new Thickness(16, 0, 8, 0);
         name.TextTrimming = TextTrimming.CharacterEllipsis;
-        var hours = Cell(Str(AllStringKeys.Hours, AllFormat.Hours(r.Totals.Seconds)), "Brush.Accent", "Double.FontSize.Body");
+        var hours = Cell(Str(AllStringKeys.Hours, UsageText.Hours(r.Totals.Seconds)), "Brush.Accent", "Double.FontSize.Body");
         hours.FontWeight = FontWeights.Bold;
         hours.Margin = new Thickness(0, 0, 16, 0);
         Grid.SetColumn(hours, 1);

@@ -220,7 +220,7 @@ public sealed partial class AddAppView : UserControl
     }
 
     private static string OpenForText(Row row, DateTimeOffset now) =>
-        TimeText.Str(AddAppStrings.OpenFor, DurationFormat.HoursMinutes((long)(now - row.App.StartUtc).TotalSeconds));
+        TimeText.Str(AddAppStrings.OpenFor, UsageText.HoursMinutes((long)(now - row.App.StartUtc).TotalSeconds));
 
     private void Track(Row row)
     {

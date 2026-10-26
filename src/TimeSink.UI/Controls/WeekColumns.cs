@@ -113,7 +113,7 @@ public sealed class WeekColumns : FrameworkElement
             var text = d.IsToday ? CurrentBrush : LabelBrush;
             if (!d.IsFuture && d.Seconds > 0)
             {
-                var value = ChartSupport.Text(this, DurationFormat.HoursMinutes(d.Seconds), numbers, FontSize, text, FontWeights.Normal);
+                var value = ChartSupport.Text(this, UsageText.HoursMinutes(d.Seconds), numbers, FontSize, text, FontWeights.Normal);
                 dc.DrawText(value, new Point(x + (colW - value.Width) / 2, baseY - barH - value.Height - 2));
             }
             var day = ChartSupport.Text(this, CultureInfo.CurrentCulture.DateTimeFormat.GetAbbreviatedDayName(d.Date.DayOfWeek), null, FontSize, text,

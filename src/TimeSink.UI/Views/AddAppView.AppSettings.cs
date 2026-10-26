@@ -141,7 +141,7 @@ public sealed partial class AddAppView
         name.GotKeyboardFocus += (_, _) => name.SetResourceReference(Control.BorderBrushProperty, "Brush.Accent");
         name.LostKeyboardFocus += (_, _) => name.BorderBrush = Brushes.Transparent;
         var meta = Text(null, "Double.FontSize.Small", "Brush.TextMuted");
-        meta.Text = TimeText.Str(AddAppStrings.SettingsMeta, DurationFormat.HoursMinutes(app.Seconds), TimeText.Local(app.AddedUtc).ToString("MMM yyyy"));
+        meta.Text = TimeText.Str(AddAppStrings.SettingsMeta, UsageText.HoursMinutes(app.Seconds), TimeText.Local(app.AddedUtc).ToString("MMM yyyy"));
         meta.Margin = new Thickness(0, 4, 0, 0);
         var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         texts.Children.Add(name);
@@ -376,7 +376,7 @@ public sealed partial class AddAppView
             name.TextTrimming = TextTrimming.CharacterEllipsis;
             name.VerticalAlignment = VerticalAlignment.Center;
             var time = Text(null, "Double.FontSize.Small", "Brush.TextMuted");
-            time.Text = DurationFormat.HoursMinutes(m.Seconds);
+            time.Text = UsageText.HoursMinutes(m.Seconds);
             time.Margin = new Thickness(10, 0, 4, 0);
             time.VerticalAlignment = VerticalAlignment.Center;
             var un = IconButton("M6,6 L18,18 M18,6 L6,18", "Brush.TextMuted", subtle: true);

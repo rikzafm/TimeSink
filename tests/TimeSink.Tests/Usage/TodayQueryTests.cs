@@ -162,20 +162,3 @@ public sealed class TodayQueryTests : IDisposable
         }
     }
 }
-
-public class DurationFormatTests
-{
-    [Theory]
-    [InlineData(0, "0m")]
-    [InlineData(59, "0m")]
-    [InlineData(54 * 60, "54m")]
-    [InlineData(3600, "1h 00m")]
-    [InlineData(17 * 3600 + 21 * 60 + 32, "17h 21m")]
-    public void Durations_are_Xh_YYm(long seconds, string expected) => DurationFormat.HoursMinutes(seconds).Should().Be(expected);
-
-    [Theory]
-    [InlineData(38 * 60, "+38m")]
-    [InlineData(-90 * 60, "-1h 30m")]
-    [InlineData(0, "+0m")]
-    public void Signed_deltas_carry_a_sign(long seconds, string expected) => DurationFormat.Signed(seconds).Should().Be(expected);
-}

@@ -176,7 +176,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
         Redraw();
     }
 
-    private static string H(long seconds) => Str(YearStringKeys.Hours, (long)Math.Round(seconds / 3600.0));
+    private static string H(long seconds) => Str(YearStringKeys.Hours, UsageText.Hours(seconds));
 
     private void Redraw()
     {
@@ -190,7 +190,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
             return;
         }
         _caption.Text = Str(YearStringKeys.Caption, r.Year);
-        _total.Text = DurationFormat.HoursMinutes(r.TotalSeconds);
+        _total.Text = UsageText.HoursMinutes(r.TotalSeconds);
         _avg.Text = r.AverageMonthSeconds is { } a ? Str(YearStringKeys.Average, H(a)) : "";
         _best.Text = r.BestMonth is { } b ? Str(YearStringKeys.Best, Str(YearStringKeys.BestValue, MonthAbbr(b), H(r.BestMonthSeconds))) : "";
         _banner.Text = r.PaceYearSeconds is { } pace
@@ -205,8 +205,8 @@ public sealed class YearPaceView : UserControl, IYearSubView
     private static string ValueLabel(YearMonth m) => m.Kind switch
     {
         YearMonthKind.BeforeTracking => Str(StringKeys.TileNone),
-        YearMonthKind.Future => "~" + (long)Math.Round(m.ProjectedSeconds / 3600.0),
-        _ => ((long)Math.Round(m.Seconds / 3600.0)).ToString(CultureInfo.CurrentCulture),
+        YearMonthKind.Future => "~" + UsageText.Hours(m.ProjectedSeconds),
+        _ => UsageText.Hours(m.Seconds),
     };
 
     private void DrawChartAndPanel()
@@ -225,7 +225,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
         var started = r.TrackingStarted;
         string StartText() => started is { } d ? d.ToString("d MMM", CultureInfo.CurrentCulture) : "";
         var prevName = m.Month > 1 ? MonthAbbr(m.Month - 1) : MonthAbbr(12);
-        string Delta() => (m.DeltaPercent!.Value >= 0 ? "+" : "-") + Math.Abs((long)Math.Round(m.DeltaPercent.Value)) + "%";
+        string Delta() => UsageText.Delta(m.DeltaPercent!.Value);
 
         _panelName.Text = MonthName(m.Month) + (m.Kind == YearMonthKind.Future ? Str(YearStringKeys.ProjectedSuffix) : "");
         switch (m.Kind)

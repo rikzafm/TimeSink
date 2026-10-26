@@ -67,9 +67,9 @@ public sealed class AlertEngine(Db db, TimeZoneInfo zone)
             changed = true;
             notices.Add(g.Kind == "limit"
                 ? new AlertNotice(AlertKind.Limit, "Daily limit reached",
-                    $"{name}: {DurationFormat.HoursMinutes(seconds)} today (limit {DurationFormat.HoursMinutes(g.Seconds)}).")
+                    $"{name}: {UsageText.HoursMinutes(seconds)} today (limit {UsageText.HoursMinutes(g.Seconds)}).")
                 : new AlertNotice(AlertKind.Goal, "Goal reached",
-                    $"{name}: {DurationFormat.HoursMinutes(seconds)} today (goal {DurationFormat.HoursMinutes(g.Seconds)})."));
+                    $"{name}: {UsageText.HoursMinutes(seconds)} today (goal {UsageText.HoursMinutes(g.Seconds)})."));
         }
         if (changed) db.SetSetting(SentKey, day + "|" + string.Join("|", sent));
     }
@@ -162,8 +162,8 @@ public sealed class AlertEngine(Db db, TimeZoneInfo zone)
         var bestDay = DateOnly.ParseExact(best.Key, "yyyy-MM-dd", CultureInfo.InvariantCulture).DayOfWeek;
         var apps = perApp.Count;
         notices.Add(new AlertNotice(AlertKind.Weekly, "Your week in TimeSink",
-            $"Last week: {DurationFormat.HoursMinutes(total)} across {apps} {(apps == 1 ? "app" : "apps")}. " +
-            $"Most used: {names.GetValueOrDefault(top.Key, "?")} ({DurationFormat.HoursMinutes(top.Value)}). " +
-            $"Busiest day: {bestDay} ({DurationFormat.HoursMinutes(best.Value)})."));
+            $"Last week: {UsageText.HoursMinutes(total)} across {apps} {(apps == 1 ? "app" : "apps")}. " +
+            $"Most used: {names.GetValueOrDefault(top.Key, "?")} ({UsageText.HoursMinutes(top.Value)}). " +
+            $"Busiest day: {bestDay} ({UsageText.HoursMinutes(best.Value)})."));
     }
 }

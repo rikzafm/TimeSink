@@ -189,7 +189,7 @@ public sealed class WeekView : UserControl, ILiveView
         };
         _prev.IsEnabled = _weeksBack < MaxWeeksBack;
         _next.IsEnabled = _weeksBack > 0;
-        _total.Text = DurationFormat.HoursMinutes(r.TotalSeconds);
+        _total.Text = UsageText.HoursMinutes(r.TotalSeconds);
         _streak.Text = Str(StringKeys.WeekStreak, r.StreakDays);
         _columns.Days = r.Days;
         _trend.Values = r.WeekTotals;
@@ -198,9 +198,9 @@ public sealed class WeekView : UserControl, ILiveView
         var change = r.TotalSeconds - r.PrevWeekSeconds;
         var parts = new List<string>();
         if (r.PrevWeekSeconds > 0)
-            parts.Add(Str(StringKeys.WeekVsLast, (change >= 0 ? "▲ " : "▼ ") + DurationFormat.HoursMinutes(Math.Abs(change))));
+            parts.Add(Str(StringKeys.WeekVsLast, (change >= 0 ? "▲ " : "▼ ") + UsageText.HoursMinutes(Math.Abs(change))));
         if (counted.Count > 0)
-            parts.Add(Str(StringKeys.WeekAvg, DurationFormat.HoursMinutes((long)counted.Average(d => d.Seconds))));
+            parts.Add(Str(StringKeys.WeekAvg, UsageText.HoursMinutes((long)counted.Average(d => d.Seconds))));
         _delta.Text = string.Join(" · ", parts);
         _delta.Visibility = parts.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         _empty.Visibility = r.Apps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -256,7 +256,7 @@ public sealed class WeekView : UserControl, ILiveView
     {
         if (i < 0 || _result is not { } r) { _tip.IsOpen = false; return; }
         var d = r.Days[i];
-        _tip.Content = $"{d.Date.ToString("dddd, d MMM", CultureInfo.CurrentCulture)}{Environment.NewLine}{DurationFormat.HoursMinutes(d.Seconds)}";
+        _tip.Content = $"{d.Date.ToString("dddd, d MMM", CultureInfo.CurrentCulture)}{Environment.NewLine}{UsageText.HoursMinutes(d.Seconds)}";
     }
 
     private void OnColumnClicked(int i)
@@ -282,7 +282,7 @@ public sealed class WeekView : UserControl, ILiveView
     {
         if (i < 0 || _result is not { } r) { _trendTip.IsOpen = false; return; }
         var from = TrendWeekStart(r, i);
-        _trendTip.Content = $"{from.ToString("d MMM", CultureInfo.CurrentCulture)} – {from.AddDays(6).ToString("d MMM", CultureInfo.CurrentCulture)}{Environment.NewLine}{DurationFormat.HoursMinutes(r.WeekTotals[i])}";
+        _trendTip.Content = $"{from.ToString("d MMM", CultureInfo.CurrentCulture)} – {from.AddDays(6).ToString("d MMM", CultureInfo.CurrentCulture)}{Environment.NewLine}{UsageText.HoursMinutes(r.WeekTotals[i])}";
     }
 
     private void OnTrendClicked(int i)
@@ -300,7 +300,7 @@ public sealed class WeekView : UserControl, ILiveView
     private void OnSparkHovered(ToolTip tip, WeekAppRow app, int i)
     {
         if (i < 0 || _result is not { } r) { tip.IsOpen = false; return; }
-        tip.Content = $"{app.Name}{Environment.NewLine}{SparkDate(r, app, i).ToString("dddd, d MMM", CultureInfo.CurrentCulture)} · {DurationFormat.HoursMinutes(app.Spark[i])}";
+        tip.Content = $"{app.Name}{Environment.NewLine}{SparkDate(r, app, i).ToString("dddd, d MMM", CultureInfo.CurrentCulture)} · {UsageText.HoursMinutes(app.Spark[i])}";
     }
 
     /// <summary>
@@ -335,18 +335,18 @@ public sealed class WeekView : UserControl, ILiveView
 
         var compares = new List<(string, string, bool)>();
         var vsAvg = (long)Math.Round(detail.TotalSeconds - detail.WeekAverageSeconds);
-        compares.Add(("vs the week's average", DurationFormat.Signed(vsAvg), vsAvg >= 0));
+        compares.Add(("vs the week's average", UsageText.SignedHoursMinutes(vsAvg), vsAvg >= 0));
         var vsLast = detail.TotalSeconds - detail.SameDayLastWeekSeconds;
-        compares.Add(("vs the same day last week", DurationFormat.Signed(vsLast), vsLast >= 0));
+        compares.Add(("vs the same day last week", UsageText.SignedHoursMinutes(vsLast), vsLast >= 0));
         var span = detail.FirstStartUtc is { } a && detail.LastEndUtc is { } b ? $" · active {Clock(a)} – {Clock(b)}" : "";
         var apps = detail.Apps.Select(x => (x.Name, x.Seconds, _themes.AppSlot(x.AppId))).ToList();
-        var subtitle = DurationFormat.HoursMinutes(detail.TotalSeconds) + span;
+        var subtitle = UsageText.HoursMinutes(detail.TotalSeconds) + span;
         if (focus is not null)
         {
             var at = apps.FindIndex(x => x.Name == focus.Name);
             var secs = at >= 0 ? apps[at].Seconds : 0;
             if (at > 0) { var f = apps[at]; apps.RemoveAt(at); apps.Insert(0, f); }
-            subtitle = $"{focus.Name} {(secs > 0 ? DurationFormat.HoursMinutes(secs) : "not used")} of {DurationFormat.HoursMinutes(detail.TotalSeconds)}{span}";
+            subtitle = $"{focus.Name} {(secs > 0 ? UsageText.HoursMinutes(secs) : "not used")} of {UsageText.HoursMinutes(detail.TotalSeconds)}{span}";
         }
         _panel.Show(
             day.ToString("dddd, d MMM", CultureInfo.CurrentCulture),
@@ -397,7 +397,7 @@ public sealed class WeekView : UserControl, ILiveView
         spark.BarHovered += (i, _) => OnSparkHovered(sparkTip, app, i);
         spark.BarClicked += i => { if (_result is { } r) _ = ShowDayPanel(SparkDate(r, app, i), app); };
 
-        var time = new TextBlock { Text = DurationFormat.HoursMinutes(app.Seconds), VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold, MinWidth = 56, TextAlignment = TextAlignment.Right };
+        var time = new TextBlock { Text = UsageText.HoursMinutes(app.Seconds), VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold, MinWidth = 56, TextAlignment = TextAlignment.Right };
         time.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
         time.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
         time.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");

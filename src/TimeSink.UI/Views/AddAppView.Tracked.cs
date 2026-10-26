@@ -374,7 +374,7 @@ public sealed partial class AddAppView
     /// <summary>The line under a Candidate's name.</summary>
     private static string SubOf(MergeCandidate c) => c.Kind switch
     {
-        CandidateKind.Tracked or CandidateKind.Merged => DurationFormat.HoursMinutes(c.Seconds),
+        CandidateKind.Tracked or CandidateKind.Merged => UsageText.HoursMinutes(c.Seconds),
         CandidateKind.Retired => TimeText.Str(AddAppStrings.SubStopped),
         _ => c.Installed!.IsSteam ? InstalledApp.SteamSource : c.Installed.Publisher is { Length: > 0 } pub ? pub : TimeText.Str(AddAppStrings.SubInstalled),
     };

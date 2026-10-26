@@ -63,7 +63,7 @@ public sealed class DetailPanel : Border
             line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var label = Text(name, "Brush.Text", "Double.FontSize.Body", FontWeights.SemiBold);
             label.TextTrimming = TextTrimming.CharacterEllipsis;
-            var value = Text($"{DurationFormat.HoursMinutes(seconds)} · {Math.Round(seconds * 100.0 / total).ToString("0", CultureInfo.CurrentCulture)}%",
+            var value = Text($"{UsageText.HoursMinutes(seconds)} · {UsageText.Share(seconds / (double)total)}",
                 "Brush.TextSoft", "Double.FontSize.Small");
             value.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
             Grid.SetColumn(value, 1);

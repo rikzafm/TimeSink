@@ -146,7 +146,7 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         if (await _loader.Refresh(c => MatrixQuery.Run(path, c.Now, c.Zone, c.Running, c.SignInUtc), r => _result = r)) Redraw();
     }
 
-    private static string H(long seconds) => Str(MatrixStringKeys.Hours, (long)Math.Round(seconds / 3600.0));
+    private static string H(long seconds) => Str(MatrixStringKeys.Hours, UsageText.Hours(seconds));
     private static string MonthAbbr(int month) => CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedMonthNames[month - 1];
     private static string MonthName(int month) => CultureInfo.CurrentCulture.DateTimeFormat.MonthNames[month - 1];
 
@@ -182,13 +182,13 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         _grid.MonthLabels = r.Months.Select(m => MonthAbbr(m.Month)).ToList();
         _grid.Rows = r.Rows.Select(row => new MatrixGridRow(row.Name, _themes.AppSlot(row.AppId), row.Cells.Select(CellText).ToList(),
             row.Cells.Select(c => c.Level).ToList(), H(row.TotalSeconds), AppIcons.Get(row.AppId))).ToList();
-        _grid.ColumnTotals = r.Months.Select(m => ((long)Math.Round(m.TotalSeconds / 3600.0)).ToString(CultureInfo.CurrentCulture)).ToList();
+        _grid.ColumnTotals = r.Months.Select(m => UsageText.Hours(m.TotalSeconds)).ToList();
         _grid.GrandTotal = H(r.GrandSeconds);
         DrawSelection();
     }
 
     private static string CellText(MatrixCell c) =>
-        c.Seconds == 0 ? Str(StringKeys.TileNone) : ((long)Math.Round(c.Seconds / 3600.0)).ToString(CultureInfo.CurrentCulture);
+        c.Seconds == 0 ? Str(StringKeys.TileNone) : UsageText.Hours(c.Seconds);
 
     private void DrawSelection()
     {
@@ -231,7 +231,7 @@ public sealed class YearMatrixView : UserControl, IYearSubView
             _selTotal.Text = Str(MatrixStringKeys.RowTotal, H(row.TotalSeconds), row.SharePercent);
             var peak = Str(MatrixStringKeys.RowNotePeak, MonthName(row.PeakMonth), H(row.PeakSeconds));
             _selNote.Text = row.TrendPercent is { } t
-                ? Str(t >= 0 ? MatrixStringKeys.RowNoteUp : MatrixStringKeys.RowNoteDown, MonthName(row.PeakMonth), H(row.PeakSeconds), Math.Abs((long)Math.Round(t)))
+                ? Str(t >= 0 ? MatrixStringKeys.RowNoteUp : MatrixStringKeys.RowNoteDown, MonthName(row.PeakMonth), H(row.PeakSeconds), UsageText.DeltaMagnitude(t))
                 : peak;
             var accent = (Brush)FindResource(_themes.AppBrushKey(row.AppId));
             var muted = (Brush)FindResource("Brush.Heat1");

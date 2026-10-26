@@ -154,7 +154,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
     private static string ShortDate(DateOnly d) => d.ToString("d MMM", CultureInfo.CurrentCulture);
 
     private static string Hours(long seconds) =>
-        seconds < 3600 ? DurationFormat.HoursMinutes(seconds) : Str(WrappedStringKeys.ShortHours, seconds / 3600);
+        seconds < 3600 ? UsageText.HoursMinutes(seconds) : Str(WrappedStringKeys.ShortHours, UsageText.Hours(seconds));
 
     private WrappedCardModel BuildModel(WrappedResult r, int index)
     {
@@ -234,7 +234,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         var busiestValue = r.BusiestMonth is { } m ? Str(WrappedStringKeys.BusiestValue, MonthAbbr(m), Hours(r.BusiestMonthSeconds)) : none;
         var busiestSub = r.BusiestMonth is { } bm
             ? r.BusiestMonthDeltaPercent is { } d
-                ? Str(WrappedStringKeys.BusiestVs, (d >= 0 ? "+" : "-") + Math.Abs((long)Math.Round(d)).ToString(CultureInfo.CurrentCulture) + "%", MonthAbbr(bm - 1))
+                ? Str(WrappedStringKeys.BusiestVs, UsageText.Delta(d), MonthAbbr(bm - 1))
                 : Str(WrappedStringKeys.BusiestOnly)
             : "";
 
