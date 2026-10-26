@@ -105,6 +105,22 @@ public sealed class AppLibraryTests : IDisposable
     }
 
     [Fact]
+    public void Icons_can_be_read_for_several_apps_at_once_leaving_out_those_without_one()
+    {
+        using var lib = AppLibrary.Open(_path);
+        var one = lib.AddTracked(new NewApp(@"C:\a\one.exe", "One", null), 1, [1, 1]).AppId;
+        var two = lib.AddTracked(new NewApp(@"C:\a\two.exe", "Two", null), 1, null).AppId;
+        var three = lib.AddTracked(new NewApp(@"C:\a\three.exe", "Three", null), 1, [3, 3]).AppId;
+
+        var icons = lib.GetIcons([one, two, 999]);
+
+        icons.Keys.Should().BeEquivalentTo([one]);
+        icons[one].Should().Equal(1, 1);
+        lib.GetIcons([]).Should().BeEmpty();
+        lib.GetIcons([three])[three].Should().Equal(3, 3);
+    }
+
+    [Fact]
     public void Letter_tile_uses_the_first_letter_or_digit_upper_cased_and_a_stable_palette_slot()
     {
         LetterTile.Letter("  steam").Should().Be("S");

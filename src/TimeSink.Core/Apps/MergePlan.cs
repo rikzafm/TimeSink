@@ -1,5 +1,3 @@
-using Microsoft.Data.Sqlite;
-
 namespace TimeSink.Core.Apps;
 
 /// <summary>What a <see cref="MergeCandidate"/> is today: tracked, already merged into the Main app, stopped, or merely installed.</summary>
@@ -70,11 +68,12 @@ public sealed class MergePlan
 
     /// <summary>
     /// Unmerges every unticked Merged app and folds every ticked Candidate into the Main app, in Candidate order: a
-    /// Retired app is restored first, an installed one is added first (its icon is the known one, else extracted
-    /// through the desktop seam). Apps added this way count towards "Added N".
+    /// Retired app is restored first (unless it is already tracked again), an installed one is added first (its icon is
+    /// the known one, else extracted through the desktop seam; an <see cref="IOException"/> there only means no icon).
+    /// Apps added this way count towards "Added N".
     /// There is no transaction around the whole confirm: each step commits on its own. On
     /// <see cref="CatalogueOutcome.Unavailable"/> the steps before the failure stay in the database, the rest did not
-    /// run, and the plan is unchanged (same ticks), so confirming again finishes the job.
+    /// run, and the plan is unchanged (same ticks), so confirming again finishes the job without repeating those steps.
     /// </summary>
     public CatalogueOutcome Confirm()
     {
@@ -82,6 +81,7 @@ public sealed class MergePlan
         try
         {
             using var lib = AppLibrary.Open(_dbPath);
+            HashSet<long>? tracked = null; // ids tracked when the confirm started, read once and only if a stopped app is ticked
             foreach (var c in Candidates)
             {
                 var ticked = IsTicked(c.Key);
@@ -94,20 +94,31 @@ public sealed class MergePlan
 
                 long id;
                 if (c.Kind == CandidateKind.Tracked) id = c.AppId;
-                else if (c.Kind == CandidateKind.Retired) { lib.Restore(c.AppId, now); id = c.AppId; }
+                else if (c.Kind == CandidateKind.Retired)
+                {
+                    // a repeat after a partial failure finds it tracked (perhaps merged already): restoring again would reset its start
+                    tracked ??= lib.Tracked().SelectMany(t => t.Merged.Select(m => m.Id).Append(t.Id)).ToHashSet();
+                    if (!tracked.Contains(c.AppId)) lib.Restore(c.AppId, now);
+                    id = c.AppId;
+                }
                 else
                 {
                     var app = c.Installed!;
-                    var png = c.Png ?? _desktop.ExtractIcon(app.ExePath, app.Aumid, app.IconFile, 64);
+                    var png = c.Png ?? ExtractIcon(app);
                     id = lib.AddTracked(app.ToNewApp(), now, png).AppId;
                 }
                 if (!lib.Merge(id, MainId)) continue;
                 if (!c.IsTracked) _catalogue.NoteAddedElsewhere(c.ExePath);
             }
         }
-        catch (Exception e) when (IsBusyOrMissing(e)) { return CatalogueOutcome.Unavailable; }
+        catch (Exception e) when (AppCatalogue.IsBusyOrMissing(e)) { return CatalogueOutcome.Unavailable; }
         return CatalogueOutcome.Done;
     }
 
-    internal static bool IsBusyOrMissing(Exception e) => e is SqliteException or IOException;
+    // a file that cannot be read is no reason to fail the confirm (or to call the database busy): the app just has no icon
+    private byte[]? ExtractIcon(InstalledApp app)
+    {
+        try { return _desktop.ExtractIcon(app.ExePath, app.Aumid, app.IconFile, 64); }
+        catch (IOException) { return null; }
+    }
 }

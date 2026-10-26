@@ -32,12 +32,13 @@ public sealed class AppCatalogue
     private readonly string _dbPath;
     private readonly IDesktop _desktop;
     private readonly object _gate = new();
-    private readonly object _scanGate = new();
+    private readonly object _scanRun = new(); // held for a whole scan, so callers share it; never taken by LastInstalled or NewVisit
     private readonly Dictionary<string, RunningCandidate> _trackedThisVisit = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _addedElsewhere = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, byte[]?> _icons = new(StringComparer.OrdinalIgnoreCase);
-    private IReadOnlyList<InstalledApp>? _installed; // the slow scan, taken lazily once per visit
-    private IReadOnlyList<InstalledApp>? _lastInstalled; // survives NewVisit, so a reopened screen can draw at once
+    private IReadOnlyList<InstalledApp>? _installed; // the slow scan, taken lazily once per visit (under _gate)
+    private IReadOnlyList<InstalledApp>? _lastInstalled; // survives NewVisit, so a reopened screen can draw at once (under _gate)
+    private int _visit; // bumped by NewVisit, so a scan that began in an earlier visit does not count for this one (under _gate)
 
     public AppCatalogue(string dbPath, IDesktop desktop)
     {
@@ -127,10 +128,13 @@ public sealed class AppCatalogue
         try
         {
             using var lib = AppLibrary.Open(_dbPath);
-            return new LibraryState(CatalogueOutcome.Done, lib.Library(), lib.MergedAliases(), lib.TrivialRetired());
+            return ReadLibrary(lib);
         }
         catch (Exception e) when (IsBusyOrMissing(e)) { return new LibraryState(CatalogueOutcome.Unavailable, [], [], new HashSet<long>()); }
     }
+
+    private static LibraryState ReadLibrary(AppLibrary lib) =>
+        new(CatalogueOutcome.Done, lib.Library(), lib.MergedAliases(), lib.TrivialRetired());
 
     /// <summary>
     /// Starts tracking an app that is not running (picked from the Installed list or a file): it counts towards "Added N".
@@ -178,9 +182,10 @@ public sealed class AppCatalogue
     }
 
     /// <summary>
-    /// Applies one edit to an app. <see cref="CatalogueOutcome.Rejected"/> when the change does not apply (a blank name, an
-    /// unknown app, a Make-main on an app that is not Merged) and <see cref="CatalogueOutcome.Unavailable"/> when the
-    /// database is busy or missing; in both cases nothing changed. A Retire or Restore also updates the "Added N" count.
+    /// Applies one edit to an app. <see cref="CatalogueOutcome.Rejected"/> when the change does not apply (a blank name, a
+    /// Rename of an unknown app, a Make-main on an app that is not Merged) and <see cref="CatalogueOutcome.Unavailable"/>
+    /// when the database is busy or missing; in both cases nothing changed. The other kinds do not check that the app
+    /// exists: on an unknown app they change nothing and still report Done. A Retire or Restore also updates the "Added N" count.
     /// </summary>
     public CatalogueOutcome ApplyChange(AppChange change)
     {
@@ -229,8 +234,9 @@ public sealed class AppCatalogue
         {
             _trackedThisVisit.Clear();
             _addedElsewhere.Clear();
+            _installed = null;
+            _visit++;
         }
-        lock (_scanGate) _installed = null;
     }
 
     /// <summary>
@@ -252,15 +258,15 @@ public sealed class AppCatalogue
             if (tracked.FirstOrDefault(a => a.Id == mainId) is not { } found) return null;
             main = found;
             foreach (var a in tracked.Where(a => a.Id != mainId))
-                list.Add(new MergeCandidate("t" + a.Id, CandidateKind.Tracked, a.DisplayName, a.ExePath, a.Id, a.Seconds, null, lib.GetIcon(a.Id)));
+                list.Add(new MergeCandidate("t" + a.Id, CandidateKind.Tracked, a.DisplayName, a.ExePath, a.Id, a.Seconds, null, null));
             foreach (var m in main.Merged)
-                list.Add(new MergeCandidate("m" + m.Id, CandidateKind.Merged, m.DisplayName, m.ExePath, m.Id, m.Seconds, null, lib.GetIcon(m.Id)));
-            var library = lib.Library();
+                list.Add(new MergeCandidate("m" + m.Id, CandidateKind.Merged, m.DisplayName, m.ExePath, m.Id, m.Seconds, null, null));
+            state = ReadLibrary(lib);
             var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows) + Path.DirectorySeparatorChar;
-            var trivial = lib.TrivialRetired();
-            state = new LibraryState(CatalogueOutcome.Done, library, lib.MergedAliases(), trivial);
-            foreach (var r in library.Where(a => a.State == "retired" && !trivial.Contains(a.Id) && !a.ExePath.StartsWith(windows, StringComparison.OrdinalIgnoreCase)))
-                list.Add(new MergeCandidate("s" + r.Id, CandidateKind.Retired, r.DisplayName, r.ExePath, r.Id, 0, null, lib.GetIcon(r.Id)));
+            foreach (var r in state.Retired.Where(a => !a.ExePath.StartsWith(windows, StringComparison.OrdinalIgnoreCase)))
+                list.Add(new MergeCandidate("s" + r.Id, CandidateKind.Retired, r.DisplayName, r.ExePath, r.Id, 0, null, null));
+            var icons = lib.GetIcons(list.Select(c => c.AppId));
+            for (var i = 0; i < list.Count; i++) list[i] = list[i] with { Png = icons.GetValueOrDefault(list[i].AppId) };
         }
         catch (Exception e) when (IsBusyOrMissing(e)) { return null; }
 
@@ -280,20 +286,35 @@ public sealed class AppCatalogue
     /// </summary>
     public IReadOnlyList<InstalledApp> Installed()
     {
-        lock (_scanGate)
+        lock (_gate)
         {
             if (_installed is not null) return _installed;
+        }
+        lock (_scanRun) // one scan at a time; the fields are only ever held under the short _gate
+        {
+            int visit;
+            lock (_gate)
+            {
+                if (_installed is not null) return _installed; // another caller scanned while this one waited
+                visit = _visit;
+            }
             var scan = _desktop.ScanInstalled();
-            if (scan.Count == 0 && _lastInstalled is { Count: > 0 } last) scan = last;
-            return _installed = _lastInstalled = scan;
+            lock (_gate)
+            {
+                if (scan.Count == 0 && _lastInstalled is { Count: > 0 } last) scan = last;
+                _lastInstalled = scan;
+                if (visit == _visit) _installed = scan; // a NewVisit meanwhile: the next caller scans afresh
+            }
+            return scan;
         }
     }
 
     /// <summary>The newest scan, possibly from an earlier visit, or null before the first one; never scans.</summary>
     public IReadOnlyList<InstalledApp>? LastInstalled
     {
-        get { lock (_scanGate) return _lastInstalled; }
+        get { lock (_gate) return _lastInstalled; }
     }
 
-    private static bool IsBusyOrMissing(Exception e) => MergePlan.IsBusyOrMissing(e);
+    /// <summary>True for the failures that mean a busy or missing database (the only ones the catalogue turns into <see cref="CatalogueOutcome.Unavailable"/>).</summary>
+    internal static bool IsBusyOrMissing(Exception e) => e is SqliteException or IOException;
 }

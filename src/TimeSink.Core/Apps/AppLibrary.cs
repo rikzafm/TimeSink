@@ -357,6 +357,19 @@ public sealed class AppLibrary : IDisposable
         return cmd.ExecuteScalar() as byte[];
     }
 
+    /// <summary>The stored icons of the given apps in one query; an app with no stored icon is left out.</summary>
+    public IReadOnlyDictionary<long, byte[]> GetIcons(IEnumerable<long> appIds)
+    {
+        var icons = new Dictionary<long, byte[]>();
+        var ids = appIds.Distinct().ToList();
+        if (ids.Count == 0) return icons;
+        using var cmd = Cmd("SELECT app_id, png FROM icons WHERE app_id IN (SELECT value FROM json_each($ids))");
+        cmd.Parameters.AddWithValue("$ids", "[" + string.Join(",", ids) + "]");
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) icons[r.GetInt64(0)] = (byte[])r[1];
+        return icons;
+    }
+
     public string? GetIconHash(long appId)
     {
         using var cmd = Cmd("SELECT hash FROM icons WHERE app_id = $a");

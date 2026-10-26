@@ -22,18 +22,32 @@ public sealed class AppCatalogueTests : IDisposable
         public byte[]? ExtractIcon(string exePath, string? aumid, string? imageFile, int size)
         {
             IconCalls.Add((exePath, size));
+            OnIcon?.Invoke(exePath);
             if (IconFails.TryGetValue(exePath, out var fail)) throw fail;
             return Encoding.UTF8.GetBytes("png:" + exePath);
         }
 
         public List<InstalledApp> Installed { get; } = [];
-        public int ScanCalls { get; private set; }
+
+        /// <summary>When set, a scan signals <see cref="ScanEntered"/> and then waits for <see cref="ScanRelease"/>.</summary>
+        public bool SlowScan { get; set; }
+        public ManualResetEventSlim ScanEntered { get; } = new(false);
+        public ManualResetEventSlim ScanRelease { get; } = new(false);
+        public Action<string>? OnIcon { get; set; }
 
         public IReadOnlyList<InstalledApp> ScanInstalled()
         {
-            ScanCalls++;
+            Interlocked.Increment(ref _scanCalls);
+            if (SlowScan)
+            {
+                ScanEntered.Set();
+                ScanRelease.Wait(TimeSpan.FromSeconds(30));
+            }
             return Installed.ToList();
         }
+
+        private int _scanCalls;
+        public int ScanCalls => _scanCalls;
     }
 
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "timesink-tests-" + Guid.NewGuid().ToString("N"));
@@ -336,6 +350,49 @@ public sealed class AppCatalogueTests : IDisposable
         cat.LastInstalled!.Select(i => i.Name).Should().Equal("Fresh");
         _desktop.Installed.Clear(); // the scan failed
         cat.Installed().Select(i => i.Name).Should().Equal("Fresh");
+    }
+
+    [Fact]
+    public async Task The_last_scan_and_a_new_visit_do_not_wait_for_a_scan_in_progress()
+    {
+        _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Fresh"));
+        _desktop.SlowScan = true;
+        var cat = Catalogue();
+        var scan = Task.Run(() => cat.Installed());
+        _desktop.ScanEntered.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+        try
+        {
+            IReadOnlyList<InstalledApp>? during = null;
+            var quick = Task.Run(() =>
+            {
+                during = cat.LastInstalled;
+                cat.NewVisit();
+            });
+
+            (await Task.WhenAny(quick, Task.Delay(TimeSpan.FromSeconds(3)))).Should().BeSameAs(quick, "neither call should wait for the scan");
+            during.Should().BeNull();
+        }
+        finally { _desktop.ScanRelease.Set(); }
+        await scan.WaitAsync(TimeSpan.FromSeconds(10));
+        cat.LastInstalled!.Select(i => i.Name).Should().Equal("Fresh");
+    }
+
+    [Fact]
+    public async Task Callers_arriving_during_a_scan_share_it()
+    {
+        _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Fresh"));
+        _desktop.SlowScan = true;
+        var cat = Catalogue();
+        var first = Task.Run(() => cat.Installed());
+        _desktop.ScanEntered.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+        var second = Task.Run(() => cat.Installed());
+        await Task.Delay(200);
+
+        _desktop.ScanRelease.Set();
+
+        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(10));
+        (await second).Select(i => i.Name).Should().Equal("Fresh");
+        _desktop.ScanCalls.Should().Be(1);
     }
 
     [Fact]
@@ -701,13 +758,32 @@ public sealed class AppCatalogueTests : IDisposable
         lib.GetIcon(MainEntry(main).Merged.Single().Id).Should().Equal(1, 2, 3);
     }
 
+    private const string BlockInserts = "CREATE TRIGGER block_inserts BEFORE INSERT ON apps BEGIN SELECT RAISE(ABORT, 'disk gone'); END";
+
+    private void Exec(string sql)
+    {
+        using var db = Db.Open(_path);
+        using var cmd = db.Connection.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
+    }
+
+    private long AddedUtc(long appId)
+    {
+        using var db = Db.Open(_path);
+        using var cmd = db.Connection.CreateCommand();
+        cmd.CommandText = "SELECT added_utc FROM apps WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", appId);
+        return (long)cmd.ExecuteScalar()!;
+    }
+
     [Fact]
     public void Confirm_failing_midway_reports_unavailable_keeps_the_plan_and_leaves_earlier_steps_in_the_database()
     {
         var main = Track(@"c:\a\main.exe", "Main");
         var first = Track(@"c:\a\first.exe", "A first");   // sorted first: merged before the failure
         _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Z fresh"));
-        _desktop.IconFails[@"c:\b\fresh.exe"] = new IOException("disk gone");
+        _desktop.OnIcon = _ => Exec(BlockInserts); // adding the installed app then fails in the database
         var cat = Catalogue();
         var plan = cat.OpenMergePlan(main)!;
         foreach (var c in plan.Candidates) plan.Toggle(c.Key);
@@ -718,6 +794,44 @@ public sealed class AppCatalogueTests : IDisposable
         plan.Summary.Should().Be(new MergeSummary(2, 0, true));
         MainEntry(main).Merged.Select(m => m.Id).Should().Equal(first); // partial: no transaction spans the steps
         cat.AddedCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void Confirming_again_after_a_partial_failure_finishes_the_job_without_restoring_a_stopped_app_twice()
+    {
+        var main = Track(@"c:\a\main.exe", "Main");
+        var gone = Retire(@"c:\a\gone.exe", "A gone");   // restored and merged before the failure
+        _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Z fresh"));
+        _desktop.OnIcon = _ => Exec(BlockInserts);
+        var cat = Catalogue();
+        var plan = cat.OpenMergePlan(main)!;
+        foreach (var c in plan.Candidates) plan.Toggle(c.Key);
+        plan.Confirm().Should().Be(CatalogueOutcome.Unavailable);
+        _desktop.OnIcon = null;
+        Exec("DROP TRIGGER block_inserts");
+        Exec($"UPDATE apps SET added_utc = 12345 WHERE id = {gone}"); // a Restore now would reset this
+
+        plan.Confirm().Should().Be(CatalogueOutcome.Done);
+
+        AddedUtc(gone).Should().Be(12345);
+        MainEntry(main).Merged.Select(m => m.ExePath).Should().BeEquivalentTo([@"c:\a\gone.exe", @"c:\b\fresh.exe"]);
+        cat.AddedCount.Should().Be(2);
+    }
+
+    [Fact]
+    public void An_icon_that_cannot_be_extracted_only_means_the_added_app_has_no_icon()
+    {
+        var main = Track(@"c:\a\main.exe", "Main");
+        _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Fresh"));
+        _desktop.IconFails[@"c:\b\fresh.exe"] = new IOException("icon file locked");
+        var plan = Catalogue().OpenMergePlan(main)!;
+        plan.Toggle(plan.Candidates.Single().Key);
+
+        plan.Confirm().Should().Be(CatalogueOutcome.Done);
+
+        var merged = MainEntry(main).Merged.Should().ContainSingle().Subject;
+        using var lib = AppLibrary.Open(_path);
+        lib.GetIcon(merged.Id).Should().BeNull();
     }
 
     [Fact]
