@@ -398,7 +398,7 @@ public static class LetterTile
         return "?";
     }
 
-    public static int PaletteIndex(long key, int paletteSize) => (int)(((key % paletteSize) + paletteSize) % paletteSize);
+    public static int PaletteIndex(long key, int paletteSize) => TimeSink.Core.Theming.AppPalette.Slot(key, paletteSize);
 
     /// <summary>A stable key for an app that has no id yet (FNV-1a over the lower-cased path).</summary>
     public static long KeyFor(string exePath)

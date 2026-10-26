@@ -207,8 +207,7 @@ public sealed class WeekView : UserControl, ILiveView
 
         AppIcons.Load(_dbPath, r.Apps.Select(a => a.AppId));
         _rows.Children.Clear();
-        var paletteSize = Math.Max(1, _themes.Current.Apps.Count);
-        foreach (var app in r.Apps) _rows.Children.Add(BuildRow(app, (int)(app.AppId % paletteSize)));
+        foreach (var app in r.Apps) _rows.Children.Add(BuildRow(app, _themes.AppSlot(app.AppId)));
         if (_pendingDay is { } pending)
         {
             _pendingDay = null;
@@ -334,14 +333,13 @@ public sealed class WeekView : UserControl, ILiveView
         catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException) { return; }
         if (seq != _panelSeq) return;
 
-        var palette = Math.Max(1, _themes.Current.Apps.Count);
         var compares = new List<(string, string, bool)>();
         var vsAvg = (long)Math.Round(detail.TotalSeconds - detail.WeekAverageSeconds);
         compares.Add(("vs the week's average", DurationFormat.Signed(vsAvg), vsAvg >= 0));
         var vsLast = detail.TotalSeconds - detail.SameDayLastWeekSeconds;
         compares.Add(("vs the same day last week", DurationFormat.Signed(vsLast), vsLast >= 0));
         var span = detail.FirstStartUtc is { } a && detail.LastEndUtc is { } b ? $" · active {Clock(a)} – {Clock(b)}" : "";
-        var apps = detail.Apps.Select(x => (x.Name, x.Seconds, (int)(x.AppId % palette))).ToList();
+        var apps = detail.Apps.Select(x => (x.Name, x.Seconds, _themes.AppSlot(x.AppId))).ToList();
         var subtitle = DurationFormat.HoursMinutes(detail.TotalSeconds) + span;
         if (focus is not null)
         {

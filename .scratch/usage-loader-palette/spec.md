@@ -1,6 +1,6 @@
 # Usage loader and palette slot
 
-Status: ready-for-human
+Status: done (both parts committed; UI colours not checked visually)
 
 Two deepenings from the architecture review of 2026-10-27. Delivered as two commits on `master`, loader first. No new branch.
 

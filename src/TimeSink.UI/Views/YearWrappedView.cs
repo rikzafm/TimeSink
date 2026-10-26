@@ -203,10 +203,10 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         return "?";
     }
 
-    private static WrappedCardModel Podium(string label, string headlineKey, IReadOnlyList<WrappedApp>? p, IReadOnlyList<WrappedApp>? others, string emptyKey)
+    private WrappedCardModel Podium(string label, string headlineKey, IReadOnlyList<WrappedApp>? p, IReadOnlyList<WrappedApp>? others, string emptyKey)
     {
         if (p is not { Count: > 0 }) return new EmptyCardModel(label, Str(emptyKey.Length > 0 ? emptyKey : YearStringKeys.Empty));
-        WrappedPodiumEntry E(int i) => new(Letter(p[i].Name), p[i].Name, Hours(p[i].Seconds), i + 1, AppIcons.Get(p[i].AppId));
+        WrappedPodiumEntry E(int i) => new(Letter(p[i].Name), p[i].Name, Hours(p[i].Seconds), i + 1, AppIcons.Get(p[i].AppId), _themes.AppSlot(p[i].AppId));
         // Display order: winner in the middle, then 2nd to its left, 3rd right, 4th far left, 5th far right.
         var order = new List<int> { 0 };
         for (var i = 1; i < p.Count; i++) { if (i % 2 == 1) order.Insert(0, i); else order.Add(i); }
@@ -255,7 +255,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         _pager.Index = _index;
         _pager.Count = CardCount;
         _save.Content = Str(WrappedStringKeys.Save);
-        _card.AppBrushes = Enumerable.Range(0, 6).Select(i => Application.Current.TryFindResource("Brush.App" + i) as Brush ?? (Brush)Application.Current.FindResource("Brush.TextMuted")).ToList();
+        _card.AppBrushes = Enumerable.Range(0, Math.Max(1, _themes.Current.Apps.Count)).Select(i => Application.Current.TryFindResource("Brush.App" + i) as Brush ?? (Brush)Application.Current.FindResource("Brush.TextMuted")).ToList();
         _card.MediumRadius = Application.Current.TryFindResource("CornerRadius.Medium") is CornerRadius mr ? mr.TopLeft : 10;
         _card.LargeRadius = Application.Current.TryFindResource("CornerRadius.Large") is CornerRadius lr ? lr.TopLeft : 12;
         _pager.ButtonRadius = Application.Current.TryFindResource("CornerRadius.Small") is CornerRadius sr ? sr.TopLeft : 8;

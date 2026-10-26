@@ -279,7 +279,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
             FrameworkElement dot = (FrameworkElement?)AppIcons.Icon(app.AppId, 16)
                 ?? new System.Windows.Shapes.Rectangle { Width = 9, Height = 9, RadiusX = 2, RadiusY = 2, VerticalAlignment = VerticalAlignment.Center };
             dot.Margin = new Thickness(0, 0, 8, 0);
-            if (dot is System.Windows.Shapes.Shape swatch) swatch.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "Brush.App" + i % 6);
+            if (dot is System.Windows.Shapes.Shape swatch) swatch.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, _themes.AppBrushKey(app.AppId));
             var name = Label("Soft");
             name.Text = app.Name;
             name.TextTrimming = TextTrimming.CharacterEllipsis;
@@ -291,7 +291,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
             back.SetResourceReference(Border.BackgroundProperty, "Brush.Border");
             var fill = new Border { HorizontalAlignment = HorizontalAlignment.Left };
             fill.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Tiny");
-            fill.SetResourceReference(Border.BackgroundProperty, "Brush.App" + i % 6);
+            fill.SetResourceReference(Border.BackgroundProperty, _themes.AppBrushKey(app.AppId));
             var fraction = app.Seconds / (double)max;
             track.SizeChanged += (_, e) => fill.Width = Math.Max(2, e.NewSize.Width * fraction);
             track.Children.Add(back);

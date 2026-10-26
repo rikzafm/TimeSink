@@ -13,20 +13,6 @@ public sealed class MonthQueryTests : IDisposable
 
     private static MonthDay Day(MonthResult r, int d) => r.Days.Single(x => x.Date.Day == d);
 
-    [Theory]
-    [InlineData(0, 0)]
-    [InlineData(3599, 0)]
-    [InlineData(3600, 1)]
-    [InlineData(10799, 1)]
-    [InlineData(10800, 2)]
-    [InlineData(17999, 2)]
-    [InlineData(18000, 3)]
-    [InlineData(25199, 3)]
-    [InlineData(25200, 4)]
-    [InlineData(90000, 4)]
-    public void Heat_level_thresholds_are_under_1h_3h_5h_7h_and_over(long seconds, int level) =>
-        MonthQuery.HeatLevel(seconds).Should().Be(level);
-
     [Fact]
     public void Daily_totals_match_the_hand_computed_fixture()
     {

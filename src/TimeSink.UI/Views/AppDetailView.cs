@@ -203,7 +203,7 @@ public sealed class AppDetailView : UserControl
         tile.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
         if (!AppIcons.TryFill(tile, r.AppId))
         {
-            tile.SetResourceReference(Border.BackgroundProperty, AppBrush(r.AppId));
+            tile.SetResourceReference(Border.BackgroundProperty, _themes.AppBrushKey(r.AppId));
             var letter = new TextBlock
             {
                 Text = r.Name.Length > 0 ? char.ToUpperInvariant(r.Name[0]).ToString() : "?", FontWeight = FontWeights.Bold, FontSize = 20,
@@ -640,7 +640,6 @@ public sealed class AppDetailView : UserControl
 
     // ---- helpers ----
 
-    private string AppBrush(long appId) => "Brush.App" + (int)(appId % Math.Max(1, _themes.Current.Apps.Count));
 
     private static TextBlock Label()
     {

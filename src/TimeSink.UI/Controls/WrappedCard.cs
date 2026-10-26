@@ -8,7 +8,7 @@ namespace TimeSink.UI.Controls;
 public sealed record WrappedTile(string Value, string Caption);
 
 /// <summary>One podium column. <c>Rank</c> is 1-5; <c>Hours</c> is the pre-composed time ("165h"); <c>Icon</c> is the app's own logo, or null to show the letter.</summary>
-public sealed record WrappedPodiumEntry(string Letter, string Name, string Hours, int Rank, ImageSource? Icon = null);
+public sealed record WrappedPodiumEntry(string Letter, string Name, string Hours, int Rank, ImageSource? Icon = null, int? PaletteSlot = null);
 
 /// <summary>A habit tile: small caps key, big value, one-line sub.</summary>
 public sealed record WrappedHabit(string Key, string Value, string Sub);
@@ -225,7 +225,7 @@ public sealed class WrappedCard : FrameworkElement
             var e = m.Entries[k];
             var x = x0 + k * (slot + Gap);
             var cx = x + slot / 2;
-            var color = brushes is { Count: > 0 } ? brushes[(e.Rank - 1) % brushes.Count] : AccentBrush;
+            var color = brushes is { Count: > 0 } ? brushes[(e.PaletteSlot ?? e.Rank - 1) % brushes.Count] : AccentBrush;
             var pillarH = e.Rank switch { 1 => 108.0, 2 => 84.0, 3 => 68.0, 4 => 54.0, _ => 42.0 };
             dc.DrawGeometry(color, null, TopRounded(new Rect(x, baseY - pillarH, slot, pillarH), 8));
             var rank = Text(e.Rank.ToString(CultureInfo.CurrentCulture), DisplaySize * 0.76, OnAccentBrush, bold: true, numbers: true);

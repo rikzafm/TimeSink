@@ -177,10 +177,9 @@ public partial class MonthView : UserControl, ILiveView
         var day = r.Days.FirstOrDefault(d => d.Date == _selected) ?? r.Days[0];
         SelDate.Text = day.Date.ToString("ddd, d MMM", En);
         SelTotal.Text = DurationFormat.HoursMinutes(day.Seconds);
-        var palette = Math.Max(1, _themes.Current.Apps.Count);
         var top = day.Apps.OrderByDescending(a => a.Seconds).Take(MaxBarSegments).ToList();
         _barLabels = top.Select(a => (a.Name, a.Seconds)).ToList();
-        var segments = top.Select(a => ((double)a.Seconds, Res("Brush.App" + (int)(a.AppId % palette)))).ToList();
+        var segments = top.Select(a => ((double)a.Seconds, Res(_themes.AppBrushKey(a.AppId)))).ToList();
         var rest = day.Apps.Sum(a => a.Seconds) - top.Sum(a => a.Seconds);
         if (rest > 0)
         {
@@ -210,11 +209,10 @@ public partial class MonthView : UserControl, ILiveView
     {
         TopApps.Children.Clear();
         AppIcons.Load(_dbPath, r.TopApps.Select(a => a.AppId));
-        var palette = Math.Max(1, _themes.Current.Apps.Count);
         var max = r.TopApps.Count == 0 ? 1 : r.TopApps.Max(a => a.Seconds);
         foreach (var app in r.TopApps)
         {
-            var brush = "Brush.App" + (int)(app.AppId % palette);
+            var brush = _themes.AppBrushKey(app.AppId);
             var tile = new Border { Width = 26, Height = 26, VerticalAlignment = VerticalAlignment.Top };
             tile.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
             tile.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");

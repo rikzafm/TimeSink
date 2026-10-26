@@ -78,19 +78,6 @@ public sealed class WeekQueryTests : IDisposable
     }
 
     [Fact]
-    public void Heat_levels_use_the_one_three_five_seven_hour_steps()
-    {
-        WeekQuery.HeatLevel(0).Should().Be(0);
-        WeekQuery.HeatLevel(3599).Should().Be(0);
-        WeekQuery.HeatLevel(3600).Should().Be(1);
-        WeekQuery.HeatLevel(3 * 3600 - 1).Should().Be(1);
-        WeekQuery.HeatLevel(3 * 3600).Should().Be(2);
-        WeekQuery.HeatLevel(5 * 3600).Should().Be(3);
-        WeekQuery.HeatLevel(7 * 3600 - 1).Should().Be(3);
-        WeekQuery.HeatLevel(7 * 3600).Should().Be(4);
-    }
-
-    [Fact]
     public void Streak_counts_back_from_today_until_the_first_empty_day()
     {
         Run().StreakDays.Should().Be(5); // Sat 03-07 .. Wed 03-11; Fri 03-06 is empty

@@ -161,7 +161,7 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         _grid.TotalHeader = Str(MatrixStringKeys.Total);
         _grid.AllAppsLabel = Str(MatrixStringKeys.AllApps);
         _grid.HeatBrushes = Enumerable.Range(0, 5).Select(i => (Brush)FindResource("Brush.Heat" + i)).ToList();
-        _grid.AppBrushes = Enumerable.Range(0, 6).Select(i => (Brush)FindResource("Brush.App" + i)).ToList();
+        _grid.AppBrushes = Enumerable.Range(0, Math.Max(1, _themes.Current.Apps.Count)).Select(i => (Brush)FindResource("Brush.App" + i)).ToList();
 
         if (_result is not { } r)
         {
@@ -180,7 +180,7 @@ public sealed class YearMatrixView : UserControl, IYearSubView
 
         AppIcons.Load(_dbPath, r.Rows.Select(row => row.AppId));
         _grid.MonthLabels = r.Months.Select(m => MonthAbbr(m.Month)).ToList();
-        _grid.Rows = r.Rows.Select((row, i) => new MatrixGridRow(row.Name, i, row.Cells.Select(CellText).ToList(),
+        _grid.Rows = r.Rows.Select(row => new MatrixGridRow(row.Name, _themes.AppSlot(row.AppId), row.Cells.Select(CellText).ToList(),
             row.Cells.Select(c => c.Level).ToList(), H(row.TotalSeconds), AppIcons.Get(row.AppId))).ToList();
         _grid.ColumnTotals = r.Months.Select(m => ((long)Math.Round(m.TotalSeconds / 3600.0)).ToString(CultureInfo.CurrentCulture)).ToList();
         _grid.GrandTotal = H(r.GrandSeconds);
@@ -221,7 +221,7 @@ public sealed class YearMatrixView : UserControl, IYearSubView
                     m.TopApps[2].Name, H(m.TopApps[2].Seconds)),
             };
             var col = _selected;
-            bars = r.Rows.Select((row, i) => (row.Cells[col].Seconds, (Brush)FindResource("Brush.App" + i % 6))).ToList();
+            bars = r.Rows.Select(row => (row.Cells[col].Seconds, (Brush)FindResource(_themes.AppBrushKey(row.AppId)))).ToList();
             max = bars.Max(b => b.Seconds);
         }
         else
@@ -233,7 +233,7 @@ public sealed class YearMatrixView : UserControl, IYearSubView
             _selNote.Text = row.TrendPercent is { } t
                 ? Str(t >= 0 ? MatrixStringKeys.RowNoteUp : MatrixStringKeys.RowNoteDown, MonthName(row.PeakMonth), H(row.PeakSeconds), Math.Abs((long)Math.Round(t)))
                 : peak;
-            var accent = (Brush)FindResource("Brush.App" + _selected % 6);
+            var accent = (Brush)FindResource(_themes.AppBrushKey(row.AppId));
             var muted = (Brush)FindResource("Brush.Heat1");
             bars = row.Cells.Select(c => (c.Seconds, c.Seconds == row.PeakSeconds ? accent : muted)).ToList();
             max = row.PeakSeconds;

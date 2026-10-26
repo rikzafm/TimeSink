@@ -273,7 +273,6 @@ public partial class TodayView : UserControl, ILiveView
     {
         if (_result is not { } r) return;
         var d = BarDetail.ForHour(r, h, TimeZoneInfo.Local);
-        var palette = Math.Max(1, _themes.Current.Apps.Count);
         var compares = new List<(string, string, bool)>();
         if (r.HasTypical)
         {
@@ -283,7 +282,7 @@ public partial class TodayView : UserControl, ILiveView
         Panel.Show(
             HourRange(h),
             d.AppSeconds > 0 ? $"{DurationFormat.HoursMinutes(d.AppSeconds)} app time · {d.Sessions.Count} sessions" : "No activity this hour",
-            d.Apps.Select(a => (a.Name, a.Seconds, (int)(a.AppId % palette))).ToList(),
+            d.Apps.Select(a => (a.Name, a.Seconds, _themes.AppSlot(a.AppId))).ToList(),
             d.Sessions.Select(s => (s.AppName, Str(StringKeys.SessionLine, Clock(s.StartUtc), Clock(s.EndUtc)), DurationFormat.HoursMinutes(s.Seconds))).ToList(),
             compares);
     }
@@ -321,11 +320,10 @@ public partial class TodayView : UserControl, ILiveView
         Rows.Children.Clear();
         _rowViews.Clear();
         _cards.Clear();
-        var paletteSize = Math.Max(1, _themes.Current.Apps.Count);
 #if DEBUG
         if (ExpandAll) foreach (var a in r.Apps) _expanded.Add(a.AppId);
 #endif
-        foreach (var row in r.Apps) Rows.Children.Add(BuildRow(r, row, (int)(row.AppId % paletteSize)));
+        foreach (var row in r.Apps) Rows.Children.Add(BuildRow(r, row, _themes.AppSlot(row.AppId)));
     }
 
     private UIElement BuildRow(TodayResult r, TodayAppRow row, int paletteIndex)

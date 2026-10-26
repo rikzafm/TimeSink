@@ -58,7 +58,7 @@ public static class WeekQuery
             var d = gridStart.AddDays(i);
             var future = d > today;
             var secs = future ? 0 : uptime.GetValueOrDefault(d);
-            heat.Add(new HeatCell(d, secs, future ? 0 : HeatLevel(secs), future));
+            heat.Add(new HeatCell(d, secs, future ? 0 : HeatScale.Level(secs), future));
         }
 
         // Weekly totals for the trend strip (anchored to today like the grid) and last week up to the same weekday.
@@ -89,14 +89,4 @@ public static class WeekQuery
 
         return new WeekResult(today, shownWeek, nowUtc, days.Sum(d => d.Seconds), days, heat, streak, rows, weekTotals, prevWeek);
     }
-
-    /// <summary>Heat step for a day's seconds: under 1 h, 3 h, 5 h, 7 h, then 7 h or more (the Month view uses the same steps).</summary>
-    public static int HeatLevel(long seconds) => seconds switch
-    {
-        < 3600 => 0,
-        < 3 * 3600 => 1,
-        < 5 * 3600 => 2,
-        < 7 * 3600 => 3,
-        _ => 4,
-    };
 }

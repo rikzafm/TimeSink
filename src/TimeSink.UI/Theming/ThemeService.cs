@@ -23,6 +23,12 @@ public sealed class ThemeService
 
     public Theme Current { get; private set; } = null!;
 
+    /// <summary>The Palette slot of an app under the current theme.</summary>
+    public int AppSlot(long appId) => AppPalette.Slot(appId, Current.Apps.Count);
+
+    /// <summary>The Brush.App* resource key an app is coloured with, the same on every tab.</summary>
+    public string AppBrushKey(long appId) => "Brush.App" + AppSlot(appId);
+
     /// <summary>Raised after a theme swap so views that compose text in code can redraw.</summary>
     public event Action? Applied;
 

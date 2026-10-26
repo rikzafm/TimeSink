@@ -272,7 +272,7 @@ public sealed class AllView : UserControl, ILiveView
 
     private FrameworkElement AppRow(AllAppRow a, bool selected, long nowUtc)
     {
-        var brush = AppBrush(a.AppId);
+        var brush = _themes.AppBrushKey(a.AppId);
         var grid = new Grid { Margin = new Thickness(16, 0, 16, 0) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -464,7 +464,6 @@ public sealed class AllView : UserControl, ILiveView
 
     // ---- helpers ----
 
-    private string AppBrush(long appId) => "Brush.App" + (int)(appId % Math.Max(1, _themes.Current.Apps.Count));
 
     private static string ColumnName(AllColumn c) => Str(c switch
     {

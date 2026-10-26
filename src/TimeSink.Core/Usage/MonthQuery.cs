@@ -15,17 +15,6 @@ namespace TimeSink.Core.Usage;
 /// </summary>
 public static class MonthQuery
 {
-    private static readonly long[] HeatSeconds = [3600, 3 * 3600, 5 * 3600, 7 * 3600];
-
-
-    /// <summary>Heat step 0-4 for a day total: under 1 h, 3 h, 5 h, 7 h, otherwise 7 h or more.</summary>
-    public static int HeatLevel(long seconds)
-    {
-        for (var i = 0; i < HeatSeconds.Length; i++)
-            if (seconds < HeatSeconds[i]) return i;
-        return HeatSeconds.Length;
-    }
-
     /// <summary>The <c>week.start</c> setting (Mon / Sun / Sat); anything else is Monday.</summary>
     public static DayOfWeek ParseWeekStart(string? value) => WeekStarts.Parse(value).ToDayOfWeek();
 
@@ -82,7 +71,7 @@ public static class MonthQuery
             foreach (var a in amounts) monthTotals[a.AppId] = monthTotals.GetValueOrDefault(a.AppId) + a.Seconds;
             total += seconds;
             if (seconds > 0 && (best is null || seconds > best.Seconds)) best = new BestDay(date, seconds);
-            monthDays.Add(new MonthDay(date, seconds, HeatLevel(seconds), date > today, date == today, amounts));
+            monthDays.Add(new MonthDay(date, seconds, HeatScale.Level(seconds), date > today, date == today, amounts));
         }
 
         var top = monthTotals
