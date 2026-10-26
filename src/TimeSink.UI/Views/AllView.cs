@@ -22,7 +22,7 @@ namespace TimeSink.UI.Views;
 /// icon stats (clock and restore glyphs). The "sorted by" text cycles the sort column and its arrow flips the direction.
 /// Built in code on first visit; data loads only from <see cref="Start"/> (after the first frame), then every 30 s and on pipe state change.
 /// </summary>
-public sealed class AllView : UserControl
+public sealed class AllView : UserControl, ILiveView
 {
     private const int RefreshEverySeconds = 30;
     private const string LayoutKey = "all.layout"; // "labeled" (default) or "icons"
@@ -36,7 +36,8 @@ public sealed class AllView : UserControl
     private readonly LiveState _live;
     private readonly FlyoutWindow? _window;
     private readonly Action<long>? _openDetail;
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(RefreshEverySeconds) };
+    private readonly UsageSnapshotLoader _loader;
+    private readonly LiveViewDriver _driver;
 
     private readonly TextBlock _caption = Label(), _total = new(), _counts = Label();
     private readonly WrapPanel _sorted = new() { HorizontalAlignment = HorizontalAlignment.Right };
@@ -51,8 +52,6 @@ public sealed class AllView : UserControl
     private AllSort _sort = AllSort.Default;
     private bool _icons;
     private long? _selected;
-    private int _seq;
-    private bool _started;
 
     public AllView(string dbPath, ThemeService themes, LiveState live, FlyoutWindow? window, Action<long>? openDetail = null)
     {
@@ -138,42 +137,21 @@ public sealed class AllView : UserControl
         root.Children.Add(frame);
         Content = root;
 
-        _timer.Tick += (_, _) => { if (_window is not { IsRevealed: false }) Refresh(); };
-        _live.Changed += Refresh;
-        _themes.Applied += () => { if (_started) Redraw(); }; // a stopped view redraws from fresh data when it starts again
-        AppIcons.Updated += () => { if (_started) Redraw(); };
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw,
+            isIdle: () => _window is { IsRevealed: false });
         Unloaded += (_, _) => Stop();
         Redraw(); // static text and empty table; data follows in Start
     }
 
-    public void Start()
-    {
-        if (_started) return;
-        _started = true;
-        _live.Start();
-        _timer.Start();
-        Refresh();
-    }
+    public void Start() => _driver.Start();
 
-    public void Stop()
-    {
-        _started = false;
-        _timer.Stop();
-    }
+    public void Stop() => _driver.Stop();
 
     public async void Refresh()
     {
-        if (!_started) return;
-        var seq = ++_seq;
-        var now = DateTimeOffset.UtcNow;
-        var running = _live.RunningIds;
         var path = _dbPath;
-        AllResult result;
-        try { result = await Task.Run(() => AllQuery.Run(path, now, TimeZoneInfo.Local, running, SignInTime.Cached())); }
-        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or IOException) { return; } // no DB yet
-        if (seq != _seq || !_started) return;
-        _result = result;
-        Redraw();
+        if (await _loader.Refresh(c => AllQuery.Run(path, c.Now, c.Zone, c.Running, c.SignInUtc), r => _result = r)) Redraw();
     }
 
     private void SetLayout(bool icons)

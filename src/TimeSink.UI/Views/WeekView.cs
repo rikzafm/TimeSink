@@ -17,7 +17,7 @@ namespace TimeSink.UI.Views;
 /// trend strip with the streak, and per-app rows with sparklines. Built lazily on first visit; data loads only after <see cref="Start"/> (so first paint is never delayed)
 /// and refreshes every 30 s and on every pipe state change. All colours, fonts and text come from theme resources.
 /// </summary>
-public sealed class WeekView : UserControl
+public sealed class WeekView : UserControl, ILiveView
 {
     private const int RefreshEverySeconds = 30;
     private const int MaxWeeksBack = 52;
@@ -25,7 +25,8 @@ public sealed class WeekView : UserControl
     private readonly string _dbPath;
     private readonly ThemeService _themes;
     private readonly LiveState _live;
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(RefreshEverySeconds) };
+    private readonly UsageSnapshotLoader _loader;
+    private readonly LiveViewDriver _driver;
 
     private readonly TextBlock _caption = Text("Soft", "Double.FontSize.Body", "Brush.TextMuted");
     private readonly TextBlock _total = new() { FontWeight = FontWeights.SemiBold };
@@ -40,11 +41,9 @@ public sealed class WeekView : UserControl
     private readonly TextBlock _empty = Text("Small", "Double.FontSize.Body", "Brush.TextMuted");
 
     private WeekResult? _result;
-    private int _seq;
     private int _weeksBack;
     private readonly Button _prev = NavArrow("◂");
     private readonly Button _next = NavArrow("▸");
-    private bool _started;
 
     private readonly DetailPanel _panel = new() { Margin = new Thickness(0, 8, 0, 4) };
     private readonly ToolTip _tip = new();
@@ -152,14 +151,9 @@ public sealed class WeekView : UserControl
             e.Handled = true;
         };
 
-        _timer.Tick += (_, _) =>
-        {
-            if (Window.GetWindow(this) is FlyoutWindow { IsRevealed: false }) return; // warm standby: stay idle
-            Refresh();
-        };
-        _live.Changed += Refresh;
-        _themes.Applied += () => { if (_started) Redraw(); }; // a stopped view redraws from fresh data when it starts again
-        AppIcons.Updated += () => { if (_started) Redraw(); };
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw,
+            isIdle: () => Window.GetWindow(this) is FlyoutWindow { IsRevealed: false }); // warm standby: stay idle
         Unloaded += (_, _) => Stop();
     }
 
@@ -173,39 +167,15 @@ public sealed class WeekView : UserControl
     }
 
     /// <summary>Begin loading and refreshing. Called once the window has rendered.</summary>
-    public void Start()
-    {
-        if (_started) return;
-        _started = true;
-        _live.Start();
-        _timer.Start();
-        Refresh();
-    }
+    public void Start() => _driver.Start();
 
-    public void Stop()
-    {
-        _started = false;
-        _timer.Stop();
-    }
+    public void Stop() => _driver.Stop();
 
     public async void Refresh()
     {
-        if (!_started) return;
-        var seq = ++_seq;
-        var now = DateTimeOffset.UtcNow;
-        var running = _live.RunningIds;
         var path = _dbPath;
         var weeksBack = _weeksBack;
-        WeekResult result;
-        try
-        {
-            result = await Task.Run(() =>
-                WeekQuery.Run(path, now, TimeZoneInfo.Local, WeekStarts.Parse(SettingsStore.Get(path, WeekStarts.SettingKey)), running, SignInTime.Cached(), weeksBack));
-        }
-        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException) { return; } // no DB yet
-        if (seq != _seq || !_started) return;
-        _result = result;
-        Redraw();
+        if (await _loader.Refresh(c => WeekQuery.Run(path, c.Now, c.Zone, c.WeekStart, c.Running, c.SignInUtc, weeksBack), r => _result = r)) Redraw();
     }
 
     private void Redraw()

@@ -19,7 +19,7 @@ namespace TimeSink.UI.Views;
 /// Month tab (calendar heatmap). Built on first visit, loads nothing until <see cref="Start"/> (called after the first
 /// frame). A query runs off-thread on start, month change, pipe state change (current month) and every 30 s.
 /// </summary>
-public partial class MonthView : UserControl
+public partial class MonthView : UserControl, ILiveView
 {
     private const int RefreshEverySeconds = 30;
     private static readonly CultureInfo En = CultureInfo.InvariantCulture; // English names in v1 (spec 8.1)
@@ -28,14 +28,13 @@ public partial class MonthView : UserControl
     private readonly ThemeService _themes;
     private readonly LiveState _live;
     private readonly FlyoutWindow? _window;
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(RefreshEverySeconds) };
+    private readonly UsageSnapshotLoader _loader;
+    private readonly LiveViewDriver _driver;
 
     private int _year, _month;
     private DateOnly? _selected;
     private DateOnly? _firstTracked; // first tracked day; months before it are empty, so ◂ stops there
     private MonthResult? _result;
-    private int _seq;
-    private bool _started;
     private const int MaxBarSegments = 7;
     private List<(string Name, long Seconds)> _barLabels = new();
     private string _defaultNote = "";
@@ -55,27 +54,16 @@ public partial class MonthView : UserControl
         Calendar.DayClicked += d => { _selected = d; Redraw(); };
         SelBar.HoverChanged += ShowBarNote;
         SelBar.SegmentClicked += _ => ShowBarNote(-1);
-        _timer.Tick += (_, _) => { if (_window is not { IsRevealed: false }) Refresh(); };
-        _live.Changed += () => { if (_result?.IsCurrent == true) Refresh(); };
-        _themes.Applied += () => { if (_started) Redraw(); }; // a stopped view redraws from fresh data when it starts again
-        AppIcons.Updated += () => { if (_started) Redraw(); };
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw,
+            onLiveChanged: () => { if (_result?.IsCurrent == true) Refresh(); }, // only the current month follows the live state
+            isIdle: () => _window is { IsRevealed: false });
         Unloaded += (_, _) => Stop();
     }
 
-    public void Start()
-    {
-        if (_started) return;
-        _started = true;
-        _live.Start();
-        _timer.Start();
-        Refresh();
-    }
+    public void Start() => _driver.Start();
 
-    public void Stop()
-    {
-        _started = false;
-        _timer.Stop();
-    }
+    public void Stop() => _driver.Stop();
 
     private void Navigate(int delta)
     {
@@ -90,26 +78,18 @@ public partial class MonthView : UserControl
 
     public async void Refresh()
     {
-        if (!_started) return;
-        var seq = ++_seq;
         var (year, month) = (_year, _month);
-        var now = DateTimeOffset.UtcNow;
-        var running = _live.RunningIds;
         var path = _dbPath;
-        MonthResult result;
-        try
-        {
-            DateOnly? first;
-            (result, first) = await Task.Run(() =>
-                (MonthQuery.Run(path, now, TimeZoneInfo.Local, year, month,
-                    MonthQuery.ParseWeekStart(SettingsStore.Get(path, "week.start")), running, SignInTime.Cached()),
-                 TodayQuery.FirstDate(path, TimeZoneInfo.Local)));
-            _firstTracked = first;
-        }
-        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or IOException) { return; } // no DB yet
-        if (seq != _seq || !_started) return;
-        _result = result;
-        if (_selected is not { } s || s.Year != year || s.Month != month) _selected = result.DefaultSelected;
+        var applied = await _loader.Refresh(
+            c => (Result: MonthQuery.Run(path, c.Now, c.Zone, year, month, c.WeekStartDay, c.Running, c.SignInUtc),
+                  First: TodayQuery.FirstDate(path, c.Zone)),
+            r =>
+            {
+                _firstTracked = r.First;
+                _result = r.Result;
+            });
+        if (!applied) return;
+        if (_selected is not { } s || s.Year != year || s.Month != month) _selected = _result!.DefaultSelected;
         Redraw();
     }
 

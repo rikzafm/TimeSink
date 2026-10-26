@@ -23,7 +23,8 @@ public sealed class YearPaceView : UserControl, IYearSubView
     private readonly string _dbPath;
     private readonly ThemeService _themes;
     private readonly LiveState _live;
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(RefreshEverySeconds) };
+    private readonly UsageSnapshotLoader _loader;
+    private readonly LiveViewDriver _driver;
 
     private readonly TextBlock _caption = Label("Small"), _total = new(), _avg = Label("Small"), _best = Label("Small");
     private readonly TextBlock _banner = Label("Soft");
@@ -34,8 +35,6 @@ public sealed class YearPaceView : UserControl, IYearSubView
 
     private YearResult? _result;
     private int _selected = -1;
-    private int _seq;
-    private bool _started;
 
     public YearPaceView(string dbPath, ThemeService themes, LiveState live)
     {
@@ -123,10 +122,8 @@ public sealed class YearPaceView : UserControl, IYearSubView
         root.Children.Add(scroller);
         Content = root;
 
-        _timer.Tick += (_, _) => Refresh();
-        _live.Changed += Refresh;
-        _themes.Applied += () => { if (_started) Redraw(); }; // a stopped view redraws from fresh data when it starts again
-        AppIcons.Updated += () => { if (_started) Redraw(); };
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw);
         Unloaded += (_, _) => Stop();
         Redraw(); // static text and empty chart; data follows in Start
     }
@@ -162,32 +159,19 @@ public sealed class YearPaceView : UserControl, IYearSubView
         return t;
     }
 
-    public void Start()
-    {
-        if (_started) return;
-        _started = true;
-        _timer.Start();
-        Refresh();
-    }
+    public void Start() => _driver.Start();
 
-    public void Stop()
-    {
-        _started = false;
-        _timer.Stop();
-    }
+    public void Stop() => _driver.Stop();
 
     public async void Refresh()
     {
-        if (!_started) return;
-        var seq = ++_seq;
+        var path = _dbPath;
         var now = DateTimeOffset.UtcNow;
-        var running = _live.RunningIds;
-        YearResult result;
-        try { result = await Task.Run(() => YearQuery.Run(_dbPath, now, TimeZoneInfo.Local, running, SignInTime.Cached())); }
-        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException) { return; }
-        if (seq != _seq || !_started) return;
-        if (_result is null || _result.Year != result.Year) _selected = -1;
-        _result = result;
+        if (!await _loader.Refresh(c => YearQuery.Run(path, c.Now, c.Zone, c.Running, c.SignInUtc), r =>
+            {
+                if (_result is null || _result.Year != r.Year) _selected = -1;
+                _result = r;
+            })) return;
         if (_selected < 0) _selected = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, TimeZoneInfo.Local).DateTime).Month - 1;
         Redraw();
     }

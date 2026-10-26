@@ -32,13 +32,13 @@ public sealed class AppDetailView : UserControl
     private readonly LiveState _live;
     private readonly long _appId;
     private readonly Action _close;
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(RefreshEverySeconds) };
+    private readonly UsageSnapshotLoader _loader;
+    private readonly LiveViewDriver _driver;
 
     private TextBlock _readout = Label(); // rebuilt with each redraw (an element has one parent)
     private AppDetailResult? _result;
     private int _year = DateTime.Now.Year;
     private DayOfWeek _weekStart = DayOfWeek.Monday;
-    private int _seq;
     private bool _bars;
     private AppDetailRange _range = AppDetailRange.Year;
     private DateOnly _anchor = Today();
@@ -53,41 +53,29 @@ public sealed class AppDetailView : UserControl
         SetResourceReference(BackgroundProperty, "Brush.Surface");
         Focusable = true;
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { _close(); e.Handled = true; } };
-        _timer.Tick += (_, _) => Refresh();
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw);
         Loaded += (_, _) =>
         {
-            _live.Changed += Refresh;
-            _themes.Applied += Redraw;
-            AppIcons.Updated += Redraw;
-            _live.Start();
-            _timer.Start();
             Redraw();
-            Refresh();
+            _driver.Start();
             Focus();
         };
-        Unloaded += (_, _) =>
-        {
-            _live.Changed -= Refresh;
-            _themes.Applied -= Redraw;
-            AppIcons.Updated -= Redraw;
-            _timer.Stop();
-        };
+        Unloaded += (_, _) => _driver.Stop();
     }
 
     private async void Refresh()
     {
-        var seq = ++_seq;
-        var now = DateTimeOffset.UtcNow;
-        var running = _live.RunningIds;
         var (path, id, year) = (_dbPath, _appId, _year);
-        AppDetailResult? result;
-        try
-        {
-            (result, _weekStart) = await Task.Run(() => (AppDetailQuery.Run(path, now, TimeZoneInfo.Local, id, year, running),
-                MonthQuery.ParseWeekStart(SettingsStore.Get(path, "week.start"))));
-        }
-        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException) { return; }
-        if (seq != _seq) return;
+        AppDetailResult? result = null;
+        var applied = await _loader.Refresh(
+            c => (Result: AppDetailQuery.Run(path, c.Now, c.Zone, id, year, c.Running), WeekStart: c.WeekStartDay),
+            r =>
+            {
+                result = r.Result;
+                _weekStart = r.WeekStart;
+            });
+        if (!applied) return;
         if (result is null) { _close(); return; } // the app was retired or removed meanwhile
         _result = result;
         _year = result.Year;

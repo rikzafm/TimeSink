@@ -25,7 +25,8 @@ public sealed class YearMatrixView : UserControl, IYearSubView
     private readonly string _dbPath;
     private readonly ThemeService _themes;
     private readonly LiveState _live;
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(RefreshEverySeconds) };
+    private readonly UsageSnapshotLoader _loader;
+    private readonly LiveViewDriver _driver;
 
     private readonly TextBlock _caption = Label("Small"), _total = new(), _footnote = Label("Small"), _empty = Label("Small");
     private readonly MatrixGrid _grid = new();
@@ -37,8 +38,6 @@ public sealed class YearMatrixView : UserControl, IYearSubView
     private MatrixResult? _result;
     private bool _selectMonth;
     private int _selected; // row index, or month column index when _selectMonth
-    private int _seq;
-    private bool _started;
 
     public YearMatrixView(string dbPath, ThemeService themes, LiveState live)
     {
@@ -117,10 +116,8 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         root.Children.Add(scroll);
         Content = root;
 
-        _timer.Tick += (_, _) => Refresh();
-        _live.Changed += Refresh;
-        _themes.Applied += () => { if (_started) Redraw(); }; // a stopped view redraws from fresh data when it starts again
-        AppIcons.Updated += () => { if (_started) Redraw(); };
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw);
         Unloaded += (_, _) => Stop();
         Redraw(); // static text and empty grid; data follows in Start
     }
@@ -139,32 +136,14 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         return t;
     }
 
-    public void Start()
-    {
-        if (_started) return;
-        _started = true;
-        _timer.Start();
-        Refresh();
-    }
+    public void Start() => _driver.Start();
 
-    public void Stop()
-    {
-        _started = false;
-        _timer.Stop();
-    }
+    public void Stop() => _driver.Stop();
 
     public async void Refresh()
     {
-        if (!_started) return;
-        var seq = ++_seq;
-        var now = DateTimeOffset.UtcNow;
-        var running = _live.RunningIds;
-        MatrixResult result;
-        try { result = await Task.Run(() => MatrixQuery.Run(_dbPath, now, TimeZoneInfo.Local, running, SignInTime.Cached())); }
-        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException) { return; }
-        if (seq != _seq || !_started) return;
-        _result = result;
-        Redraw();
+        var path = _dbPath;
+        if (await _loader.Refresh(c => MatrixQuery.Run(path, c.Now, c.Zone, c.Running, c.SignInUtc), r => _result = r)) Redraw();
     }
 
     private static string H(long seconds) => Str(MatrixStringKeys.Hours, (long)Math.Round(seconds / 3600.0));

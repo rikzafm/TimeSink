@@ -18,7 +18,7 @@ namespace TimeSink.UI.Views;
 /// runs the Core query off-thread, then a 1 s timer ticks the live total from the last snapshot and the pipe state.
 /// A fresh query runs on every pipe state change and every 30 s.
 /// </summary>
-public partial class TodayView : UserControl
+public partial class TodayView : UserControl, ILiveView
 {
     private const int RefreshEverySeconds = 30;
     private const int MinShownSessionSeconds = 60; // shorter sessions are blips: not drawn, only counted in the note
@@ -30,16 +30,14 @@ public partial class TodayView : UserControl
     private readonly string _dbPath;
     private readonly ThemeService _themes;
     private readonly LiveState _live;
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly UsageSnapshotLoader _loader;
+    private readonly LiveViewDriver _driver;
     private readonly HashSet<long> _expanded = new();
     private readonly Dictionary<long, (TextBlock Time, TextBlock Status, TodayAppRow Row)> _rowViews = new();
 
     private readonly UntrackedCardView _untracked;
-    private long? _signInUtc;
     private TodayResult? _result;
-    private int _seq;
     private int _sinceRefresh;
-    private bool _started;
     private DateOnly? _day;   // null = the live day; otherwise a past day being browsed
     private DateOnly? _first; // first tracked day, the earliest the picker allows
     private readonly ToolTip _tip = new();
@@ -106,29 +104,15 @@ public partial class TodayView : UserControl
             ClosePanel();
             e.Handled = true;
         };
-        _timer.Tick += (_, _) => OnTick();
-        _live.Changed += Refresh;
-        // A stopped view is rebuilt from fresh data when it starts again, so it skips theme and icon redraws meanwhile.
-        _themes.Applied += () => { if (_started) Redraw(); };
-        AppIcons.Updated += () => { if (_started) Redraw(); };
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(1), Load, Redraw, onTick: OnTick, onLiveChanged: Refresh);
         Unloaded += (_, _) => Stop();
     }
 
     /// <summary>Begin loading and ticking. Called once the window has rendered (first paint is never delayed by data).</summary>
-    public void Start()
-    {
-        if (_started) return;
-        _started = true;
-        _live.Start();
-        _timer.Start();
-        Load();
-    }
+    public void Start() => _driver.Start();
 
-    public void Stop()
-    {
-        _started = false;
-        _timer.Stop();
-    }
+    public void Stop() => _driver.Stop();
 
     /// <summary>Live-state refresh: a past day is static, so pipe changes and the timer leave it alone.</summary>
     public void Refresh()
@@ -153,26 +137,17 @@ public partial class TodayView : UserControl
 
     private async void Load()
     {
-        if (!_started) return;
-        var seq = ++_seq;
+        if (!_driver.Started) return;
         _sinceRefresh = 0;
-        var now = DateTimeOffset.UtcNow;
-        var running = _live.RunningIds;
-        var day = _day;
-        TodayResult result;
-        try
-        {
-            (result, var first) = await Task.Run(() =>
+        var (path, day) = (_dbPath, _day);
+        var applied = await _loader.Refresh(
+            c => (Result: TodayQuery.Run(path, c.Now, c.Zone, c.Running, day, c.SignInUtc), First: TodayQuery.FirstDate(path, c.Zone)), // no DB yet: keep the empty state
+            r =>
             {
-                _signInUtc ??= SignInTime.Cached() ?? 0; // uptime starts at sign-in; looked up once (shared with the other tabs), off the UI thread
-                return (TodayQuery.Run(_dbPath, now, TimeZoneInfo.Local, running, day, _signInUtc is > 0 ? _signInUtc : null),
-                    TodayQuery.FirstDate(_dbPath, TimeZoneInfo.Local));
+                _result = r.Result;
+                _first = r.First;
             });
-            _first = first;
-        }
-        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException) { return; } // no DB yet: keep the empty state
-        if (seq != _seq || !_started) return;
-        _result = result;
+        if (!applied) return;
         Redraw();
         _untracked.Reload(); // after real data is on screen; icons are extracted off-thread
     }
@@ -221,7 +196,7 @@ public partial class TodayView : UserControl
         if (_result is not { } r) return;
         var live = _day is null;
         var early = live && TodayEarly.ShowCaption(r.UptimeSeconds);
-        var since = early ? TodayEarly.TrackingSinceUtc(r.DayStartUtc, _signInUtc is > 0 ? _signInUtc : null, r.FirstApp?.StartUtc) : null;
+        var since = early ? TodayEarly.TrackingSinceUtc(r.DayStartUtc, SignInTime.Cached(), r.FirstApp?.StartUtc) : null;
 
         Nav.Configure(Today, _first ?? r.Date, r.Date);
         Nav.CaptionText = since is not null

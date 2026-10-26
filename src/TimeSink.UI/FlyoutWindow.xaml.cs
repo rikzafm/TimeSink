@@ -96,29 +96,9 @@ public partial class FlyoutWindow : Window
         }
     }
 
-    private static void StopBody(UIElement body)
-    {
-        switch (body)
-        {
-            case TodayView v: v.Stop(); break;
-            case WeekView v: v.Stop(); break;
-            case MonthView v: v.Stop(); break;
-            case YearView v: v.Stop(); break;
-            case AllView v: v.Stop(); break;
-        }
-    }
+    private static void StopBody(UIElement body) => (body as ILiveView)?.Stop();
 
-    private static void StartBody(UIElement body)
-    {
-        switch (body)
-        {
-            case TodayView v: v.Start(); break;
-            case WeekView v: v.Start(); break;
-            case MonthView v: v.Start(); break;
-            case YearView v: v.Start(); break;
-            case AllView v: v.Start(); break;
-        }
-    }
+    private static void StartBody(UIElement body) => (body as ILiveView)?.Start();
 
     // Built on first visit only.
     private UIElement CreateBody(ShellTab tab) => tab switch

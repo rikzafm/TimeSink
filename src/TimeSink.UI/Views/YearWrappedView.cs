@@ -30,15 +30,14 @@ public sealed class YearWrappedView : UserControl, IYearSubView
     private readonly string _dbPath;
     private readonly ThemeService _themes;
     private readonly LiveState _live;
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(RefreshEverySeconds) };
+    private readonly UsageSnapshotLoader _loader;
+    private readonly LiveViewDriver _driver;
     private readonly WrappedCard _card = new();
     private readonly WrappedPager _pager = new() { Count = CardCount };
     private readonly Button _save = new();
 
     private WrappedResult? _result;
     private int _index;
-    private int _seq;
-    private bool _started;
     private Point? _dragFrom;
     private DispatcherTimer? _savedReset;
 
@@ -112,10 +111,8 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         root.Children.Add(bar);
         Content = root;
 
-        _timer.Tick += (_, _) => Refresh();
-        _live.Changed += Refresh;
-        _themes.Applied += () => { if (_started) Redraw(); }; // a stopped view redraws from fresh data when it starts again
-        AppIcons.Updated += () => { if (_started) Redraw(); };
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw);
         Unloaded += (_, _) => Stop();
         Redraw(); // static text and an empty card; data follows in Start
     }
@@ -130,30 +127,16 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         Redraw();
     }
 
-    public void Start()
-    {
-        if (_started) return;
-        _started = true;
-        _timer.Start();
-        Refresh();
-    }
+    public void Start() => _driver.Start();
 
-    public void Stop()
-    {
-        _started = false;
-        _timer.Stop();
-    }
+    public void Stop() => _driver.Stop();
 
     public async void Refresh()
     {
-        if (!_started) return;
-        var seq = ++_seq;
-        var now = DateTimeOffset.UtcNow;
-        var running = _live.RunningIds;
-        WrappedResult result;
-        try { result = await Task.Run(() => WrappedQuery.Run(_dbPath, now, TimeZoneInfo.Local, running, SignInTime.Cached())); }
-        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or IOException) { return; }
-        if (seq != _seq || !_started) return;
+        var path = _dbPath;
+        WrappedResult? loaded = null;
+        if (!await _loader.Refresh(c => WrappedQuery.Run(path, c.Now, c.Zone, c.Running, c.SignInUtc), r => loaded = r)) return;
+        var result = loaded!;
         _result = result;
         AppIcons.Load(_dbPath, result.Podium.Concat(result.Others).Concat(result.GamesTop?.Podium ?? []).Concat(result.GachaTop?.Podium ?? []).Concat(result.LongestSessions ?? []).Select(a => a.AppId));
         Redraw();

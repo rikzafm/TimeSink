@@ -12,7 +12,7 @@ namespace TimeSink.UI.Views;
 /// on first selection only, and the selection is remembered in <c>ui.lastYearView</c>. Only the default (Pace) body is
 /// built with the tab; its data loads in <see cref="Start"/>, after first paint.
 /// </summary>
-public sealed class YearView : UserControl
+public sealed class YearView : UserControl, ILiveView
 {
     private readonly string _dbPath;
     private readonly ThemeService _themes;
