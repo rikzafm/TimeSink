@@ -54,7 +54,7 @@ internal static class UsageUptime
         var today = LocalDays.DateOf(nowUtc, zone);
         var byDay = new Dictionary<DateOnly, List<UsageSeg>>();
         // Each day judges the whole Sessions that touch it, not their clipped slices: sleep bands end at a Session's real end.
-        foreach (var slice in UsageWindow.Slices(segs, zone))
+        foreach (var slice in UsageDays.Slices(segs, zone))
         {
             if (!byDay.TryGetValue(slice.Day, out var list)) byDay[slice.Day] = list = [];
             list.Add(slice.Seg);

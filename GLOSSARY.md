@@ -30,7 +30,7 @@ _Avoid_: Merge target, option
 
 **Session**:
 One continuous run of a Tracked app. The sum of its Sessions is the app's running time.
-_Avoid_: Run, launch, visit
+_Avoid_: Run, launch
 
 **Local day**:
 A calendar day in the user's time zone. It lasts 23 or 25 hours when daylight saving changes.

@@ -17,14 +17,14 @@ A fix to open-Session handling or DST has to be made in several places, and each
 2. Callers receive a flat sequence of day slices and aggregate themselves (All per month, Week per group-day, AppDetail session counts). No pre-aggregated dictionaries.
 3. Today's hour columns (`HourSums`) and Matrix's month buckets stay in their own queries; they use the module only for the loader and opener.
 4. Matrix's private loader and Today's `LocalDate`/`DayStart` are deleted (`LocalDays` and the shared loader replace them). Matrix then also reads kind/`end_reason`, which it ignores.
-5. One public entry point, `UsageWindow`: from a connection, the window, now, zone and running set it returns the apps and the day slices. `Split` is an internal seam, tested directly.
+5. (Narrowed after ticket 03, see the revision below.) `UsageDays.Slices(segs, zone)` is the single module that cuts Sessions at Local days; the loading half stays with each query. It is tested directly.
 6. A slice is `(Day, Start, End)` clipped to that Local day, plus the original `UsageSeg`. "Longest Session" uses the whole Session; AppDetail counts one Session per Local day it touches.
 7. `UsageUptime.PerDay` assigns days through the slices, so its day-assignment loop goes. It passes each day the whole Sessions that touch it, not the clipped slices, because sleep bands end at a Session's real end. `UsageUptime.Seconds` and `SleepBands` are unchanged (Today feeds them whole segments).
 
 ## Tests
 
-- New, at the `UsageWindow` interface (existing temp-database fixtures): retired and unknown apps excluded; merged apps share a group; an open Session counts to now when its app is running, otherwise to its last heartbeat.
-- New, directly on `Split`: midnight crossing, a 23 h day, a 25 h day, a skipped midnight.
+- Loading rules (retired and unknown apps excluded, merged apps share a group, an open Session counts to now or to its last heartbeat) stay covered by the existing query tests. `UsageDb.OpenReadOnly` has its own tests.
+- New, directly on `UsageDays.Slices`: midnight crossing, a 23 h day, a 25 h day, a skipped midnight.
 - Existing query tests stay unchanged as regression. `TodayDstTests` stays (hour columns remain in Today).
 
 ## Out of scope
@@ -33,4 +33,6 @@ Hour-column splitting, Matrix month buckets, any change to what the views show.
 
 ## Revision after ticket 03
 
-Decision 5 changed. `UsageWindow` is only `Slices(segs, zone)`, with no "load apps and slices" entry point. All loads retired apps and AppDetail loads alias members, both of which `UsageLoader` excludes, so one loading entry point would have changed what they count. A loader plus `Slices` wrapper for Week alone would have been a three-line pass-through that fails the deletion test. Each query keeps its own loading and passes whole `UsageSeg`s to `Slices`.
+Decision 5 changed. `UsageDays` is only `Slices(segs, zone)`, with no "load apps and slices" entry point. All loads retired apps and AppDetail loads alias members, both of which `UsageLoader` excludes, so one loading entry point would have changed what they count. A loader plus `Slices` wrapper for Week alone would have been a three-line pass-through that fails the deletion test. Each query keeps its own loading and passes whole `UsageSeg`s to `Slices`.
+
+A review also noted that `LocalDays.StartOf` picks the later offset for an ambiguous local midnight, so a Session wholly inside the first pass of that repeated hour belongs to no slice. All, AppDetail and Week already behaved this way; `PerDay` now does too. The root cause is in `LocalDays`, not in this work, and is left as is.

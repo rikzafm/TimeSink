@@ -39,7 +39,7 @@ public static class WeekQuery
         // App seconds per local day (all apps, for the streak) and per (app group, day); the columns show PC uptime.
         var perDay = new Dictionary<DateOnly, long>();
         var perGroupDay = new Dictionary<(long, DateOnly), long>();
-        foreach (var slice in UsageWindow.Slices(segs, zone))
+        foreach (var slice in UsageDays.Slices(segs, zone))
         {
             var overlap = slice.End - slice.Start;
             perDay[slice.Day] = perDay.GetValueOrDefault(slice.Day) + overlap;

@@ -6,7 +6,7 @@ namespace TimeSink.Tests.Usage;
 /// Sessions cut at Local-day boundaries, in America/New_York for the DST cases:
 /// 2026-03-08 spring forward (23 h, local midnights at 05:00Z and 04:00Z next day), 2026-11-01 fall back (25 h, 04:00Z to 05:00Z next day).
 /// </summary>
-public sealed class UsageWindowTests
+public sealed class UsageDaysTests
 {
     private static readonly TimeZoneInfo Ny = FindNewYork();
 
@@ -21,7 +21,7 @@ public sealed class UsageWindowTests
 
     private static UsageSeg Seg(long start, long end, long group = 1) => new(group, group, start, end, false, false);
 
-    private static List<UsageSlice> Cut(TimeZoneInfo zone, params UsageSeg[] segs) => UsageWindow.Slices(segs, zone).ToList();
+    private static List<UsageSlice> Cut(TimeZoneInfo zone, params UsageSeg[] segs) => UsageDays.Slices(segs, zone).ToList();
 
     [Fact]
     public void A_session_inside_one_day_is_one_slice()

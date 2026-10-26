@@ -57,6 +57,7 @@ public static class AllQuery
                 if (groups.ContainsKey(canonical)) groupOf[id] = canonical;
         }
 
+        var segs = new List<UsageSeg>();
         using (var cmd = c.CreateCommand())
         {
             cmd.CommandText = "SELECT app_id, start_utc, end_utc, last_seen_utc FROM sessions WHERE start_utc <= $now ORDER BY start_utc";
@@ -79,16 +80,10 @@ public static class AllQuery
                 group.Sessions++;
                 group.LastUsed = Math.Max(group.LastUsed, end);
                 group.Longest = Math.Max(group.Longest, end - start);
-                foreach (var slice in UsageWindow.Slices([new UsageSeg(gid, appId, start, end, false, false)], zone))
-                {
-                    var s = slice.End - slice.Start;
-                    group.Seconds += s;
-                    group.Days.Add(slice.Day);
-                    var key = (slice.Day.Year, slice.Day.Month);
-                    group.Months[key] = group.Months.GetValueOrDefault(key) + s;
-                }
+                segs.Add(new UsageSeg(gid, appId, start, end, false, false));
             }
         }
+        AddDays(groups, segs, zone);
 
         // Day sets of the tracked groups for the total's "days used".
         var trackedDays = new HashSet<DateOnly>();
@@ -110,6 +105,19 @@ public static class AllQuery
         var trackedApps = UsageLoader.LoadApps(c);
         var uptime = UsageUptime.PerDay(UsageLoader.LoadSegments(c, 0, nowUtc, trackedApps, running), zone, nowUtc, onSinceUtc).Values.Sum();
         return new AllResult(apps, retired, new AllTotals(uptime, trackedDays.Count, Average(uptime, trackedDays.Count)));
+    }
+
+    private static void AddDays(Dictionary<long, Group> groups, List<UsageSeg> segs, TimeZoneInfo zone)
+    {
+        foreach (var slice in UsageDays.Slices(segs, zone))
+        {
+            var g = groups[slice.Seg.Group];
+            var s = slice.End - slice.Start;
+            g.Seconds += s;
+            g.Days.Add(slice.Day);
+            var key = (slice.Day.Year, slice.Day.Month);
+            g.Months[key] = g.Months.GetValueOrDefault(key) + s;
+        }
     }
 
     private static double Average(long seconds, int days) => days > 0 ? seconds / (double)days : 0;

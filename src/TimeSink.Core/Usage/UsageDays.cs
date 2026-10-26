@@ -8,7 +8,7 @@ internal readonly record struct UsageSlice(DateOnly Day, long Start, long End, U
 /// takes the later offset, so a day may last 23 or 25 hours). Callers aggregate the slices their own way; the whole
 /// Session stays on every slice for "longest" and "one Session per day it touches".
 /// </summary>
-internal static class UsageWindow
+internal static class UsageDays
 {
     public static IEnumerable<UsageSlice> Slices(IEnumerable<UsageSeg> segs, TimeZoneInfo zone)
     {

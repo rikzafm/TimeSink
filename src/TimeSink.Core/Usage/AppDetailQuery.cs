@@ -80,7 +80,7 @@ public static class AppDetailQuery
         var daySessions = new Dictionary<DateOnly, int>();
         long total = 0, longest = 0;
         foreach (var seg in segs) longest = Math.Max(longest, seg.End - seg.Start);
-        foreach (var slice in UsageWindow.Slices(segs, zone))
+        foreach (var slice in UsageDays.Slices(segs, zone))
         {
             var secs = slice.End - slice.Start;
             daySeconds[slice.Day] = daySeconds.GetValueOrDefault(slice.Day) + secs;
