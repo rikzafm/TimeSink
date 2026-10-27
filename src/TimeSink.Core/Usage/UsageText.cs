@@ -7,11 +7,11 @@ public static class UsageText
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-    /// <summary>Hours without a unit: one decimal under ten hours ("2.5"), whole hours from ten up ("27"); negative input reads "0".</summary>
+    /// <summary>Hours without a unit: one decimal under ten hours ("2.5"), whole hours from ten up ("27"), and a whole number never shows ".0" ("5"); negative input reads "0".</summary>
     public static string Hours(long seconds)
     {
         var h = Math.Max(0, seconds) / 3600.0;
-        if (h < 9.95) return h == 0 ? "0" : h.ToString("0.0", Inv);
+        if (h < 9.95) return h.ToString("0.0", Inv) is var t && t.EndsWith(".0") ? t[..^2] : t;
         return Math.Round(h, MidpointRounding.AwayFromZero).ToString("0", Inv);
     }
 

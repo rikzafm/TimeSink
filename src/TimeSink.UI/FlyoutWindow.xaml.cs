@@ -130,16 +130,26 @@ public partial class FlyoutWindow : Window
     {
         _addApp ??= new AddAppView(_themes, _dbPath, () =>
         {
-            Overlay.Content = null;
+            SetOverlay(null);
             Live.NotifyDataChanged(); // names, merges and tracked apps may have changed underneath
         });
         _addApp.OnShown();
-        Overlay.Content = _addApp;
+        SetOverlay(_addApp);
+    }
+
+    /// <summary>
+    /// Shows or clears a full-flyout screen. The tab body underneath is collapsed while one is up: WPF would otherwise
+    /// recompose it on every scroll frame of the overlay (Year > Wrapped's card is expensive to redraw).
+    /// </summary>
+    private void SetOverlay(UIElement? screen)
+    {
+        Overlay.Content = screen;
+        Body.Visibility = screen is null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // The app detail page (double-click a row in All) also covers the whole flyout; Back or Esc returns to the table.
     private void ShowAppDetail(long appId) =>
-        Overlay.Content = new AppDetailView(_dbPath, _themes, Live, appId, () => Overlay.Content = null);
+        SetOverlay(new AppDetailView(_dbPath, _themes, Live, appId, () => SetOverlay(null)));
 
     private SettingsView? _settings;
     private ShellTab _current;

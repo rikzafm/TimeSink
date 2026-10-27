@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using TimeSink.Core.Apps;
+using TimeSink.Core.Tracking;
 
 namespace TimeSink.Core.Usage;
 
@@ -68,7 +69,8 @@ internal static class UsageLoader
                 else { end = Math.Clamp(r.GetInt64(3), start, nowUtc); open = false; }
             }
             else end = r.GetInt64(2);
-            var sleep = !r.IsDBNull(4) && r.GetString(4) == "sleep";
+            // A shutdown close is the PC being off, like a sleep close: the gap to the next session is not uptime.
+            var sleep = !r.IsDBNull(4) && r.GetString(4) is EndReasons.Sleep or EndReasons.Shutdown;
             list.Add(new UsageSeg(app.Group, appId, start, end, open, sleep && !open));
         }
         return list;

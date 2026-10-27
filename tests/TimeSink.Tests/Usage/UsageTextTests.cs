@@ -9,8 +9,11 @@ public class UsageTextTests
     [InlineData(-300, "0")]        // negative clamps
     [InlineData(600, "0.2")]       // 10 min
     [InlineData(1800, "0.5")]
+    [InlineData(3600, "1")]        // a whole number has no ".0"
     [InlineData(5400, "1.5")]
     [InlineData(9000, "2.5")]      // kept as a decimal, not rounded to 2 or 3
+    [InlineData(10800, "3")]
+    [InlineData(17900, "5")]       // 4.97 h rounds to 5.0, shown as 5
     [InlineData(35999, "10")]      // 9.9997 h rounds to 10, shown whole
     [InlineData(36000, "10")]
     [InlineData(98400, "27")]      // 27.33 h
@@ -53,10 +56,10 @@ public class UsageTextTests
     [InlineData(59, "0m")]         // matches MonthView.ShortHours today
     [InlineData(2520, "42m")]
     [InlineData(3599, "59m")]
-    [InlineData(3600, "1.0h")]
+    [InlineData(3600, "1h")]
     [InlineData(5400, "1.5h")]
     [InlineData(9000, "2.5h")]
-    [InlineData(25200, "7.0h")]
+    [InlineData(25200, "7h")]
     public void MonthCell_is_blank_for_none_minutes_under_an_hour_and_hours_above(long seconds, string expected) =>
         UsageText.MonthCell(seconds).Should().Be(expected);
 
