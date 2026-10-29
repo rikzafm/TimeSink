@@ -78,6 +78,41 @@ public sealed class AddAppNavigationTests
     }
 
     [Fact]
+    public void Selecting_another_row_moves_the_selection_and_closes_the_previous_rows_question()
+    {
+        var nav = OnTracked();
+        nav.OpenRowStop(1);
+
+        nav.SelectRow(2).Should().BeTrue();
+
+        nav.State.OpenRowId.Should().Be(2);
+        nav.State.RowMode.Should().Be(TrackedRowMode.None);
+    }
+
+    [Fact]
+    public void Selecting_the_open_row_again_changes_nothing_and_keeps_its_question()
+    {
+        var nav = OnTracked();
+        nav.OpenRowStop(1);
+
+        nav.SelectRow(1).Should().BeFalse();
+
+        nav.State.OpenRowId.Should().Be(1);
+        nav.State.RowMode.Should().Be(TrackedRowMode.Stop);
+    }
+
+    [Fact]
+    public void A_selected_row_is_deselected_by_closing_the_row()
+    {
+        var nav = OnTracked();
+        nav.SelectRow(3);
+
+        nav.CloseRow();
+
+        nav.State.OpenRowId.Should().BeNull();
+    }
+
+    [Fact]
     public void Ending_a_row_mode_keeps_the_row_open_and_closing_the_row_closes_it()
     {
         var nav = OnTracked();

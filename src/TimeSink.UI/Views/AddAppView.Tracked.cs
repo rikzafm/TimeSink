@@ -26,6 +26,7 @@ public sealed partial class AddAppView
     private StackPanel _trackedList = null!;
     private ScrollViewer _trackedScroll = null!;
     private TextBlock _trackedHeader = null!;
+    private static readonly object TrackedRowTag = new(); // marks a row's card, so a click can tell a row from empty list space
     private string _draft = "";
     private MergePlan? _mergePlan;      // the open merge screen's plan (Candidates, ticks, confirm) lives in AppCatalogue; which screen shows is in _nav
     private List<(Border Tile, string Name, string ExePath)> _mergeTiles = [];
@@ -47,7 +48,13 @@ public sealed partial class AddAppView
         _trackedHeader = Text(null, "Double.FontSize.Small", "Brush.TextMuted");
         _trackedHeader.Margin = new Thickness(8, 8, 0, 8);
         _trackedList = new StackPanel { Margin = new Thickness(12, 4, 12, 8) };
-        _trackedScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = _trackedList };
+        _trackedScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = _trackedList, Background = Brushes.Transparent };
+        _trackedScroll.PreviewMouseLeftButtonDown += (_, e) => // a click on empty list space deselects the open row
+        {
+            if (_nav.State.OpenRowId is null || IsInTrackedRow(e.OriginalSource as DependencyObject)) return;
+            _nav.CloseRow();
+            RenderTracked();
+        };
         Grid.SetRow(_trackedScroll, 1);
         root.Children.Add(_trackedScroll);
         var hint = Text("Str.AddTrackedHint", "Double.FontSize.Small", "Brush.TextMuted");
@@ -177,11 +184,28 @@ public sealed partial class AddAppView
         _trackedScroll.ScrollToVerticalOffset(offset);
     }
 
+    private bool IsInTrackedRow(DependencyObject? d)
+    {
+        for (; d is not null && !ReferenceEquals(d, _trackedScroll); d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            if (d is FrameworkElement fe && ReferenceEquals(fe.Tag, TrackedRowTag)) return true;
+        return false;
+    }
+
+    /// <summary>Esc closes the open row (its stop question or rename box too), when nothing else on the Tracked tab owns the key.</summary>
+    private void OnTrackedPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape || Keyboard.FocusedElement is TextBox) return;
+        if (_nav.State is not { Tab: AddAppTab.Tracked, Merge: MergeStage.None, SettingsId: null, OpenRowId: not null }) return;
+        e.Handled = true;
+        _nav.CloseRow();
+        RenderTracked();
+    }
+
     private UIElement TrackedRow(TrackedEntry app)
     {
         var open = _nav.State.OpenRowId == app.Id;
         var mode = _nav.State.RowMode;
-        var card = new Border { Margin = new Thickness(0, 0, 0, 6), Padding = new Thickness(10), BorderThickness = new Thickness(1) };
+        var card = new Border { Margin = new Thickness(0, 0, 0, 6), Padding = new Thickness(10), BorderThickness = new Thickness(1), Tag = TrackedRowTag };
         card.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Large");
         if (open)
         {
@@ -240,6 +264,12 @@ public sealed partial class AddAppView
         // double-click the name to rename it in place; double-click anywhere else on the row for the app's settings
         card.MouseLeftButtonDown += (_, e) =>
         {
+            if (e.ClickCount == 1) // a click selects the row; Esc then works from here
+            {
+                if (_nav.SelectRow(app.Id)) RenderTracked();
+                if (_nav.State.RowMode != TrackedRowMode.Rename) Focus();
+                return;
+            }
             if (e.ClickCount != 2 || _nav.State.RowMode == TrackedRowMode.Rename) return;
             e.Handled = true;
             if (ReferenceEquals(e.OriginalSource, name)) { _nav.OpenRowRename(app.Id); _draft = app.DisplayName; RenderTracked(); }

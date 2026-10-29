@@ -92,6 +92,17 @@ public sealed class AddAppNavigation
 
     // ---- Tracked row --------------------------------------------------------------------------------------
 
+    /// <summary>
+    /// A click on a row selects it: any rename or stop question on another row closes. Selecting the open row again changes
+    /// nothing, so a click inside its stop question or rename box leaves it alone. Returns true when the selection moved.
+    /// </summary>
+    public bool SelectRow(long appId)
+    {
+        if (State.OpenRowId == appId) return false;
+        State = State with { OpenRowId = appId, RowMode = TrackedRowMode.None };
+        return true;
+    }
+
     public void OpenRowRename(long appId) => State = State with { OpenRowId = appId, RowMode = TrackedRowMode.Rename };
 
     public void OpenRowStop(long appId) => State = State with { OpenRowId = appId, RowMode = TrackedRowMode.Stop };

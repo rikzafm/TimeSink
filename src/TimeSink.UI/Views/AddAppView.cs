@@ -61,6 +61,9 @@ public sealed partial class AddAppView : UserControl
         _icons = AppIcons.Source(dbPath);
         _catalogue = new AppCatalogue(dbPath, Win32Desktop.Instance, _icons);
         SetResourceReference(BackgroundProperty, "Brush.Surface");
+        Focusable = true; // a click on a Tracked row focuses the view, so Esc reaches it
+        FocusVisualStyle = null;
+        PreviewKeyDown += OnTrackedPreviewKeyDown;
         Content = _shell = BuildShell();
         _timer.Tick += (_, _) => Refresh();
         Loaded += (_, _) => { _themes.Applied += Redraw; Redraw(); Refresh(); _timer.Start(); };
