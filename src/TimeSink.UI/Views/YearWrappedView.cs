@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using TimeSink.Core.Apps;
 using TimeSink.Core.Theming;
 using TimeSink.Core.Usage;
 using TimeSink.UI.Controls;
@@ -197,16 +198,10 @@ public sealed class YearWrappedView : UserControl, IYearSubView
             ]);
     }
 
-    private static string Letter(string name)
-    {
-        foreach (var ch in name) if (char.IsLetterOrDigit(ch)) return char.ToUpperInvariant(ch).ToString();
-        return "?";
-    }
-
     private WrappedCardModel Podium(string label, string headlineKey, IReadOnlyList<WrappedApp>? p, IReadOnlyList<WrappedApp>? others, string emptyKey)
     {
         if (p is not { Count: > 0 }) return new EmptyCardModel(label, Str(emptyKey.Length > 0 ? emptyKey : YearStringKeys.Empty));
-        WrappedPodiumEntry E(int i) => new(Letter(p[i].Name), p[i].Name, Hours(p[i].Seconds), i + 1, AppIcons.Get(p[i].AppId), _themes.AppSlot(p[i].AppId));
+        WrappedPodiumEntry E(int i) => new(LetterTile.Letter(p[i].Name), p[i].Name, Hours(p[i].Seconds), i + 1, AppIcons.Get(p[i].AppId), _themes.AppSlot(p[i].AppId));
         // Display order: winner in the middle, then 2nd to its left, 3rd right, 4th far left, 5th far right.
         var order = new List<int> { 0 };
         for (var i = 1; i < p.Count; i++) { if (i % 2 == 1) order.Insert(0, i); else order.Add(i); }

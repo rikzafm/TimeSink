@@ -4,6 +4,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using TimeSink.Core.Apps;
 using TimeSink.Core.Data;
+using TimeSink.UI.Controls;
 using TimeSink.UI.Services;
 using TimeSink.UI.Theming;
 
@@ -107,23 +108,7 @@ internal sealed class UntrackedCardView : StackPanel
     private UIElement BuildRow(RunningCandidate candidate)
     {
         var app = candidate.App;
-        var tile = new Border { Width = 26, Height = 26, BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center };
-        tile.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
-        tile.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
-        if (IconService.Decode(candidate.Png) is { } bmp)
-        {
-            tile.Padding = new Thickness(2);
-            tile.Child = new Image { Source = bmp, Stretch = Stretch.Uniform };
-        }
-        else
-        {
-            tile.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
-            var letter = new TextBlock { Text = LetterTile.Letter(app.DisplayName), FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            letter.SetResourceReference(TextBlock.ForegroundProperty, "Brush.App" + LetterTile.PaletteIndex(LetterTile.KeyFor(app.ExePath), Math.Max(1, _themes.Current.Apps.Count)));
-            letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
-            letter.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
-            tile.Child = letter;
-        }
+        var tile = AppTile.Candidate(_themes, app.ExePath, app.DisplayName, candidate.Png, TileStyle.Untracked);
 
         var name = new TextBlock { Text = app.DisplayName, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
         name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");

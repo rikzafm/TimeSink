@@ -38,6 +38,10 @@ _Avoid_: Color index, palette index, app colour
 The PNG stored with an app, or extracted for a Candidate. An app without one shows its letter tile.
 _Avoid_: Logo, thumbnail
 
+**App tile**:
+The square face of an app in a row or header: its App icon, or its first letter on its Palette slot colour when it has none. That letter fallback is the letter tile.
+_Avoid_: Avatar, badge
+
 ### Usage
 
 **Session**:

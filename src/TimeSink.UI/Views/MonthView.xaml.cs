@@ -213,20 +213,7 @@ public partial class MonthView : UserControl, ILiveView
         foreach (var app in r.TopApps)
         {
             var brush = _themes.AppBrushKey(app.AppId);
-            var tile = new Border { Width = 26, Height = 26, VerticalAlignment = VerticalAlignment.Top };
-            tile.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
-            tile.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
-            tile.SetResourceReference(Border.BorderThicknessProperty, "Thickness.Border");
-            tile.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
-            var letter = new TextBlock
-            {
-                Text = app.Name.Length > 0 ? char.ToUpperInvariant(app.Name[0]).ToString() : "?",
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.Bold,
-            };
-            letter.SetResourceReference(TextBlock.ForegroundProperty, brush);
-            letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
-            letter.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
-            if (!AppIcons.TryFill(tile, app.AppId)) tile.Child = letter;
+            var tile = AppTile.Tracked(_themes, app.AppId, app.Name, TileStyle.Mini);
 
             var name = new TextBlock { Text = app.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
             name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");

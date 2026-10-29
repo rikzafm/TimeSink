@@ -363,23 +363,7 @@ public sealed class WeekView : UserControl, ILiveView
     {
         var appBrush = "Brush.App" + paletteIndex;
 
-        var tile = new Border();
-        tile.SetResourceReference(FrameworkElement.WidthProperty, "Double.Row.TileSmall");
-        tile.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.TileSmall");
-        tile.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
-        tile.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
-        tile.SetResourceReference(Border.BorderThicknessProperty, "Thickness.Border");
-        tile.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
-        var letter = new TextBlock
-        {
-            Text = app.Name.Length > 0 ? char.ToUpperInvariant(app.Name[0]).ToString() : "?",
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-            FontWeight = FontWeights.SemiBold,
-        };
-        letter.SetResourceReference(TextBlock.ForegroundProperty, appBrush);
-        letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
-        letter.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
-        if (!AppIcons.TryFill(tile, app.AppId)) tile.Child = letter;
+        var tile = AppTile.Tracked(_themes, app.AppId, app.Name, TileStyle.WeekRow);
 
         var name = new TextBlock { Text = app.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 8, 0) };
         name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");

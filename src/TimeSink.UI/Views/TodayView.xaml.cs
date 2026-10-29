@@ -331,23 +331,7 @@ public partial class TodayView : UserControl, ILiveView
         var appBrush = "Brush.App" + paletteIndex;
         var elapsed = ElapsedSinceSnapshot;
 
-        var tile = new Border { VerticalAlignment = VerticalAlignment.Top };
-        tile.SetResourceReference(FrameworkElement.WidthProperty, "Double.Row.Tile");
-        tile.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.Tile");
-        tile.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
-        tile.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
-        tile.SetResourceReference(Border.BorderThicknessProperty, "Thickness.Border");
-        tile.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
-        var letter = new TextBlock
-        {
-            Text = row.Name.Length > 0 ? char.ToUpperInvariant(row.Name[0]).ToString() : "?",
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-            FontWeight = FontWeights.SemiBold,
-        };
-        letter.SetResourceReference(TextBlock.ForegroundProperty, appBrush);
-        letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
-        letter.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Title");
-        if (!AppIcons.TryFill(tile, row.AppId)) tile.Child = letter;
+        var tile = AppTile.Tracked(_themes, row.AppId, row.Name, TileStyle.TodayRow);
 
         var name = new TextBlock { Text = row.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
         name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");

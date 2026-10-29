@@ -8,6 +8,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using TimeSink.Core.Apps;
 using TimeSink.Core.Usage;
+using TimeSink.UI.Controls;
 using TimeSink.UI.Services;
 
 namespace TimeSink.UI.Views;
@@ -114,7 +115,7 @@ public sealed partial class AddAppView
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var tile = MakeTile(app.DisplayName, app.ExePath, _trackedIcons.GetValueOrDefault(app.Id));
+        var tile = AppTile.Candidate(_themes, app.ExePath, app.DisplayName, _trackedIcons.GetValueOrDefault(app.Id), TileStyle.CandidateRow);
         tile.Margin = new Thickness(0, 0, 14, 0);
         tile.VerticalAlignment = VerticalAlignment.Center;
 
@@ -366,7 +367,7 @@ public sealed partial class AddAppView
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var tile = MakeTile(m.DisplayName, m.ExePath, MergedIcon(m.Id));
+            var tile = AppTile.Candidate(_themes, m.ExePath, m.DisplayName, MergedIcon(m.Id), TileStyle.CandidateRow);
             tile.Width = 28;
             tile.Height = 28;
             tile.Margin = new Thickness(0, 0, 10, 0);

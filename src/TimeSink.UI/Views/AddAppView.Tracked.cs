@@ -6,6 +6,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using TimeSink.Core.Apps;
 using TimeSink.Core.Usage;
+using TimeSink.UI.Controls;
 using TimeSink.UI.Services;
 
 namespace TimeSink.UI.Views;
@@ -203,7 +204,7 @@ public sealed partial class AddAppView
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var tile = MakeTile(app.DisplayName, app.ExePath, _trackedIcons.GetValueOrDefault(app.Id)); // the app's own logo
+        var tile = AppTile.Candidate(_themes, app.ExePath, app.DisplayName, _trackedIcons.GetValueOrDefault(app.Id), TileStyle.CandidateRow); // the app's own logo
         var tileHost = new Grid { Margin = new Thickness(0, 0, 12, 0) };
         tileHost.Children.Add(tile);
         if (app.Merged.Count > 0) tileHost.Children.Add(MergedBadge(app.Merged.Count));
@@ -515,7 +516,7 @@ public sealed partial class AddAppView
         LoadTileIcons(todo, (a, png) =>
         {
             foreach (var (tile, name, path) in tiles.ToList())
-                if (string.Equals(path, a.ExePath, StringComparison.OrdinalIgnoreCase)) FillTile(tile, name, a.ExePath, png);
+                if (string.Equals(path, a.ExePath, StringComparison.OrdinalIgnoreCase)) AppTile.Fill(tile, _themes, a.ExePath, name, png, TileStyle.CandidateRow);
         });
     }
 
@@ -537,7 +538,7 @@ public sealed partial class AddAppView
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var tile = MakeTile(t.Name, t.ExePath, PngOf(t));
+        var tile = AppTile.Candidate(_themes, t.ExePath, t.Name, PngOf(t), TileStyle.CandidateRow);
         tile.Margin = new Thickness(0, 0, 12, 0);
         if (t.Kind == CandidateKind.Installed) _mergeTiles.Add((tile, t.Name, t.ExePath)); // icons arrive in the background and fill these
         var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };

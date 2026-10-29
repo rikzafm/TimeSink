@@ -7,6 +7,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using TimeSink.Core.Apps;
 using TimeSink.Core.Usage;
+using TimeSink.UI.Controls;
 using TimeSink.UI.Services;
 using TimeSink.UI.Theming;
 
@@ -329,7 +330,7 @@ public sealed partial class AddAppView : UserControl
     /// <summary>Extraction size for tab tiles: well above the on-screen tile so logos stay sharp on high-DPI displays.</summary>
     private const int TileIconPx = 256;
 
-    private Border IconTile(Row row) => MakeTile(row.App.DisplayName, row.App.ExePath, row.Png);
+    private Border IconTile(Row row) => AppTile.Candidate(_themes, row.App.ExePath, row.App.DisplayName, row.Png, TileStyle.CandidateRow);
 
     /// <summary>The tile-size icon already extracted for the path (by any tab, or an earlier visit), or null.</summary>
     private byte[]? CachedIcon(string exePath) => _icons.ForPath(exePath, null, null, TileIconPx, cachedOnly: true, out _);
@@ -355,18 +356,6 @@ public sealed partial class AddAppView : UserControl
         });
     }
 
-    /// <summary>Cached/extracted icon when there is one, else a letter tile in a palette colour.</summary>
-    private Border MakeTile(string name, string exePath, byte[]? png)
-    {
-        var tile = new Border { BorderThickness = new Thickness(1) };
-        tile.SetResourceReference(FrameworkElement.WidthProperty, "Double.Row.TileLarge");
-        tile.SetResourceReference(FrameworkElement.HeightProperty, "Double.Row.TileLarge");
-        tile.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
-        tile.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
-        FillTile(tile, name, exePath, png);
-        return tile;
-    }
-
     /// <summary>
     /// Scrolling a long list moves already-drawn rows, so each row is kept as a GPU bitmap (at the screen's pixel density,
     /// so text stays sharp) instead of being re-rasterised every frame.
@@ -375,34 +364,6 @@ public sealed partial class AddAppView : UserControl
     {
         row.CacheMode = new BitmapCache(VisualTreeHelper.GetDpi(this).DpiScaleX) { SnapsToDevicePixels = true };
         return row;
-    }
-
-    private void FillTile(Border tile, string name, string exePath, byte[]? png)
-    {
-        var bmp = IconService.Decode(png);
-        if (bmp is not null)
-        {
-            // a real logo sits bare on the panel: no box, no outline, and it fills the whole tile
-            tile.ClearValue(Border.BackgroundProperty);
-            tile.BorderThickness = new Thickness(0);
-            tile.Padding = new Thickness(0);
-            var img = new Image { Source = bmp, Stretch = Stretch.Uniform };
-            RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.Fant);
-            tile.Child = img;
-            return;
-        }
-        tile.BorderThickness = new Thickness(1); // letter fallback keeps its box
-        tile.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
-        var letter = new TextBlock
-        {
-            Text = LetterTile.Letter(name), FontWeight = FontWeights.Bold,
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-        };
-        var slot = LetterTile.PaletteIndex(LetterTile.KeyFor(exePath), Math.Max(1, _themes.Current.Apps.Count));
-        letter.SetResourceReference(TextBlock.ForegroundProperty, "Brush.App" + slot);
-        letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
-        letter.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Title");
-        tile.Child = letter;
     }
 
     private UIElement BuildHint()

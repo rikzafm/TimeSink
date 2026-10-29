@@ -272,12 +272,11 @@ public sealed class AllView : UserControl, ILiveView
 
     private FrameworkElement AppRow(AllAppRow a, bool selected, long nowUtc)
     {
-        var brush = _themes.AppBrushKey(a.AppId);
         var grid = new Grid { Margin = new Thickness(16, 0, 16, 0) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var tile = Tile(a.Name, a.AppId, brush, 32);
+        var tile = AppTile.Tracked(_themes, a.AppId, a.Name, TileStyle.Table);
         grid.Children.Add(tile);
 
         var name = new TextBlock { Text = a.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
@@ -339,23 +338,6 @@ public sealed class AllView : UserControl, ILiveView
         if (_selected is { } old && _rowBoxes.TryGetValue(old, out var oldBox)) oldBox.SetResourceReference(Border.BackgroundProperty, "Brush.Surface");
         _selected = id;
         if (_rowBoxes.TryGetValue(id, out var box)) box.SetResourceReference(Border.BackgroundProperty, "Brush.BorderSoft");
-    }
-
-    /// <summary>The app's own icon at full tile size, or a coloured tile with its first letter until one is cached.</summary>
-    private static Border Tile(string name, long appId, string brushKey, double size)
-    {
-        var tile = new Border { Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center };
-        tile.SetResourceReference(Border.BackgroundProperty, brushKey);
-        tile.CornerRadius = new CornerRadius(size / 4);
-        var letter = new TextBlock
-        {
-            Text = name.Length > 0 ? char.ToUpperInvariant(name[0]).ToString() : "?",
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-            FontWeight = FontWeights.Bold, FontSize = size * 0.42, Foreground = new SolidColorBrush(Color.FromRgb(0x14, 0x18, 0x1A)),
-        };
-        letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
-        if (!AppIcons.TryFill(tile, appId)) tile.Child = letter;
-        return tile;
     }
 
     private static FrameworkElement LabeledStat(string label, string value)

@@ -34,18 +34,6 @@ internal static class AppIcons
         }
     }
 
-    /// <summary>Puts the app's icon in <paramref name="tile"/> at the full tile size, with no box around it; false means the caller shows its letter tile.</summary>
-    public static bool TryFill(Border tile, long appId)
-    {
-        if (!Cache.TryGetValue(appId, out var bmp)) return false;
-        tile.ClearValue(Border.BackgroundProperty);
-        tile.ClearValue(Border.BorderBrushProperty);
-        tile.BorderThickness = new Thickness(0);
-        tile.Padding = new Thickness(0);
-        tile.Child = new Image { Source = bmp, Stretch = Stretch.Uniform };
-        return true;
-    }
-
     /// <summary>The cached bitmap, or null when the app has no icon (yet).</summary>
     public static BitmapSource? Get(long appId) => Cache.GetValueOrDefault(appId);
 

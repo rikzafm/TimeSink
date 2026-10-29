@@ -199,20 +199,7 @@ public sealed class AppDetailView : UserControl
     private FrameworkElement Header(AppDetailResult r)
     {
         // The app's own icon fills the tile; only an app without one keeps the coloured letter tile.
-        var tile = new Border { Width = 40, Height = 40, VerticalAlignment = VerticalAlignment.Center };
-        tile.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
-        if (!AppIcons.TryFill(tile, r.AppId))
-        {
-            tile.SetResourceReference(Border.BackgroundProperty, _themes.AppBrushKey(r.AppId));
-            var letter = new TextBlock
-            {
-                Text = r.Name.Length > 0 ? char.ToUpperInvariant(r.Name[0]).ToString() : "?", FontWeight = FontWeights.Bold, FontSize = 20,
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-            };
-            letter.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Surface");
-            letter.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
-            tile.Child = letter;
-        }
+        var tile = AppTile.Tracked(_themes, r.AppId, r.Name, TileStyle.Header);
 
         var name = new TextBlock { Text = r.Name, FontSize = 17, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
         name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");

@@ -4,6 +4,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using TimeSink.Core.Apps;
+using TimeSink.UI.Controls;
 using TimeSink.UI.Services;
 
 namespace TimeSink.UI.Views;
@@ -111,7 +112,7 @@ public sealed partial class AddAppView
         LoadTileIcons(apps, (a, png) =>
         {
             if (!_tiles.TryGetValue(a.ExePath, out var tiles)) return;
-            foreach (var (tile, name) in tiles) FillTile(tile, name, a.ExePath, png);
+            foreach (var (tile, name) in tiles) AppTile.Fill(tile, _themes, a.ExePath, name, png, TileStyle.CandidateRow);
         });
 
     private bool _libraryLoaded;
@@ -214,7 +215,7 @@ public sealed partial class AddAppView
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var tile = MakeTile(name, exePath, CachedIcon(exePath));
+        var tile = AppTile.Candidate(_themes, exePath, name, CachedIcon(exePath), TileStyle.CandidateRow);
         tile.SetResourceReference(FrameworkElement.MarginProperty, "Thickness.RowTileTight");
         if (!_tiles.TryGetValue(exePath, out var list)) _tiles[exePath] = list = [];
         list.Add((tile, name));
