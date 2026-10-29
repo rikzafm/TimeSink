@@ -335,12 +335,25 @@ public sealed class AppLibrary : IDisposable
 
     public void PutIcon(long appId, byte[] png) => PutIcon(appId, png, null);
 
-    private void PutIcon(long appId, byte[] png, SqliteTransaction? tx)
+    /// <summary>Stores an icon the user picked: the hash is marked, so tile-size upgrades leave it alone (decision 152).</summary>
+    public void PutChosenIcon(long appId, byte[] png) => PutIcon(appId, png, null, chosen: true);
+
+    /// <summary>The apps whose icon the user picked.</summary>
+    public IReadOnlySet<long> ChosenIcons()
+    {
+        var ids = new HashSet<long>();
+        using var cmd = Cmd("SELECT app_id FROM icons WHERE hash LIKE 'chosen:%'");
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) ids.Add(r.GetInt64(0));
+        return ids;
+    }
+
+    private void PutIcon(long appId, byte[] png, SqliteTransaction? tx, bool chosen = false)
     {
         using var cmd = Cmd("INSERT INTO icons (app_id, png, hash) VALUES ($a,$b,$h) ON CONFLICT(app_id) DO UPDATE SET png=excluded.png, hash=excluded.hash", tx);
         cmd.Parameters.AddWithValue("$a", appId);
         cmd.Parameters.AddWithValue("$b", png);
-        cmd.Parameters.AddWithValue("$h", Convert.ToHexString(SHA256.HashData(png)).ToLowerInvariant());
+        cmd.Parameters.AddWithValue("$h", (chosen ? "chosen:" : "") + Convert.ToHexString(SHA256.HashData(png)).ToLowerInvariant());
         cmd.ExecuteNonQuery();
     }
 

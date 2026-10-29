@@ -150,6 +150,66 @@ public static class SteamLibrary
 
     private static readonly string[] ArtNames = ["library_600x900.jpg", "library_header.jpg", "library_capsule.jpg", "header.jpg"];
 
+    /// <summary>The <c>steamapps\common\&lt;installdir&gt;</c> folder that holds <paramref name="exePath"/>, or null outside a Steam library.</summary>
+    public static string? InstallDirOf(string exePath)
+    {
+        var at = exePath.IndexOf(CommonMarker, StringComparison.OrdinalIgnoreCase);
+        if (at < 0) return null;
+        var dir = exePath[(at + CommonMarker.Length)..].Split('\\')[0];
+        return exePath[..(at + CommonMarker.Length)] + dir;
+    }
+
+    /// <summary>
+    /// Steam's cached art for the game that owns <paramref name="exePath"/>, best first: cover, header, logo, then the small
+    /// icon. Empty when the exe is not in a Steam library or Steam cached nothing.
+    /// </summary>
+    public static IReadOnlyList<(IconChoiceKind Kind, string Path)> ArtFilesForExe(string exePath)
+    {
+        var install = InstallDirOf(exePath);
+        var root = FindRoot();
+        var result = new List<(IconChoiceKind, string)>();
+        if (install is null || root is null) return result;
+        try
+        {
+            var steamapps = Path.GetDirectoryName(Path.GetDirectoryName(install))!;
+            var dir = Path.GetFileName(install);
+            string? appId = null;
+            foreach (var acf in Directory.EnumerateFiles(steamapps, "appmanifest_*.acf"))
+            {
+                var (_, installDir, id) = ReadManifest(acf);
+                if (id is not null && string.Equals(installDir, dir, StringComparison.OrdinalIgnoreCase)) { appId = id; break; }
+            }
+            var cache = appId is null ? null : Path.Combine(root, "appcache", "librarycache", appId);
+            if (cache is null || !Directory.Exists(cache)) return result;
+            var files = Directory.EnumerateFiles(cache, "*", SearchOption.AllDirectories).OrderBy(f => f.Count(c => c == Path.DirectorySeparatorChar)).ToList();
+            string? Named(string name) => files.FirstOrDefault(f => Path.GetFileName(f).Equals(name, StringComparison.OrdinalIgnoreCase));
+            foreach (var (kind, name) in new[] { (IconChoiceKind.SteamCover, "library_600x900.jpg"), (IconChoiceKind.SteamHeader, "library_header.jpg"), (IconChoiceKind.SteamLogo, "logo.png") })
+                if (Named(name) is { } f) result.Add((kind, f));
+            if (files.FirstOrDefault(f => Regex.IsMatch(Path.GetFileName(f), "^[0-9a-f]{40}\\.jpg$", RegexOptions.IgnoreCase)) is { } small) result.Add((IconChoiceKind.SteamArt, small));
+        }
+        catch { }
+        return result;
+    }
+
+    /// <summary>The largest non-helper .exe files within a few levels of the install folder, biggest first, at most <paramref name="max"/>.</summary>
+    public static IReadOnlyList<string> GameExes(string installDir, int max)
+    {
+        if (!Directory.Exists(installDir)) return [];
+        var found = new List<(string Path, long Size)>();
+        var options = new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = MaxDepth, IgnoreInaccessible = true };
+        try
+        {
+            foreach (var exe in Directory.EnumerateFiles(installDir, "*.exe", options))
+            {
+                var file = Path.GetFileName(exe);
+                if (HelperExes.Any(h => file.Contains(h, StringComparison.OrdinalIgnoreCase))) continue;
+                try { found.Add((exe, new FileInfo(exe).Length)); } catch { }
+            }
+        }
+        catch { }
+        return found.OrderByDescending(f => f.Size).Take(max).Select(f => f.Path).ToList();
+    }
+
     /// <summary>The largest non-helper .exe within a few levels of the install folder, or null when there is none.</summary>
     public static string? MainExe(string installDir)
     {

@@ -104,6 +104,25 @@ public static class AddAppStrings
     public const string ChangeMainConfirm = "addChangeMainConfirm";
     public const string ChangeMainBody = "addChangeMainBody";
 
+    public const string IconTitle = "addIconTitle";
+    public const string IconSub = "addIconSub";
+    public const string IconChange = "addIconChange";
+    public const string IconChooseTitle = "addIconChooseTitle";
+    public const string IconChooseHint = "addIconChooseHint";
+    public const string IconApply = "addIconApply";
+    public const string IconNoChange = "addIconNoChange";
+    public const string IconPreviewing = "addIconPreviewing";
+    public const string IconInUse = "addIconInUse";
+    public const string IconPickFile = "addIconPickFile";
+    public const string IconPickFileSub = "addIconPickFileSub";
+    public const string IconSrcApp = "addIconSrcApp";
+    public const string IconSrcExe = "addIconSrcExe";
+    public const string IconSrcCover = "addIconSrcCover";
+    public const string IconSrcHeader = "addIconSrcHeader";
+    public const string IconSrcLogo = "addIconSrcLogo";
+    public const string IconSrcArt = "addIconSrcArt";
+    public const string IconSrcFile = "addIconSrcFile";
+
     public static readonly IReadOnlyList<string> All =
     [
         Title, TabRunning, TabInstalled, TabBrowse, RunningHeader, Track, Tracking, OpenFor,
@@ -117,5 +136,6 @@ public static class AddAppStrings
         SettingsMeta, SettingsType, SettingsTypeSub, SettingsBackgroundSub, SettingsMerged, SettingsMergedNone, MergedOne, MergedMany,
         SettingsAbout, ShowInFolder, SettingsDanger, ClearHistory, ClearTitle, ClearBody, ClearConfirm, ClearTitle2, ClearBody2, ClearTitle3, ClearBody3, ClearNo, ClearYes, ClearStep, SettingsHint, TrackedHint, DangerNote,
         ChangeMain, ChangeMainTitle, ChangeMainConfirm, ChangeMainBody,
+        IconTitle, IconSub, IconChange, IconChooseTitle, IconChooseHint, IconApply, IconNoChange, IconPreviewing, IconInUse, IconPickFile, IconPickFileSub, IconSrcApp, IconSrcExe, IconSrcCover, IconSrcHeader, IconSrcLogo, IconSrcArt, IconSrcFile,
     ];
 }

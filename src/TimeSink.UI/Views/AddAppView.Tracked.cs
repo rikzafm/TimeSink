@@ -21,6 +21,7 @@ public sealed partial class AddAppView
 
     private IReadOnlyList<TrackedEntry> _tracked = [];
     private readonly Dictionary<long, byte[]?> _trackedIcons = new();
+    private IReadOnlySet<long> _chosenIcons = new HashSet<long>();
     private string _trackedQuery = "";
     private StackPanel _trackedList = null!;
     private ScrollViewer _trackedScroll = null!;
@@ -115,6 +116,8 @@ public sealed partial class AddAppView
             _tracked = snapshot.Apps;
             foreach (var a in _tracked.Where(a => !_trackedIcons.ContainsKey(a.Id)).ToList())
                 _trackedIcons[a.Id] = CachedIcon(a.ExePath) ?? snapshot.Icons.GetValueOrDefault(a.Id);
+            _chosenIcons = _catalogue.ChosenIcons();
+            foreach (var id in _chosenIcons) _trackedIcons[id] = _catalogue.StoredIcon(id); // a picked icon beats the exe's own
         }
         UpgradeTrackedIcons();
     }
@@ -122,7 +125,7 @@ public sealed partial class AddAppView
     /// <summary>Stored icons are 64 px; asks for each tracked app's logo at tile resolution (once per visit), then redraws when one arrived.</summary>
     private void UpgradeTrackedIcons()
     {
-        var todo = _tracked.ToList();
+        var todo = _tracked.Where(a => !_chosenIcons.Contains(a.Id)).ToList();
         if (todo.Count == 0) return;
         Task.Run(() => _icons.UpgradeTracked(todo, _catalogue.InstalledBy, TileIconPx)).ContinueWith(t =>
         {

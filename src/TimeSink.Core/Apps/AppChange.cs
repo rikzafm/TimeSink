@@ -1,7 +1,7 @@
 namespace TimeSink.Core.Apps;
 
 /// <summary>What an <see cref="AppChange"/> does to an app.</summary>
-public enum ChangeKind { Rename, SetKind, SetBackground, Retire, Restore, MakeMain, Unmerge, ClearHistory }
+public enum ChangeKind { Rename, SetKind, SetBackground, Retire, Restore, MakeMain, Unmerge, ClearHistory, SetIcon }
 
 /// <summary>
 /// One edit to an app in the library, built with the factory for its <see cref="ChangeKind"/> and applied with
@@ -16,6 +16,7 @@ public sealed class AppChange
     internal string Name { get; private init; } = "";
     internal AppKind GameKind { get; private init; }
     internal bool Background { get; private init; }
+    internal byte[] Icon { get; private init; } = [];
     internal IReadOnlyList<string> ExePaths { get; private init; } = [];
 
     /// <summary>Changes the name shown everywhere. A blank name (or an unknown app) is <see cref="CatalogueOutcome.Rejected"/>.</summary>
@@ -42,6 +43,9 @@ public sealed class AppChange
 
     /// <summary>Makes a Merged app a separate tracked app again.</summary>
     public static AppChange Unmerge(long mergedAppId) => new(ChangeKind.Unmerge, mergedAppId);
+
+    /// <summary>Stores <paramref name="png"/> as the app's icon (decision 152).</summary>
+    public static AppChange SetIcon(long appId, byte[] png) => new(ChangeKind.SetIcon, appId) { Icon = png };
 
     /// <summary>Deletes the recorded time of the app and of everything merged into it.</summary>
     public static AppChange ClearHistory(long appId) => new(ChangeKind.ClearHistory, appId);

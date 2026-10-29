@@ -553,6 +553,18 @@ public sealed class AppCatalogueTests : IDisposable
     }
 
     [Fact]
+    public void A_chosen_icon_is_stored_and_read_back()
+    {
+        var id = Track(@"c:\one.exe", "One");
+        var cat = Catalogue();
+        var png = Encoding.UTF8.GetBytes("chosen");
+
+        cat.ApplyChange(AppChange.SetIcon(id, png)).Should().Be(CatalogueOutcome.Done);
+
+        cat.StoredIcon(id).Should().Equal(png);
+    }
+
+    [Fact]
     public void Renaming_trims_the_name_and_a_blank_name_is_rejected_leaving_the_old_one()
     {
         var id = Track(@"c:\a\one.exe", "One");

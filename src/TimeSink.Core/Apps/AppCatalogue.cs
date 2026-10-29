@@ -166,6 +166,17 @@ public sealed class AppCatalogue
         catch (Exception e) when (IsBusyOrMissing(e)) { return new TrackedSnapshot(CatalogueOutcome.Unavailable, [], new Dictionary<long, byte[]?>()); }
     }
 
+    /// <summary>The apps whose icon the user picked (empty when the database is busy or missing).</summary>
+    public IReadOnlySet<long> ChosenIcons()
+    {
+        try
+        {
+            using var lib = AppLibrary.Open(_dbPath);
+            return lib.ChosenIcons();
+        }
+        catch (Exception e) when (IsBusyOrMissing(e)) { return new HashSet<long>(); }
+    }
+
     /// <summary>The stored icon of any app (a Merged one too), or null when none is stored or the database is busy or missing.</summary>
     public byte[]? StoredIcon(long appId) => _icons.Stored([appId]).GetValueOrDefault(appId);
 
@@ -191,6 +202,7 @@ public sealed class AppCatalogue
                 case ChangeKind.MakeMain: if (!lib.MakeMain(change.AppId)) return CatalogueOutcome.Rejected; break;
                 case ChangeKind.Unmerge: lib.Unmerge(change.AppId); break;
                 case ChangeKind.ClearHistory: lib.ClearHistory(change.AppId); break;
+                case ChangeKind.SetIcon: lib.PutChosenIcon(change.AppId, change.Icon); _icons.Replace(change.AppId, change.Icon); break;
             }
         }
         catch (Exception e) when (IsBusyOrMissing(e)) { return CatalogueOutcome.Unavailable; }

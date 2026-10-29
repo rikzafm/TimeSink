@@ -75,6 +75,7 @@ public sealed partial class AddAppView
         card.Margin = new Thickness(0, 0, 0, 16);
         card.Child = group;
         sections.Children.Add(card);
+        sections.Children.Add(IconRowSlot(app));
         sections.Children.Add(MergedSection(app));
         sections.Children.Add(AboutSection(app));
         // the danger zone stays pinned under the scroll, unless a confirmation is open and needs the room

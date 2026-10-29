@@ -95,6 +95,16 @@ public sealed class AppIconSource
         return found;
     }
 
+    /// <summary>Remembers <paramref name="png"/> as the icon of an app whose icon the user just chose, so a redraw shows it.</summary>
+    public void Replace(long appId, byte[] png)
+    {
+        lock (_gate)
+        {
+            _found[appId] = png;
+            _tried.Add(appId);
+        }
+    }
+
     /// <summary>Starts a fresh visit: tracked apps may be asked for their logo again. Extracted icons are kept.</summary>
     public void NewVisit()
     {
