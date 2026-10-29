@@ -30,7 +30,6 @@ public sealed partial class AddAppView
     private string _draft = "";
     private MergePlan? _mergePlan;      // the open merge screen's plan (Candidates, ticks, confirm) lives in AppCatalogue; which screen shows is in _nav
     private double _listOffset;            // Tracked list scroll position when Merge… was opened
-    private string _mergeFilter = "Tracked";  // Tracked | Untracked | All
 
     private void ShowTracked() => _body.Content = _nav.State.Merge == MergeStage.Ready && _mergePlan is { } plan ? BuildMergeScreen(plan) : BuildTrackedTab();
 
@@ -145,11 +144,8 @@ public sealed partial class AddAppView
         if (reload) LoadTracked();
         _trackedList.Children.Clear();
         var q = _trackedQuery.Trim();
-        var shown = q.Length == 0 ? _tracked.ToList() : _tracked
-            .Select(a => (App: a, Score: FuzzySearch.Score(q, a.Merged.Select(m => m.DisplayName).Prepend(a.DisplayName), PublisherOf(a))))
-            .Where(x => x.Score is not null)
-            .OrderByDescending(x => x.Score)
-            .Select(x => x.App).ToList();
+        if (_catalogue.LastInstalled is null) LoadInstalled(); // publishers come from the installed-apps scan
+        var shown = TrackedSearch.Apply(_tracked, q, path => _catalogue.InstalledBy(path)?.Byline);
 
         _trackedHeader.Text = q.Length == 0 ? TimeText.Str(AddAppStrings.TrackedHeader).ToUpperInvariant() : TimeText.Str(AddAppStrings.TrackedCount, shown.Count);
         _trackedList.Children.Add(_trackedHeader);
@@ -266,11 +262,7 @@ public sealed partial class AddAppView
     }
 
     /// <summary>The publisher from the installed-apps scan (matched by exe path); null until the scan has loaded or when the app is not in it.</summary>
-    private string? PublisherOf(TrackedEntry app)
-    {
-        if (_catalogue.LastInstalled is null) { LoadInstalled(); return null; }
-        return _catalogue.InstalledBy(app.ExePath)?.Byline;
-    }
+    private string? PublisherOf(TrackedEntry app) => _catalogue.InstalledBy(app.ExePath)?.Byline;
 
     /// <summary>Number of merged apps, pinned to the logo's bottom-right corner.</summary>
     private static Border MergedBadge(int count)
@@ -392,7 +384,6 @@ public sealed partial class AddAppView
     private UIElement BuildMergeScreen(MergePlan plan)
     {
         var candidates = plan.Candidates;
-        var query = "";
         _mergeTiles.Clear();
 
         var root = new Grid();
@@ -436,19 +427,18 @@ public sealed partial class AddAppView
         buttons.Children.Add(cancel);
         buttons.Children.Add(go);
 
-        bool InFilter(MergeCandidate c) => _mergeFilter == "All" || (_mergeFilter == "Tracked") == c.IsTracked;
-
         void Render()
         {
             segments.Children.Clear();
-            foreach (var (tag, key, count) in new[]
+            foreach (var (filter, key) in new[]
             {
-                ("Tracked", AddAppStrings.TabTracked, candidates.Count(c => c.IsTracked)),
-                ("Untracked", AddAppStrings.FilterUntracked, candidates.Count(c => !c.IsTracked)),
-                ("All", AddAppStrings.FilterAll, candidates.Count),
+                (MergeFilter.Tracked, AddAppStrings.TabTracked),
+                (MergeFilter.Untracked, AddAppStrings.FilterUntracked),
+                (MergeFilter.All, AddAppStrings.FilterAll),
             })
             {
-                var on = _mergeFilter == tag;
+                var count = plan.CountOf(filter);
+                var on = plan.Filter == filter;
                 var label = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
                 var name = Text("Str." + char.ToUpperInvariant(key[0]) + key[1..], "Double.FontSize.Body", on ? "Brush.Accent" : "Brush.TextMuted");
                 name.FontWeight = FontWeights.SemiBold;
@@ -470,15 +460,15 @@ public sealed partial class AddAppView
                     segment.Background = Brushes.Transparent;
                     segment.BorderBrush = Brushes.Transparent;
                 }
-                var t = tag;
-                segment.MouseLeftButtonUp += (_, _) => { _mergeFilter = t; Render(); };
+                var f = filter;
+                segment.MouseLeftButtonUp += (_, _) => { plan.Filter = f; Render(); };
                 segments.Children.Add(segment);
             }
 
             list.Children.Clear();
             _mergeTiles.Clear();
-            var q = query.Trim();
-            var shown = candidates.Where(c => InFilter(c) && (q.Length == 0 || c.Name.Contains(q, StringComparison.CurrentCultureIgnoreCase))).ToList();
+            var q = plan.Query.Trim();
+            var shown = plan.Shown();
             if (shown.Count == 0)
             {
                 var none = Note(null);
@@ -508,7 +498,7 @@ public sealed partial class AddAppView
         Render();
         LoadMergeIcons(candidates);
 
-        var search = SearchBox("Str.AddTrackedSearch", AddAppStrings.TrackedSearch, "", text => { query = text; Render(); });
+        var search = SearchBox("Str.AddTrackedSearch", AddAppStrings.TrackedSearch, plan.Query, text => { plan.Query = text; Render(); });
         search.Margin = new Thickness(20, 0, 20, 10);
         var foot = new StackPanel();
         foot.Children.Add(note);

@@ -314,7 +314,6 @@ public sealed partial class AddAppView
             _listOffset = _trackedScroll?.VerticalOffset ?? 0;
             _nav.OpenMergeFromSettings(app.Id);
             Content = _shell;
-            _mergeFilter = "Tracked";
             OpenMergeScreen(app.Id);
         });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal };

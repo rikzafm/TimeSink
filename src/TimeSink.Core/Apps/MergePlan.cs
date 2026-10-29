@@ -15,6 +15,9 @@ public sealed record MergeCandidate(string Key, CandidateKind Kind, string Name,
     public bool IsTracked => Kind is CandidateKind.Tracked or CandidateKind.Merged;
 }
 
+/// <summary>Which Candidates the merge list shows: the tracked (and merged) ones, the others (stopped or installed), or all.</summary>
+public enum MergeFilter { Tracked, Untracked, All }
+
 /// <summary>How many Candidates a confirm would add and remove, and whether it would start tracking apps that are not tracked now.</summary>
 public readonly record struct MergeSummary(int Adds, int Removes, bool StartsTracking)
 {
@@ -50,6 +53,33 @@ public sealed class MergePlan
 
     /// <summary>Every Candidate, sorted by name.</summary>
     public IReadOnlyList<MergeCandidate> Candidates { get; }
+
+    /// <summary>Which Candidates the list shows; a new plan starts on <see cref="MergeFilter.Tracked"/>.</summary>
+    public MergeFilter Filter { get; set; } = MergeFilter.Tracked;
+
+    /// <summary>What the search box holds; blank shows every Candidate of the <see cref="Filter"/>.</summary>
+    public string Query { get; set; } = "";
+
+    /// <summary>How many Candidates a filter lists, whatever the <see cref="Query"/> is.</summary>
+    public int CountOf(MergeFilter filter) => Candidates.Count(c => Matches(filter, c));
+
+    /// <summary>
+    /// The Candidates of the <see cref="Filter"/> that match the <see cref="Query"/>: in name order when it is blank,
+    /// otherwise best match first, by name or (for an installed app) its Byline, as on the other Add app tabs.
+    /// </summary>
+    public IReadOnlyList<MergeCandidate> Shown()
+    {
+        var inFilter = Candidates.Where(c => Matches(Filter, c)).ToList();
+        if (string.IsNullOrWhiteSpace(Query)) return inFilter;
+        return inFilter
+            .Select(c => (Candidate: c, Score: FuzzySearch.Score(Query, c.Name, c.Installed?.Byline)))
+            .Where(x => x.Score is not null)
+            .OrderByDescending(x => x.Score) // stable: equal scores stay in name order
+            .Select(x => x.Candidate).ToList();
+    }
+
+    private static bool Matches(MergeFilter filter, MergeCandidate c) =>
+        filter == MergeFilter.All || (filter == MergeFilter.Tracked) == c.IsTracked;
 
     public bool IsTicked(string key) => _ticked.Contains(key);
 
