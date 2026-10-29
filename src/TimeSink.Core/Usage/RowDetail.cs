@@ -7,13 +7,13 @@ namespace TimeSink.Core.Usage;
 /// <param name="Shown">Sessions of at least <see cref="RowDetails.MinShownSessionSeconds"/>, in time order.</param>
 /// <param name="Blips">Shorter Sessions: not drawn or listed, only counted.</param>
 /// <param name="AverageSeconds">The 7-day average, or null when the app has none (or it is 0).</param>
-/// <param name="VsAverageRatio">The row's time over <paramref name="AverageSeconds"/> minus 1 (+0.25 = a quarter above); null without an average.</param>
+/// <param name="VsAverage">The row's time against <paramref name="AverageSeconds"/>; null without an average.</param>
 public sealed record RowDetail(
     IReadOnlyList<TodaySession> Shown,
     int Blips,
     long LongestSeconds,
     double? AverageSeconds,
-    double? VsAverageRatio,
+    Change? VsAverage,
     double TotalFraction,
     double? AverageFraction);
 
@@ -32,7 +32,7 @@ public static class RowDetails
         return new RowDetail(
             shown, row.Sessions.Count - shown.Count,
             shown.Count > 0 ? shown.Max(s => s.Seconds) : 0,
-            avg, avg is { } mean ? row.Seconds / mean - 1 : null,
+            avg, avg is { } mean ? Change.Between(row.Seconds, mean) : null,
             row.Seconds / 86400.0, avg is { } v ? v / 86400.0 : null);
     }
 }

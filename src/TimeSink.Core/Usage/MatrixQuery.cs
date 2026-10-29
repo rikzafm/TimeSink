@@ -43,36 +43,32 @@ public static class MatrixQuery
         if (count < 1) return new MatrixResult(year, nowUtc, started, first, [], [], 0);
 
         var segs = window.Segments(LocalDays.StartOf(new DateOnly(year, first, 1), zone));
+        var rollup = new MonthRollup(segs, zone, nowUtc, onSinceUtc, gamesOnly);
+        var months = Enumerable.Range(0, count).Select(i => new MonthKey(year, first + i)).ToList();
         var perApp = new Dictionary<long, long[]>();
-        foreach (var sl in UsageDays.Slices(segs, zone))
-        {
-            var i = (sl.Day.Year - year) * 12 + sl.Day.Month - first;
-            if (i < 0 || i >= count) continue;
-            if (!perApp.TryGetValue(sl.Seg.Group, out var arr)) perApp[sl.Seg.Group] = arr = new long[count];
-            arr[i] += sl.End - sl.Start;
-        }
+        for (var i = 0; i < count; i++)
+            foreach (var (group, secs) in rollup.Groups(months[i]))
+            {
+                if (!perApp.TryGetValue(group, out var arr)) perApp[group] = arr = new long[count];
+                arr[i] += secs;
+            }
 
         // Month totals and the headline are PC uptime (decision 125); the per-app cells stay per-app.
-        var uptimeByMonth = new long[count];
-        foreach (var (day, secs) in UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc, gamesOnly))
-        {
-            var idx = (day.Year - year) * 12 + day.Month - first;
-            if (idx >= 0 && idx < count) uptimeByMonth[idx] += secs;
-        }
+        var uptimeByMonth = months.Select(rollup.Uptime).ToArray();
         var grand = uptimeByMonth.Sum();
         var rows = UsageRank.Rank(perApp.Where(kv => kv.Value.Sum() > 0)
             .Select(kv => BuildRow(kv.Key, UsageRank.NameOf(apps, kv.Key), kv.Value, first, grand)),
             apps, r => r.AppId, r => r.TotalSeconds);
 
-        var months = new List<MatrixMonth>(count);
+        var columns = new List<MatrixMonth>(count);
         for (var i = 0; i < count; i++)
         {
             var idx = i;
             var top = UsageRank.Rank(rows.Where(r => r.Cells[idx].Seconds > 0), apps, r => r.AppId, r => r.Cells[idx].Seconds)
                 .Take(TopApps).Select(r => new YearAppShare(r.AppId, r.Name, r.Cells[idx].Seconds)).ToList();
-            months.Add(new MatrixMonth(first + i, uptimeByMonth[idx], top));
+            columns.Add(new MatrixMonth(first + i, uptimeByMonth[idx], top));
         }
-        return new MatrixResult(year, nowUtc, started, first, months, rows, grand);
+        return new MatrixResult(year, nowUtc, started, first, columns, rows, grand);
     }
 
     private static MatrixRow BuildRow(long id, string name, long[] secs, int firstMonth, long grand)
@@ -82,14 +78,14 @@ public static class MatrixQuery
         var cells = secs.Select(v => new MatrixCell(v, Level(v, best))).ToList();
         var total = secs.Sum();
 
-        double? trend = null;
+        Change? trend = null;
         var lastFrom = Math.Max(0, secs.Length - TrendWindow);
         var prevFrom = Math.Max(0, lastFrom - TrendWindow);
         if (lastFrom > 0)
         {
             var last = secs.Skip(lastFrom).Sum();
             var prev = secs.Skip(prevFrom).Take(lastFrom - prevFrom).Sum();
-            if (prev > 0) trend = (last / (double)prev - 1) * 100;
+            trend = Change.Between(last, prev);
         }
         var share = grand <= 0 ? 0 : (int)Math.Round(total * 100.0 / grand, MidpointRounding.AwayFromZero);
         return new MatrixRow(id, name, cells, total, share, firstMonth + peak, best, trend);

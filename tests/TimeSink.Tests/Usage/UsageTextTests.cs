@@ -21,6 +21,8 @@ public class UsageTextTests
     public void Hours_show_one_decimal_under_ten_hours_and_whole_hours_above(long seconds, string expected) =>
         UsageText.Hours(seconds).Should().Be(expected);
 
+    private static Change Percent(double percent) => Change.Between(100 + percent, 100)!.Value;
+
     [Theory]
     [InlineData(12.0, "+12%")]
     [InlineData(-3.0, "-3%")]
@@ -29,26 +31,15 @@ public class UsageTextTests
     [InlineData(-0.3, "0%")]       // YearPaceView printed "-0%" here
     [InlineData(0.5, "+1%")]       // half away from zero
     [InlineData(-0.5, "-1%")]
-    [InlineData(double.NaN, "")]
-    [InlineData(double.PositiveInfinity, "")]
     public void Delta_is_a_signed_whole_percent_and_zero_has_no_sign(double percent, string expected) =>
-        UsageText.Delta(percent).Should().Be(expected);
+        UsageText.Delta(Percent(percent)).Should().Be(expected);
 
     [Theory]
     [InlineData(12.4, "12")]
     [InlineData(-12.5, "13")]      // magnitude, half away from zero
     [InlineData(-0.2, "0")]
-    [InlineData(double.NaN, "")]
     public void DeltaMagnitude_is_the_whole_percent_digits_for_up_and_down_templates(double percent, string expected) =>
-        UsageText.DeltaMagnitude(percent).Should().Be(expected);
-
-    [Theory]
-    [InlineData(0.08, "+8%")]
-    [InlineData(-0.125, "-13%")]
-    [InlineData(0.004, "0%")]
-    [InlineData(double.NaN, "")]
-    public void DeltaOfRatio_reads_a_fraction_as_percent(double fraction, string expected) =>
-        UsageText.DeltaOfRatio(fraction).Should().Be(expected);
+        UsageText.DeltaMagnitude(Percent(percent)).Should().Be(expected);
 
     [Theory]
     [InlineData(0, "")]

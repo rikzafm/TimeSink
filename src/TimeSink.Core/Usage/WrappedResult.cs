@@ -30,7 +30,7 @@ public sealed record WrappedResult(
     DateOnly? StreakEnd,
     int? BusiestMonth,
     long BusiestMonthSeconds,
-    double? BusiestMonthDeltaPercent,
+    Change? BusiestMonthDelta,
     int? PeakHour,
     long PeakHourSeconds,
     int BeforeNoonPercent,

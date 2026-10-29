@@ -464,9 +464,9 @@ public partial class TodayView : UserControl, ILiveView
         dial.SetResourceReference(SessionDial.NowBrushProperty, "Brush.Accent");
         dial.SetResourceReference(SessionDial.LabelBrushProperty, "Brush.TextMuted");
         dial.SetResourceReference(SessionDial.NumberFontProperty, "FontFamily.Numbers");
-        if (detail.VsAverageRatio is { } ratio)
+        if (detail.VsAverage is { } change)
         {
-            var delta = UsageText.DeltaOfRatio(ratio);
+            var delta = UsageText.Delta(change);
             dial.CenterText = delta;
             dial.SetResourceReference(SessionDial.CenterBrushProperty, delta.StartsWith('-') ? "Brush.Warning" : "Brush.Accent");
         }

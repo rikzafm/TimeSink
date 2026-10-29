@@ -227,8 +227,8 @@ public sealed class YearMatrixView : UserControl, IYearSubView
             _selTitle.Text = row.Name;
             _selTotal.Text = Str(MatrixStringKeys.RowTotal, H(row.TotalSeconds), row.SharePercent);
             var peak = Str(MatrixStringKeys.RowNotePeak, UsageText.MonthName(row.PeakMonth), H(row.PeakSeconds));
-            _selNote.Text = row.TrendPercent is { } t
-                ? Str(t >= 0 ? MatrixStringKeys.RowNoteUp : MatrixStringKeys.RowNoteDown, UsageText.MonthName(row.PeakMonth), H(row.PeakSeconds), UsageText.DeltaMagnitude(t))
+            _selNote.Text = row.Trend is { } t
+                ? Str(t.IsGain ? MatrixStringKeys.RowNoteUp : MatrixStringKeys.RowNoteDown, UsageText.MonthName(row.PeakMonth), H(row.PeakSeconds), UsageText.DeltaMagnitude(t))
                 : peak;
             var accent = (Brush)FindResource(_themes.AppBrushKey(row.AppId));
             var muted = (Brush)FindResource("Brush.Heat1");

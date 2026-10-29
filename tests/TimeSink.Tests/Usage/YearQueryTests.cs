@@ -59,11 +59,11 @@ public sealed class YearQueryTests : IDisposable
         var r = Run();
         var mar = r.Months[2];
         mar.TopApps.Select(a => (a.Name, a.Seconds)).Should().Equal(("Chrome", 20 * H), ("Code", 10 * H));
-        mar.DeltaPercent.Should().BeApproximately(200, 0.001); // vs Feb 10 h
-        r.Months[3].DeltaPercent.Should().BeApproximately(20, 0.001);
+        mar.Delta!.Value.Percent.Should().BeApproximately(200, 0.001); // vs Feb 10 h
+        r.Months[3].Delta!.Value.Percent.Should().BeApproximately(20, 0.001);
         r.Months[3].TopApps.Select(a => a.Name).Should().Equal("Chrome", "Code");
-        r.Months[1].DeltaPercent.Should().BeNull(); // January was before tracking
-        r.Months[4].DeltaPercent.Should().BeApproximately(100.0 * 62 / 36 - 100, 0.001); // projected vs Apr
+        r.Months[1].Delta.Should().BeNull(); // January was before tracking
+        r.Months[4].Delta!.Value.Percent.Should().BeApproximately(100.0 * 62 / 36 - 100, 0.001); // projected vs Apr
         r.Months[8].TopApps.Should().BeEmpty();
     }
 

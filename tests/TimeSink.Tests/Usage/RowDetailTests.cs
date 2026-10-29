@@ -34,7 +34,7 @@ public sealed class RowDetailTests
     {
         var d = RowDetails.Of(Row(5400, 3600, false, S(0, 5400)));
         d.AverageSeconds.Should().Be(3600);
-        d.VsAverageRatio.Should().BeApproximately(0.5, 1e-9);
+        d.VsAverage!.Value.Percent.Should().BeApproximately(50, 1e-9);
         d.TotalFraction.Should().BeApproximately(5400 / 86400.0, 1e-9);
         d.AverageFraction.Should().BeApproximately(3600 / 86400.0, 1e-9);
     }
@@ -46,7 +46,7 @@ public sealed class RowDetailTests
     {
         var d = RowDetails.Of(Row(600, avg, false, S(0, 600)));
         d.AverageSeconds.Should().BeNull();
-        d.VsAverageRatio.Should().BeNull();
+        d.VsAverage.Should().BeNull();
         d.AverageFraction.Should().BeNull();
     }
 

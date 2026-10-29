@@ -40,18 +40,16 @@ public static class WrappedQuery
         var groups = apps.Values.Select(a => a.Group).Distinct().ToList();
 
         var perDay = new Dictionary<int, long>();          // DateOnly.DayNumber -> seconds (this year)
-        var perMonth = new Dictionary<int, long>();        // year * 12 + month - 1 -> seconds (window)
         var perHour = new long[24];                        // local hour of day -> seconds (this year)
         var perGroup = new Dictionary<long, long>();       // this year
         long beforeNoon = 0, total = 0;
 
         var segs = window.Segments(windowStart);
-        var windowed = segs.Select(s => s with { Start = Math.Max(s.Start, windowStart), End = Math.Min(s.End, nowUtc) });
+        var windowed = segs.Select(s => s with { Start = Math.Max(s.Start, windowStart), End = Math.Min(s.End, nowUtc) }).ToList();
+        var months = new MonthRollup(windowed, zone, nowUtc, onSinceUtc, gamesOnly); // app-seconds per month (the window)
         foreach (var sl in UsageDays.Slices(windowed, zone))
         {
             var len = sl.End - sl.Start;
-            var monthIdx = sl.Day.Year * 12 + sl.Day.Month - 1;
-            perMonth[monthIdx] = perMonth.GetValueOrDefault(monthIdx) + len;
             if (sl.Day.Year != year) continue;
             perDay[sl.Day.DayNumber] = perDay.GetValueOrDefault(sl.Day.DayNumber) + len;
             perGroup[sl.Seg.Group] = perGroup.GetValueOrDefault(sl.Seg.Group) + len;
@@ -96,15 +94,11 @@ public static class WrappedQuery
         long busiestSecs = 0;
         for (var m = 1; m <= 12; m++)
         {
-            var secs = perMonth.GetValueOrDefault(year * 12 + m - 1);
+            var secs = months.AppSeconds(new MonthKey(year, m));
             if (secs > busiestSecs) { busiest = m; busiestSecs = secs; }
         }
-        double? delta = null;
-        if (busiest is { } bm)
-        {
-            var prev = perMonth.GetValueOrDefault(year * 12 + bm - 2);
-            if (prev > 0) delta = (busiestSecs / (double)prev - 1) * 100;
-        }
+        Change? delta = null;
+        if (busiest is { } bm) delta = Change.Between(busiestSecs, months.AppSeconds(new MonthKey(year, bm).Prev));
 
         int? peak = null;
         long peakSecs = 0;

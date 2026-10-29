@@ -15,20 +15,16 @@ public static class UsageText
         return Math.Round(h, MidpointRounding.AwayFromZero).ToString("0", Inv);
     }
 
-    /// <summary>A change in percent with an explicit sign ("+12%", "-3%"); it rounds first, so zero reads "0%". Non-finite input reads "".</summary>
-    public static string Delta(double percent)
+    /// <summary>A change with an explicit sign ("+12%", "-3%"); it rounds first, so zero reads "0%".</summary>
+    public static string Delta(Change change)
     {
-        if (!double.IsFinite(percent)) return "";
-        var p = (long)Math.Round(percent, MidpointRounding.AwayFromZero);
+        var p = (long)Math.Round(change.Percent, MidpointRounding.AwayFromZero);
         return (p > 0 ? "+" : "") + p.ToString(Inv) + "%";
     }
 
-    /// <summary>The digits of a percent change without sign or "%" ("12"), for templates that pick up/down wording themselves.</summary>
-    public static string DeltaMagnitude(double percent) =>
-        double.IsFinite(percent) ? Math.Abs((long)Math.Round(percent, MidpointRounding.AwayFromZero)).ToString(Inv) : "";
-
-    /// <summary>Same as <see cref="Delta"/> for a ratio change (0.12 reads "+12%").</summary>
-    public static string DeltaOfRatio(double fraction) => Delta(fraction * 100);
+    /// <summary>The digits of a change without sign or "%" ("12"), for templates that pick up/down wording themselves.</summary>
+    public static string DeltaMagnitude(Change change) =>
+        Math.Abs((long)Math.Round(change.Percent, MidpointRounding.AwayFromZero)).ToString(Inv);
 
     /// <summary>Calendar cell text: blank for none, "42m" under an hour, hours from an hour up ("2.5h", "12h").</summary>
     public static string MonthCell(long seconds)

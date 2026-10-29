@@ -28,7 +28,7 @@ public sealed record MonthTopApp(
     long Seconds,
     long PreviousSeconds,
     long DeltaSeconds,
-    double? DeltaPercent);
+    Change? Delta);
 
 /// <summary>Everything the Month view shows.</summary>
 public sealed record MonthResult(
@@ -45,7 +45,7 @@ public sealed record MonthResult(
     long TotalSeconds,
     long PreviousSeconds,
     long DeltaSeconds,
-    double? DeltaPercent,
+    Change? Delta,
     double DailyAverageSeconds,
     BestDay? Best,
     IReadOnlyList<MonthTopApp> TopApps,

@@ -53,7 +53,7 @@ public sealed class MonthQueryTests : IDisposable
         r.Best.Should().Be(new BestDay(new DateOnly(2026, 3, 3), 54000));
         r.PreviousSeconds.Should().Be(32400);   // Feb 1-11 only; Feb 12 and 28 are outside the same-days window
         r.DeltaSeconds.Should().Be(134400);
-        r.DeltaPercent.Should().BeApproximately(134400 / 32400.0, 1e-9);
+        r.Delta!.Value.Percent.Should().BeApproximately(134400 / 32400.0 * 100, 1e-9);
     }
 
     [Fact]
@@ -63,12 +63,12 @@ public sealed class MonthQueryTests : IDisposable
         r.TopApps.Select(a => a.Name).Take(4).Should().Equal("Code", "Chrome", "Disc", ZedName);
         r.TopApps.Should().HaveCountGreaterThan(4); // no cap: the month tab scrolls
         r.TopApps[0].Should().BeEquivalentTo(new { Seconds = 55800L, PreviousSeconds = 7200L, DeltaSeconds = 48600L });
-        r.TopApps[0].DeltaPercent.Should().BeApproximately(6.75, 1e-9);
+        r.TopApps[0].Delta!.Value.Percent.Should().BeApproximately(675, 1e-9);
         r.TopApps[1].Should().BeEquivalentTo(new { Seconds = 37200L, PreviousSeconds = 18000L, DeltaSeconds = 19200L });
         r.TopApps[2].Should().BeEquivalentTo(new { Seconds = 9000L, PreviousSeconds = 7200L, DeltaSeconds = 1800L });
-        r.TopApps[2].DeltaPercent.Should().BeApproximately(0.25, 1e-9);
+        r.TopApps[2].Delta!.Value.Percent.Should().BeApproximately(25, 1e-9);
         r.TopApps[3].Should().BeEquivalentTo(new { Seconds = 1800L, PreviousSeconds = 0L, DeltaSeconds = 1800L });
-        r.TopApps[3].DeltaPercent.Should().BeNull(); // no baseline: "new", not infinity
+        r.TopApps[3].Delta.Should().BeNull(); // no baseline: "new", not infinity
     }
 
     [Fact]
@@ -129,7 +129,7 @@ public sealed class MonthQueryTests : IDisposable
         r.DailyAverageSeconds.Should().BeApproximately(2700, 1e-9);
         r.Best.Should().Be(new BestDay(new DateOnly(2026, 2, 12), 36000));
         r.PreviousSeconds.Should().Be(0);
-        r.DeltaPercent.Should().BeNull();
+        r.Delta.Should().BeNull();
         r.Days.Should().OnlyContain(d => !d.IsFuture && !d.IsToday);
     }
 

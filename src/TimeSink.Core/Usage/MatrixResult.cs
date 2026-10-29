@@ -5,7 +5,7 @@ public readonly record struct MatrixCell(long Seconds, int Level);
 
 /// <summary>
 /// One app row (merged apps are one row under the canonical app). <see cref="Cells"/> has one entry per visible month
-/// (index 0 = <see cref="MatrixResult.FirstMonth"/>). <see cref="TrendPercent"/> compares the last three visible months with
+/// (index 0 = <see cref="MatrixResult.FirstMonth"/>). <see cref="Trend"/> compares the last three visible months with
 /// the three before them; null when there is no earlier month with time.
 /// </summary>
 public sealed record MatrixRow(
@@ -16,7 +16,7 @@ public sealed record MatrixRow(
     int SharePercent,
     int PeakMonth,
     long PeakSeconds,
-    double? TrendPercent);
+    Change? Trend);
 
 /// <summary>A month column: the column total and its top apps (for the tap summary).</summary>
 public sealed record MatrixMonth(int Month, long TotalSeconds, IReadOnlyList<YearAppShare> TopApps);

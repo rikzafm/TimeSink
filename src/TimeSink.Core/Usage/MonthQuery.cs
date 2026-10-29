@@ -81,7 +81,7 @@ public static class MonthQuery
             .Select(kv =>
             {
                 var prev = prevTotals.GetValueOrDefault(kv.Key);
-                return new MonthTopApp(kv.Key, UsageRank.NameOf(apps, kv.Key), kv.Value, prev, kv.Value - prev, prev > 0 ? (kv.Value - prev) / (double)prev : null);
+                return new MonthTopApp(kv.Key, UsageRank.NameOf(apps, kv.Key), kv.Value, prev, kv.Value - prev, Change.Between(kv.Value, prev));
             }).ToList();
 
         var weeks = MonthGrid.Layout(year, month, weekStart).Weeks
@@ -95,7 +95,7 @@ public static class MonthQuery
         var averageDays = Enumerable.Range(0, counted).Count(d => start.Counts(first.AddDays(d)));
         var selected = isCurrent ? today : counted == 0 ? first : first.AddDays(dim - 1);
         return new MonthResult(year, month, first, dim, counted, isCurrent, weekStart, nowUtc, monthDays, weeks,
-            total, prevTotal, total - prevTotal, prevTotal > 0 ? (total - prevTotal) / (double)prevTotal : null,
+            total, prevTotal, total - prevTotal, Change.Between(total, prevTotal),
             averageDays > 0 ? total / (double)averageDays : 0, best, top, selected, start.FirstDay);
     }
 

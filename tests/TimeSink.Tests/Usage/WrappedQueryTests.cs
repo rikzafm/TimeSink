@@ -68,7 +68,7 @@ public sealed class WrappedQueryTests : IDisposable
         var r = Run();
         r.BusiestMonth.Should().Be(6);
         r.BusiestMonthSeconds.Should().Be(27600);   // Alpha 27000 + Delta 600
-        r.BusiestMonthDeltaPercent.Should().BeApproximately(666.67, 0.01); // vs May 3600
+        r.BusiestMonthDelta!.Value.Percent.Should().BeApproximately(666.67, 0.01); // vs May 3600
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public sealed class WrappedQueryTests : IDisposable
         _f.Session(_f.Beta, L(2026, 3, 10, 0).ToUnixTimeSeconds(), L(2026, 3, 12, 0).ToUnixTimeSeconds()); // March busiest; Feb empty
         var r = Run();
         r.BusiestMonth.Should().Be(3);
-        r.BusiestMonthDeltaPercent.Should().BeNull();
+        r.BusiestMonthDelta.Should().BeNull();
     }
 
     [Fact]

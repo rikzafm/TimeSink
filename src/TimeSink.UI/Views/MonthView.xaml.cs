@@ -143,11 +143,11 @@ public partial class MonthView : UserControl, ILiveView
 
     private void BuildDelta(MonthResult r)
     {
-        if (r.DeltaPercent is not { } pct || r.DaysCounted == 0) { DeltaPill.Visibility = Visibility.Collapsed; return; }
+        if (r.Delta is not { } change || r.DaysCounted == 0) { DeltaPill.Visibility = Visibility.Collapsed; return; }
         DeltaPill.Visibility = Visibility.Visible;
         var prev = UsageText.MonthAbbr(r.FirstDay.AddMonths(-1).Month);
-        Delta.Text = Str(StringKeys.MonthDeltaVs, UsageText.DeltaOfRatio(pct), prev);
-        var key = pct >= 0 ? "Brush.Accent" : "Brush.Warning";
+        Delta.Text = Str(StringKeys.MonthDeltaVs, UsageText.Delta(change), prev);
+        var key = change.IsGain ? "Brush.Accent" : "Brush.Warning";
         Delta.SetResourceReference(TextBlock.ForegroundProperty, key);
         var tint = Res(key).Clone();
         tint.Opacity = Application.Current.TryFindResource("Double.Opacity.Wash") is double wash ? wash : 0;
@@ -224,9 +224,9 @@ public partial class MonthView : UserControl, ILiveView
             time.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
             time.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
             time.Inlines.Add(new System.Windows.Documents.Run(UsageText.HoursMinutes(app.Seconds) + " "));
-            var deltaRun = new System.Windows.Documents.Run(app.DeltaPercent is { } p ? UsageText.DeltaOfRatio(p) : Str(StringKeys.MonthNewApp)) { FontWeight = FontWeights.SemiBold };
+            var deltaRun = new System.Windows.Documents.Run(app.Delta is { } p ? UsageText.Delta(p) : Str(StringKeys.MonthNewApp)) { FontWeight = FontWeights.SemiBold };
             deltaRun.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty,
-                app.DeltaPercent is null ? "Brush.TextMuted" : app.DeltaPercent >= 0 ? "Brush.Accent" : "Brush.Warning");
+                app.Delta is not { } d ? "Brush.TextMuted" : d.IsGain ? "Brush.Accent" : "Brush.Warning");
             time.Inlines.Add(deltaRun);
 
             var top = new Grid();

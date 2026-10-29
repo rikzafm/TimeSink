@@ -225,7 +225,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
 
         var busiestValue = r.BusiestMonth is { } m ? Str(WrappedStringKeys.BusiestValue, UsageText.MonthAbbr(m), Hours(r.BusiestMonthSeconds)) : none;
         var busiestSub = r.BusiestMonth is { } bm
-            ? r.BusiestMonthDeltaPercent is { } d
+            ? r.BusiestMonthDelta is { } d
                 ? Str(WrappedStringKeys.BusiestVs, UsageText.Delta(d), UsageText.MonthAbbr(bm - 1))
                 : Str(WrappedStringKeys.BusiestOnly)
             : "";

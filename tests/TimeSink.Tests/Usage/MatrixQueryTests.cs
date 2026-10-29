@@ -145,9 +145,9 @@ public sealed class MatrixQueryTests : IDisposable
         chrome.PeakMonth.Should().Be(4);
         chrome.PeakSeconds.Should().Be(20 * H);
         chrome.SharePercent.Should().Be(66);                    // 39 / 59 uptime
-        chrome.TrendPercent.Should().BeApproximately(190, 1e-9); // Mar-May 29 h vs Feb 10 h
-        Row(r, "Code").TrendPercent.Should().BeApproximately(750, 1e-9); // 17 h vs 2 h
-        Row(r, "Disc").TrendPercent.Should().BeNull();               // earlier months have no time
+        chrome.Trend!.Value.Percent.Should().BeApproximately(190, 1e-9); // Mar-May 29 h vs Feb 10 h
+        Row(r, "Code").Trend!.Value.Percent.Should().BeApproximately(750, 1e-9); // 17 h vs 2 h
+        Row(r, "Disc").Trend.Should().BeNull();               // earlier months have no time
     }
 
     [Fact]

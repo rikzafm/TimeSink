@@ -222,7 +222,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
         var started = r.TrackingStarted;
         string StartText() => started is { } d ? UsageText.ShortDate(d) : "";
         var prevName = m.Month > 1 ? UsageText.MonthAbbr(m.Month - 1) : UsageText.MonthAbbr(12);
-        string Delta() => UsageText.Delta(m.DeltaPercent!.Value);
+        string Delta() => UsageText.Delta(m.Delta!.Value);
 
         _panelName.Text = UsageText.MonthName(m.Month) + (m.Kind == YearMonthKind.Future ? Str(YearStringKeys.ProjectedSuffix) : "");
         switch (m.Kind)
@@ -237,13 +237,13 @@ public sealed class YearPaceView : UserControl, IYearSubView
                 break;
             case YearMonthKind.Current:
                 _panelValue.Text = H(m.Seconds);
-                _panelNote.Text = m.DeltaPercent is null
+                _panelNote.Text = m.Delta is null
                     ? Str(YearStringKeys.NoteCurrent, H(m.Seconds), H(m.ProjectedSeconds))
                     : Str(YearStringKeys.NoteCurrentVs, H(m.Seconds), H(m.ProjectedSeconds), Delta(), prevName);
                 break;
             default:
                 _panelValue.Text = H(m.Seconds);
-                var note = m.DeltaPercent is not null ? Str(YearStringKeys.NoteVs, Delta(), prevName)
+                var note = m.Delta is not null ? Str(YearStringKeys.NoteVs, Delta(), prevName)
                     : started is { } s && s.Year == r.Year && s.Month == m.Month ? Str(YearStringKeys.NoteFirst, StartText()) : "";
                 if (m.Month == r.BestMonth) note += Str(YearStringKeys.NoteBest);
                 _panelNote.Text = note;

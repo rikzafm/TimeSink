@@ -18,7 +18,7 @@ public sealed record YearAppShare(long AppId, string Name, long Seconds);
 /// <summary>
 /// One of the 12 columns. <see cref="Seconds"/> is real data; <see cref="ProjectedSeconds"/> is the full-month projection
 /// for the current month, the ghost value for future months, and equals <see cref="Seconds"/> otherwise.
-/// <see cref="DeltaPercent"/> compares with the previous month (the projection for the current month); null when there
+/// <see cref="Delta"/> compares with the previous month (the projection for the current month); null when there
 /// is nothing to compare with.
 /// </summary>
 public sealed record YearMonth(
@@ -26,7 +26,7 @@ public sealed record YearMonth(
     YearMonthKind Kind,
     long Seconds,
     long ProjectedSeconds,
-    double? DeltaPercent,
+    Change? Delta,
     long? PreviousSeconds,
     IReadOnlyList<YearAppShare> TopApps);
 
