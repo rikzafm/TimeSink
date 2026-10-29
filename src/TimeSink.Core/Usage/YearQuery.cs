@@ -15,14 +15,16 @@ public static class YearQuery
     private const int RecentMonths = 3;
 
 
-    public static YearResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
+    public static YearResult Run(UsageContext context)
     {
-        using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, running, onSinceUtc, gamesOnly: gamesOnly);
+        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
+        return Run(new UsageWindow(new SqliteUsageSource(c), context));
     }
 
-    public static YearResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
+    internal static YearResult Run(UsageWindow window)
     {
+        var context = window.Context;
+        var (now, zone, gamesOnly, onSinceUtc) = (context.Now, context.Zone, context.GamesOnly, context.SignInUtc);
         var nowUtc = now.ToUnixTimeSeconds();
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
         var year = today.Year;
@@ -30,7 +32,7 @@ public static class YearQuery
         var yearIdx = Idx(year, 1);
         var firstIdx = yearIdx - RecentMonths + 1; // two earlier months feed the "last 3 months" and January's delta
 
-        var apps = AppGroups.Load(c, gamesOnly: gamesOnly);
+        var apps = window.Apps;
         var start = TrackingStart.Of(apps, zone);
         var first = start.FirstDay;
         var startIdx = first is null ? int.MaxValue : Idx(first.Value.Year, first.Value.Month);
@@ -38,7 +40,7 @@ public static class YearQuery
 
         // Seconds per (group, month index) over the window [two months before the year .. now].
         var winFrom = LocalDays.StartOf(new DateOnly(firstIdx / 12, firstIdx % 12 + 1, 1), zone);
-        var segs = UsageLoader.LoadSegments(c, winFrom, nowUtc, apps, running);
+        var segs = window.Segments(winFrom);
         var perMonth = new Dictionary<int, Dictionary<long, long>>();
         foreach (var sl in UsageDays.Slices(segs, zone))
         {

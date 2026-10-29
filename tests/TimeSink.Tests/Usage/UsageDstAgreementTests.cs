@@ -65,10 +65,10 @@ public sealed class UsageDstAgreementTests : IDisposable
         var month = Q.Month(_db, now, Ny, 2026, 11, DayOfWeek.Monday, None);
         month.Days[0].Apps.Sum(a => a.Seconds).Should().Be(7200);
 
-        var matrix = MatrixQuery.Run(_db, now, Ny, None);
+        var matrix = Q.Matrix(_db, now, Ny, None);
         matrix.Rows.Single().Cells[10].Seconds.Should().Be(7200);
 
-        var wrapped = WrappedQuery.Run(_db, now, Ny, None);
+        var wrapped = Q.Wrapped(_db, now, Ny, None);
         wrapped.AppSeconds.Should().Be(7200);
         wrapped.PeakHour.Should().Be(1);
         wrapped.PeakHourSeconds.Should().Be(5400);
@@ -89,7 +89,7 @@ public sealed class UsageDstAgreementTests : IDisposable
         var month = Q.Month(_db, now, Ny, 2026, 3, DayOfWeek.Monday, None);
         month.Days[7].Apps.Sum(a => a.Seconds).Should().Be(7200);
 
-        var wrapped = WrappedQuery.Run(_db, now, Ny, None);
+        var wrapped = Q.Wrapped(_db, now, Ny, None);
         wrapped.AppSeconds.Should().Be(7200);
         wrapped.PeakHour.Should().Be(3);
         wrapped.PeakHourSeconds.Should().Be(3600);

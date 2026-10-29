@@ -35,7 +35,7 @@ public sealed class AppKindTests : IDisposable
             lib.SetKind(_f.Delta, AppKind.Game);
         }
 
-        var r = WrappedQuery.Run(_f.DbPath, WrappedFixture.Now, WrappedFixture.Zone);
+        var r = Q.Wrapped(_f.DbPath, WrappedFixture.Now, WrappedFixture.Zone);
 
         r.GamesTop!.Podium.Select(a => a.Name).Should().Equal("Beta", "Delta");
         r.GamesTop.Seconds.Should().Be(10800 + 600);

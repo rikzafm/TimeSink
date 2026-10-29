@@ -27,4 +27,16 @@ internal static class Q
     public static MonthResult Month(string db, DateTimeOffset now, TimeZoneInfo zone, int year, int month, DayOfWeek weekStart,
         IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false) =>
         MonthQuery.Run(Ctx(db, now, zone, running, onSinceUtc, weekStart switch { DayOfWeek.Sunday => WeekStart.Sun, DayOfWeek.Saturday => WeekStart.Sat, _ => WeekStart.Mon }, gamesOnly), year, month);
+
+    public static YearResult Year(string db, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null,
+        long? onSinceUtc = null, bool gamesOnly = false) =>
+        YearQuery.Run(Ctx(db, now, zone, running, onSinceUtc, gamesOnly: gamesOnly));
+
+    public static MatrixResult Matrix(string db, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null,
+        long? onSinceUtc = null, bool gamesOnly = false) =>
+        MatrixQuery.Run(Ctx(db, now, zone, running, onSinceUtc, gamesOnly: gamesOnly));
+
+    public static WrappedResult Wrapped(string db, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null,
+        long? onSinceUtc = null, bool gamesOnly = false) =>
+        WrappedQuery.Run(Ctx(db, now, zone, running, onSinceUtc, gamesOnly: gamesOnly));
 }

@@ -134,9 +134,8 @@ public sealed class YearWrappedView : UserControl, IYearSubView
 
     public async void Refresh()
     {
-        var path = _dbPath;
         WrappedResult? loaded = null;
-        if (!await _loader.Refresh(c => WrappedQuery.Run(path, c.Now, c.Zone, c.Running, c.SignInUtc, c.GamesOnly), r => loaded = r)) return;
+        if (!await _loader.Refresh(c => WrappedQuery.Run(c), r => loaded = r)) return;
         var result = loaded!;
         _result = result;
         AppIcons.Load(_dbPath, result.Podium.Concat(result.Others).Concat(result.GamesTop?.Podium ?? []).Concat(result.GachaTop?.Podium ?? []).Concat(result.LongestSessions ?? []).Select(a => a.AppId));

@@ -142,8 +142,7 @@ public sealed class YearMatrixView : UserControl, IYearSubView
 
     public async void Refresh()
     {
-        var path = _dbPath;
-        if (await _loader.Refresh(c => MatrixQuery.Run(path, c.Now, c.Zone, c.Running, c.SignInUtc, c.GamesOnly), r => _result = r)) Redraw();
+        if (await _loader.Refresh(c => MatrixQuery.Run(c), r => _result = r)) Redraw();
     }
 
     private static string H(long seconds) => Str(MatrixStringKeys.Hours, UsageText.Hours(seconds));

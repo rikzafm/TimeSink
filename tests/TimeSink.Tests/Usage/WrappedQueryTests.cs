@@ -9,7 +9,7 @@ public sealed class WrappedQueryTests : IDisposable
     public void Dispose() => _f.Dispose();
 
     private WrappedResult Run(IReadOnlyCollection<long>? running = null) =>
-        WrappedQuery.Run(_f.DbPath, Now, Zone, running);
+        Q.Wrapped(_f.DbPath, Now, Zone, running);
 
     [Fact]
     public void Total_and_the_days_and_hours_equivalent_match_the_fixture()
@@ -110,7 +110,7 @@ public sealed class WrappedQueryTests : IDisposable
         try
         {
             TimeSink.Core.Data.Db.Open(db).Dispose();
-            var r = WrappedQuery.Run(db, Now, Zone, null);
+            var r = Q.Wrapped(db, Now, Zone, null);
             r.TotalSeconds.Should().Be(0);
             r.Podium.Should().BeEmpty();
             r.TrackingStarted.Should().BeNull();

@@ -18,21 +18,23 @@ public static class WrappedQuery
     private const int OthersSize = 3;
 
 
-    public static WrappedResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
+    public static WrappedResult Run(UsageContext context)
     {
-        using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, running, onSinceUtc, gamesOnly: gamesOnly);
+        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
+        return Run(new UsageWindow(new SqliteUsageSource(c), context));
     }
 
-    public static WrappedResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
+    internal static WrappedResult Run(UsageWindow window)
     {
+        var context = window.Context;
+        var (now, zone, gamesOnly, onSinceUtc) = (context.Now, context.Zone, context.GamesOnly, context.SignInUtc);
         var nowUtc = now.ToUnixTimeSeconds();
         var today = LocalDays.DateOf(nowUtc, zone);
         var year = today.Year;
         var yearStart = LocalDays.StartOf(new DateOnly(year, 1, 1), zone);
         var windowStart = LocalDays.StartOf(new DateOnly(year - 1, 12, 1), zone); // December feeds January's month delta
 
-        var apps = AppGroups.Load(c, gamesOnly: gamesOnly);
+        var apps = window.Apps;
         var start = TrackingStart.Of(apps, zone);
         var first = start.FirstDay;
         var groups = apps.Values.Select(a => a.Group).Distinct().ToList();
@@ -43,7 +45,7 @@ public static class WrappedQuery
         var perGroup = new Dictionary<long, long>();       // this year
         long beforeNoon = 0, total = 0;
 
-        var segs = UsageLoader.LoadSegments(c, windowStart, nowUtc, apps, running);
+        var segs = window.Segments(windowStart);
         var windowed = segs.Select(s => s with { Start = Math.Max(s.Start, windowStart), End = Math.Min(s.End, nowUtc) });
         foreach (var sl in UsageDays.Slices(windowed, zone))
         {

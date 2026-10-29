@@ -10,7 +10,7 @@ public sealed class YearQueryTests : IDisposable
     private readonly YearFixture _f = new();
     public void Dispose() => _f.Dispose();
 
-    private YearResult Run() => YearQuery.Run(_f.DbPath, YearFixture.Now, TimeZoneInfo.Utc);
+    private YearResult Run() => Q.Year(_f.DbPath, YearFixture.Now, TimeZoneInfo.Utc);
 
     [Fact]
     public void Twelve_columns_with_tracked_hours_and_months_before_tracking_empty()
@@ -71,7 +71,7 @@ public sealed class YearQueryTests : IDisposable
     public void No_tracked_apps_leaves_every_month_empty_with_no_pace()
     {
         using var empty = new YearFixture(seed: false);
-        var r = YearQuery.Run(empty.DbPath, YearFixture.Now, TimeZoneInfo.Utc);
+        var r = Q.Year(empty.DbPath, YearFixture.Now, TimeZoneInfo.Utc);
         r.Months.Should().OnlyContain(m => m.Kind == YearMonthKind.BeforeTracking);
         r.PaceYearSeconds.Should().BeNull();
         r.AverageMonthSeconds.Should().BeNull();
@@ -84,7 +84,7 @@ public sealed class YearQueryTests : IDisposable
         using var f = new YearFixture(seed: false);
         var app = f.AddApp(@"c:\x.exe", "X", YearFixture.U(5, 6, 0));
         f.Session(app, YearFixture.U(5, 6, 0), YearFixture.U(5, 8, 0));
-        var r = YearQuery.Run(f.DbPath, YearFixture.Now, TimeZoneInfo.Utc);
+        var r = Q.Year(f.DbPath, YearFixture.Now, TimeZoneInfo.Utc);
         r.RecentMonthCount.Should().Be(1);
         r.AverageMonthSeconds.Should().BeNull(); // no full tracked month yet
         // 48 h over the 5 days since tracking began (May 6..10) -> 9.6 h/day * 31

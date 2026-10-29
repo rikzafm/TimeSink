@@ -165,9 +165,8 @@ public sealed class YearPaceView : UserControl, IYearSubView
 
     public async void Refresh()
     {
-        var path = _dbPath;
         var now = DateTimeOffset.UtcNow;
-        if (!await _loader.Refresh(c => YearQuery.Run(path, c.Now, c.Zone, c.Running, c.SignInUtc, c.GamesOnly), r =>
+        if (!await _loader.Refresh(c => YearQuery.Run(c), r =>
             {
                 if (_result is null || _result.Year != r.Year) _selected = -1;
                 _result = r;

@@ -22,25 +22,27 @@ public static class MatrixQuery
         return pct < 30 * best ? 0 : pct < 55 * best ? 1 : pct < 75 * best ? 2 : pct < 90 * best ? 3 : 4;
     }
 
-    public static MatrixResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
+    public static MatrixResult Run(UsageContext context)
     {
-        using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, running, onSinceUtc, gamesOnly: gamesOnly);
+        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
+        return Run(new UsageWindow(new SqliteUsageSource(c), context));
     }
 
-    public static MatrixResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
+    internal static MatrixResult Run(UsageWindow window)
     {
+        var context = window.Context;
+        var (now, zone, gamesOnly, onSinceUtc) = (context.Now, context.Zone, context.GamesOnly, context.SignInUtc);
         var nowUtc = now.ToUnixTimeSeconds();
         var today = LocalDays.DateOf(nowUtc, zone);
         var year = today.Year;
-        var apps = AppGroups.Load(c, gamesOnly: gamesOnly);
+        var apps = window.Apps;
         var started = TrackingStart.Of(apps, zone).FirstDay;
         if (started is null) return new MatrixResult(year, nowUtc, null, 1, [], [], 0);
         var first = started is { } s && s.Year == year ? s.Month : 1;
         var count = today.Month - first + 1;
         if (count < 1) return new MatrixResult(year, nowUtc, started, first, [], [], 0);
 
-        var segs = UsageLoader.LoadSegments(c, LocalDays.StartOf(new DateOnly(year, first, 1), zone), nowUtc, apps, running);
+        var segs = window.Segments(LocalDays.StartOf(new DateOnly(year, first, 1), zone));
         var perApp = new Dictionary<long, long[]>();
         foreach (var sl in UsageDays.Slices(segs, zone))
         {

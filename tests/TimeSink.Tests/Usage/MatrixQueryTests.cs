@@ -78,7 +78,7 @@ public sealed class MatrixQueryTests : IDisposable
         Exec($"INSERT INTO sessions(app_id,start_utc,end_utc,last_seen_utc,end_reason) VALUES({app},{start},{(end is null ? "NULL" : end.ToString())},{end ?? start},{(end is null ? "NULL" : "'exit'")})");
 
     private MatrixResult Run(IReadOnlyCollection<long>? running = null, TimeZoneInfo? zone = null) =>
-        MatrixQuery.Run(_db, Now, zone ?? TimeZoneInfo.Utc, running);
+        Q.Matrix(_db, Now, zone ?? TimeZoneInfo.Utc, running);
 
     private static MatrixRow Row(MatrixResult r, string name) => r.Rows.Single(x => x.Name == name);
 
@@ -173,7 +173,7 @@ public sealed class MatrixQueryTests : IDisposable
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, "e.db");
         using (Db.Open(path)) { }
-        var r = MatrixQuery.Run(path, Now, TimeZoneInfo.Utc);
+        var r = Q.Matrix(path, Now, TimeZoneInfo.Utc);
         r.Rows.Should().BeEmpty();
         r.Months.Should().BeEmpty();
         r.GrandSeconds.Should().Be(0);

@@ -39,7 +39,7 @@ public sealed class BackgroundRankingTests : IDisposable
         var month = Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 3, DayOfWeek.Monday);
         month.TopApps.Last().Name.Should().Be("Chrome");
 
-        var wrapped = WrappedQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc);
+        var wrapped = Q.Wrapped(_f.DbPath, Now, TimeZoneInfo.Utc);
         wrapped.Podium.Concat(wrapped.Others).Select(a => a.Name).Should().NotContain("Chrome");
     }
 
