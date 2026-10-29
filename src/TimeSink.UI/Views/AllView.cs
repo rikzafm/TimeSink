@@ -150,8 +150,7 @@ public sealed class AllView : UserControl, ILiveView
 
     public async void Refresh()
     {
-        var path = _dbPath;
-        if (await _loader.Refresh(c => AllQuery.Run(path, c.Now, c.Zone, c.Running, c.SignInUtc, c.GamesOnly), r => _result = r)) Redraw();
+        if (await _loader.Refresh(c => AllQuery.Run(c), r => _result = r)) Redraw();
     }
 
     private void SetLayout(bool icons)

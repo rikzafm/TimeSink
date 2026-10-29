@@ -27,22 +27,24 @@ public static class AllQuery
         public readonly Dictionary<(int, int), long> Months = [];
     }
 
-    public static AllResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
+    public static AllResult Run(UsageContext context)
     {
-        using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, running, onSinceUtc, gamesOnly: gamesOnly);
+        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
+        return Run(new UsageWindow(new SqliteUsageSource(c), context));
     }
 
-    public static AllResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
+    internal static AllResult Run(UsageWindow window)
     {
-        var nowUtc = now.ToUnixTimeSeconds();
-        var usageApps = AppGroups.Load(c, includeRetired: true, gamesOnly: gamesOnly);
+        var context = window.Context;
+        var (zone, gamesOnly, onSinceUtc) = (context.Zone, context.GamesOnly, context.SignInUtc);
+        var nowUtc = window.NowUtc;
+        var usageApps = window.AllApps;
         var groups = usageApps.Values.Where(a => a.Group == a.Id).ToDictionary(a => a.Id, a => new Group
         {
             Id = a.Id, Name = a.Name, Retired = a.Retired, RetiredUtc = a.RetiredUtc, Background = a.Background,
         });
 
-        var loaded = UsageLoader.LoadSegments(c, 0, nowUtc, usageApps, running);
+        var loaded = window.Segments(0, includeRetired: true);
         var segs = new List<UsageSeg>();
         foreach (var seg in loaded)
         {

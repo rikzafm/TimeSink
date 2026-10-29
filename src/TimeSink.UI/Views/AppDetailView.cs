@@ -66,10 +66,10 @@ public sealed class AppDetailView : UserControl
 
     private async void Refresh()
     {
-        var (path, id, year) = (_dbPath, _appId, _year);
+        var (id, year) = (_appId, _year);
         AppDetailResult? result = null;
         var applied = await _loader.Refresh(
-            c => (Result: AppDetailQuery.Run(path, c.Now, c.Zone, id, year, c.Running), WeekStart: c.WeekStartDay),
+            c => (Result: AppDetailQuery.Run(c, id, year), WeekStart: c.WeekStartDay),
             r =>
             {
                 result = r.Result;

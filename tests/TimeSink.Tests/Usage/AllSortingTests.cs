@@ -9,7 +9,7 @@ public sealed class AllSortingTests : IDisposable
     private readonly MonthFixture _f = new();
     public void Dispose() => _f.Dispose();
 
-    private AllResult Result() => AllQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null);
+    private AllResult Result() => Q.All(_f.DbPath, Now, TimeZoneInfo.Utc, null);
 
     private static string[] Names(IEnumerable<AllAppRow> rows) => rows.Select(r => r.Name).ToArray();
 

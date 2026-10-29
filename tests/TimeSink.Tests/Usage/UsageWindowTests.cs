@@ -17,15 +17,21 @@ internal sealed class InMemoryUsageSource : IUsageSource
         return this;
     }
 
+    public InMemoryUsageSource Retired(long id, string name, long addedUtc)
+    {
+        _apps.Add(new GroupedApp(id, id, name, addedUtc, State: AppState.Retired, RetiredUtc: addedUtc));
+        return this;
+    }
+
     public InMemoryUsageSource Session(long app, long start, long? end, long? lastSeen = null, string? reason = null)
     {
         _sessions.Add(new RawSession(app, start, end, lastSeen ?? end ?? start, reason ?? (end is null ? null : "exit")));
         return this;
     }
 
-    public AppGroups Apps(bool gamesOnly)
+    public AppGroups Apps(bool includeRetired, bool gamesOnly)
     {
-        var groups = AppGroups.From(_apps);
+        var groups = AppGroups.From(includeRetired ? _apps : _apps.Where(a => !a.Retired));
         return gamesOnly ? groups.OnlyGames() : groups;
     }
 
@@ -93,6 +99,17 @@ public sealed class UsageWindowTests
     {
         new UsageWindow(Source(), Context()).Segments(At(1, 0), to: At(9, 9))
             .Select(s => s.Start).Should().Equal(At(2, 10)); // the Mon 09:00 session starts exactly at the bound
+    }
+
+    [Fact]
+    public void Retired_apps_are_in_the_segments_only_when_asked_for()
+    {
+        var window = new UsageWindow(Source().Retired(2, "Old", At(1, 0)).Session(2, At(10, 9), At(10, 10)), Context());
+
+        window.Segments(At(1, 0)).Should().NotContain(s => s.AppId == 2);
+        window.Segments(At(1, 0), includeRetired: true).Should().ContainSingle(s => s.AppId == 2);
+        window.AllApps.Count.Should().Be(2);
+        window.Apps.Count.Should().Be(1);
     }
 
     [Fact]

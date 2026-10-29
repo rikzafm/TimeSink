@@ -18,7 +18,7 @@ public sealed class AllQueryTests : IDisposable
     private readonly MonthFixture _f = new();
     public void Dispose() => _f.Dispose();
 
-    private AllResult Run(IReadOnlyCollection<long>? running = null) => AllQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, running);
+    private AllResult Run(IReadOnlyCollection<long>? running = null) => Q.All(_f.DbPath, Now, TimeZoneInfo.Utc, running);
 
     [Fact]
     public void Per_app_rows_carry_hours_days_average_and_share()

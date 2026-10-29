@@ -39,4 +39,12 @@ internal static class Q
     public static WrappedResult Wrapped(string db, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null,
         long? onSinceUtc = null, bool gamesOnly = false) =>
         WrappedQuery.Run(Ctx(db, now, zone, running, onSinceUtc, gamesOnly: gamesOnly));
+
+    public static AllResult All(string db, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null,
+        long? onSinceUtc = null, bool gamesOnly = false) =>
+        AllQuery.Run(Ctx(db, now, zone, running, onSinceUtc, gamesOnly: gamesOnly));
+
+    public static AppDetailResult? AppDetail(string db, DateTimeOffset now, TimeZoneInfo zone, long appId, int year,
+        IReadOnlyCollection<long>? running = null) =>
+        AppDetailQuery.Run(Ctx(db, now, zone, running), appId, year);
 }

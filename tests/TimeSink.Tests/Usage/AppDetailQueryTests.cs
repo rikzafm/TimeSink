@@ -15,7 +15,7 @@ public sealed class AppDetailQueryTests : IDisposable
     public void Dispose() => _f.Dispose();
 
     private AppDetailResult? Run(long app, int year = 2026, IReadOnlyCollection<long>? running = null) =>
-        AppDetailQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, app, year, running);
+        Q.AppDetail(_f.DbPath, Now, TimeZoneInfo.Utc, app, year, running);
 
     [Theory]
     [InlineData(0, 0)]

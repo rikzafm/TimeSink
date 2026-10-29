@@ -12,8 +12,8 @@ internal readonly record struct RawSession(long AppId, long StartUtc, long? EndU
 /// </summary>
 internal interface IUsageSource
 {
-    /// <summary>The tracked apps by group; with <paramref name="gamesOnly"/> only the Game and Gacha groups.</summary>
-    AppGroups Apps(bool gamesOnly);
+    /// <summary>The apps by group (retired ones too when asked); with <paramref name="gamesOnly"/> only the Game and Gacha groups.</summary>
+    AppGroups Apps(bool includeRetired, bool gamesOnly);
 
     /// <summary>
     /// The sessions that started at or before <paramref name="nowUtc"/> (and before <paramref name="to"/> when given) and
@@ -25,7 +25,7 @@ internal interface IUsageSource
 /// <summary>The SQLite adapter of <see cref="IUsageSource"/>. The caller owns the connection.</summary>
 internal sealed class SqliteUsageSource(SqliteConnection connection) : IUsageSource
 {
-    public AppGroups Apps(bool gamesOnly) => AppGroups.Load(connection, gamesOnly: gamesOnly);
+    public AppGroups Apps(bool includeRetired, bool gamesOnly) => AppGroups.Load(connection, includeRetired, gamesOnly);
 
     public IEnumerable<RawSession> Sessions(long from, long nowUtc, long? to)
     {
@@ -58,6 +58,7 @@ internal sealed class SqliteUsageSource(SqliteConnection connection) : IUsageSou
 internal sealed class UsageWindow(IUsageSource source, UsageContext context)
 {
     private AppGroups? _apps;
+    private AppGroups? _allApps;
     private List<RawSession>? _raw;
     private long _rawFrom;
 
@@ -65,19 +66,23 @@ internal sealed class UsageWindow(IUsageSource source, UsageContext context)
 
     public long NowUtc => Context.Now.ToUnixTimeSeconds();
 
-    public AppGroups Apps => _apps ??= source.Apps(Context.GamesOnly);
+    /// <summary>The tracked apps (retired ones are left out of every segment).</summary>
+    public AppGroups Apps => _apps ??= source.Apps(false, Context.GamesOnly);
+
+    /// <summary>The tracked and the retired apps, for the All tab and the app detail page.</summary>
+    public AppGroups AllApps => _allApps ??= source.Apps(true, Context.GamesOnly);
 
     /// <summary>
     /// The segments that overlap or follow <paramref name="from"/> up to now (and start before <paramref name="to"/> when
-    /// given: Month reads a bounded span), by the rules of <see cref="UsageLoader.Resolve"/>.
+    /// given: Month reads a bounded span), of tracked apps only unless <paramref name="includeRetired"/>, by the rules of <see cref="UsageLoader.Resolve"/>.
     /// </summary>
-    public List<UsageSeg> Segments(long from, long? to = null)
+    public List<UsageSeg> Segments(long from, long? to = null, bool includeRetired = false)
     {
         if (_raw is null || from < _rawFrom)
         {
             _raw = source.Sessions(from, NowUtc, null).ToList();
             _rawFrom = from;
         }
-        return UsageLoader.Resolve(_raw.Where(s => (s.EndUtc is null || s.EndUtc >= from) && (to is null || s.StartUtc < to)), NowUtc, Apps, Context.Running);
+        return UsageLoader.Resolve(_raw.Where(s => (s.EndUtc is null || s.EndUtc >= from) && (to is null || s.StartUtc < to)), NowUtc, includeRetired ? AllApps : Apps, Context.Running);
     }
 }

@@ -9,7 +9,7 @@ public sealed class AllExportTests : IDisposable
     private readonly MonthFixture _f = new();
     public void Dispose() => _f.Dispose();
 
-    private AllResult Result() => AllQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null);
+    private AllResult Result() => Q.All(_f.DbPath, Now, TimeZoneInfo.Utc, null);
 
     [Fact]
     public void Csv_follows_the_table_with_RFC4180_quoting_retired_rows_and_a_total()

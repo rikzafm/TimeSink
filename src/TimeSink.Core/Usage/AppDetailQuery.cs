@@ -19,25 +19,26 @@ public static class AppDetailQuery
         return pct <= 25 * peak ? 1 : pct <= 50 * peak ? 2 : pct <= 75 * peak ? 3 : 4;
     }
 
-    public static AppDetailResult? Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, long appId, int year, IReadOnlyCollection<long>? running = null)
+    public static AppDetailResult? Run(UsageContext context, long appId, int year)
     {
-        using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, appId, year, running);
+        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
+        return Run(new UsageWindow(new SqliteUsageSource(c), context), appId, year);
     }
 
-    public static AppDetailResult? Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, long appId, int year, IReadOnlyCollection<long>? running = null)
+    internal static AppDetailResult? Run(UsageWindow window, long appId, int year)
     {
-        var nowUtc = now.ToUnixTimeSeconds();
+        var (now, zone) = (window.Context.Now, window.Context.Zone);
+        var nowUtc = window.NowUtc;
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
 
         // Retired apps are loaded so a retired alias of this app still counts, as it does on the All tab.
-        var apps = AppGroups.Load(c, includeRetired: true);
+        var apps = window.AllApps;
         if (!apps.TryGetValue(appId, out var app) || app.Retired || app.Group != appId) return null; // aliases are shown under their canonical app
         var name = app.Name;
         var exe = Path.GetFileName(app.ExePath);
         var background = app.Background;
 
-        var segs = UsageLoader.LoadSegments(c, 0, nowUtc, apps, running).Where(s => s.Group == appId && s.End > s.Start).ToList();
+        var segs = window.Segments(0, includeRetired: true).Where(s => s.Group == appId && s.End > s.Start).ToList();
 
         var daySeconds = new Dictionary<DateOnly, long>();
         var daySessions = new Dictionary<DateOnly, int>();
