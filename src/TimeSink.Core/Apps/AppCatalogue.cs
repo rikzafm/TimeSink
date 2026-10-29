@@ -35,15 +35,16 @@ public sealed class AppCatalogue
     private readonly object _scanRun = new(); // held for a whole scan, so callers share it; never taken by LastInstalled or NewVisit
     private readonly Dictionary<string, RunningCandidate> _trackedThisVisit = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _addedElsewhere = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, byte[]?> _icons = new(StringComparer.OrdinalIgnoreCase);
+    private readonly AppIconSource _icons;
     private IReadOnlyList<InstalledApp>? _installed; // the slow scan, taken lazily once per visit (under _gate)
     private IReadOnlyList<InstalledApp>? _lastInstalled; // survives NewVisit, so a reopened screen can draw at once (under _gate)
     private int _visit; // bumped by NewVisit, so a scan that began in an earlier visit does not count for this one (under _gate)
 
-    public AppCatalogue(string dbPath, IDesktop desktop)
+    public AppCatalogue(string dbPath, IDesktop desktop, AppIconSource icons)
     {
         _dbPath = dbPath;
         _desktop = desktop;
+        _icons = icons;
     }
 
     /// <summary>Apps added in this visit, from the Running tab or elsewhere, each counted once.</summary>
@@ -75,16 +76,8 @@ public sealed class AppCatalogue
         foreach (var app in apps)
         {
             var aumid = capture.AumidByPath.GetValueOrDefault(app.ExePath);
-            bool known;
-            lock (_gate) known = _icons.ContainsKey(app.ExePath);
-            if (!known && budget > 0)
-            {
-                budget--;
-                var png = _desktop.ExtractIcon(app.ExePath, aumid, null, iconPx);
-                lock (_gate) _icons[app.ExePath] = png;
-            }
-            byte[]? icon;
-            lock (_gate) icon = _icons.GetValueOrDefault(app.ExePath);
+            var icon = _icons.ForPath(app.ExePath, aumid, iconPx, cachedOnly: budget <= 0, out var extracted);
+            if (extracted) budget--;
             fresh.Add(new RunningCandidate(app, aumid, icon, false));
         }
 
@@ -163,23 +156,17 @@ public sealed class AppCatalogue
         {
             using var lib = AppLibrary.Open(_dbPath);
             var apps = lib.Tracked();
+            var wanted = apps.Where(a => iconsKnown is null || !iconsKnown.Contains(a.Id)).Select(a => a.Id).ToList();
+            var stored = _icons.Stored(wanted);
             var icons = new Dictionary<long, byte[]?>();
-            foreach (var a in apps.Where(a => iconsKnown is null || !iconsKnown.Contains(a.Id))) icons[a.Id] = lib.GetIcon(a.Id);
+            foreach (var id in wanted) icons[id] = stored.GetValueOrDefault(id);
             return new TrackedSnapshot(CatalogueOutcome.Done, apps, icons);
         }
         catch (Exception e) when (IsBusyOrMissing(e)) { return new TrackedSnapshot(CatalogueOutcome.Unavailable, [], new Dictionary<long, byte[]?>()); }
     }
 
     /// <summary>The stored icon of any app (a Merged one too), or null when none is stored or the database is busy or missing.</summary>
-    public byte[]? StoredIcon(long appId)
-    {
-        try
-        {
-            using var lib = AppLibrary.Open(_dbPath);
-            return lib.GetIcon(appId);
-        }
-        catch (Exception e) when (IsBusyOrMissing(e)) { return null; }
-    }
+    public byte[]? StoredIcon(long appId) => _icons.Stored([appId]).GetValueOrDefault(appId);
 
     /// <summary>
     /// Applies one edit to an app. <see cref="CatalogueOutcome.Rejected"/> when the change does not apply (a blank name, a
@@ -265,7 +252,7 @@ public sealed class AppCatalogue
             var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows) + Path.DirectorySeparatorChar;
             foreach (var r in state.Retired.Where(a => !a.ExePath.StartsWith(windows, StringComparison.OrdinalIgnoreCase)))
                 list.Add(new MergeCandidate("s" + r.Id, CandidateKind.Retired, r.DisplayName, r.ExePath, r.Id, 0, null, null));
-            var icons = lib.GetIcons(list.Select(c => c.AppId));
+            var icons = _icons.Stored(list.Select(c => c.AppId));
             for (var i = 0; i < list.Count; i++) list[i] = list[i] with { Png = icons.GetValueOrDefault(list[i].AppId) };
         }
         catch (Exception e) when (IsBusyOrMissing(e)) { return null; }

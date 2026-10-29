@@ -29,7 +29,7 @@ internal sealed class UntrackedCardView : StackPanel
     public UntrackedCardView(string dbPath, ThemeService themes, Action changed)
     {
         _dbPath = dbPath;
-        _catalogue = new AppCatalogue(dbPath, Win32Desktop.Instance);
+        _catalogue = new AppCatalogue(dbPath, Win32Desktop.Instance, AppIcons.Source(dbPath));
         _themes = themes;
         _changed = changed;
         Visibility = Visibility.Collapsed;

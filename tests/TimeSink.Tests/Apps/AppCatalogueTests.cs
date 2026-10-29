@@ -66,7 +66,7 @@ public sealed class AppCatalogueTests : IDisposable
         if (Directory.Exists(_dir)) Directory.Delete(_dir, true);
     }
 
-    private AppCatalogue Catalogue(string? path = null) => new(path ?? _path, _desktop);
+    private AppCatalogue Catalogue(string? path = null) => new(path ?? _path, _desktop, new AppIconSource(path ?? _path, _desktop));
 
     private void Open(string exe, string name = "App", int minutesAgo = 10, string? family = null) =>
         _desktop.Windows.Add(new OpenWindow(exe, name, T0.AddMinutes(-minutesAgo), true, false, false, family));

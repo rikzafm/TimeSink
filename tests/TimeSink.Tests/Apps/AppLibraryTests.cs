@@ -92,7 +92,7 @@ public sealed class AppLibraryTests : IDisposable
     }
 
     [Fact]
-    public void Icon_cache_returns_null_when_empty_and_replaces_the_blob_with_a_new_hash()
+    public void Icon_cache_returns_null_when_empty_and_replaces_the_blob()
     {
         using var lib = AppLibrary.Open(_path);
         var id = lib.AddTracked(new NewApp(@"C:\a\x.exe", "X", null), 1, null).AppId;
@@ -101,7 +101,6 @@ public sealed class AppLibraryTests : IDisposable
         lib.PutIcon(id, Png);
         lib.PutIcon(id, [9, 9]);
         lib.GetIcon(id).Should().Equal(9, 9);
-        lib.GetIconHash(id).Should().Be(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData([9, 9])).ToLowerInvariant());
     }
 
     [Fact]

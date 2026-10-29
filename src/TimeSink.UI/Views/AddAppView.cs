@@ -57,7 +57,7 @@ public sealed partial class AddAppView : UserControl
         _themes = themes;
         _dbPath = dbPath;
         _close = close;
-        _catalogue = new AppCatalogue(dbPath, Win32Desktop.Instance);
+        _catalogue = new AppCatalogue(dbPath, Win32Desktop.Instance, AppIcons.Source(dbPath));
         SetResourceReference(BackgroundProperty, "Brush.Surface");
         Content = _shell = BuildShell();
         _timer.Tick += (_, _) => Refresh();

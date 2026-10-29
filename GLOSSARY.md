@@ -30,6 +30,10 @@ _Avoid_: Merge target, option
 The index into the theme's `apps` colours that an app always uses, derived from its Main app id. Every view colours an app by its Palette slot.
 _Avoid_: Color index, palette index, app colour
 
+**App icon**:
+The PNG stored with an app, or extracted for a Candidate. An app without one shows its letter tile.
+_Avoid_: Logo, thumbnail
+
 ### Usage
 
 **Session**:

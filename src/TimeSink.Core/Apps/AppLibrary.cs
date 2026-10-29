@@ -370,13 +370,6 @@ public sealed class AppLibrary : IDisposable
         return icons;
     }
 
-    public string? GetIconHash(long appId)
-    {
-        using var cmd = Cmd("SELECT hash FROM icons WHERE app_id = $a");
-        cmd.Parameters.AddWithValue("$a", appId);
-        return cmd.ExecuteScalar() as string;
-    }
-
     public void Dispose() => _c.Dispose();
 
     private SqliteCommand Cmd(string sql, SqliteTransaction? tx = null)

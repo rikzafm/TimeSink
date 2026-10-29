@@ -1,12 +1,8 @@
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using Microsoft.Data.Sqlite;
 using TimeSink.Core.Apps;
-using TimeSink.Core.Data;
-using TimeSink.Core.Icons;
 
 namespace TimeSink.UI.Services;
 
@@ -18,9 +14,25 @@ namespace TimeSink.UI.Services;
 internal static class AppIcons
 {
     private static readonly Dictionary<long, BitmapSource> Cache = new();
-    private static readonly HashSet<long> Tried = new();
+    private static readonly object SourceGate = new();
+    private static AppIconSource? _source;
+    private static string? _sourceDb;
 
     public static event Action? Updated;
+
+    /// <summary>The one <see cref="AppIconSource"/> of this run for <paramref name="dbPath"/>, shared with the Add app catalogue.</summary>
+    public static AppIconSource Source(string dbPath)
+    {
+        lock (SourceGate)
+        {
+            if (_source is null || _sourceDb != dbPath)
+            {
+                _source = new AppIconSource(dbPath, Win32Desktop.Instance);
+                _sourceDb = dbPath;
+            }
+            return _source;
+        }
+    }
 
     /// <summary>Puts the app's icon in <paramref name="tile"/> at the full tile size, with no box around it; false means the caller shows its letter tile.</summary>
     public static bool TryFill(Border tile, long appId)
@@ -34,9 +46,6 @@ internal static class AppIcons
         return true;
     }
 
-    private static bool IsSelf(string exePath) =>
-        Path.GetFileName(exePath).StartsWith("TimeSink.", StringComparison.OrdinalIgnoreCase);
-
     /// <summary>The cached bitmap, or null when the app has no icon (yet).</summary>
     public static BitmapSource? Get(long appId) => Cache.GetValueOrDefault(appId);
 
@@ -46,44 +55,16 @@ internal static class AppIcons
             ? new Image { Source = bmp, Width = size, Height = size, Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center }
             : null;
 
-    /// <summary>Fetches icons for ids not seen yet (UI thread). Each id is tried once per run, so a redraw cannot loop.</summary>
+    /// <summary>
+    /// Fetches icons for ids not decoded yet (UI thread). <see cref="AppIconSource"/> resolves each id once per run, so an
+    /// app without an icon costs a cheap lookup per redraw and raises no <see cref="Updated"/>, so a redraw cannot loop.
+    /// </summary>
     public static async void Load(string dbPath, IEnumerable<long> appIds)
     {
-        var want = appIds.Distinct().Where(id => !Cache.ContainsKey(id) && Tried.Add(id)).ToList();
+        var want = appIds.Distinct().Where(id => !Cache.ContainsKey(id)).ToList();
         if (want.Count == 0) return;
-        var found = await Task.Run(() =>
-        {
-            var pngs = new Dictionary<long, byte[]>();
-            try
-            {
-                using var lib = AppLibrary.Open(dbPath);
-                IReadOnlyList<LibraryApp>? apps = null;
-                foreach (var id in want)
-                {
-                    apps ??= lib.Library();
-                    var app = apps.FirstOrDefault(a => a.Id == id);
-                    var png = lib.GetIcon(id);
-                    if (app is not null && IsSelf(app.ExePath))
-                    {
-                        // TimeSink's own row shows the chosen app icon; an exe-extracted copy can be a stale generic one.
-                        var own = IconCatalogue.ReadFrame(IconCatalogue.Resolve(SettingsStore.Get(dbPath, "ui.icon")), 64);
-                        if (!own.AsSpan().SequenceEqual(png)) lib.PutIcon(id, own);
-                        png = own;
-                    }
-                    else if (png is null)
-                    {
-                        if (app is not null && IconService.ExtractPng(app.ExePath, null, SteamLibrary.ArtForExe(app.ExePath)) is { } extracted)
-                        {
-                            lib.PutIcon(id, extracted);
-                            png = extracted;
-                        }
-                    }
-                    if (png is not null) pngs[id] = png;
-                }
-            }
-            catch (Exception ex) when (ex is SqliteException or IOException) { } // no DB yet: letters stay
-            return pngs;
-        });
+        var source = Source(dbPath);
+        var found = await Task.Run(() => source.ForApps(want));
         var changed = false;
         foreach (var (id, png) in found)
             if (IconService.Decode(png) is { } bmp) { Cache[id] = bmp; changed = true; }
