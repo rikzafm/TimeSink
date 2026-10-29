@@ -78,11 +78,12 @@ public class UsageTextTests
     public void SignedHoursMinutes_carries_a_sign(long seconds, string expected) => UsageText.SignedHoursMinutes(seconds).Should().Be(expected);
 
     [Theory]
-    [InlineData(0, "0.0")]
+    [InlineData(0, "0")]
     [InlineData(5400, "1.5")]
     [InlineData(13846.15, "3.8")]
-    [InlineData(82800, "23.0")]
-    public void AveragePerDay_is_hours_with_one_decimal(double seconds, string expected) =>
+    [InlineData(7190, "2")]        // 1.997 h rounds to 2.0, shown as 2
+    [InlineData(82800, "23")]       // a whole number has no ".0"
+    public void AveragePerDay_is_hours_with_one_decimal_or_a_whole_number(double seconds, string expected) =>
         UsageText.AveragePerDay(seconds).Should().Be(expected);
 
     [Theory]

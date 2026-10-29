@@ -11,7 +11,7 @@ public static class UsageText
     public static string Hours(long seconds)
     {
         var h = Math.Max(0, seconds) / 3600.0;
-        if (h < 9.95) return h.ToString("0.0", Inv) is var t && t.EndsWith(".0") ? t[..^2] : t;
+        if (h < 9.95) return OneDecimal(h);
         return Math.Round(h, MidpointRounding.AwayFromZero).ToString("0", Inv);
     }
 
@@ -49,8 +49,11 @@ public static class UsageText
     /// <summary>A delta with an explicit sign, e.g. <c>+38m</c> or <c>-1h 30m</c>.</summary>
     public static string SignedHoursMinutes(long seconds) => (seconds < 0 ? "-" : "+") + HoursMinutes(Math.Abs(seconds));
 
-    /// <summary>Average hours per day used, one decimal ("2.6").</summary>
-    public static string AveragePerDay(double secondsPerDay) => (Math.Max(0, secondsPerDay) / 3600.0).ToString("0.0", Inv);
+    /// <summary>Average hours per day used, one decimal ("2.6"), a whole number without ".0" ("23").</summary>
+    public static string AveragePerDay(double secondsPerDay) => OneDecimal(Math.Max(0, secondsPerDay) / 3600.0);
+
+    private static string OneDecimal(double value) =>
+        value.ToString("0.0", Inv) is var t && t.EndsWith(".0") ? t[..^2] : t;
 
     /// <summary>Share of the tracked total (or any fraction of a whole) as a whole percent; a non-zero share under 1% reads "&lt;1%".</summary>
     public static string Share(double fraction)
