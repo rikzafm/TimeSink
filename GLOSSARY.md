@@ -55,3 +55,9 @@ _Avoid_: Sort order, ordering
 **Local day**:
 A calendar day in the user's time zone. It lasts 23 or 25 hours when daylight saving changes.
 _Avoid_: Day (unqualified), UTC day
+
+### Screens
+
+**Add app screen**:
+The full-flyout overlay with the Running, Installed, Tracked and Browse tabs, plus the App settings and Merge screens it opens. `AddAppNavigation` decides which of them shows.
+_Avoid_: Add dialog, picker
