@@ -44,7 +44,7 @@ public sealed class AppChange
     /// <summary>Makes a Merged app a separate tracked app again.</summary>
     public static AppChange Unmerge(long mergedAppId) => new(ChangeKind.Unmerge, mergedAppId);
 
-    /// <summary>Stores <paramref name="png"/> as the app's icon (decision 152).</summary>
+    /// <summary>Stores <paramref name="png"/> as the app's icon (decision 153).</summary>
     public static AppChange SetIcon(long appId, byte[] png) => new(ChangeKind.SetIcon, appId) { Icon = png };
 
     /// <summary>Deletes the recorded time of the app and of everything merged into it.</summary>

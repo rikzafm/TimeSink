@@ -335,7 +335,7 @@ public sealed class AppLibrary : IDisposable
 
     public void PutIcon(long appId, byte[] png) => PutIcon(appId, png, null);
 
-    /// <summary>Stores an icon the user picked: the hash is marked, so tile-size upgrades leave it alone (decision 152).</summary>
+    /// <summary>Stores an icon the user picked: the hash is marked, so tile-size upgrades leave it alone (decision 153).</summary>
     public void PutChosenIcon(long appId, byte[] png) => PutIcon(appId, png, null, chosen: true);
 
     /// <summary>The apps whose icon the user picked.</summary>

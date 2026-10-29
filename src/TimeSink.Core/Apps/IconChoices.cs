@@ -7,7 +7,7 @@ public enum IconChoiceKind { App, Exe, SteamCover, SteamHeader, SteamLogo, Steam
 public sealed record IconChoice(IconChoiceKind Kind, string Detail, byte[] Png);
 
 /// <summary>
-/// Every icon found for an app (decision 152): the tracked exe's own icon, the other game exes in its install folder, and
+/// Every icon found for an app (decision 153): the tracked exe's own icon, the other game exes in its install folder, and
 /// Steam's cached art when it is a Steam game. Choices that draw the same picture are listed once, the first source wins.
 /// The picker is only offered when more than one is found.
 /// </summary>

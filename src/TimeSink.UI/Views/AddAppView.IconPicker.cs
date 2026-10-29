@@ -12,7 +12,7 @@ using TimeSink.UI.Services;
 namespace TimeSink.UI.Views;
 
 /// <summary>
-/// The icon picker (decision 152): an Icon row on the app settings screen, shown only when more than one icon is found for
+/// The icon picker (decision 153): an Icon row on the app settings screen, shown only when more than one icon is found for
 /// the app, opens a full-flyout grid of them. Tapping a tile previews it; Apply stores it as the app's icon.
 /// </summary>
 public sealed partial class AddAppView
