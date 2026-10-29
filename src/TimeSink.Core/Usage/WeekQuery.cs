@@ -16,14 +16,17 @@ public static class WeekQuery
     /// <summary>The streak is looked for this far back (and so tops out at this many days).</summary>
     public const int StreakLookbackDays = 365;
 
-    public static WeekResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, int weeksBack = 0, bool gamesOnly = false)
+    public static WeekResult Run(UsageContext context, int weeksBack = 0)
     {
-        using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, weekStart, running, onSinceUtc, weeksBack, gamesOnly: gamesOnly);
+        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
+        return Run(new UsageWindow(new SqliteUsageSource(c), context), weeksBack);
     }
 
-    public static WeekResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, int weeksBack = 0, bool gamesOnly = false)
+    internal static WeekResult Run(UsageWindow window, int weeksBack = 0)
     {
+        var context = window.Context;
+        var (now, zone, gamesOnly) = (context.Now, context.Zone, context.GamesOnly);
+        var (weekStart, onSinceUtc) = (context.WeekStart, context.SignInUtc);
         var nowUtc = now.ToUnixTimeSeconds();
         var today = LocalDays.DateOf(nowUtc, zone);
         var thisWeek = WeekStarts.Containing(today, weekStart.ToDayOfWeek());
@@ -31,8 +34,8 @@ public static class WeekQuery
         var shownWeek = thisWeek.AddDays(-7 * weeksBack); // the seven columns and app rows; the grid and streak stay anchored to today
         var lookStart = new[] { gridStart, today.AddDays(-StreakLookbackDays), shownWeek.AddDays(-7) }.Min();
 
-        var apps = AppGroups.Load(c, gamesOnly: gamesOnly);
-        var segs = UsageLoader.LoadSegments(c, LocalDays.StartOf(lookStart, zone), nowUtc, apps, running);
+        var apps = window.Apps;
+        var segs = window.Segments(LocalDays.StartOf(lookStart, zone));
         var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc, gamesOnly);
 
         // App seconds per local day (all apps, for the streak) and per (app group, day); the columns show PC uptime.

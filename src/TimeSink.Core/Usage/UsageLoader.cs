@@ -39,34 +39,27 @@ internal static class UsageLoader
 {
     /// <param name="to">Optional exclusive upper bound on a session's start (Month reads a bounded window).</param>
     public static List<UsageSeg> LoadSegments(SqliteConnection c, long from, long nowUtc, AppGroups apps,
-        IReadOnlyCollection<long>? running, long? to = null)
+        IReadOnlyCollection<long>? running, long? to = null) =>
+        Resolve(new SqliteUsageSource(c).Sessions(from, nowUtc, to), nowUtc, apps, running);
+
+    /// <summary>Turns stored sessions into segments: unknown and retired apps dropped, open sessions ended by the rule above.</summary>
+    public static List<UsageSeg> Resolve(IEnumerable<RawSession> sessions, long nowUtc, AppGroups apps, IReadOnlyCollection<long>? running)
     {
-        using var cmd = c.CreateCommand();
-        cmd.CommandText = $"""
-            SELECT app_id, start_utc, end_utc, last_seen_utc, end_reason FROM sessions
-            WHERE start_utc <= $now{(to is null ? "" : " AND start_utc < $to")} AND (end_utc IS NULL OR end_utc >= $from) ORDER BY start_utc
-            """;
-        cmd.Parameters.AddWithValue("$now", nowUtc);
-        if (to is { } t) cmd.Parameters.AddWithValue("$to", t);
-        cmd.Parameters.AddWithValue("$from", from);
-        using var r = cmd.ExecuteReader();
         var list = new List<UsageSeg>();
-        while (r.Read())
+        foreach (var s in sessions)
         {
-            var appId = r.GetInt64(0);
-            if (!apps.TryGetValue(appId, out var app)) continue; // retired or unknown
-            var start = r.GetInt64(1);
+            if (!apps.TryGetValue(s.AppId, out var app)) continue; // retired or unknown
             long end;
-            var open = r.IsDBNull(2);
+            var open = s.EndUtc is null;
             if (open)
             {
-                if (running is null || running.Contains(appId)) end = Math.Max(nowUtc, start);
-                else { end = Math.Clamp(r.GetInt64(3), start, nowUtc); open = false; }
+                if (running is null || running.Contains(s.AppId)) end = Math.Max(nowUtc, s.StartUtc);
+                else { end = Math.Clamp(s.LastSeenUtc, s.StartUtc, nowUtc); open = false; }
             }
-            else end = r.GetInt64(2);
+            else end = s.EndUtc!.Value;
             // A shutdown close is the PC being off, like a sleep close: the gap to the next session is not uptime.
-            var sleep = !r.IsDBNull(4) && r.GetString(4) is EndReasons.Sleep or EndReasons.Shutdown;
-            list.Add(new UsageSeg(app.Group, appId, start, end, open, sleep && !open));
+            var sleep = s.EndReason is EndReasons.Sleep or EndReasons.Shutdown;
+            list.Add(new UsageSeg(app.Group, s.AppId, s.StartUtc, end, open, sleep && !open));
         }
         return list;
     }

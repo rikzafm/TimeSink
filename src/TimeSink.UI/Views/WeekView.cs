@@ -181,9 +181,8 @@ public sealed class WeekView : UserControl, ILiveView
 
     public async void Refresh()
     {
-        var path = _dbPath;
         var weeksBack = _weeksBack;
-        if (await _loader.Refresh(c => WeekQuery.Run(path, c.Now, c.Zone, c.WeekStart, c.Running, c.SignInUtc, weeksBack, c.GamesOnly), r => _result = r)) Redraw();
+        if (await _loader.Refresh(c => WeekQuery.Run(c, weeksBack), r => _result = r)) Redraw();
     }
 
     private void Redraw()
@@ -337,9 +336,8 @@ public sealed class WeekView : UserControl, ILiveView
         _columns.SelectedIndex = index;
         Focus();
         var seq = ++_panelSeq;
-        var path = _dbPath;
         DayDetail? loaded = null;
-        var applied = await _panelLoader.Refresh(c => DayDetailQuery.Run(path, day, c.Now, c.Zone, c.WeekStart, c.Running, c.SignInUtc, c.GamesOnly), d => loaded = d);
+        var applied = await _panelLoader.Refresh(c => DayDetailQuery.Run(c, day), d => loaded = d);
         if (!applied || seq != _panelSeq || loaded is not { } detail) return; // overtaken, view stopped, no database, or the panel was closed meanwhile
 
         var compares = new List<(string, string, bool)>();

@@ -12,8 +12,9 @@ public sealed class UsageContext
     private readonly Lazy<long?> _signInUtc;
     private readonly Lazy<WeekStart> _weekStart;
 
-    public UsageContext(DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running, Func<long?> signInUtc, Func<WeekStart> weekStart, bool gamesOnly = false)
+    public UsageContext(DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running, Func<long?> signInUtc, Func<WeekStart> weekStart, bool gamesOnly = false, string? dbPath = null)
     {
+        DbPath = dbPath;
         Now = now;
         GamesOnly = gamesOnly;
         Zone = zone;
@@ -21,6 +22,9 @@ public sealed class UsageContext
         _signInUtc = new Lazy<long?>(signInUtc, LazyThreadSafetyMode.None);
         _weekStart = new Lazy<WeekStart>(weekStart, LazyThreadSafetyMode.None);
     }
+
+    /// <summary>The database the queries read, or null for a context built only to feed an in-memory source.</summary>
+    public string? DbPath { get; }
 
     public DateTimeOffset Now { get; }
 
@@ -51,12 +55,14 @@ public sealed class UsageSnapshotLoader
     private readonly Func<long?> _signInUtc;
     private readonly Func<WeekStart> _weekStart;
     private readonly Func<bool> _gamesOnly;
+    private readonly string? _dbPath;
     private int _seq;
     private volatile bool _started;
 
     public UsageSnapshotLoader(Func<DateTimeOffset> clock, TimeZoneInfo zone, Func<IReadOnlyCollection<long>?> running,
-        Func<long?> signInUtc, Func<WeekStart> weekStart, Func<bool>? gamesOnly = null)
+        Func<long?> signInUtc, Func<WeekStart> weekStart, Func<bool>? gamesOnly = null, string? dbPath = null)
     {
+        _dbPath = dbPath;
         _gamesOnly = gamesOnly ?? (() => false);
         _clock = clock;
         _zone = zone;
@@ -68,7 +74,7 @@ public sealed class UsageSnapshotLoader
     /// <summary>A loader on the real clock and local zone that reads the week start from the settings table on demand.</summary>
     public static UsageSnapshotLoader ForDb(string dbPath, Func<IReadOnlyCollection<long>?> running, Func<long?> signInUtc, Func<bool>? gamesOnly = null) =>
         new(() => DateTimeOffset.UtcNow, TimeZoneInfo.Local, running, signInUtc,
-            () => AppSettings.ForFile(dbPath).Get(Setting.WeekStartsOn), gamesOnly);
+            () => AppSettings.ForFile(dbPath).Get(Setting.WeekStartsOn), gamesOnly, dbPath);
 
     public bool Started => _started;
 
@@ -84,7 +90,7 @@ public sealed class UsageSnapshotLoader
     {
         if (!_started) return false;
         var seq = Interlocked.Increment(ref _seq);
-        var context = new UsageContext(_clock(), _zone, _running(), _signInUtc, _weekStart, _gamesOnly());
+        var context = new UsageContext(_clock(), _zone, _running(), _signInUtc, _weekStart, _gamesOnly(), _dbPath);
         T result;
         try { result = await Task.Run(() => query(context)); }
         catch (Exception ex) when (ex is SqliteException or IOException) { return false; } // no DB yet

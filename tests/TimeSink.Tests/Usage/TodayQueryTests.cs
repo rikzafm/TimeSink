@@ -9,7 +9,7 @@ public sealed class TodayQueryTests : IDisposable
     public void Dispose() => _f.Dispose();
 
     private TodayResult Run(IReadOnlyCollection<long>? running = null) =>
-        TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, running);
+        Q.Today(_f.DbPath, Now, TimeZoneInfo.Utc, running);
 
     [Fact]
     public void Combined_total_sums_tracked_apps_clipped_to_today_with_open_session_up_to_now()
@@ -109,8 +109,8 @@ public sealed class TodayQueryTests : IDisposable
     {
         // The day's first activity is the 00:00 carry-over, so a mid-day sign-in (restart) or one before midnight changes nothing.
         var expected = U(2026, 3, 11, 14, 20) - U(2026, 3, 11, 0) - 5400;
-        TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null, null, U(2026, 3, 11, 8)).UptimeSeconds.Should().Be(expected);
-        TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null, null, U(2026, 3, 9, 8)).UptimeSeconds.Should().Be(expected);
+        Q.Today(_f.DbPath, Now, TimeZoneInfo.Utc, null, null, U(2026, 3, 11, 8)).UptimeSeconds.Should().Be(expected);
+        Q.Today(_f.DbPath, Now, TimeZoneInfo.Utc, null, null, U(2026, 3, 9, 8)).UptimeSeconds.Should().Be(expected);
     }
 
     [Fact]
@@ -148,7 +148,7 @@ public sealed class TodayQueryTests : IDisposable
         try
         {
             using (TimeSink.Core.Data.Db.Open(empty)) { }
-            var r = TodayQuery.Run(empty, Now, TimeZoneInfo.Utc, null);
+            var r = Q.Today(empty, Now, TimeZoneInfo.Utc, null);
             r.TotalSeconds.Should().Be(0);
             r.Apps.Should().BeEmpty();
             r.HasTypical.Should().BeFalse();

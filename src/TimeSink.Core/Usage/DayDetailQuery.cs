@@ -20,17 +20,23 @@ public sealed record DayDetail(
 /// </summary>
 public static class DayDetailQuery
 {
-    public static DayDetail Run(string dbPath, DateOnly day, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart,
-        IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
+    public static DayDetail Run(UsageContext context, DateOnly day)
     {
-        using var c = UsageDb.OpenReadOnly(dbPath);
+        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
+        return Run(new UsageWindow(new SqliteUsageSource(c), context), day);
+    }
+
+    /// <remarks>Week runs first: it reads furthest back, so Today's two runs are answered from the sessions already loaded.</remarks>
+    internal static DayDetail Run(UsageWindow window, DateOnly day)
+    {
+        var (now, zone) = (window.Context.Now, window.Context.Zone);
         var today = LocalDays.DateOf(now.ToUnixTimeSeconds(), zone);
-        var dow = weekStart.ToDayOfWeek();
+        var dow = window.Context.WeekStartDay;
         var weeksBack = Math.Max(0, (WeekStarts.Containing(today, dow).DayNumber - WeekStarts.Containing(day, dow).DayNumber) / 7);
 
-        var week = WeekQuery.Run(c, now, zone, weekStart, running, onSinceUtc, weeksBack, gamesOnly);
-        var thisDay = TodayQuery.Run(c, now, zone, running, day, onSinceUtc, gamesOnly: gamesOnly);
-        var lastWeek = TodayQuery.Run(c, now, zone, running, day.AddDays(-7), gamesOnly: gamesOnly);
+        var week = WeekQuery.Run(window, weeksBack);
+        var thisDay = TodayQuery.Run(window, day);
+        var lastWeek = TodayQuery.Run(window, day.AddDays(-7), useSignIn: false);
 
         var apps = thisDay.Apps.Select(a => new BarApp(a.AppId, a.Name, a.Seconds)).ToList();
         var sessions = thisDay.Apps.SelectMany(a => a.Sessions).ToList();

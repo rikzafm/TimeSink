@@ -19,15 +19,18 @@ public static class TodayQuery
 
 
     /// <param name="forDay">The local day to show; null or any day after today means today (the live day).</param>
-    /// <param name="onSinceUtc">When the PC became usable (sign-in); starts the live day's uptime. Null: first tracked session.</param>
-    public static TodayResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null, long? onSinceUtc = null, bool gamesOnly = false)
+    public static TodayResult Run(UsageContext context, DateOnly? forDay = null)
     {
-        using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, running, forDay, onSinceUtc, gamesOnly: gamesOnly);
+        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
+        return Run(new UsageWindow(new SqliteUsageSource(c), context), forDay);
     }
 
-    public static TodayResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null, long? onSinceUtc = null, bool gamesOnly = false)
+    /// <param name="useSignIn">False compares like-for-like (the day's own first activity) instead of starting the uptime at sign-in.</param>
+    internal static TodayResult Run(UsageWindow window, DateOnly? forDay = null, bool useSignIn = true)
     {
+        var context = window.Context;
+        var (now, zone, gamesOnly) = (context.Now, context.Zone, context.GamesOnly);
+        var onSinceUtc = useSignIn ? context.SignInUtc : null; // when the PC became usable; starts the live day's uptime. Null: first tracked session.
         var nowUtc = now.ToUnixTimeSeconds();
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
         var date = forDay is { } want && want < today ? want : today;
@@ -35,8 +38,8 @@ public static class TodayQuery
         var d0 = LocalDays.StartOf(date, zone);
         var d1 = LocalDays.StartOf(date.AddDays(1), zone);
 
-        var apps = AppGroups.Load(c, gamesOnly: gamesOnly);
-        var segs = UsageLoader.LoadSegments(c, LocalDays.StartOf(date.AddDays(-TypicalWeeks * 7), zone), nowUtc, apps, running);
+        var apps = window.Apps;
+        var segs = window.Segments(LocalDays.StartOf(date.AddDays(-TypicalWeeks * 7), zone));
         var byGroup = segs.ToLookup(s => s.Group);
 
         // Hourly chart + typical day.

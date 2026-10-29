@@ -21,7 +21,7 @@ public sealed class RetireRestoreTests
         using (var lib = AppLibrary.Open(f.DbPath))
             lib.Retire(a, 1_000);
 
-        TodayQuery.Run(f.DbPath, WeekFixture.Now, TimeZoneInfo.Utc).Apps.Select(r => r.Name).Should().Equal("Beta");
+        Q.Today(f.DbPath, WeekFixture.Now, TimeZoneInfo.Utc).Apps.Select(r => r.Name).Should().Equal("Beta");
         using var db = Db.Open(f.DbPath);
         new SqliteSessionStore(db).GetTrackedApps().Select(t => t.Id).Should().Equal(b);
         using var lib2 = AppLibrary.Open(f.DbPath);
@@ -44,7 +44,7 @@ public sealed class RetireRestoreTests
         lib.Restore(a, 2_000);
 
         lib.Retired().Should().BeEmpty();
-        TodayQuery.Run(f.DbPath, WeekFixture.Now, TimeZoneInfo.Utc).Apps.Select(r => (r.Name, r.Seconds)).Should().Equal(("Alpha", 3600L));
+        Q.Today(f.DbPath, WeekFixture.Now, TimeZoneInfo.Utc).Apps.Select(r => (r.Name, r.Seconds)).Should().Equal(("Alpha", 3600L));
         using var db = Db.Open(f.DbPath);
         new SqliteSessionStore(db).GetTrackedApps().Single().AddedUtc.Should().Be(2_000);
     }

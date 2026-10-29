@@ -139,9 +139,9 @@ public partial class TodayView : UserControl, ILiveView
     {
         if (!_driver.Started) return;
         _sinceRefresh = 0;
-        var (path, day) = (_dbPath, _day);
+        var day = _day;
         var applied = await _loader.Refresh(
-            c => (Result: TodayQuery.Run(path, c.Now, c.Zone, c.Running, day, c.SignInUtc, c.GamesOnly), WeekStart: c.WeekStartDay), // no DB yet: keep the empty state
+            c => (Result: TodayQuery.Run(c, day), WeekStart: c.WeekStartDay), // no DB yet: keep the empty state
             r =>
             {
                 _result = r.Result;

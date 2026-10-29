@@ -36,13 +36,13 @@ public sealed class DayDetailQueryTests : IDisposable
             }
             var signIn = TodayFixture.U(2026, 3, 11, 7);
 
-            var column = WeekQuery.Run(db, Now, Utc, WeekStart.Mon, [], signIn).Days.Single(d => d.IsToday);
-            var panel = DayDetailQuery.Run(db, Today, Now, Utc, WeekStart.Mon, [], signIn);
+            var column = Q.Week(db, Now, Utc, WeekStart.Mon, [], signIn).Days.Single(d => d.IsToday);
+            var panel = Q.DayDetail(db, Today, Now, Utc, WeekStart.Mon, [], signIn);
 
             column.Seconds.Should().Be(TodayFixture.U(2026, 3, 11, 14, 20) - signIn); // 07:00 to now
             panel.TotalSeconds.Should().Be(column.Seconds);
             // Without the live context the day starts at its first tracked session: a different number.
-            TodayQuery.Run(db, Now, Utc, null, Today).UptimeSeconds.Should().NotBe(column.Seconds);
+            Q.Today(db, Now, Utc, null, Today).UptimeSeconds.Should().NotBe(column.Seconds);
         }
         finally
         {
@@ -55,10 +55,10 @@ public sealed class DayDetailQueryTests : IDisposable
     public void A_day_of_an_earlier_week_compares_with_that_weeks_average()
     {
         var wed4 = new DateOnly(2026, 3, 4); // the week of Mon 2026-03-02: only this day has time (Chrome 10:00-12:00)
-        var panel = DayDetailQuery.Run(_f.DbPath, wed4, Now, Utc, WeekStart.Mon, [], null);
+        var panel = Q.DayDetail(_f.DbPath, wed4, Now, Utc, WeekStart.Mon, [], null);
 
-        var lastWeek = WeekQuery.Run(_f.DbPath, Now, Utc, WeekStart.Mon, [], null, weeksBack: 1);
-        var thisWeek = WeekQuery.Run(_f.DbPath, Now, Utc, WeekStart.Mon, [], null);
+        var lastWeek = Q.Week(_f.DbPath, Now, Utc, WeekStart.Mon, [], null, weeksBack: 1);
+        var thisWeek = Q.Week(_f.DbPath, Now, Utc, WeekStart.Mon, [], null);
         panel.TotalSeconds.Should().Be(7200);
         panel.WeekAverageSeconds.Should().Be(lastWeek.AverageSeconds).And.Be(7200);
         panel.WeekAverageSeconds.Should().NotBe(thisWeek.AverageSeconds);
@@ -68,7 +68,7 @@ public sealed class DayDetailQueryTests : IDisposable
     public void The_panel_lists_the_days_apps_and_the_span_of_activity()
     {
         var tue10 = new DateOnly(2026, 3, 10);
-        var panel = DayDetailQuery.Run(_f.DbPath, tue10, Now, Utc, WeekStart.Mon, [], null);
+        var panel = Q.DayDetail(_f.DbPath, tue10, Now, Utc, WeekStart.Mon, [], null);
 
         panel.Apps.Select(a => a.Name).Should().Contain("Chrome");
         panel.FirstStartUtc.Should().Be(TodayFixture.U(2026, 3, 10, 8));
@@ -78,7 +78,7 @@ public sealed class DayDetailQueryTests : IDisposable
     [Fact]
     public void The_week_average_counts_only_days_with_time()
     {
-        var week = WeekQuery.Run(_f.DbPath, Now, Utc, WeekStart.Mon, [], null);
+        var week = Q.Week(_f.DbPath, Now, Utc, WeekStart.Mon, [], null);
         var withTime = week.Days.Where(d => !d.IsFuture && d.Seconds > 0).ToList();
         week.AverageSeconds.Should().BeApproximately(withTime.Sum(d => d.Seconds) / (double)withTime.Count, 1e-9);
     }

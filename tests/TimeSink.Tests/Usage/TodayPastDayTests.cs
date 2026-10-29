@@ -8,7 +8,7 @@ public sealed class TodayPastDayTests : IDisposable
     private readonly TodayFixture _f = new();
     public void Dispose() => _f.Dispose();
 
-    private TodayResult Run(DateOnly? day) => TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null, day);
+    private TodayResult Run(DateOnly? day) => Q.Today(_f.DbPath, Now, TimeZoneInfo.Utc, null, day);
 
     [Fact]
     public void A_past_day_sums_that_day_only_and_is_not_live()
@@ -50,6 +50,6 @@ public sealed class TodayPastDayTests : IDisposable
     [Fact]
     public void First_date_is_the_day_tracking_began()
     {
-        TodayQuery.Run(_f.DbPath, TodayFixture.Now, TimeZoneInfo.Utc).FirstTracked.Should().Be(new DateOnly(2026, 2, 20));
+        Q.Today(_f.DbPath, TodayFixture.Now, TimeZoneInfo.Utc).FirstTracked.Should().Be(new DateOnly(2026, 2, 20));
     }
 }

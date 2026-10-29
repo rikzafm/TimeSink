@@ -56,6 +56,10 @@ _Avoid_: Avatar, badge
 One continuous run of a Tracked app. The sum of its Sessions is the app's running time.
 _Avoid_: Run, launch
 
+**Usage window**:
+The Tracked apps and their Session segments from one instant up to now, loaded once and shared by every usage query that runs for the same view, so the queries cannot disagree about what was read.
+_Avoid_: Snapshot, data set, cache
+
 **Ranking**:
 The default order the views list apps in: Background apps last, then most time first, then name A to Z ignoring case.
 _Avoid_: Sort order, ordering

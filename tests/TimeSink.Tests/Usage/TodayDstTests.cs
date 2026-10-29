@@ -51,7 +51,7 @@ public sealed class TodayDstTests : IDisposable
         cmd.ExecuteNonQuery();
     }
 
-    private TodayResult Run(DateTimeOffset now) => TodayQuery.Run(_db, now, Ny, running: Array.Empty<long>());
+    private TodayResult Run(DateTimeOffset now) => Q.Today(_db, now, Ny, running: Array.Empty<long>());
 
     [Fact]
     public void Spring_forward_day_is_23_hours_and_the_skipped_hour_column_is_empty()

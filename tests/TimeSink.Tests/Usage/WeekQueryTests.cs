@@ -9,7 +9,7 @@ public sealed class WeekQueryTests : IDisposable
     public void Dispose() => _f.Dispose();
 
     private WeekResult Run(WeekStart ws = WeekStart.Mon, IReadOnlyCollection<long>? running = null) =>
-        WeekQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, ws, running);
+        Q.Week(_f.DbPath, Now, TimeZoneInfo.Utc, ws, running);
 
     [Fact]
     public void Monday_week_has_seven_columns_with_hand_computed_seconds()
@@ -107,12 +107,12 @@ public sealed class WeekQueryTests : IDisposable
         var a = f.AddApp("A");
         f.Session(a, Unix(2026, 3, 9, 9), Unix(2026, 3, 9, 10));
         f.Session(a, Unix(2026, 3, 10, 9), Unix(2026, 3, 10, 10));
-        var early = WeekQuery.Run(f.DbPath, U(2026, 3, 11, 0, 10), TimeZoneInfo.Utc, WeekStart.Mon);
+        var early = Q.Week(f.DbPath, U(2026, 3, 11, 0, 10), TimeZoneInfo.Utc, WeekStart.Mon);
         early.StreakDays.Should().Be(2); // Wed is still empty but not over
         f.Session(a, Unix(2026, 3, 11, 0, 5), Unix(2026, 3, 11, 0, 8));
-        WeekQuery.Run(f.DbPath, U(2026, 3, 11, 0, 10), TimeZoneInfo.Utc, WeekStart.Mon).StreakDays.Should().Be(3);
+        Q.Week(f.DbPath, U(2026, 3, 11, 0, 10), TimeZoneInfo.Utc, WeekStart.Mon).StreakDays.Should().Be(3);
         // Thursday ends with nothing: the streak is gone.
-        WeekQuery.Run(f.DbPath, U(2026, 3, 13, 0, 10), TimeZoneInfo.Utc, WeekStart.Mon).StreakDays.Should().Be(0);
+        Q.Week(f.DbPath, U(2026, 3, 13, 0, 10), TimeZoneInfo.Utc, WeekStart.Mon).StreakDays.Should().Be(0);
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public sealed class WeekQueryTests : IDisposable
         var gone = f.AddApp("Gone");
         f.Session(gone, Unix(2026, 3, 11, 9), Unix(2026, 3, 11, 10));
         f.Retire(gone);
-        WeekQuery.Run(f.DbPath, Now, TimeZoneInfo.Utc, WeekStart.Mon).StreakDays.Should().Be(0);
+        Q.Week(f.DbPath, Now, TimeZoneInfo.Utc, WeekStart.Mon).StreakDays.Should().Be(0);
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public sealed class WeekQueryTests : IDisposable
         f.Session(main, Unix(2026, 3, 11, 9), Unix(2026, 3, 11, 10));
         f.Session(alias, Unix(2026, 3, 11, 11), Unix(2026, 3, 11, 11, 30));
         f.Exec($"UPDATE apps SET canonical_id = {main} WHERE id = {alias}");
-        var r = WeekQuery.Run(f.DbPath, Now, TimeZoneInfo.Utc, WeekStart.Mon);
+        var r = Q.Week(f.DbPath, Now, TimeZoneInfo.Utc, WeekStart.Mon);
         r.Apps.Should().ContainSingle().Which.Should().Match<WeekAppRow>(a => a.Name == "Main" && a.Seconds == 5400);
     }
 
@@ -160,7 +160,7 @@ public sealed class WeekQueryTests : IDisposable
         var a = f.AddApp("A");
         // Sat 03-07 23:00 EST (04:00Z) -> Sun 03-08 04:30 EDT (08:30Z). Local midnight 05:00Z; clocks jump 02:00 -> 03:00 at 07:00Z.
         f.Session(a, Unix(2026, 3, 8, 4), Unix(2026, 3, 8, 8, 30));
-        var r = WeekQuery.Run(f.DbPath, U(2026, 3, 9, 16), Eastern, WeekStart.Mon); // Mon 12:00 EDT
+        var r = Q.Week(f.DbPath, U(2026, 3, 9, 16), Eastern, WeekStart.Mon); // Mon 12:00 EDT
         var sat = r.Heat.Single(x => x.Date == new DateOnly(2026, 3, 7));
         var sun = r.Heat.Single(x => x.Date == new DateOnly(2026, 3, 8));
         sat.Seconds.Should().Be(3600);
@@ -176,10 +176,10 @@ public sealed class WeekQueryTests : IDisposable
         var a = f.AddApp("A");
         f.Session(a, Unix(2026, 3, 8, 5), Unix(2026, 3, 9, 4)); // Sun 00:00 EST -> Mon 00:00 EDT
         f.Session(a, Unix(2026, 11, 1, 4), Unix(2026, 11, 2, 5)); // Sun 00:00 EDT -> Mon 00:00 EST
-        var spring = WeekQuery.Run(f.DbPath, U(2026, 3, 9, 16), Eastern, WeekStart.Mon);
+        var spring = Q.Week(f.DbPath, U(2026, 3, 9, 16), Eastern, WeekStart.Mon);
         spring.Heat.Single(x => x.Date == new DateOnly(2026, 3, 8)).Seconds.Should().Be(23 * 3600);
         spring.Heat.Single(x => x.Date == new DateOnly(2026, 3, 9)).Seconds.Should().Be(0);
-        var fall = WeekQuery.Run(f.DbPath, U(2026, 11, 2, 17), Eastern, WeekStart.Mon); // Mon 12:00 EST
+        var fall = Q.Week(f.DbPath, U(2026, 11, 2, 17), Eastern, WeekStart.Mon); // Mon 12:00 EST
         fall.Heat.Single(x => x.Date == new DateOnly(2026, 11, 1)).Seconds.Should().Be(25 * 3600);
         fall.Heat.Single(x => x.Date == new DateOnly(2026, 11, 2)).Seconds.Should().Be(0);
     }
@@ -192,7 +192,7 @@ public sealed class WeekQueryTests : IDisposable
         var a = f.AddApp("A");
         // Sun 03-15 21:00 EDT (01:00Z Mon) -> 22:00 EDT: Sunday locally, Monday in UTC. Now = Mon 03-16 10:00 EDT.
         f.Session(a, Unix(2026, 3, 16, 1), Unix(2026, 3, 16, 2));
-        var r = WeekQuery.Run(f.DbPath, U(2026, 3, 16, 14), Eastern, WeekStart.Mon);
+        var r = Q.Week(f.DbPath, U(2026, 3, 16, 14), Eastern, WeekStart.Mon);
         r.WeekStartDate.Should().Be(new DateOnly(2026, 3, 16));
         r.TotalSeconds.Should().Be(0);
         r.Heat.Single(x => x.Date == new DateOnly(2026, 3, 15)).Seconds.Should().Be(3600);

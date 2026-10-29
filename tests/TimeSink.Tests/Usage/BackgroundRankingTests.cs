@@ -15,17 +15,17 @@ public sealed class BackgroundRankingTests : IDisposable
     [Fact]
     public void Today_and_week_lists_put_the_background_app_last()
     {
-        var todayBefore = TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null).Apps.Select(a => a.Name).ToList();
-        var weekBefore = WeekQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, WeekStart.Mon).Apps.Select(a => a.Name).ToList();
+        var todayBefore = Q.Today(_f.DbPath, Now, TimeZoneInfo.Utc, null).Apps.Select(a => a.Name).ToList();
+        var weekBefore = Q.Week(_f.DbPath, Now, TimeZoneInfo.Utc, WeekStart.Mon).Apps.Select(a => a.Name).ToList();
         FlagChrome();
 
-        var today = TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null).Apps.Select(a => a.Name).ToList();
-        var week = WeekQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, WeekStart.Mon).Apps.Select(a => a.Name).ToList();
+        var today = Q.Today(_f.DbPath, Now, TimeZoneInfo.Utc, null).Apps.Select(a => a.Name).ToList();
+        var week = Q.Week(_f.DbPath, Now, TimeZoneInfo.Utc, WeekStart.Mon).Apps.Select(a => a.Name).ToList();
 
         // Running apps list first on Today, so the background app is last within its own running/closed group.
-        var chrome = TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null).Apps.FirstOrDefault(a => a.Name == "Chrome");
+        var chrome = Q.Today(_f.DbPath, Now, TimeZoneInfo.Utc, null).Apps.FirstOrDefault(a => a.Name == "Chrome");
         if (chrome is not null)
-            TodayQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, null).Apps.Where(a => a.IsRunning == chrome.IsRunning).Last().Name.Should().Be("Chrome");
+            Q.Today(_f.DbPath, Now, TimeZoneInfo.Utc, null).Apps.Where(a => a.IsRunning == chrome.IsRunning).Last().Name.Should().Be("Chrome");
         if (weekBefore.Contains("Chrome")) week.Last().Should().Be("Chrome");
         today.Should().BeEquivalentTo(todayBefore);
         week.Should().BeEquivalentTo(weekBefore);

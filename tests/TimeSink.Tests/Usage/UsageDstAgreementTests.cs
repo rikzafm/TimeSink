@@ -58,7 +58,7 @@ public sealed class UsageDstAgreementTests : IDisposable
         var now = Utc(2026, 11, 2, 12);
         var nov1 = new DateOnly(2026, 11, 1);
 
-        var today = TodayQuery.Run(_db, now, Ny, None, nov1);
+        var today = Q.Today(_db, now, Ny, None, nov1);
         today.Hours[1].AppSeconds.Should().Be(5400);
         today.Hours[2].AppSeconds.Should().Be(1800);
 
@@ -83,7 +83,7 @@ public sealed class UsageDstAgreementTests : IDisposable
         var now = Utc(2026, 3, 9, 12);
         var mar8 = new DateOnly(2026, 3, 8);
 
-        var today = TodayQuery.Run(_db, now, Ny, None, mar8);
+        var today = Q.Today(_db, now, Ny, None, mar8);
         today.Hours.Select(h => h.AppSeconds).Take(5).Should().Equal(0, 1800, 0, 3600, 1800);
 
         var month = MonthQuery.Run(_db, now, Ny, 2026, 3, DayOfWeek.Monday, None);
