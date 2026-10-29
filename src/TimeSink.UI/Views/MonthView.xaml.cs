@@ -85,9 +85,8 @@ public partial class MonthView : UserControl, ILiveView
     public async void Refresh()
     {
         var (year, month) = (_year, _month);
-        var path = _dbPath;
         var applied = await _loader.Refresh(
-            c => MonthQuery.Run(path, c.Now, c.Zone, year, month, c.WeekStartDay, c.Running, c.SignInUtc, c.GamesOnly),
+            c => MonthQuery.Run(c, year, month),
             r =>
             {
                 _firstTracked = r.FirstTracked;

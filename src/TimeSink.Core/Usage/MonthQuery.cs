@@ -18,16 +18,17 @@ public static class MonthQuery
     /// <summary>The <c>week.start</c> setting (Mon / Sun / Sat); anything else is Monday.</summary>
     public static DayOfWeek ParseWeekStart(string? value) => WeekStarts.Parse(value).ToDayOfWeek();
 
-    public static MonthResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, int year, int month,
-        DayOfWeek weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
+    public static MonthResult Run(UsageContext context, int year, int month)
     {
-        using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, year, month, weekStart, running, onSinceUtc, gamesOnly: gamesOnly);
+        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
+        return Run(new UsageWindow(new SqliteUsageSource(c), context), year, month);
     }
 
-    public static MonthResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, int year, int month,
-        DayOfWeek weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
+    internal static MonthResult Run(UsageWindow window, int year, int month)
     {
+        var context = window.Context;
+        var (now, zone, gamesOnly) = (context.Now, context.Zone, context.GamesOnly);
+        var (weekStart, onSinceUtc) = (context.WeekStartDay, context.SignInUtc);
         var nowUtc = now.ToUnixTimeSeconds();
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
         var first = new DateOnly(year, month, 1);
@@ -39,9 +40,9 @@ public static class MonthQuery
         var prevDim = DateTime.DaysInMonth(prevFirst.Year, prevFirst.Month);
         var prevCounted = Math.Min(counted, prevDim);
 
-        var apps = AppGroups.Load(c, gamesOnly: gamesOnly);
+        var apps = window.Apps;
         var start = TrackingStart.Of(apps, zone);
-        var segs = UsageLoader.LoadSegments(c, DayStart(prevFirst, zone), nowUtc, apps, running, to: DayStart(first.AddMonths(1), zone));
+        var segs = window.Segments(DayStart(prevFirst, zone), to: DayStart(first.AddMonths(1), zone));
 
         // PC uptime per local day: the headline numbers; per-app seconds below feed the day detail and the top apps.
         var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc, gamesOnly);

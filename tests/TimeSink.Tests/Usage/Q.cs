@@ -23,4 +23,8 @@ internal static class Q
     public static DayDetail DayDetail(string db, DateOnly day, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart,
         IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false) =>
         DayDetailQuery.Run(Ctx(db, now, zone, running, onSinceUtc, weekStart, gamesOnly), day);
+
+    public static MonthResult Month(string db, DateTimeOffset now, TimeZoneInfo zone, int year, int month, DayOfWeek weekStart,
+        IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false) =>
+        MonthQuery.Run(Ctx(db, now, zone, running, onSinceUtc, weekStart switch { DayOfWeek.Sunday => WeekStart.Sun, DayOfWeek.Saturday => WeekStart.Sat, _ => WeekStart.Mon }, gamesOnly), year, month);
 }

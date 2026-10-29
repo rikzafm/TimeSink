@@ -89,6 +89,13 @@ public sealed class UsageWindowTests
     }
 
     [Fact]
+    public void A_bounded_span_leaves_out_sessions_that_start_at_or_after_the_end()
+    {
+        new UsageWindow(Source(), Context()).Segments(At(1, 0), to: At(9, 9))
+            .Select(s => s.Start).Should().Equal(At(2, 10)); // the Mon 09:00 session starts exactly at the bound
+    }
+
+    [Fact]
     public void The_games_filter_leaves_the_apps_of_other_kinds_out()
     {
         new UsageWindow(Source(), Context(gamesOnly: true)).Apps.Count.Should().Be(0);

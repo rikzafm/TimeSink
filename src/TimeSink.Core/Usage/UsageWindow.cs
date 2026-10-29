@@ -67,14 +67,17 @@ internal sealed class UsageWindow(IUsageSource source, UsageContext context)
 
     public AppGroups Apps => _apps ??= source.Apps(Context.GamesOnly);
 
-    /// <summary>The segments that overlap or follow <paramref name="from"/> up to now, by the rules of <see cref="UsageLoader.Resolve"/>.</summary>
-    public List<UsageSeg> Segments(long from)
+    /// <summary>
+    /// The segments that overlap or follow <paramref name="from"/> up to now (and start before <paramref name="to"/> when
+    /// given: Month reads a bounded span), by the rules of <see cref="UsageLoader.Resolve"/>.
+    /// </summary>
+    public List<UsageSeg> Segments(long from, long? to = null)
     {
         if (_raw is null || from < _rawFrom)
         {
             _raw = source.Sessions(from, NowUtc, null).ToList();
             _rawFrom = from;
         }
-        return UsageLoader.Resolve(_raw.Where(s => s.EndUtc is null || s.EndUtc >= from), NowUtc, Apps, Context.Running);
+        return UsageLoader.Resolve(_raw.Where(s => (s.EndUtc is null || s.EndUtc >= from) && (to is null || s.StartUtc < to)), NowUtc, Apps, Context.Running);
     }
 }

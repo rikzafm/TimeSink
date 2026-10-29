@@ -9,7 +9,7 @@ public sealed class MonthQueryTests : IDisposable
     public void Dispose() => _f.Dispose();
 
     private MonthResult March(DayOfWeek start = DayOfWeek.Monday, TimeZoneInfo? zone = null, IReadOnlyCollection<long>? running = null) =>
-        MonthQuery.Run(_f.DbPath, Now, zone ?? TimeZoneInfo.Utc, 2026, 3, start, running);
+        Q.Month(_f.DbPath, Now, zone ?? TimeZoneInfo.Utc, 2026, 3, start, running);
 
     private static MonthDay Day(MonthResult r, int d) => r.Days.Single(x => x.Date.Day == d);
 
@@ -82,7 +82,7 @@ public sealed class MonthQueryTests : IDisposable
     public void Default_selected_day_is_today_for_the_current_month_and_the_last_day_otherwise()
     {
         March().DefaultSelected.Should().Be(new DateOnly(2026, 3, 11));
-        MonthQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 2, DayOfWeek.Monday).DefaultSelected.Should().Be(new DateOnly(2026, 2, 28));
+        Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 2, DayOfWeek.Monday).DefaultSelected.Should().Be(new DateOnly(2026, 2, 28));
     }
 
     [Fact]
@@ -122,7 +122,7 @@ public sealed class MonthQueryTests : IDisposable
     [Fact]
     public void A_completed_month_counts_every_day_and_has_no_baseline_when_last_month_is_empty()
     {
-        var r = MonthQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 2, DayOfWeek.Monday);
+        var r = Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 2, DayOfWeek.Monday);
         r.IsCurrent.Should().BeFalse();
         r.DaysCounted.Should().Be(28);
         r.TotalSeconds.Should().Be(75600);
@@ -136,7 +136,7 @@ public sealed class MonthQueryTests : IDisposable
     [Fact]
     public void A_future_month_is_empty()
     {
-        var r = MonthQuery.Run(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 4, DayOfWeek.Monday);
+        var r = Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 4, DayOfWeek.Monday);
         r.DaysCounted.Should().Be(0);
         r.TotalSeconds.Should().Be(0);
         r.DailyAverageSeconds.Should().Be(0);
