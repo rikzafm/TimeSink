@@ -398,7 +398,7 @@ public sealed class AllView : UserControl, ILiveView
         {
             DayKind.Today => Str(AllStringKeys.HoursAgo, (age / 3600).ToString(En)),
             DayKind.Yesterday => Str(AppDetailStringKeys.Yesterday),
-            _ => bucket.Date.ToString(bucket.InCurrentYear ? "d MMM" : "d MMM yyyy", En),
+            _ => UsageText.ShortDate(bucket.Date, withYear: !bucket.InCurrentYear),
         };
     }
 
@@ -412,7 +412,7 @@ public sealed class AllView : UserControl, ILiveView
         name.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         name.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
         var stopped = Label();
-        stopped.Text = Str(AllStringKeys.Stopped, x.StoppedDate.ToString("d MMM", En));
+        stopped.Text = Str(AllStringKeys.Stopped, UsageText.ShortDate(x.StoppedDate));
         stopped.TextTrimming = TextTrimming.CharacterEllipsis;
         var left = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
         left.Children.Add(name);

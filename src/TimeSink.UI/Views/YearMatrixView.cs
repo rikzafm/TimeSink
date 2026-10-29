@@ -147,8 +147,6 @@ public sealed class YearMatrixView : UserControl, IYearSubView
     }
 
     private static string H(long seconds) => Str(MatrixStringKeys.Hours, UsageText.Hours(seconds));
-    private static string MonthAbbr(int month) => CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedMonthNames[month - 1];
-    private static string MonthName(int month) => CultureInfo.CurrentCulture.DateTimeFormat.MonthNames[month - 1];
 
     private void Redraw()
     {
@@ -172,14 +170,14 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         }
         var empty = r.Rows.Count == 0;
         _caption.Text = r.TrackingStarted is { } s && s.Year == r.Year
-            ? Str(MatrixStringKeys.CaptionSince, r.Year, s.ToString("d MMM", CultureInfo.CurrentCulture))
+            ? Str(MatrixStringKeys.CaptionSince, r.Year, UsageText.ShortDate(s))
             : Str(MatrixStringKeys.Caption, r.Year);
         _total.Text = H(r.GrandSeconds);
         _empty.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         _grid.Visibility = _footnote.Visibility = _hint.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
 
         AppIcons.Load(_dbPath, r.Rows.Select(row => row.AppId));
-        _grid.MonthLabels = r.Months.Select(m => MonthAbbr(m.Month)).ToList();
+        _grid.MonthLabels = r.Months.Select(m => UsageText.MonthAbbr(m.Month)).ToList();
         _grid.Rows = r.Rows.Select(row => new MatrixGridRow(row.Name, _themes.AppSlot(row.AppId), row.Cells.Select(CellText).ToList(),
             row.Cells.Select(c => c.Level).ToList(), H(row.TotalSeconds), AppIcons.Get(row.AppId))).ToList();
         _grid.ColumnTotals = r.Months.Select(m => UsageText.Hours(m.TotalSeconds)).ToList();
@@ -210,7 +208,7 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         if (_selectMonth)
         {
             var m = r.Months[_selected];
-            _selTitle.Text = MonthName(m.Month);
+            _selTitle.Text = UsageText.MonthName(m.Month);
             _selTotal.Text = H(m.TotalSeconds);
             _selNote.Text = m.TopApps.Count switch
             {
@@ -229,9 +227,9 @@ public sealed class YearMatrixView : UserControl, IYearSubView
             var row = r.Rows[_selected];
             _selTitle.Text = row.Name;
             _selTotal.Text = Str(MatrixStringKeys.RowTotal, H(row.TotalSeconds), row.SharePercent);
-            var peak = Str(MatrixStringKeys.RowNotePeak, MonthName(row.PeakMonth), H(row.PeakSeconds));
+            var peak = Str(MatrixStringKeys.RowNotePeak, UsageText.MonthName(row.PeakMonth), H(row.PeakSeconds));
             _selNote.Text = row.TrendPercent is { } t
-                ? Str(t >= 0 ? MatrixStringKeys.RowNoteUp : MatrixStringKeys.RowNoteDown, MonthName(row.PeakMonth), H(row.PeakSeconds), UsageText.DeltaMagnitude(t))
+                ? Str(t >= 0 ? MatrixStringKeys.RowNoteUp : MatrixStringKeys.RowNoteDown, UsageText.MonthName(row.PeakMonth), H(row.PeakSeconds), UsageText.DeltaMagnitude(t))
                 : peak;
             var accent = (Brush)FindResource(_themes.AppBrushKey(row.AppId));
             var muted = (Brush)FindResource("Brush.Heat1");

@@ -161,4 +161,36 @@ public class UsageTextTests
     {
         UsageText.DayOf(At(2026, 6, 10, 9, 0, -4), At(2026, 6, 10, 8, 0, -4), Ny).Kind.Should().Be(DayKind.Today);
     }
+
+    [Theory]
+    [InlineData(1, "January", "Jan")]
+    [InlineData(3, "March", "Mar")]
+    [InlineData(12, "December", "Dec")]
+    [InlineData(0, "December", "Dec")]
+    [InlineData(13, "January", "Jan")]
+    public void Month_names_are_English_and_wrap_at_both_ends(int month, string name, string abbr)
+    {
+        UsageText.MonthName(month).Should().Be(name);
+        UsageText.MonthAbbr(month).Should().Be(abbr);
+    }
+
+    [Fact]
+    public void Date_text_is_English_whatever_the_current_culture()
+    {
+        var previous = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+        try
+        {
+            var d = new DateOnly(2026, 3, 9);
+            UsageText.MonthYear(d).Should().Be("March 2026");
+            UsageText.ShortDate(d).Should().Be("9 Mar");
+            UsageText.ShortDate(d, withYear: true).Should().Be("9 Mar 2026");
+            UsageText.WeekdayDay(d).Should().Be("Mon 9");
+            UsageText.WeekdayDayMonth(d).Should().Be("Mon 9 Mar");
+            UsageText.WeekdayDate(d).Should().Be("Mon, 9 Mar");
+            UsageText.WeekdayDate(d, full: true).Should().Be("Monday, 9 Mar");
+            UsageText.WeekdayAbbr(DayOfWeek.Saturday).Should().Be("Sat");
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = previous; }
+    }
 }

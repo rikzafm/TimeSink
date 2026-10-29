@@ -114,7 +114,7 @@ public sealed class DayNav : Grid
         var next = Link("▸");
         var title = Themed(new TextBlock
         {
-            Text = _month.ToString("MMMM yyyy", CultureInfo.CurrentCulture),
+            Text = UsageText.MonthYear(_month),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold,
         }, "Brush.Text");
         prev.IsEnabled = _months.CanPrev(_month);
@@ -132,7 +132,7 @@ public sealed class DayNav : Grid
         var grid = new UniformGrid { Columns = 7 };
         foreach (var dow in month.Weekdays)
         {
-            var name = CultureInfo.CurrentCulture.DateTimeFormat.GetAbbreviatedDayName(dow);
+            var name = UsageText.WeekdayAbbr(dow);
             grid.Children.Add(Themed(new TextBlock
             {
                 Text = name.Length > 2 ? name[..2] : name,

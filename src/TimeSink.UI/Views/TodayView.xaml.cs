@@ -203,7 +203,7 @@ public partial class TodayView : UserControl, ILiveView
         Nav.Configure(Today, _first ?? r.Date, r.Date, _weekStart);
         Nav.CaptionText = since is not null
             ? Str(StringKeys.TodayEarlyCaption, Clock(since.Value))
-            : Str(StringKeys.TodayCaption, r.Date.ToString("dddd, d MMM", System.Globalization.CultureInfo.CurrentCulture));
+            : Str(StringKeys.TodayCaption, UsageText.WeekdayDate(r.Date, full: true));
         EarlyHint.Visibility = early ? Visibility.Visible : Visibility.Collapsed;
         RunningText.Text = Str(StringKeys.RunningPill, r.RunningCount);
         RunningPill.Visibility = live ? Visibility.Visible : Visibility.Collapsed;

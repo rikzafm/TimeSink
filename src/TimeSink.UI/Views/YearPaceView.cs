@@ -192,15 +192,13 @@ public sealed class YearPaceView : UserControl, IYearSubView
         _caption.Text = Str(YearStringKeys.Caption, r.Year);
         _total.Text = UsageText.HoursMinutes(r.TotalSeconds);
         _avg.Text = r.AverageMonthSeconds is { } a ? Str(YearStringKeys.Average, H(a)) : "";
-        _best.Text = r.BestMonth is { } b ? Str(YearStringKeys.Best, Str(YearStringKeys.BestValue, MonthAbbr(b), H(r.BestMonthSeconds))) : "";
+        _best.Text = r.BestMonth is { } b ? Str(YearStringKeys.Best, Str(YearStringKeys.BestValue, UsageText.MonthAbbr(b), H(r.BestMonthSeconds))) : "";
         _banner.Text = r.PaceYearSeconds is { } pace
             ? r.RecentMonthCount > 1 ? Str(YearStringKeys.Banner, H(pace), r.RecentMonthCount) : Str(YearStringKeys.BannerOne, H(pace))
             : Str(YearStringKeys.BannerNone);
         DrawChartAndPanel();
     }
 
-    private static string MonthAbbr(int month) => CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedMonthNames[month - 1];
-    private static string MonthName(int month) => CultureInfo.CurrentCulture.DateTimeFormat.MonthNames[month - 1];
 
     private static string ValueLabel(YearMonth m) => m.Kind switch
     {
@@ -214,7 +212,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
         if (_result is not { } r) return;
         _bars.Months = r.Months;
         _bars.ValueLabels = r.Months.Select(ValueLabel).ToList();
-        _bars.MonthLabels = r.Months.Select(m => MonthAbbr(m.Month)).ToList();
+        _bars.MonthLabels = r.Months.Select(m => UsageText.MonthAbbr(m.Month)).ToList();
         _bars.AverageSeconds = r.AverageMonthSeconds;
         _bars.SelectedIndex = _selected;
         if (_selected is >= 0 and < 12) DrawPanel(r, r.Months[_selected]);
@@ -223,11 +221,11 @@ public sealed class YearPaceView : UserControl, IYearSubView
     private void DrawPanel(YearResult r, YearMonth m)
     {
         var started = r.TrackingStarted;
-        string StartText() => started is { } d ? d.ToString("d MMM", CultureInfo.CurrentCulture) : "";
-        var prevName = m.Month > 1 ? MonthAbbr(m.Month - 1) : MonthAbbr(12);
+        string StartText() => started is { } d ? UsageText.ShortDate(d) : "";
+        var prevName = m.Month > 1 ? UsageText.MonthAbbr(m.Month - 1) : UsageText.MonthAbbr(12);
         string Delta() => UsageText.Delta(m.DeltaPercent!.Value);
 
-        _panelName.Text = MonthName(m.Month) + (m.Kind == YearMonthKind.Future ? Str(YearStringKeys.ProjectedSuffix) : "");
+        _panelName.Text = UsageText.MonthName(m.Month) + (m.Kind == YearMonthKind.Future ? Str(YearStringKeys.ProjectedSuffix) : "");
         switch (m.Kind)
         {
             case YearMonthKind.BeforeTracking:

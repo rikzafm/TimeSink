@@ -207,7 +207,7 @@ public sealed class AppDetailView : UserControl
         var meta = Label();
         meta.TextTrimming = TextTrimming.CharacterEllipsis;
         meta.Text = r.FirstTracked is { } first
-            ? Str(AppDetailStringKeys.Meta, r.ExeName, first.ToString(first.Year == DateTime.Now.Year ? "d MMM" : "d MMM yyyy", En))
+            ? Str(AppDetailStringKeys.Meta, r.ExeName, UsageText.ShortDate(first, withYear: first.Year != DateTime.Now.Year))
             : r.ExeName;
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
         if (r.Background)
@@ -260,7 +260,7 @@ public sealed class AppDetailView : UserControl
         {
             DayKind.Today => Str(AppDetailStringKeys.Today),
             DayKind.Yesterday => Str(AppDetailStringKeys.Yesterday),
-            _ => bucket.Date.ToString(bucket.InCurrentYear ? "ddd d MMM" : "d MMM yyyy", En),
+            _ => bucket.InCurrentYear ? UsageText.WeekdayDayMonth(bucket.Date) : UsageText.ShortDate(bucket.Date, withYear: true),
         };
         return (when, Str(AppDetailStringKeys.LastSub, Clock(last.StartUtc), UsageText.HoursMinutes(last.Seconds)));
     }
@@ -375,8 +375,8 @@ public sealed class AppDetailView : UserControl
     {
         AppDetailRange.All => Str(AppDetailStringKeys.AllTime),
         AppDetailRange.Year => d.From.Year.ToString(En),
-        AppDetailRange.Month => d.From.ToString("MMMM yyyy", En),
-        _ => $"{d.From.ToString("d MMM", En)} – {d.To.ToString("d MMM", En)}",
+        AppDetailRange.Month => UsageText.MonthYear(d.From),
+        _ => $"{UsageText.ShortDate(d.From)} – {UsageText.ShortDate(d.To)}",
     };
 
     private FrameworkElement BarsCard(AppDetailResult r)
@@ -419,8 +419,8 @@ public sealed class AppDetailView : UserControl
     private string BarName(AppDetailBar b) => _range switch
     {
         AppDetailRange.All => b.From.Year.ToString(En),
-        AppDetailRange.Year => b.From.ToString("MMMM yyyy", En),
-        _ => b.From.ToString("ddd d MMM", En),
+        AppDetailRange.Year => UsageText.MonthYear(b.From),
+        _ => UsageText.WeekdayDayMonth(b.From),
     };
 
     /// <summary>Thins the axis labels so a month of day numbers stays readable: every label up to 12 bars, otherwise every fifth.</summary>
@@ -572,7 +572,7 @@ public sealed class AppDetailView : UserControl
             cells.HoverChanged += d => _readout.Text = d is null ? Str(AppDetailStringKeys.Hint) : DayText(d);
 
             var name = Label();
-            name.Text = first.ToString("MMM", En).ToUpperInvariant();
+            name.Text = UsageText.MonthAbbr(first.Month).ToUpperInvariant();
             name.FontSize = 10;
             var total = Label();
             total.Text = seconds > 0 ? Str("matrixHours", UsageText.Hours(seconds)) : "";
@@ -593,7 +593,7 @@ public sealed class AppDetailView : UserControl
 
     private static string DayText(AppDetailDay d)
     {
-        var date = d.Date.ToString("ddd d MMM", En);
+        var date = UsageText.WeekdayDayMonth(d.Date);
         return d.Kind switch
         {
             AppDetailDayKind.Future => Str(AppDetailStringKeys.NotYet, date),

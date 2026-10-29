@@ -106,7 +106,7 @@ public partial class MonthView : UserControl, ILiveView
     {
         if (_result is not { } r) return;
         var first = r.FirstDay;
-        MonthName.Text = first.ToString("MMMM yyyy", En);
+        MonthName.Text = UsageText.MonthYear(first);
         var months = Months();
         Prev.IsEnabled = _firstTracked is not null && months.CanPrev(first);
         Next.IsEnabled = months.CanNext(first);
@@ -115,11 +115,11 @@ public partial class MonthView : UserControl, ILiveView
         BuildDelta(r);
         SetPair(Avg, StringKeys.MonthAvgPrefix, UsageText.HoursMinutes((long)Math.Round(r.DailyAverageSeconds)), StringKeys.MonthAvgSuffix);
         if (r.Best is { } b)
-            SetPair(Best, StringKeys.MonthBestPrefix, $"{b.Date.ToString("ddd d", En)} · {UsageText.HoursMinutes(b.Seconds)}", null);
+            SetPair(Best, StringKeys.MonthBestPrefix, $"{UsageText.WeekdayDay(b.Date)} · {UsageText.HoursMinutes(b.Seconds)}", null);
         else Best.Text = "";
 
         // Calendar.
-        var names = MonthGrid.Layout(r.Year, r.Month, r.WeekStart).Weekdays.Select(d => En.DateTimeFormat.GetAbbreviatedDayName(d)).ToList();
+        var names = MonthGrid.Layout(r.Year, r.Month, r.WeekStart).Weekdays.Select(d => UsageText.WeekdayAbbr(d)).ToList();
         names.Add(Str(StringKeys.MonthWeek));
         Calendar.Headers = names;
         Calendar.Rows = r.Weeks.Select(w => (IReadOnlyList<CalendarCell?>)w.Days
@@ -148,7 +148,7 @@ public partial class MonthView : UserControl, ILiveView
     {
         if (r.DeltaPercent is not { } pct || r.DaysCounted == 0) { DeltaPill.Visibility = Visibility.Collapsed; return; }
         DeltaPill.Visibility = Visibility.Visible;
-        var prev = r.FirstDay.AddMonths(-1).ToString("MMM", En);
+        var prev = UsageText.MonthAbbr(r.FirstDay.AddMonths(-1).Month);
         Delta.Text = Str(StringKeys.MonthDeltaVs, UsageText.DeltaOfRatio(pct), prev);
         var key = pct >= 0 ? "Brush.Accent" : "Brush.Warning";
         Delta.SetResourceReference(TextBlock.ForegroundProperty, key);
@@ -183,7 +183,7 @@ public partial class MonthView : UserControl, ILiveView
     private void BuildDay(MonthResult r)
     {
         var day = r.Days.FirstOrDefault(d => d.Date == _selected) ?? r.Days[0];
-        SelDate.Text = day.Date.ToString("ddd, d MMM", En);
+        SelDate.Text = UsageText.WeekdayDate(day.Date);
         SelTotal.Text = UsageText.HoursMinutes(day.Seconds);
         var top = day.Apps.OrderByDescending(a => a.Seconds).Take(MaxBarSegments).ToList();
         _barLabels = top.Select(a => (a.Name, a.Seconds)).ToList();

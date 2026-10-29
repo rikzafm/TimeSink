@@ -151,8 +151,6 @@ public sealed class YearWrappedView : UserControl, IYearSubView
     // ---- text -------------------------------------------------------------------------------------------------------
 
     private static string Plural(long n, string one, string many) => n.ToString(CultureInfo.CurrentCulture) + " " + Str(n == 1 ? one : many);
-    private static string MonthAbbr(int month) => CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedMonthNames[(month - 1 + 12) % 12];
-    private static string ShortDate(DateOnly d) => d.ToString("d MMM", CultureInfo.CurrentCulture);
 
     private static string Hours(long seconds) =>
         seconds < 3600 ? UsageText.HoursMinutes(seconds) : Str(WrappedStringKeys.ShortHours, UsageText.Hours(seconds));
@@ -185,7 +183,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         if (r.EquivalentDays > 0) parts.Add(Plural(r.EquivalentDays, WrappedStringKeys.Day, WrappedStringKeys.Days));
         if (r.EquivalentHours > 0 || parts.Count == 0) parts.Add(Plural(r.EquivalentHours, WrappedStringKeys.Hour, WrappedStringKeys.Hours));
         var highlight = string.Join(Str(WrappedStringKeys.And), parts);
-        var since = r.TrackingStarted is { } s ? (s.Year == r.Year ? ShortDate(s) : s.ToString("d MMM yyyy", CultureInfo.CurrentCulture)) : "";
+        var since = r.TrackingStarted is { } s ? (s.Year == r.Year ? UsageText.ShortDate(s) : UsageText.ShortDate(s, withYear: true)) : "";
         return new TotalCardModel(
             Str(WrappedStringKeys.Card1Label, r.Year),
             r.TotalHours.ToString(CultureInfo.CurrentCulture),
@@ -223,13 +221,13 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         const string none = "—";
         var streakValue = r.LongestStreakDays > 0 ? Plural(r.LongestStreakDays, WrappedStringKeys.Day, WrappedStringKeys.Days) : none;
         var streakSub = r.StreakStart is { } a && r.StreakEnd is { } b
-            ? r.LongestStreakDays == 1 ? Str(WrappedStringKeys.StreakOne, ShortDate(a)) : Str(WrappedStringKeys.StreakSpan, ShortDate(a), ShortDate(b))
+            ? r.LongestStreakDays == 1 ? Str(WrappedStringKeys.StreakOne, UsageText.ShortDate(a)) : Str(WrappedStringKeys.StreakSpan, UsageText.ShortDate(a), UsageText.ShortDate(b))
             : "";
 
-        var busiestValue = r.BusiestMonth is { } m ? Str(WrappedStringKeys.BusiestValue, MonthAbbr(m), Hours(r.BusiestMonthSeconds)) : none;
+        var busiestValue = r.BusiestMonth is { } m ? Str(WrappedStringKeys.BusiestValue, UsageText.MonthAbbr(m), Hours(r.BusiestMonthSeconds)) : none;
         var busiestSub = r.BusiestMonth is { } bm
             ? r.BusiestMonthDeltaPercent is { } d
-                ? Str(WrappedStringKeys.BusiestVs, UsageText.Delta(d), MonthAbbr(bm - 1))
+                ? Str(WrappedStringKeys.BusiestVs, UsageText.Delta(d), UsageText.MonthAbbr(bm - 1))
                 : Str(WrappedStringKeys.BusiestOnly)
             : "";
 

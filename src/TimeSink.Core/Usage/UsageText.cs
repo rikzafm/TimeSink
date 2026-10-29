@@ -63,6 +63,32 @@ public static class UsageText
         return p == 0 ? "<1%" : p.ToString(Inv) + "%";
     }
 
+    // ---- dates and months: English names whatever the Windows language (spec 8.1), one place for every view ----
+
+    /// <summary>"March" for month 1-12; 0 reads December and 13 January, so "the month before January" needs no guard.</summary>
+    public static string MonthName(int month) => Inv.DateTimeFormat.MonthNames[(month - 1 + 12) % 12];
+
+    /// <summary>"Mar" for month 1-12 (wraps like <see cref="MonthName"/>).</summary>
+    public static string MonthAbbr(int month) => Inv.DateTimeFormat.AbbreviatedMonthNames[(month - 1 + 12) % 12];
+
+    /// <summary>"Mon" to "Sun".</summary>
+    public static string WeekdayAbbr(DayOfWeek day) => Inv.DateTimeFormat.GetAbbreviatedDayName(day);
+
+    /// <summary>"March 2026".</summary>
+    public static string MonthYear(DateOnly d) => d.ToString("MMMM yyyy", Inv);
+
+    /// <summary>"9 Mar", or "9 Mar 2026" with <paramref name="withYear"/>.</summary>
+    public static string ShortDate(DateOnly d, bool withYear = false) => d.ToString(withYear ? "d MMM yyyy" : "d MMM", Inv);
+
+    /// <summary>"Mon 9" (day of the month with its weekday).</summary>
+    public static string WeekdayDay(DateOnly d) => d.ToString("ddd d", Inv);
+
+    /// <summary>"Mon 9 Mar".</summary>
+    public static string WeekdayDayMonth(DateOnly d) => d.ToString("ddd d MMM", Inv);
+
+    /// <summary>"Mon, 9 Mar", or "Monday, 9 Mar" with <paramref name="full"/>.</summary>
+    public static string WeekdayDate(DateOnly d, bool full = false) => d.ToString(full ? "dddd, d MMM" : "ddd, d MMM", Inv);
+
     /// <summary>Which Local day <paramref name="utcSeconds"/> falls on relative to <paramref name="nowUtc"/> in <paramref name="zone"/>;
     /// compares dates, not elapsed time, so 23 h and 25 h days still count as one day. A time after now on today's date is Today.</summary>
     public static DayBucket DayOf(long utcSeconds, long nowUtc, TimeZoneInfo zone)

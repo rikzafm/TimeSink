@@ -193,7 +193,7 @@ public sealed class WeekView : UserControl, ILiveView
         {
             0 => Str(StringKeys.WeekCaption),
             1 => "Last week",
-            _ => $"{r.Days[0].Date.ToString("d MMM", CultureInfo.CurrentCulture)} – {r.Days[^1].Date.ToString("d MMM", CultureInfo.CurrentCulture)}",
+            _ => $"{UsageText.ShortDate(r.Days[0].Date)} – {UsageText.ShortDate(r.Days[^1].Date)}",
         };
         var nav = Navigator(r);
         _prev.IsEnabled = nav.CanPrev(r.WeekStartDate);
@@ -273,7 +273,7 @@ public sealed class WeekView : UserControl, ILiveView
     {
         if (i < 0 || _result is not { } r) { _tip.IsOpen = false; return; }
         var d = r.Days[i];
-        _tip.Content = $"{d.Date.ToString("dddd, d MMM", CultureInfo.CurrentCulture)}{Environment.NewLine}{UsageText.HoursMinutes(d.Seconds)}";
+        _tip.Content = $"{UsageText.WeekdayDate(d.Date, full: true)}{Environment.NewLine}{UsageText.HoursMinutes(d.Seconds)}";
     }
 
     private void OnColumnClicked(int i)
@@ -298,7 +298,7 @@ public sealed class WeekView : UserControl, ILiveView
     {
         if (i < 0 || _result is not { } r) { _trendTip.IsOpen = false; return; }
         var from = TrendWeekStart(r, i);
-        _trendTip.Content = $"{from.ToString("d MMM", CultureInfo.CurrentCulture)} – {from.AddDays(6).ToString("d MMM", CultureInfo.CurrentCulture)}{Environment.NewLine}{UsageText.HoursMinutes(r.WeekTotals[i])}";
+        _trendTip.Content = $"{UsageText.ShortDate(from)} – {UsageText.ShortDate(from.AddDays(6))}{Environment.NewLine}{UsageText.HoursMinutes(r.WeekTotals[i])}";
     }
 
     private void OnTrendClicked(int i)
@@ -317,7 +317,7 @@ public sealed class WeekView : UserControl, ILiveView
     private void OnSparkHovered(ToolTip tip, WeekAppRow app, int i)
     {
         if (i < 0 || _result is not { } r) { tip.IsOpen = false; return; }
-        tip.Content = $"{app.Name}{Environment.NewLine}{SparkDate(r, app, i).ToString("dddd, d MMM", CultureInfo.CurrentCulture)} · {UsageText.HoursMinutes(app.Spark[i])}";
+        tip.Content = $"{app.Name}{Environment.NewLine}{UsageText.WeekdayDate(SparkDate(r, app, i), full: true)} · {UsageText.HoursMinutes(app.Spark[i])}";
     }
 
     /// <summary>
@@ -359,7 +359,7 @@ public sealed class WeekView : UserControl, ILiveView
             subtitle = $"{focus.Name} {(secs > 0 ? UsageText.HoursMinutes(secs) : "not used")} of {UsageText.HoursMinutes(detail.TotalSeconds)}{span}";
         }
         _panel.Show(
-            day.ToString("dddd, d MMM", CultureInfo.CurrentCulture),
+            UsageText.WeekdayDate(day, full: true),
             subtitle,
             apps,
             [],
