@@ -101,8 +101,8 @@ public sealed partial class AddAppView
             _installedLoading = false;
             // a re-scan on reopen: an empty result (scan failed) or an identical one leaves the cached list and its rows alone
             if (before is not null && (t.Result.Count == 0 || before.SequenceEqual(t.Result))) return;
-            if (_tab == "Installed") RenderInstalled();
-            else if (_tab == "Tracked" && _mergePlan is null && _mergeOpening is null) RenderTracked(); // rows were waiting for publishers
+            if (_nav.State.Tab == AddAppTab.Installed) RenderInstalled();
+            else if (_nav.ShowsTrackedList) RenderTracked(); // rows were waiting for publishers
             LoadInstalledIcons(t.Result);
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }

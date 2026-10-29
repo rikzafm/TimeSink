@@ -19,18 +19,12 @@ namespace TimeSink.UI.Views;
 /// </summary>
 public sealed partial class AddAppView
 {
-    private long? _settingsId;
-    private long? _settingsReturn;   // set while the merge screen is open on behalf of the settings screen
     private double _settingsOffset;
     private ScrollViewer? _settingsScroll;
-    private string _settingsAsk = ""; // "", "stop": the confirmation open in the danger zone
-    private int _clearStep;           // 0 = no modal, 1..3 = which of the three Clear history questions is showing
 
     private void ShowAppSettings(long id)
     {
-        _settingsId = id;
-        _settingsAsk = "";
-        _clearStep = 0;
+        _nav.OpenSettings(id);
         _settingsOffset = 0;
         Content = BuildAppSettings();
     }
@@ -43,26 +37,24 @@ public sealed partial class AddAppView
 
     private void CloseSettings()
     {
-        _settingsId = null;
-        _settingsReturn = null;
+        _nav.CloseSettings();
         _settingsScroll = null;
-        _clearStep = 0;
         Content = _shell;
-        if (_trackedList is not null && _tab == "Tracked" && _mergePlan is null) RenderTracked();
+        if (_trackedList is not null && _nav.State.Tab == AddAppTab.Tracked && _mergePlan is null) RenderTracked();
     }
 
-    /// <summary>Back to the settings screen after the merge screen it opened is done.</summary>
+    /// <summary>Back to the settings screen after the merge screen it opened is done (the navigation already points at it).</summary>
     private void ReturnToSettings()
     {
-        if (_settingsReturn is not { } id) return;
-        _settingsReturn = null;
-        ShowAppSettings(id);
+        if (_nav.State.SettingsId is null) return;
+        _settingsOffset = 0;
+        Content = BuildAppSettings();
     }
 
     private UIElement BuildAppSettings()
     {
         LoadTracked();
-        var app = _tracked.FirstOrDefault(a => a.Id == _settingsId);
+        var app = _tracked.FirstOrDefault(a => a.Id == _nav.State.SettingsId);
         if (app is null) { CloseSettings(); return _shell; }
 
         var root = new Grid();
@@ -87,7 +79,7 @@ public sealed partial class AddAppView
         sections.Children.Add(AboutSection(app));
         // the danger zone stays pinned under the scroll, unless a confirmation is open and needs the room
         var danger = DangerSection(app);
-        if (_settingsAsk != "") { danger.Margin = new Thickness(-18, 0, -18, -14); sections.Children.Add(danger); }
+        if (!_nav.State.Ask.IsNone) { danger.Margin = new Thickness(-18, 0, -18, -14); sections.Children.Add(danger); }
         else { Grid.SetRow(danger, 2); root.Children.Add(danger); }
         _settingsScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = sections };
         var offset = _settingsOffset;
@@ -96,12 +88,12 @@ public sealed partial class AddAppView
         root.Children.Add(_settingsScroll);
 
         root.Focusable = true;
-        if (_clearStep > 0) root.Children.Add(ClearModal(app));
+        if (_nav.State.ClearStep > 0) root.Children.Add(ClearModal(app));
         else root.Loaded += (_, _) => root.Focus(); // so Esc works before anything is clicked
         // Esc leaves the screen; while a text box has focus it only cancels that edit, and an open modal answers No itself
         root.PreviewKeyDown += (_, e) =>
         {
-            if (e.Key != Key.Escape || _clearStep > 0 || Keyboard.FocusedElement is TextBox) return;
+            if (e.Key != Key.Escape || _nav.State.ClearStep > 0 || Keyboard.FocusedElement is TextBox) return;
             e.Handled = true;
             CloseSettings();
         };
@@ -131,7 +123,7 @@ public sealed partial class AddAppView
         {
             if (name.Text.Trim() == app.DisplayName) return;
             if (_catalogue.ApplyChange(AppChange.Rename(app.Id, name.Text)) != CatalogueOutcome.Done) { name.Text = app.DisplayName; return; }
-            if (_settingsId == app.Id) RefreshSettings(); // not when the screen was closed and this is its focus loss
+            if (_nav.State.SettingsId == app.Id) RefreshSettings(); // not when the screen was closed and this is its focus loss
         }
         name.LostKeyboardFocus += (_, _) => Commit();
         name.KeyDown += (_, e) =>
@@ -319,8 +311,7 @@ public sealed partial class AddAppView
         var merge = Button(AddAppStrings.Merge, BtnKind.Outline, () =>
         {
             _listOffset = _trackedScroll?.VerticalOffset ?? 0;
-            _settingsReturn = app.Id;
-            _settingsId = null;
+            _nav.OpenMergeFromSettings(app.Id);
             Content = _shell;
             _mergeFilter = "Tracked";
             OpenMergeScreen(app.Id);
@@ -340,14 +331,12 @@ public sealed partial class AddAppView
         head.Children.Add(label);
         head.Children.Add(buttons);
         stack.Children.Add(head);
-        if (_settingsAsk.StartsWith("main:") && long.TryParse(_settingsAsk.AsSpan(5), out var newMainId) && app.Merged.FirstOrDefault(m => m.Id == newMainId) is { } newMain)
+        if (_nav.State.Ask is { Kind: SettingsAskKind.ChangeMain, MainId: var newMainId } && app.Merged.FirstOrDefault(m => m.Id == newMainId) is { } newMain)
         {
             var confirm = ConfirmBox(TimeText.Str(AddAppStrings.ChangeMainTitle, newMain.DisplayName), "Str.AddChangeMainBody", AddAppStrings.Cancel, AddAppStrings.ChangeMainConfirm, () =>
             {
                 if (_catalogue.ApplyChange(AppChange.MakeMain(newMain.Id)) != CatalogueOutcome.Done) return;
-                var keep = newMain.Id;
-                _settingsAsk = "";
-                _settingsId = keep;
+                _nav.ChangeMainDone(newMain.Id);
                 RefreshSettings();
             });
             if (confirm is FrameworkElement box) box.Margin = new Thickness(0, 0, 0, 8);
@@ -427,7 +416,7 @@ public sealed partial class AddAppView
             item.MouseEnter += (_, _) => item.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
             item.MouseLeave += (_, _) => item.Background = Brushes.Transparent;
             var id = m.Id;
-            item.MouseLeftButtonUp += (_, _) => { popup.IsOpen = false; _settingsAsk = "main:" + id; RefreshSettings(); };
+            item.MouseLeftButtonUp += (_, _) => { popup.IsOpen = false; _nav.AskChangeMain(id); RefreshSettings(); };
             menu.Children.Add(item);
         }
         var frame = new Border { BorderThickness = new Thickness(1), Margin = new Thickness(0, 4, 0, 8), Child = menu };
@@ -490,15 +479,15 @@ public sealed partial class AddAppView
         var buttons = new Grid();
         buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         buttons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var stop = Button(AddAppStrings.StopTracking, BtnKind.Danger, () => { _settingsAsk = "stop"; RefreshSettings(); });
-        var clear = Button(AddAppStrings.ClearHistory, BtnKind.Danger, () => { _clearStep = 1; RefreshSettings(); });
+        var stop = Button(AddAppStrings.StopTracking, BtnKind.Danger, () => { _nav.AskStop(); RefreshSettings(); });
+        var clear = Button(AddAppStrings.ClearHistory, BtnKind.Danger, () => { _nav.StartClear(); RefreshSettings(); });
         clear.Margin = new Thickness(8, 0, 0, 0);
         Grid.SetColumn(clear, 1);
         buttons.Children.Add(stop);
         buttons.Children.Add(clear);
         stack.Children.Add(buttons);
 
-        if (_settingsAsk == "stop")
+        if (_nav.State.Ask.Kind == SettingsAskKind.Stop)
             stack.Children.Add(ConfirmBox(TimeText.Str(AddAppStrings.StopTitle, app.DisplayName), "Str.AddStopBody", AddAppStrings.KeepTracking, AddAppStrings.StopTracking, () => { StopTracking(app); CloseSettings(); }));
 
         var note = Text("Str.AddDangerNote", "Double.FontSize.Small", "Brush.TextMuted");
@@ -515,19 +504,19 @@ public sealed partial class AddAppView
     /// </summary>
     private UIElement ClearModal(TrackedEntry app)
     {
-        var step = _clearStep;
+        var step = _nav.State.ClearStep;
         var (titleKey, bodyKey, yesKey) = step switch
         {
             1 => (AddAppStrings.ClearTitle, AddAppStrings.ClearBody, AddAppStrings.ClearYes),
             2 => (AddAppStrings.ClearTitle2, AddAppStrings.ClearBody2, AddAppStrings.ClearYes),
             _ => (AddAppStrings.ClearTitle3, AddAppStrings.ClearBody3, AddAppStrings.ClearConfirm),
         };
-        void Dismiss() { _clearStep = 0; RefreshSettings(); }
+        void Dismiss() { _nav.DismissClear(); RefreshSettings(); }
         void Yes()
         {
-            if (step < 3) { _clearStep = step + 1; RefreshSettings(); return; }
+            if (!_nav.NextClearStep()) { RefreshSettings(); return; }
             if (_catalogue.ApplyChange(AppChange.ClearHistory(app.Id)) != CatalogueOutcome.Done) return;
-            _clearStep = 0;
+            _nav.DismissClear();
             RefreshSettings();
         }
 
@@ -617,7 +606,7 @@ public sealed partial class AddAppView
         body.TextWrapping = TextWrapping.Wrap;
         body.Margin = new Thickness(0, 4, 0, 0);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
-        var cancel = Button(cancelKey, BtnKind.Outline, () => { _settingsAsk = ""; RefreshSettings(); });
+        var cancel = Button(cancelKey, BtnKind.Outline, () => { _nav.CancelAsk(); RefreshSettings(); });
         cancel.Margin = new Thickness(0, 0, 8, 0);
         buttons.Children.Add(cancel);
         buttons.Children.Add(Button(confirmKey, BtnKind.DangerFill, confirm));

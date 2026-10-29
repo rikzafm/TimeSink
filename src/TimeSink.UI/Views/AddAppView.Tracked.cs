@@ -26,17 +26,13 @@ public sealed partial class AddAppView
     private StackPanel _trackedList = null!;
     private ScrollViewer _trackedScroll = null!;
     private TextBlock _trackedHeader = null!;
-    private long? _openId;
-    private string _mode = ""; // "", "rename", "stop"
     private string _draft = "";
-    private MergePlan? _mergePlan;      // the open merge screen's plan (Candidates, ticks, confirm) lives in AppCatalogue
-    private long? _mergeOpening;        // Main app whose plan is being opened on a pool thread
+    private MergePlan? _mergePlan;      // the open merge screen's plan (Candidates, ticks, confirm) lives in AppCatalogue; which screen shows is in _nav
     private List<(Border Tile, string Name, string ExePath)> _mergeTiles = [];
     private double _listOffset;            // Tracked list scroll position when Merge… was opened
-    private bool _restoreOffset;
     private string _mergeFilter = "Tracked";  // Tracked | Untracked | All
 
-    private void ShowTracked() => _body.Content = _mergePlan is null ? BuildTrackedTab() : BuildMergeScreen(_mergePlan);
+    private void ShowTracked() => _body.Content = _nav.State.Merge == MergeStage.Ready && _mergePlan is { } plan ? BuildMergeScreen(plan) : BuildTrackedTab();
 
     private UIElement BuildTrackedTab()
     {
@@ -59,9 +55,8 @@ public sealed partial class AddAppView
         Grid.SetRow(hint, 2);
         root.Children.Add(hint);
         RenderTracked();
-        if (_restoreOffset) // back from the merge screen: land where the list was
+        if (_nav.TakeScrollRestore()) // back from the merge screen: land where the list was
         {
-            _restoreOffset = false;
             var offset = _listOffset;
             _trackedScroll.Loaded += (_, _) => Dispatcher.BeginInvoke(() => _trackedScroll.ScrollToVerticalOffset(offset), DispatcherPriority.Loaded);
         }
@@ -184,7 +179,8 @@ public sealed partial class AddAppView
 
     private UIElement TrackedRow(TrackedEntry app)
     {
-        var open = _openId == app.Id;
+        var open = _nav.State.OpenRowId == app.Id;
+        var mode = _nav.State.RowMode;
         var card = new Border { Margin = new Thickness(0, 0, 0, 6), Padding = new Thickness(10), BorderThickness = new Thickness(1) };
         card.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Large");
         if (open)
@@ -223,15 +219,15 @@ public sealed partial class AddAppView
         var sub = Text(null, "Double.FontSize.Small", "Brush.TextMuted");
         sub.Text = PublisherOf(app) ?? TimeText.Str(AddAppStrings.TrackedNoPublisher);
         sub.TextTrimming = TextTrimming.CharacterEllipsis;
-        texts.Children.Add(open && _mode == "rename" ? RenameInline(app) : name);
+        texts.Children.Add(open && mode == TrackedRowMode.Rename ? RenameInline(app) : name);
         texts.Children.Add(sub);
 
         Grid.SetColumn(texts, 1);
         var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         right.Children.Add(KindSwitch(app.Kind, () => SetKind(app.Id, AppKinds.Next(app.Kind), RenderTracked)));
         right.Children.Add(BackgroundSwitch(app.Background, () => SetBackground(app.Id, !app.Background, RenderTracked)));
-        var stopBtn = ActionIcon(IconEyeOpen, PillStyle.Quiet, AddAppStrings.StopTip, AddAppStrings.Stop, lit: open && _mode == "stop");
-        stopBtn.Click += (_, _) => { _openId = app.Id; _mode = "stop"; RenderTracked(); };
+        var stopBtn = ActionIcon(IconEyeOpen, PillStyle.Quiet, AddAppStrings.StopTip, AddAppStrings.Stop, lit: open && mode == TrackedRowMode.Stop);
+        stopBtn.Click += (_, _) => { _nav.OpenRowStop(app.Id); RenderTracked(); };
         right.Children.Add(stopBtn);
         Grid.SetColumn(right, 2);
         top.Children.Add(tileHost);
@@ -239,14 +235,14 @@ public sealed partial class AddAppView
         top.Children.Add(right);
         stack.Children.Add(top);
 
-        if (open && _mode == "stop") stack.Children.Add(StopConfirm(app));
+        if (open && mode == TrackedRowMode.Stop) stack.Children.Add(StopConfirm(app));
 
         // double-click the name to rename it in place; double-click anywhere else on the row for the app's settings
         card.MouseLeftButtonDown += (_, e) =>
         {
-            if (e.ClickCount != 2 || _mode == "rename") return;
+            if (e.ClickCount != 2 || _nav.State.RowMode == TrackedRowMode.Rename) return;
             e.Handled = true;
-            if (ReferenceEquals(e.OriginalSource, name)) { _openId = app.Id; _mode = "rename"; _draft = app.DisplayName; RenderTracked(); }
+            if (ReferenceEquals(e.OriginalSource, name)) { _nav.OpenRowRename(app.Id); _draft = app.DisplayName; RenderTracked(); }
             else ShowAppSettings(app.Id);
         };
         return card;
@@ -298,7 +294,7 @@ public sealed partial class AddAppView
             {
                 _catalogue.ApplyChange(AppChange.Rename(app.Id, _draft)); // blank or database busy: keep the old name
             }
-            _mode = "";
+            _nav.EndRowMode();
             RenderTracked();
         }
         box.KeyDown += (_, e) =>
@@ -327,7 +323,7 @@ public sealed partial class AddAppView
         body.TextWrapping = TextWrapping.Wrap;
         body.Margin = new Thickness(0, 4, 0, 0);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
-        var keep = Button(AddAppStrings.KeepTracking, BtnKind.Outline, () => { _mode = ""; RenderTracked(); });
+        var keep = Button(AddAppStrings.KeepTracking, BtnKind.Outline, () => { _nav.EndRowMode(); RenderTracked(); });
         keep.Margin = new Thickness(0, 0, 8, 0);
         var stop = Button(AddAppStrings.StopTracking, BtnKind.DangerFill, () => StopTracking(app));
         buttons.Children.Add(keep);
@@ -342,8 +338,7 @@ public sealed partial class AddAppView
     private void StopTracking(TrackedEntry app)
     {
         if (_catalogue.ApplyChange(AppChange.Retire(app)) != CatalogueOutcome.Done) return;
-        _openId = null;
-        _mode = "";
+        _nav.CloseRow();
         UpdateCount();
         RenderTracked();
     }
@@ -357,14 +352,14 @@ public sealed partial class AddAppView
     private void OpenMergeScreen(long mainId)
     {
         _mergePlan = null;
-        _mergeOpening = mainId;
+        _nav.BeginMergeOpen(mainId);
         _body.Content = Note("Str.AddInstalledLoading");
         Task.Run(() => _catalogue.OpenMergePlan(mainId, TileIconPx)).ContinueWith(t =>
         {
-            if (_mergeOpening != mainId) return; // the user went elsewhere meanwhile
-            _mergeOpening = null;
-            _mergePlan = t.IsCompletedSuccessfully ? t.Result : null;
-            if (_tab == "Tracked") ShowTracked();
+            var plan = t.IsCompletedSuccessfully ? t.Result : null;
+            if (!_nav.CompleteMergeOpen(mainId, plan is not null)) return; // the user went elsewhere meanwhile
+            _mergePlan = plan;
+            if (_nav.State.Tab == AddAppTab.Tracked) ShowTracked();
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
@@ -420,7 +415,7 @@ public sealed partial class AddAppView
         note.Margin = new Thickness(20, 0, 20, 8);
         note.TextWrapping = TextWrapping.Wrap;
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(14, 0, 14, 12) };
-        var cancel = Button(AddAppStrings.Cancel, BtnKind.Outline, () => { _mergePlan = null; _restoreOffset = true; ShowTracked(); ReturnToSettings(); });
+        var cancel = Button(AddAppStrings.Cancel, BtnKind.Outline, () => { _mergePlan = null; _nav.CancelMerge(); ShowTracked(); ReturnToSettings(); });
         cancel.Margin = new Thickness(0, 0, 8, 0);
         var go = Button(AddAppStrings.Merge, BtnKind.Ghost, () => ConfirmMerge(plan));
         buttons.Children.Add(cancel);
@@ -587,9 +582,7 @@ public sealed partial class AddAppView
     {
         if (plan.Confirm() == CatalogueOutcome.Unavailable) return;
         _mergePlan = null;
-        _restoreOffset = true;
-        _openId = plan.MainId;
-        _mode = "";
+        _nav.MergeConfirmed(plan.MainId);
         UpdateCount();
         ShowTracked();
         ReturnToSettings();

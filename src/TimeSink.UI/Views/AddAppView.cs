@@ -50,7 +50,7 @@ public sealed partial class AddAppView : UserControl
     private bool _loading;
     private ContentControl _body = null!;
     private UIElement _shell = null!;
-    private string _tab = "Running";
+    private readonly AddAppNavigation _nav = new();
     private readonly Dictionary<string, RadioButton> _tabButtons = new();
 
     public AddAppView(ThemeService themes, string dbPath, Action close)
@@ -76,21 +76,14 @@ public sealed partial class AddAppView : UserControl
         _catalogue.NewVisit();
         _query = "";
         _trackedQuery = "";
-        _openId = null;
-        _mode = "";
+        _nav.Reset();
         _mergePlan = null;
-        _mergeOpening = null;
-        _restoreOffset = false;
-        _settingsId = null;
-        _settingsReturn = null;
         _settingsScroll = null;
-        _settingsAsk = "";
-        _clearStep = 0;
         _libraryLoaded = false;
         Content = _shell;
         UpdateCount();
         _rows.RemoveAll(r => r.Done);
-        if (_tab != "Running") _tabButtons["Running"].IsChecked = true; // Checked rebuilds the Running body
+        if (_nav.State.Tab != AddAppTab.Running) _tabButtons["Running"].IsChecked = true; // Checked rebuilds the Running body
         else Render();
         LoadInstalled(); // quiet re-scan: swaps the list only when it differs
     }
@@ -162,12 +155,13 @@ public sealed partial class AddAppView : UserControl
 
     private void ShowTab(string tag)
     {
-        _tab = tag;
-        switch (tag)
+        var tab = Enum.Parse<AddAppTab>(tag);
+        _nav.SelectTab(tab);
+        switch (tab)
         {
-            case "Running": _body.Content = BuildRunningTab(); Render(); Refresh(); break;
-            case "Installed": _body.Content = BuildInstalledTab(); break;
-            case "Tracked": _mergePlan = null; _mergeOpening = null; _openId = null; _mode = ""; ShowTracked(); break;
+            case AddAppTab.Running: _body.Content = BuildRunningTab(); Render(); Refresh(); break;
+            case AddAppTab.Installed: _body.Content = BuildInstalledTab(); break;
+            case AddAppTab.Tracked: _mergePlan = null; ShowTracked(); break;
             default: _body.Content = BuildBrowseTab(); break;
         }
     }
@@ -187,7 +181,7 @@ public sealed partial class AddAppView : UserControl
 
     private void Refresh()
     {
-        if (_loading || _tab != "Running") return;
+        if (_loading || _nav.State.Tab != AddAppTab.Running) return;
         _loading = true;
         Task.Run(() =>
         {
