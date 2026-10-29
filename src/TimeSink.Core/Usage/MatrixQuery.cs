@@ -52,7 +52,7 @@ public static class MatrixQuery
 
         // Month totals and the headline are PC uptime (decision 125); the per-app cells stay per-app.
         var uptimeByMonth = new long[count];
-        foreach (var (day, secs) in UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc))
+        foreach (var (day, secs) in UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc, gamesOnly))
         {
             var idx = (day.Year - year) * 12 + day.Month - first;
             if (idx >= 0 && idx < count) uptimeByMonth[idx] += secs;

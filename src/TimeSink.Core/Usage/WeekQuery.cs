@@ -33,7 +33,7 @@ public static class WeekQuery
 
         var apps = AppGroups.Load(c, gamesOnly: gamesOnly);
         var segs = UsageLoader.LoadSegments(c, LocalDays.StartOf(lookStart, zone), nowUtc, apps, running);
-        var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc);
+        var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc, gamesOnly);
 
         // App seconds per local day (all apps, for the streak) and per (app group, day); the columns show PC uptime.
         var perDay = new Dictionary<DateOnly, long>();

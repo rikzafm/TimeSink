@@ -62,7 +62,7 @@ public static class WrappedQuery
         }
 
         // The headline is PC uptime (decision 125); everything else here stays app-seconds.
-        var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc).Where(kv => kv.Key.Year == year).Sum(kv => kv.Value);
+        var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc, gamesOnly).Where(kv => kv.Key.Year == year).Sum(kv => kv.Value);
 
         // Background apps (Steam, Wallpaper Engine) stay out of every ranking here; their time still counts in the totals.
         var ranked = UsageRank.Rank(perGroup.Where(kv => !UsageRank.IsBackground(apps, kv.Key))

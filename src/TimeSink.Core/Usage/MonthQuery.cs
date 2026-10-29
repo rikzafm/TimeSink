@@ -44,7 +44,7 @@ public static class MonthQuery
         var segs = UsageLoader.LoadSegments(c, DayStart(prevFirst, zone), nowUtc, apps, running, to: DayStart(first.AddMonths(1), zone));
 
         // PC uptime per local day: the headline numbers; per-app seconds below feed the day detail and the top apps.
-        var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc);
+        var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc, gamesOnly);
 
         // group -> seconds, per day of this month and of the comparison window.
         var perDay = UsageDays.PerDayGroup(segs, zone);

@@ -116,14 +116,14 @@ public static class TodayQuery
 
         // PC uptime: shown from the sign-in time when known, but compared like-for-like (first activity) with yesterday.
         var dayEnd = isToday ? nowUtc : d1;
-        var uptime = UsageUptime.Seconds(segs, d0, dayEnd, isToday, onSinceUtc);
+        var uptime = UsageUptime.Seconds(segs, d0, dayEnd, isToday, onSinceUtc, gamesOnly);
         // The previous day counts in full, so a day still in progress reads negative until it catches up.
-        var uptimeVs = UsageUptime.Seconds(segs, d0, dayEnd, isToday, null) - UsageUptime.Seconds(segs, y0, d0, false, null);
+        var uptimeVs = UsageUptime.Seconds(segs, d0, dayEnd, isToday, null, gamesOnly) - UsageUptime.Seconds(segs, y0, d0, false, null, gamesOnly);
 
         var openSegs = isToday ? segs.Where(s => s.Open).ToList() : [];
         return new TodayResult(date, d0, d1, nowUtc, total,
             openSegs.Select(s => s.Group).Distinct().Count(), openSegs.Count,
             hours, typicalDays > 0, UsageUptime.SleepBands(segs, d0, Math.Min(nowUtc, d1)), first, longest, total - yesterdayByNow, rows,
-            uptime, uptimeVs, start.FirstDay);
+            uptime, uptimeVs, start.FirstDay, gamesOnly);
     }
 }

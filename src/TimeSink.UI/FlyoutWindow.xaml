@@ -20,21 +20,35 @@
                     <TextBlock Style="{StaticResource Wordmark}" Text="{DynamicResource Str.AppName}"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button x:Name="GamesButton" AutomationProperties.Name="Games only" ToolTip="{DynamicResource Str.GamesOnly}" Focusable="False">
+                    <Button x:Name="GamesButton" Width="34" Height="34" Margin="0,0,2,0" AutomationProperties.Name="Games only" ToolTip="{DynamicResource Str.GamesOnly}">
                         <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource LinkButton}">
-                                <Setter Property="Foreground" Value="{DynamicResource Brush.TextSoft}"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="on">
-                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}"/>
-                                    </DataTrigger>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}"/>
-                                    </Trigger>
-                                </Style.Triggers>
+                            <Style TargetType="Button">
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                                <Setter Property="Focusable" Value="False"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Box" CornerRadius="{DynamicResource CornerRadius.Small}" BorderThickness="1" BorderBrush="Transparent" Background="Transparent">
+                                                <Viewbox Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                    <Canvas Width="24" Height="24">
+                                                        <Path Stroke="{TemplateBinding Foreground}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                              Data="M6 11h4M8 9v4M15 12h.01M18 10h.01M17.3 5H6.7a4 4 0 0 0-3.9 3.2l-1.5 7A3 3 0 0 0 4.2 19c.9 0 1.6-.5 2.1-1.2l1.1-1.8h9.2l1.1 1.8c.5.7 1.2 1.2 2.1 1.2a3 3 0 0 0 2.9-3.8l-1.5-7A4 4 0 0 0 17.3 5z"/>
+                                                    </Canvas>
+                                                </Viewbox>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="Tag" Value="on">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}"/>
+                                                    <Setter TargetName="Box" Property="Background" Value="{DynamicResource Brush.SurfaceAlt}"/>
+                                                    <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Brush.Border}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
                             </Style>
                         </Button.Style>
-                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE7FC;" FontSize="16"/>
                     </Button>
                     <Button x:Name="SettingsButton" ToolTip="{DynamicResource Str.Settings}">
                         <Button.Style>

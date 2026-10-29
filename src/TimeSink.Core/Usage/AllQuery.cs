@@ -72,7 +72,7 @@ public static class AllQuery
             LocalDays.DateOf(g.RetiredUtc, zone))).ToList();
 
         // The footer total is PC uptime, not the app sum.
-        var uptime = UsageUptime.PerDay(loaded.Where(s => !usageApps[s.AppId].Retired).ToList(), zone, nowUtc, onSinceUtc).Values.Sum();
+        var uptime = UsageUptime.PerDay(loaded.Where(s => !usageApps[s.AppId].Retired).ToList(), zone, nowUtc, onSinceUtc, gamesOnly).Values.Sum();
         return new AllResult(apps, retired, new AllTotals(uptime, trackedDays.Count, Average(uptime, trackedDays.Count)));
     }
 

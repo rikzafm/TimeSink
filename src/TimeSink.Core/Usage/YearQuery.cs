@@ -50,7 +50,7 @@ public static class YearQuery
 
         // Month totals are PC uptime; the per-app shares above only feed each month's top apps.
         var uptimeByMonth = new Dictionary<int, long>();
-        foreach (var (day, secs) in UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc))
+        foreach (var (day, secs) in UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc, gamesOnly))
         {
             var idx = Idx(day.Year, day.Month);
             uptimeByMonth[idx] = uptimeByMonth.GetValueOrDefault(idx) + secs;
