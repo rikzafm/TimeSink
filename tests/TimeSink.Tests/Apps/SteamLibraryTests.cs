@@ -88,4 +88,19 @@ public sealed class SteamLibraryTests : IDisposable
         apps.Should().OnlyContain(a => a.IsSteam);
         apps.Select(a => a.Name).Should().Equal("Celeste", "Hades");
     }
+
+    [Theory]
+    [InlineData("appmanifest_730.acf", true)]
+    [InlineData("APPMANIFEST_730.ACF", true)]
+    [InlineData("libraryfolders.vdf", true)]
+    [InlineData("LibraryFolders.vdf", true)]
+    [InlineData("appmanifest_730.acf.tmp", false)]
+    [InlineData("appmanifest_730.vdf", false)]
+    [InlineData("libraryfolders.vdf.bak", false)]
+    [InlineData("downloading", false)]
+    [InlineData(null, false)]
+    public void IsLibraryChange_is_true_only_for_app_manifests_and_the_library_list(string? name, bool expected)
+    {
+        SteamLibrary.IsLibraryChange(name).Should().Be(expected);
+    }
 }

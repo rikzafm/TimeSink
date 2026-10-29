@@ -12,6 +12,12 @@ public sealed record SteamGame(string Name, string ExePath, string? IconFile = n
 /// </summary>
 public static class SteamLibrary
 {
+    /// <summary>True for a file name in a library's <c>steamapps</c> folder that means the games changed: an app manifest or the library list.</summary>
+    public static bool IsLibraryChange(string? name) =>
+        name is not null
+        && ((name.StartsWith("appmanifest_", StringComparison.OrdinalIgnoreCase) && name.EndsWith(".acf", StringComparison.OrdinalIgnoreCase))
+            || name.Equals("libraryfolders.vdf", StringComparison.OrdinalIgnoreCase));
+
     private const int MaxDepth = 3;
 
     private static readonly Regex Pair = new("\"(?<k>[^\"]*)\"\\s+\"(?<v>(?:[^\"\\\\]|\\\\.)*)\"", RegexOptions.Compiled);

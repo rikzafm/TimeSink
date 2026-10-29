@@ -72,9 +72,7 @@ internal sealed class SteamScanHost : IDisposable
 
     private void OnChange(string? name)
     {
-        if (name is null) return;
-        var manifest = name.StartsWith("appmanifest_", StringComparison.OrdinalIgnoreCase) && name.EndsWith(".acf", StringComparison.OrdinalIgnoreCase);
-        if (!manifest && !name.Equals("libraryfolders.vdf", StringComparison.OrdinalIgnoreCase)) return;
+        if (!SteamLibrary.IsLibraryChange(name)) return;
         lock (_gate) { if (!_disposed) _debounce?.Change(Settle, Timeout.InfiniteTimeSpan); } // each write pushes the scan back
     }
 

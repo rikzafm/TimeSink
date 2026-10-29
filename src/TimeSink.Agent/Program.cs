@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using TimeSink.Agent.Native;
+﻿using TimeSink.Agent.Native;
 using TimeSink.Core.Data;
 using TimeSink.Core.Flyout;
 using TimeSink.Core.Icons;
@@ -21,8 +20,7 @@ internal static class Program
     private static AlertHost? s_alerts;
     private static SteamScanHost? s_steam;
     private static string s_dbPath = "";
-    private static readonly FlyoutLifecycle s_flyout = new();
-    private static Process? s_ui;
+    private static FlyoutHost? s_flyout;
 
     private const uint IconResourceVersion = 0x00030000; // the version CreateIconFromResourceEx requires
     private const uint TrayCallback = NativeMethods.WM_APP + 1;
@@ -95,6 +93,7 @@ internal static class Program
         if (s_hwnd == 0) return 3;
 
         AddTrayIcon();
+        s_flyout = new FlyoutHost(new WindowsFlyoutPort(s_hwnd), InstantOpen);
 
         s_ipc = new IpcServer(s_pipeName, () => s_tracking?.CurrentState ?? new StateMessage(false, []), Log.Error);
         s_ipc.IconRequested += id => { s_requestedIcon = IconCatalogue.Resolve(id); NativeMethods.PostMessage(s_hwnd, SetIconMessage, 0, 0); };
@@ -199,125 +198,11 @@ internal static class Program
 
     private static void Handle(uint command)
     {
-        if (command == IdOpen) ToggleFlyout();
+        if (command == IdOpen) s_flyout?.OnTrayClick();
         else if (command == IdQuit) NativeMethods.DestroyWindow(s_hwnd);
     }
 
-    // UI process. A "standby" UI is started (hover or ui.instantOpen) and renders off-screen; FlyoutLifecycle decides what
-    // each event leads to and this code performs it. Touched from the message loop and from Process.Exited, hence the lock.
-    private static readonly object s_gate = new();
-    private static EventWaitHandle? s_showEvent;
-
-    private static bool UiAlive()
-    {
-        try { return s_ui is { HasExited: false }; }
-        catch (InvalidOperationException) { return false; }
-    }
-
-    /// <summary>Tray left-click or "Open" menu item: toggle the flyout.</summary>
-    private static void ToggleFlyout()
-    {
-        lock (s_gate) Perform(s_flyout.OnTrayClick(DateTime.UtcNow, UiAlive()));
-    }
-
-    /// <summary>Mouse over the tray icon: a click is likely, so warm the UI up (at most once per cooldown).</summary>
-    private static void OnTrayHover()
-    {
-        lock (s_gate) Perform(s_flyout.OnTrayHover(DateTime.UtcNow, s_ui is not null));
-    }
-
-    private static void OnUiExited(Process p)
-    {
-        lock (s_gate)
-        {
-            if (!ReferenceEquals(s_ui, p)) return;
-            s_ui = null;
-            // ui.instantOpen: keep a warm UI ready at all times (about 40 MB, opt-in).
-            Perform(s_flyout.OnUiExited(DateTime.UtcNow, InstantOpen()));
-        }
-    }
-
     private static bool InstantOpen() => AppSettings.ForFile(s_dbPath).Get(Setting.InstantOpen);
-
-    private static void Perform(FlyoutCommand command)
-    {
-        switch (command)
-        {
-            case FlyoutCommand.OpenCold:
-                if (StartUi(ComputeLaunchArgs().ToArgs()) is null) s_flyout.OnStartFailed();
-                break;
-            case FlyoutCommand.RevealStandby:
-                RevealStandby();
-                break;
-            case FlyoutCommand.Close:
-                try { using var ev = EventWaitHandle.OpenExisting(FlyoutProtocol.CloseEventName); ev.Set(); }
-                catch (WaitHandleCannotBeOpenedException) { }
-                break;
-            case FlyoutCommand.StartStandby:
-                StartStandby(keep: false);
-                break;
-            case FlyoutCommand.StartKeptStandby:
-                StartStandby(keep: true);
-                break;
-        }
-    }
-
-    /// <summary>Hand the launch geometry to a running standby UI and wake it.</summary>
-    private static void RevealStandby()
-    {
-        File.WriteAllText(FlyoutProtocol.HandoffPath, ComputeLaunchArgs().ToFileText());
-        s_showEvent ??= new EventWaitHandle(false, EventResetMode.AutoReset, FlyoutProtocol.ShowEventName);
-        s_showEvent.Set();
-    }
-
-    /// <summary>Start the UI hidden so a following click is near-instant. Idle standbys exit on their own.</summary>
-    private static void StartStandby(bool keep)
-    {
-        if (UiAlive()) return;
-        s_showEvent ??= new EventWaitHandle(false, EventResetMode.AutoReset, FlyoutProtocol.ShowEventName);
-        s_showEvent.Reset(); // drop a stale signal from an earlier standby
-        StartUi(FlyoutProtocol.StandbyArgs(keep));
-    }
-
-    private static Process? StartUi(string[] args)
-    {
-        // Installed layout keeps the UI and its runtime in ui\; dev builds put it beside the Agent.
-        var exe = Path.Combine(AppContext.BaseDirectory, "ui", "TimeSink.UI.exe");
-        if (!File.Exists(exe)) exe = Path.Combine(AppContext.BaseDirectory, "TimeSink.UI.exe");
-        if (!File.Exists(exe)) return null;
-
-        var psi = new ProcessStartInfo(exe) { UseShellExecute = false };
-        foreach (var a in args) psi.ArgumentList.Add(a);
-
-        var p = Process.Start(psi);
-        if (p is null) return null;
-        NativeMethods.AllowSetForegroundWindow((uint)p.Id);
-        p.EnableRaisingEvents = true;
-        p.Exited += (_, _) => OnUiExited(p);
-        s_ui = p;
-        return p;
-    }
-
-    private static FlyoutLaunchArgs ComputeLaunchArgs()
-    {
-        var id = new NOTIFYICONIDENTIFIER { cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NOTIFYICONIDENTIFIER>(), hWnd = s_hwnd, uID = 1 };
-        RECT icon;
-        if (NativeMethods.Shell_NotifyIconGetRect(id, out icon) != 0)
-        {
-            NativeMethods.GetCursorPos(out var pt); // fallback: a 1 px rect at the cursor
-            icon = new RECT { Left = pt.X, Top = pt.Y, Right = pt.X + 1, Bottom = pt.Y + 1 };
-        }
-
-        var monitor = NativeMethods.MonitorFromRect(icon, NativeMethods.MONITOR_DEFAULTTONEAREST);
-        var info = new MONITORINFO { cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
-        NativeMethods.GetMonitorInfo(monitor, ref info);
-        uint dpi = 96;
-        if (NativeMethods.GetDpiForMonitor(monitor, NativeMethods.MDT_EFFECTIVE_DPI, out var dx, out _) == 0) dpi = dx;
-
-        return new FlyoutLaunchArgs(Px(icon), Px(info.rcMonitor), Px(info.rcWork), (int)dpi);
-    }
-
-    private static PxRect Px(RECT r) => new(r.Left, r.Top, r.Right, r.Bottom);
 
     [System.Runtime.InteropServices.UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
     private static nint WndProc(nint hwnd, uint msg, nuint wParam, nint lParam)
@@ -336,8 +221,8 @@ internal static class Program
             case TrayCallback:
                 var ev = (uint)(lParam & 0xFFFF);
                 if (ev == NativeMethods.WM_RBUTTONUP || ev == NativeMethods.WM_CONTEXTMENU) ShowMenu();
-                else if (ev == NativeMethods.WM_LBUTTONUP) ToggleFlyout();
-                else if (ev == NativeMethods.WM_MOUSEMOVE) OnTrayHover();
+                else if (ev == NativeMethods.WM_LBUTTONUP) s_flyout?.OnTrayClick();
+                else if (ev == NativeMethods.WM_MOUSEMOVE) s_flyout?.OnTrayHover();
                 return 0;
             case SetIconMessage:
                 ApplyTrayIcon();

@@ -81,10 +81,8 @@ internal sealed class TrackingHost
     /// <summary>Pushes the running-apps list to the UI only when it differs from the last one pushed.</summary>
     private void PublishIfChanged()
     {
-        var running = _store.GetOpenSessions().Select(s => new RunningApp(s.AppId, s.StartUtc)).OrderBy(r => r.AppId).ToList();
-        var old = _state.Running;
-        if (old.Count == running.Count && old.SequenceEqual(running)) return;
-        _state = new StateMessage(false, running);
+        if (RunningState.Next(_state, _store.GetOpenSessions()) is not { } next) return;
+        _state = next;
         _publish(_state);
     }
 
