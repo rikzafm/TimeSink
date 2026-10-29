@@ -11,6 +11,18 @@ public sealed class UsageSnapshotLoaderTests
         new(() => Now, TimeZoneInfo.Utc, () => running, signIn ?? (() => null), weekStart ?? (() => WeekStart.Mon));
 
     [Fact]
+    public void Now_Zone_and_Today_come_from_the_loaders_clock_and_zone()
+    {
+        var plus13 = TimeZoneInfo.CreateCustomTimeZone("p13", TimeSpan.FromHours(13), "p13", "p13");
+        var loader = new UsageSnapshotLoader(() => Now, plus13, () => null, () => null, () => WeekStart.Mon); // 2026-03-04 12:00Z
+
+        loader.Now.Should().Be(Now);
+        loader.Zone.Should().Be(plus13);
+        loader.Today.Should().Be(new DateOnly(2026, 3, 5)); // 01:00 the next day at +13
+        Loader().Today.Should().Be(new DateOnly(2026, 3, 4));
+    }
+
+    [Fact]
     public async Task Refresh_does_nothing_until_started()
     {
         var loader = Loader();

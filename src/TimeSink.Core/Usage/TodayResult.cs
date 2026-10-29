@@ -49,6 +49,16 @@ public sealed record TodayResult(
     DateOnly? FirstTracked = null,
     bool GamesOnly = false)
 {
+    /// <summary>
+    /// Position of <paramref name="utc"/> in the day as a wall-clock fraction from 0 to 1 (the hour columns are wall-clock
+    /// hours, so a DST day is still 24 columns); a time outside the day clamps to its edge.
+    /// </summary>
+    public double DayFraction(long utc)
+    {
+        var wall = TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(utc), Zone).DateTime;
+        return Math.Clamp((wall - Date.ToDateTime(TimeOnly.MinValue)).TotalSeconds / 86400.0, 0, 1);
+    }
+
     /// <summary>Seconds from the snapshot to <paramref name="nowUtc"/>, never negative.</summary>
     public long ElapsedAt(long nowUtc) => Math.Max(0, nowUtc - NowUtc);
 

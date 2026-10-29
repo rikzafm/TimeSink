@@ -165,13 +165,12 @@ public sealed class YearPaceView : UserControl, IYearSubView
 
     public async void Refresh()
     {
-        var now = DateTimeOffset.UtcNow;
         if (!await _loader.Refresh(c => YearQuery.Run(c), r =>
             {
                 if (_result is null || _result.Year != r.Year) _selected = -1;
                 _result = r;
             })) return;
-        if (_selected < 0) _selected = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, TimeZoneInfo.Local).DateTime).Month - 1;
+        if (_selected < 0) _selected = _loader.Today.Month - 1;
         Redraw();
     }
 

@@ -37,11 +37,11 @@ public sealed class AppDetailView : UserControl
 
     private TextBlock _readout = Label(); // rebuilt with each redraw (an element has one parent)
     private AppDetailResult? _result;
-    private int _year = DateTime.Now.Year;
+    private int _year;
     private DayOfWeek _weekStart = DayOfWeek.Monday;
     private bool _bars;
     private AppDetailRange _range = AppDetailRange.Year;
-    private DateOnly _anchor = Today();
+    private DateOnly _anchor;
 
     public AppDetailView(string dbPath, ThemeService themes, LiveState live, long appId, Action close)
     {
@@ -54,6 +54,7 @@ public sealed class AppDetailView : UserControl
         Focusable = true;
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { _close(); e.Handled = true; } };
         _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        (_year, _anchor) = (_loader.Today.Year, _loader.Today);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw);
         Loaded += (_, _) =>
         {
@@ -207,7 +208,7 @@ public sealed class AppDetailView : UserControl
         var meta = Label();
         meta.TextTrimming = TextTrimming.CharacterEllipsis;
         meta.Text = r.FirstTracked is { } first
-            ? Str(AppDetailStringKeys.Meta, r.ExeName, UsageText.ShortDate(first, withYear: first.Year != DateTime.Now.Year))
+            ? Str(AppDetailStringKeys.Meta, r.ExeName, UsageText.ShortDate(first, withYear: first.Year != _loader.Today.Year))
             : r.ExeName;
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
         if (r.Background)
@@ -255,7 +256,7 @@ public sealed class AppDetailView : UserControl
     {
         if (last is null) return (Str(AppDetailStringKeys.Never), "");
         if (last.Running) return (Str(AppDetailStringKeys.RunningNow), Str(AppDetailStringKeys.LastSubRunning, Clock(last.StartUtc)));
-        var bucket = UsageText.DayOf(last.StartUtc, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), TimeZoneInfo.Local);
+        var bucket = UsageText.DayOf(last.StartUtc, _loader.Now.ToUnixTimeSeconds(), _loader.Zone);
         var when = bucket.Kind switch
         {
             DayKind.Today => Str(AppDetailStringKeys.Today),
@@ -365,7 +366,7 @@ public sealed class AppDetailView : UserControl
         return bar;
     }
 
-    private static DateOnly Today() => DateOnly.FromDateTime(DateTime.Now);
+    private DateOnly Today() => _loader.Today;
 
     private AppDetailChartData ChartData(AppDetailResult r) =>
         AppDetailChart.Build(_range, _anchor, Today(), r.FirstTracked, _weekStart,

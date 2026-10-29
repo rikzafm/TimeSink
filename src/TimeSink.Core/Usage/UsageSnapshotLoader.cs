@@ -76,6 +76,15 @@ public sealed class UsageSnapshotLoader
         new(() => DateTimeOffset.UtcNow, TimeZoneInfo.Local, running, signInUtc,
             () => AppSettings.ForFile(dbPath).Get(Setting.WeekStartsOn), gamesOnly, dbPath);
 
+    /// <summary>The instant the next refresh will be asked at, on this loader's clock.</summary>
+    public DateTimeOffset Now => _clock();
+
+    /// <summary>The zone this loader cuts days in.</summary>
+    public TimeZoneInfo Zone => _zone;
+
+    /// <summary>The Local day of <see cref="Now"/> in <see cref="Zone"/>, for a view that needs it before its first result.</summary>
+    public DateOnly Today => LocalDays.DateOf(_clock().ToUnixTimeSeconds(), _zone);
+
     public bool Started => _started;
 
     public void Start() => _started = true;

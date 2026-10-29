@@ -53,7 +53,7 @@ public partial class TodayView : UserControl, ILiveView
         public int Active => Hover >= 0 ? Hover : Pinned;
     }
 
-    private static DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
+    private DateOnly Today => _loader.Today;
 
     public TodayView(string dbPath, ThemeService themes, LiveState live)
     {
@@ -171,12 +171,12 @@ public partial class TodayView : UserControl, ILiveView
     private void UpdateLive()
     {
         var r = _result!;
-        var nowUtc = Math.Max(r.NowUtc, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        var nowUtc = Math.Max(r.NowUtc, _loader.Now.ToUnixTimeSeconds());
         var uptime = r.UptimeAt(nowUtc, _day is null); // the PC is on while the view is live
         TotalMain.Text = UsageText.HoursMinutes(uptime);
         TotalSeconds.Text = $"{uptime % 60:00}s";
         CombinedText.Text = Str(StringKeys.TodayCombined, UsageText.HoursMinutes(r.CombinedSecondsAt(nowUtc)));
-        Chart.NowFraction = _day is null ? Fraction(r, nowUtc) : 0;
+        Chart.NowFraction = _day is null ? r.DayFraction(nowUtc) : 0;
         Chart.NowLabel = Clock(nowUtc);
         foreach (var (_, (time, status, row)) in _rowViews)
         {
@@ -185,10 +185,6 @@ public partial class TodayView : UserControl, ILiveView
             status.Text = Str(StringKeys.StatusRunning, UsageText.HoursMinutes(nowUtc - row.RunningSinceUtc!.Value));
         }
     }
-
-    /// <summary>Position in the day as a wall-clock fraction (the hour columns are wall-clock hours, so a DST day is still 24 columns).</summary>
-    private static double Fraction(TodayResult r, long utc) =>
-        Math.Clamp((TimeText.Local(utc) - r.Date.ToDateTime(TimeOnly.MinValue)).TotalSeconds / 86400.0, 0, 1);
 
     /// <summary>Full redraw from the last snapshot (also after a theme swap, since text is composed here).</summary>
     private void Redraw()
@@ -350,7 +346,7 @@ public partial class TodayView : UserControl, ILiveView
         var strip = new SessionStrip
         {
             Margin = new Thickness(0, 8, 0, 0),
-            Segments = row.Sessions.Select(s => (Fraction(r, s.StartUtc), Fraction(r, s.EndUtc))).ToList(),
+            Segments = row.Sessions.Select(s => (r.DayFraction(s.StartUtc), r.DayFraction(s.EndUtc))).ToList(),
         };
         strip.SetResourceReference(SessionStrip.SegmentBrushProperty, appBrush);
         strip.SetResourceReference(SessionStrip.TrackBrushProperty, "Brush.BorderSoft");
@@ -453,8 +449,8 @@ public partial class TodayView : UserControl, ILiveView
         var dial = new SessionDial
         {
             Width = DialSize, Height = DialSize, VerticalAlignment = VerticalAlignment.Top,
-            Segments = shown.Select(s => (Fraction(r, s.StartUtc), Fraction(r, s.EndUtc))).ToList(),
-            NowFraction = _day is null ? Fraction(r, r.NowUtc) : null,
+            Segments = shown.Select(s => (r.DayFraction(s.StartUtc), r.DayFraction(s.EndUtc))).ToList(),
+            NowFraction = _day is null ? r.DayFraction(r.NowUtc) : null,
             TotalFraction = detail.TotalFraction,
             AverageFraction = detail.AverageFraction,
         };

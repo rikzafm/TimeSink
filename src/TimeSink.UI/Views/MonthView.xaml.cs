@@ -44,9 +44,6 @@ public partial class MonthView : UserControl, ILiveView
         _themes = themes;
         _live = live;
         _window = window;
-        var today = DateTime.Now;
-        _year = today.Year;
-        _month = today.Month;
         InitializeComponent();
         Prev.Click += (_, _) => Navigate(-1);
         Next.Click += (_, _) => Navigate(1);
@@ -54,6 +51,7 @@ public partial class MonthView : UserControl, ILiveView
         SelBar.HoverChanged += ShowBarNote;
         SelBar.SegmentClicked += _ => ShowBarNote(-1);
         _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly);
+        (_year, _month) = (_loader.Today.Year, _loader.Today.Month);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw,
             onLiveChanged: () => { if (_result?.IsCurrent == true) Refresh(); }, // only the current month follows the live state
             isIdle: () => _window is { IsRevealed: false });
@@ -66,7 +64,7 @@ public partial class MonthView : UserControl, ILiveView
 
     private PeriodNavigator Months()
     {
-        var today = DateOnly.FromDateTime(DateTime.Now);
+        var today = _loader.Today;
         return new PeriodNavigator(PeriodUnit.Month, _firstTracked ?? today, today);
     }
 

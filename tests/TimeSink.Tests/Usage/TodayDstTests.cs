@@ -91,6 +91,31 @@ public sealed class TodayDstTests : IDisposable
     }
 
     [Fact]
+    public void Day_fraction_is_the_wall_clock_position_on_a_23_hour_day()
+    {
+        var r = Run(Utc(2026, 3, 8, 12)); // 08:00 EDT
+        r.DayFraction(Utc(2026, 3, 8, 12).ToUnixTimeSeconds()).Should().BeApproximately(8 / 24.0, 1e-9);
+        r.DayFraction(U(2026, 3, 8, 5)).Should().Be(0);                 // midnight EST
+        r.DayFraction(Utc(2026, 3, 8, 8).ToUnixTimeSeconds()).Should().BeApproximately(4 / 24.0, 1e-9); // 04:00 EDT, after the gap
+    }
+
+    [Fact]
+    public void Day_fraction_is_the_wall_clock_position_on_a_25_hour_day()
+    {
+        var r = Run(Utc(2026, 11, 1, 18)); // 13:00 EST
+        r.DayFraction(Utc(2026, 11, 1, 18).ToUnixTimeSeconds()).Should().BeApproximately(13 / 24.0, 1e-9);
+        r.DayFraction(Utc(2026, 11, 1, 5, 30).ToUnixTimeSeconds()).Should().BeApproximately(1.5 / 24.0, 1e-9); // 01:30 EDT, first pass
+    }
+
+    [Fact]
+    public void Day_fraction_clamps_a_time_outside_the_day()
+    {
+        var r = Run(Utc(2026, 3, 8, 12));
+        r.DayFraction(U(2026, 3, 7, 12)).Should().Be(0);
+        r.DayFraction(U(2026, 3, 9, 12)).Should().Be(1);
+    }
+
+    [Fact]
     public void Fall_back_day_is_25_hours_and_the_repeated_hour_column_holds_both_passes()
     {
         // 01:30 EDT -> 02:30 EST (05:30Z-07:30Z): hour 1 = 1800 + 3600, hour 2 = 1800.
