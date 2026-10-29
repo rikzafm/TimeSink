@@ -82,11 +82,15 @@ public static class WeekQuery
             var week = days.Sum(d => perGroupDay.GetValueOrDefault((g, d.Date)));
             if (week == 0) continue;
             var spark = Enumerable.Range(0, SparkDays)
-                .Select(i => perGroupDay.GetValueOrDefault((g, today.AddDays(i - (SparkDays - 1))))).ToList();
+                .Select(i => perGroupDay.GetValueOrDefault((g, SparkDay(today, i)))).ToList();
             rows.Add(new WeekAppRow(g, UsageRank.NameOf(apps, g), week, spark));
         }
         rows = UsageRank.Rank(rows, apps, r => r.AppId, r => r.Seconds);
 
-        return new WeekResult(today, shownWeek, nowUtc, days.Sum(d => d.Seconds), days, heat, streak, rows, weekTotals, prevWeek);
+        var firstTracked = apps.Count == 0 ? (DateOnly?)null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
+        return new WeekResult(today, shownWeek, nowUtc, days.Sum(d => d.Seconds), days, heat, streak, rows, weekTotals, prevWeek, firstTracked);
     }
+
+    /// <summary>The day behind spark point <paramref name="i"/> of <paramref name="count"/>: the points run oldest first and end on <paramref name="today"/>.</summary>
+    public static DateOnly SparkDay(DateOnly today, int i, int count = SparkDays) => today.AddDays(i - (count - 1));
 }

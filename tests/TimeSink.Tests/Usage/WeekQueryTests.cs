@@ -34,6 +34,22 @@ public sealed class WeekQueryTests : IDisposable
     }
 
     [Fact]
+    public void The_result_carries_the_local_day_the_first_app_was_added()
+    {
+        Run().FirstTracked.Should().Be(new DateOnly(2025, 1, 1));
+    }
+
+    [Fact]
+    public void SparkDay_maps_each_sparkline_point_to_its_day_ending_on_today()
+    {
+        var today = new DateOnly(2026, 3, 11);
+
+        WeekQuery.SparkDay(today, WeekQuery.SparkDays - 1).Should().Be(today);
+        WeekQuery.SparkDay(today, 0).Should().Be(today.AddDays(-(WeekQuery.SparkDays - 1)));
+        WeekQuery.SparkDay(today, 1, count: 3).Should().Be(today.AddDays(-1));
+    }
+
+    [Fact]
     public void Sunday_start_shifts_the_week_and_the_columns()
     {
         var r = Run(WeekStart.Sun);

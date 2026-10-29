@@ -358,7 +358,7 @@ public sealed class AppDetailView : UserControl
         if (_bars)
         {
             string[] names = [Str(AppDetailStringKeys.RangeAll), Str(AppDetailStringKeys.RangeYear), Str(AppDetailStringKeys.RangeMonth), Str(AppDetailStringKeys.RangeWeek)];
-            var range = CycleButton(names[(int)_range], () => { _range = (AppDetailRange)(((int)_range + 1) % names.Length); _anchor = Today(); Redraw(); });
+            var range = CycleButton(names[(int)_range], () => { _range = AppDetailChart.NextRange(_range); _anchor = Today(); Redraw(); });
             DockPanel.SetDock(range, Dock.Right);
             bar.Children.Add(range);
         }

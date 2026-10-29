@@ -19,7 +19,6 @@ namespace TimeSink.UI.Views;
 public sealed class WeekView : UserControl, ILiveView
 {
     private const int RefreshEverySeconds = 30;
-    private const int MaxWeeksBack = 52;
 
     private readonly string _dbPath;
     private readonly ThemeService _themes;
@@ -196,8 +195,9 @@ public sealed class WeekView : UserControl, ILiveView
             1 => "Last week",
             _ => $"{r.Days[0].Date.ToString("d MMM", CultureInfo.CurrentCulture)} – {r.Days[^1].Date.ToString("d MMM", CultureInfo.CurrentCulture)}",
         };
-        _prev.IsEnabled = _weeksBack < MaxWeeksBack;
-        _next.IsEnabled = _weeksBack > 0;
+        var nav = Navigator(r);
+        _prev.IsEnabled = nav.CanPrev(r.WeekStartDate);
+        _next.IsEnabled = nav.CanNext(r.WeekStartDate);
         _total.Text = UsageText.HoursMinutes(r.TotalSeconds);
         _streak.Text = Str(StringKeys.WeekStreak, r.StreakDays);
         _columns.Days = r.Days;
@@ -224,9 +224,17 @@ public sealed class WeekView : UserControl, ILiveView
         }
     }
 
+    /// <summary>Week navigation between the first tracked week and this one, for the week the result shows.</summary>
+    private static PeriodNavigator Navigator(WeekResult r) =>
+        new(PeriodUnit.Week, r.FirstTracked ?? r.Today, r.Today, r.WeekStartDate.DayOfWeek);
+
+    /// <summary>Steps to the week before (<paramref name="delta"/> 1) or after (-1) the shown one; does nothing at either end.</summary>
     private void Navigate(int delta)
     {
-        _weeksBack = Math.Clamp(_weeksBack + delta, 0, MaxWeeksBack);
+        if (_result is not { } r) return;
+        var nav = Navigator(r);
+        if (delta > 0 ? !nav.CanPrev(r.WeekStartDate) : !nav.CanNext(r.WeekStartDate)) return;
+        _weeksBack = nav.WeeksBack(nav.Step(r.WeekStartDate, -delta));
         ClosePanel();
         Refresh();
     }
@@ -284,8 +292,7 @@ public sealed class WeekView : UserControl, ILiveView
     }
 
     /// <summary>First day of the week behind trend bar <paramref name="i"/>: the strip is anchored to the current week and runs oldest first.</summary>
-    private DateOnly TrendWeekStart(WeekResult r, int i) =>
-        r.Days[0].Date.AddDays(7 * (_weeksBack - (r.WeekTotals.Count - 1 - i)));
+    private static DateOnly TrendWeekStart(WeekResult r, int i) => Navigator(r).WeekAnchor(r.WeekTotals.Count - 1 - i);
 
     private void OnTrendHovered(int i, Point _)
     {
@@ -297,14 +304,15 @@ public sealed class WeekView : UserControl, ILiveView
     private void OnTrendClicked(int i)
     {
         if (_result is not { } r) return;
-        var target = Math.Clamp(r.WeekTotals.Count - 1 - i, 0, MaxWeeksBack);
+        var nav = Navigator(r);
+        var target = nav.WeeksBack(nav.WeekAnchor(r.WeekTotals.Count - 1 - i));
         if (target == _weeksBack) return;
         _weeksBack = target;
         ClosePanel();
         Refresh();
     }
 
-    private static DateOnly SparkDate(WeekResult r, WeekAppRow app, int i) => r.Today.AddDays(i - (app.Spark.Count - 1));
+    private static DateOnly SparkDate(WeekResult r, WeekAppRow app, int i) => WeekQuery.SparkDay(r.Today, i, app.Spark.Count);
 
     private void OnSparkHovered(ToolTip tip, WeekAppRow app, int i)
     {
@@ -322,8 +330,7 @@ public sealed class WeekView : UserControl, ILiveView
         var index = r.Days.ToList().FindIndex(d => d.Date == day);
         if (index < 0)
         {
-            var currentWeekStart = r.Days[0].Date.AddDays(7 * _weeksBack);
-            _weeksBack = Math.Clamp((int)Math.Ceiling((currentWeekStart.DayNumber - day.DayNumber) / 7.0), 0, MaxWeeksBack);
+            _weeksBack = Navigator(r).WeeksBack(day);
             _pendingDay = (day, focus?.AppId);
             Refresh();
             return;

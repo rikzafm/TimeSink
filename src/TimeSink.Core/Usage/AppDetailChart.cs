@@ -75,6 +75,10 @@ public static class AppDetailChart
     public static DateOnly Step(AppDetailRange range, DateOnly anchor, int dir) =>
         range == AppDetailRange.All ? anchor : PeriodNavigator.StepBy(UnitOf(range), anchor, dir);
 
+    /// <summary>The range the cycle button moves to: All, Year, Month, Week, then All again.</summary>
+    public static AppDetailRange NextRange(AppDetailRange range) =>
+        (AppDetailRange)(((int)range + 1) % Enum.GetValues<AppDetailRange>().Length);
+
     private static PeriodUnit UnitOf(AppDetailRange range) => range switch
     {
         AppDetailRange.Year => PeriodUnit.Year,

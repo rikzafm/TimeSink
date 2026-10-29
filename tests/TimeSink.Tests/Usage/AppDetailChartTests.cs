@@ -92,4 +92,12 @@ public sealed class AppDetailChartTests
     [InlineData(AppDetailRange.All, 1, "2026-03-11")]
     public void Step_moves_one_period(AppDetailRange range, int dir, string expected) =>
         AppDetailChart.Step(range, Today, dir).Should().Be(DateOnly.Parse(expected));
+
+    [Theory]
+    [InlineData(AppDetailRange.All, AppDetailRange.Year)]
+    [InlineData(AppDetailRange.Year, AppDetailRange.Month)]
+    [InlineData(AppDetailRange.Month, AppDetailRange.Week)]
+    [InlineData(AppDetailRange.Week, AppDetailRange.All)]
+    public void NextRange_cycles_through_the_ranges(AppDetailRange range, AppDetailRange expected) =>
+        AppDetailChart.NextRange(range).Should().Be(expected);
 }

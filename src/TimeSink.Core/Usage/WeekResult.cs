@@ -39,4 +39,5 @@ public sealed record WeekResult(
     int StreakDays,
     IReadOnlyList<WeekAppRow> Apps,
     IReadOnlyList<long> WeekTotals,
-    long PrevWeekSeconds);
+    long PrevWeekSeconds,
+    DateOnly? FirstTracked);

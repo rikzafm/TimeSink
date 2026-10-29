@@ -53,6 +53,15 @@ public sealed class PeriodNavigator
         _ => anchor.AddDays(dir),
     };
 
+    /// <summary>
+    /// For a Week navigator: how many whole weeks before the current week the week holding <paramref name="day"/> lies,
+    /// with the day first clamped into the span (0 is the current week).
+    /// </summary>
+    public int WeeksBack(DateOnly day) => (StartOf(Today).DayNumber - StartOf(Clamp(day)).DayNumber) / 7;
+
+    /// <summary>For a Week navigator: the first day of the week <paramref name="weeksBack"/> weeks before the current one.</summary>
+    public DateOnly WeekAnchor(int weeksBack) => StartOf(Today).AddDays(-7 * weeksBack);
+
     public bool CanPrev(DateOnly anchor) => StartOf(anchor) > StartOf(First);
 
     public bool CanNext(DateOnly anchor) => StartOf(anchor) < StartOf(Today);

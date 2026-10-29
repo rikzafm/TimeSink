@@ -110,4 +110,27 @@ public sealed class PeriodNavigatorTests
         nav.CanNext(Today.AddDays(-7)).Should().BeTrue();
         nav.Step(Today, -1).Should().Be(new DateOnly(2026, 3, 4));
     }
+
+    [Theory]
+    [InlineData("2026-03-11", 0)]
+    [InlineData("2026-03-09", 0)]
+    [InlineData("2026-03-08", 1)]
+    [InlineData("2026-03-02", 1)]
+    [InlineData("2026-03-01", 2)]
+    [InlineData("2026-03-15", 0)]  // after today: the current week
+    [InlineData("2025-01-01", 16)] // before the first tracked day: the first tracked week (Mon 2025-11-17)
+    public void WeeksBack_counts_whole_weeks_before_the_current_week_within_the_span(string day, int expected)
+    {
+        Nav(PeriodUnit.Week).WeeksBack(DateOnly.Parse(day)).Should().Be(expected);
+    }
+
+    [Fact]
+    public void WeekAnchor_is_the_first_day_of_the_week_that_many_weeks_back_and_inverts_WeeksBack()
+    {
+        var nav = Nav(PeriodUnit.Week, DayOfWeek.Sunday); // this week starts Sun 2026-03-08
+
+        nav.WeekAnchor(0).Should().Be(new DateOnly(2026, 3, 8));
+        nav.WeekAnchor(3).Should().Be(new DateOnly(2026, 2, 15));
+        nav.WeeksBack(nav.WeekAnchor(3)).Should().Be(3);
+    }
 }
