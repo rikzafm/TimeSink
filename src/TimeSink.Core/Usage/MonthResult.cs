@@ -10,7 +10,11 @@ public sealed record MonthDay(
     int Heat,
     bool IsFuture,
     bool IsToday,
-    IReadOnlyList<MonthAppAmount> Apps);
+    IReadOnlyList<MonthAppAmount> Apps)
+{
+    /// <summary>The day's bar: top apps by time, an Other bucket and the Mostly / Spread verdict (see <see cref="DayBars"/>).</summary>
+    public DayBar Bar => DayBars.Of(Apps);
+}
 
 /// <summary>A grid row: seven cells (null = blank padding outside the month) and the row's total.</summary>
 public sealed record MonthWeek(IReadOnlyList<MonthDay?> Days, long TotalSeconds);

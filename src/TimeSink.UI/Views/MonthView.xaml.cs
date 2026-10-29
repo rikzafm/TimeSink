@@ -35,7 +35,6 @@ public partial class MonthView : UserControl, ILiveView
     private DateOnly? _selected;
     private DateOnly? _firstTracked; // first tracked day; months before it are empty, so ◂ stops there
     private MonthResult? _result;
-    private const int MaxBarSegments = 7;
     private List<(string Name, long Seconds)> _barLabels = new();
     private string _defaultNote = "";
 
@@ -184,23 +183,17 @@ public partial class MonthView : UserControl, ILiveView
         var day = r.Days.FirstOrDefault(d => d.Date == _selected) ?? r.Days[0];
         SelDate.Text = UsageText.WeekdayDate(day.Date);
         SelTotal.Text = UsageText.HoursMinutes(day.Seconds);
-        var top = day.Apps.OrderByDescending(a => a.Seconds).Take(MaxBarSegments).ToList();
-        _barLabels = top.Select(a => (a.Name, a.Seconds)).ToList();
-        var segments = top.Select(a => ((double)a.Seconds, Res(_themes.AppBrushKey(a.AppId)))).ToList();
-        var rest = day.Apps.Sum(a => a.Seconds) - top.Sum(a => a.Seconds);
-        if (rest > 0)
-        {
-            _barLabels.Add(("Other", rest));
-            segments.Add(((double)rest, Res("Brush.TextMuted")));
-        }
+        var bar = day.Bar;
+        _barLabels = bar.Segments.Select(s => (s.Name, s.Seconds)).ToList();
         SelBar.ClearPinned();
-        SelBar.Segments = segments;
-        // "Mostly X" only when X clearly leads: at least 1.5x the runner-up (Background apps rank last in Apps, so sort by time)
-        var byTime = day.Apps.OrderByDescending(a => a.Seconds).ToList();
-        _defaultNote = byTime.Count == 0 ? Str(StringKeys.MonthDayEmpty)
-            : byTime.Count == 1 || byTime[0].Seconds * 2 >= byTime[1].Seconds * 3
-                ? Str(StringKeys.MonthMostly, byTime[0].Name, UsageText.HoursMinutes(byTime[0].Seconds))
-                : Str(StringKeys.MonthSpread, byTime.Count);
+        SelBar.Segments = bar.Segments
+            .Select(s => ((double)s.Seconds, Res(s.AppId is { } id ? _themes.AppBrushKey(id) : "Brush.TextMuted"))).ToList();
+        _defaultNote = bar.Verdict switch
+        {
+            DayVerdict.Empty => Str(StringKeys.MonthDayEmpty),
+            DayVerdict.Mostly => Str(StringKeys.MonthMostly, bar.Leader!.Name, UsageText.HoursMinutes(bar.Leader.Seconds)),
+            _ => Str(StringKeys.MonthSpread, bar.AppCount),
+        };
         ShowBarNote(-1);
     }
 

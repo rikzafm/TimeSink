@@ -46,4 +46,18 @@ public sealed record WeekResult(
     IReadOnlyList<WeekAppRow> Apps,
     IReadOnlyList<long> WeekTotals,
     long PrevWeekSeconds,
-    DateOnly? FirstTracked);
+    DateOnly? FirstTracked)
+{
+    /// <summary>
+    /// The mean PC uptime of the shown week's days that have time so far (decision 131); 0 when none has. The Week
+    /// headline and the day panel's "vs the week's average" both read it, so empty days never count in one and not the other.
+    /// </summary>
+    public double AverageSeconds
+    {
+        get
+        {
+            var counted = Days.Where(d => !d.IsFuture && d.Seconds > 0).ToList();
+            return counted.Count == 0 ? 0 : counted.Average(d => (double)d.Seconds);
+        }
+    }
+}

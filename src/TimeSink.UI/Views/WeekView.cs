@@ -203,13 +203,12 @@ public sealed class WeekView : UserControl, ILiveView
         _columns.Days = r.Days;
         _trend.Values = r.WeekTotals;
 
-        var counted = r.Days.Where(d => !d.IsFuture && d.Seconds > 0).ToList();
         var change = r.TotalSeconds - r.PrevWeekSeconds;
         var parts = new List<string>();
         if (r.PrevWeekSeconds > 0)
             parts.Add(Str(StringKeys.WeekVsLast, (change >= 0 ? "▲ " : "▼ ") + UsageText.HoursMinutes(Math.Abs(change))));
-        if (counted.Count > 0)
-            parts.Add(Str(StringKeys.WeekAvg, UsageText.HoursMinutes((long)counted.Average(d => d.Seconds))));
+        if (r.AverageSeconds > 0)
+            parts.Add(Str(StringKeys.WeekAvg, UsageText.HoursMinutes((long)r.AverageSeconds)));
         _delta.Text = string.Join(" · ", parts);
         _delta.Visibility = parts.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         _empty.Visibility = r.Apps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -340,7 +339,7 @@ public sealed class WeekView : UserControl, ILiveView
         var seq = ++_panelSeq;
         var path = _dbPath;
         DayDetail? loaded = null;
-        var applied = await _panelLoader.Refresh(c => BarDetail.ForDay(path, day, c.Now, c.Zone, c.WeekStart), d => loaded = d);
+        var applied = await _panelLoader.Refresh(c => DayDetailQuery.Run(path, day, c.Now, c.Zone, c.WeekStart, c.Running, c.SignInUtc), d => loaded = d);
         if (!applied || seq != _panelSeq || loaded is not { } detail) return; // overtaken, view stopped, no database, or the panel was closed meanwhile
 
         var compares = new List<(string, string, bool)>();
