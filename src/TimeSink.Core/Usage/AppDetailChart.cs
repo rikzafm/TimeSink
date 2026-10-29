@@ -35,7 +35,8 @@ public static class AppDetailChart
         IReadOnlyDictionary<DateOnly, long> daySeconds, IReadOnlyList<AppDetailOpen> opens)
     {
         var first = firstTracked ?? today;
-        anchor = anchor < first ? first : anchor > today ? today : anchor;
+        var nav = new PeriodNavigator(UnitOf(range), first, today, weekStart);
+        anchor = nav.Clamp(anchor);
         var (from, to) = Period(range, anchor, today, first, weekStart);
 
         var bars = new List<AppDetailBar>();
@@ -65,18 +66,21 @@ public static class AppDetailChart
         for (var h = 0; h < 24; h++)
             if (byHour[h] > 0 && (peak is null || byHour[h] > byHour[peak.Value])) peak = h;
 
-        var canPrev = range != AppDetailRange.All && Period(range, first, today, first, weekStart).From < from;
-        var canNext = range != AppDetailRange.All && Period(range, today, today, first, weekStart).From > from;
+        var canPrev = range != AppDetailRange.All && nav.CanPrev(anchor);
+        var canNext = range != AppDetailRange.All && nav.CanNext(anchor);
         return new AppDetailChartData(from, to, bars, bars.Sum(b => b.Seconds), byHour, peak, canPrev, canNext);
     }
 
     /// <summary>The anchor one period earlier or later (dir -1 or +1); All has a single period.</summary>
-    public static DateOnly Step(AppDetailRange range, DateOnly anchor, int dir) => range switch
+    public static DateOnly Step(AppDetailRange range, DateOnly anchor, int dir) =>
+        range == AppDetailRange.All ? anchor : PeriodNavigator.StepBy(UnitOf(range), anchor, dir);
+
+    private static PeriodUnit UnitOf(AppDetailRange range) => range switch
     {
-        AppDetailRange.Year => anchor.AddYears(dir),
-        AppDetailRange.Month => anchor.AddMonths(dir),
-        AppDetailRange.Week => anchor.AddDays(7 * dir),
-        _ => anchor,
+        AppDetailRange.Year => PeriodUnit.Year,
+        AppDetailRange.Month => PeriodUnit.Month,
+        AppDetailRange.Week => PeriodUnit.Week,
+        _ => PeriodUnit.Day, // All has a single period: only its anchor is clamped
     };
 
     private static (DateOnly From, DateOnly To) Period(AppDetailRange range, DateOnly anchor, DateOnly today, DateOnly first, DayOfWeek weekStart)
