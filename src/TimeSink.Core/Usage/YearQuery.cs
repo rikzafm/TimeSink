@@ -1,6 +1,5 @@
 using Microsoft.Data.Sqlite;
 
-using App = TimeSink.Core.Usage.UsageApp;
 using Seg = TimeSink.Core.Usage.UsageSeg;
 
 namespace TimeSink.Core.Usage;
@@ -103,8 +102,8 @@ public static class YearQuery
             }
 
             var top = kind is YearMonthKind.Tracked or YearMonthKind.Current && perMonth.TryGetValue(idx, out var shares)
-                ? shares.OrderBy(kv => UsageRank.Tier(apps, kv.Key)).ThenByDescending(kv => kv.Value).ThenBy(kv => NameOf(apps, kv.Key), StringComparer.CurrentCultureIgnoreCase)
-                    .Select(kv => new YearAppShare(kv.Key, NameOf(apps, kv.Key), kv.Value)).ToList()
+                ? UsageRank.Rank(shares, apps, kv => kv.Key, kv => kv.Value)
+                    .Select(kv => new YearAppShare(kv.Key, UsageRank.NameOf(apps, kv.Key), kv.Value)).ToList()
                 : new List<YearAppShare>();
             months.Add(new YearMonth(m, kind, secs, proj, delta, prev, top));
         }
@@ -125,8 +124,6 @@ public static class YearQuery
     }
 
     private static int Idx(int year, int month) => year * 12 + month - 1;
-
-    private static string NameOf(Dictionary<long, App> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
 
 
     private static DateOnly LocalDate(long utc, TimeZoneInfo zone) =>

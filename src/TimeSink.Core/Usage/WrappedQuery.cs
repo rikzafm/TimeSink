@@ -1,6 +1,5 @@
 using Microsoft.Data.Sqlite;
 
-using App = TimeSink.Core.Usage.UsageApp;
 using Seg = TimeSink.Core.Usage.UsageSeg;
 
 namespace TimeSink.Core.Usage;
@@ -73,20 +72,19 @@ public static class WrappedQuery
         var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc).Where(kv => kv.Key.Year == year).Sum(kv => kv.Value);
 
         // Background apps (Steam, Wallpaper Engine) stay out of every ranking here; their time still counts in the totals.
-        var ranked = perGroup.Where(kv => UsageRank.Tier(apps, kv.Key) == 0).Select(kv => new WrappedApp(kv.Key, NameOf(apps, kv.Key), kv.Value))
-            .OrderByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        var ranked = UsageRank.Rank(perGroup.Where(kv => !UsageRank.IsBackground(apps, kv.Key))
+            .Select(kv => new WrappedApp(kv.Key, UsageRank.NameOf(apps, kv.Key), kv.Value)), apps, a => a.AppId, a => a.Seconds);
 
         WrappedKindTop TopOf(Apps.AppKind kind)
         {
-            var list = ranked.Where(a => UsageRank.KindOf(apps, a.AppId) == kind).OrderByDescending(a => a.Seconds)
-                .ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+            var list = ranked.Where(a => UsageRank.KindOf(apps, a.AppId) == kind).ToList();
             return new WrappedKindTop(list.Take(PodiumSize).ToList(), list.Skip(PodiumSize).Take(OthersSize).ToList(), list.Sum(a => a.Seconds));
         }
 
         // One entry per app group: its single longest session that ended this year (a session counts whole, as in All).
-        var longest = segs.Where(s => s.End > yearStart && UsageRank.Tier(apps, s.Group) == 0)
-            .GroupBy(s => s.Group).Select(g => new WrappedApp(g.Key, NameOf(apps, g.Key), g.Max(s => s.End - s.Start)))
-            .Where(a => a.Seconds > 0).OrderByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+        var longest = UsageRank.Rank(segs.Where(s => s.End > yearStart && !UsageRank.IsBackground(apps, s.Group))
+            .GroupBy(s => s.Group).Select(g => new WrappedApp(g.Key, UsageRank.NameOf(apps, g.Key), g.Max(s => s.End - s.Start)))
+            .Where(a => a.Seconds > 0), apps, a => a.AppId, a => a.Seconds)
             .Take(PodiumSize).ToList();
 
         // Longest run of consecutive local days with any tracked time (earliest wins a tie).
@@ -136,7 +134,4 @@ public static class WrappedQuery
     }
 
     private static long Mod(long a, long m) => (a % m + m) % m;
-
-    private static string NameOf(Dictionary<long, App> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
-
 }

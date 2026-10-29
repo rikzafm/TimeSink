@@ -8,12 +8,27 @@ namespace TimeSink.Core.Usage;
 internal sealed record UsageApp(long Id, long Group, string Name, long AddedUtc, bool Background = false, AppKind Kind = AppKind.Other,
     bool Retired = false, long RetiredUtc = 0, string ExePath = "");
 
-/// <summary>Background apps (Steam, Wallpaper Engine) rank after every other app; the flag lives on the canonical app of a merged group.</summary>
+/// <summary>
+/// The Ranking rule every usage query lists apps by: Background apps (Steam, Wallpaper Engine) last, then most time first,
+/// then name A to Z ignoring case. The Background flag lives on the canonical app of a merged group.
+/// </summary>
 internal static class UsageRank
 {
+    /// <summary>The name comparison Ranking breaks ties with, for the one list (Today's live day) that ranks by its own keys first.</summary>
+    public static StringComparer ByName => StringComparer.CurrentCultureIgnoreCase;
+
     public static AppKind KindOf(Dictionary<long, UsageApp> apps, long group) => apps.TryGetValue(group, out var a) ? a.Kind : AppKind.Other;
 
-    public static int Tier(Dictionary<long, UsageApp> apps, long group) => apps.TryGetValue(group, out var a) && a.Background ? 1 : 0;
+    public static bool IsBackground(Dictionary<long, UsageApp> apps, long group) => apps.TryGetValue(group, out var a) && a.Background;
+
+    public static string NameOf(Dictionary<long, UsageApp> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
+
+    /// <summary>Ranks <paramref name="items"/> by their app group and amount. Ties keep the input order once the name is equal.</summary>
+    public static List<T> Rank<T>(IEnumerable<T> items, Dictionary<long, UsageApp> apps, Func<T, long> groupOf, Func<T, long> amountOf) =>
+        items.OrderBy(i => IsBackground(apps, groupOf(i)))
+            .ThenByDescending(amountOf)
+            .ThenBy(i => NameOf(apps, groupOf(i)), ByName)
+            .ToList();
 }
 
 /// <summary>One session clipped to what the queries need: its group, its real app, bounds, whether it is still open and whether it ended by sleep.</summary>

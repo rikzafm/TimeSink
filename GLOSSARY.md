@@ -22,6 +22,10 @@ _Avoid_: Keeper, canonical app, primary app
 An app folded into a Main app, so its running time counts under the Main app. It can be unmerged or promoted to Main app.
 _Avoid_: Alias, child app, duplicate
 
+**Background app**:
+A Tracked app that runs all the time without the user using it (Steam, Wallpaper Engine). It is listed after every other app, and its time still counts in the totals.
+_Avoid_: Idle app, always-on app
+
 **Candidate**:
 Any app the merge picker offers for folding into a Main app: a Tracked, Retired, already Merged or merely installed app.
 _Avoid_: Merge target, option
@@ -39,6 +43,10 @@ _Avoid_: Logo, thumbnail
 **Session**:
 One continuous run of a Tracked app. The sum of its Sessions is the app's running time.
 _Avoid_: Run, launch
+
+**Ranking**:
+The default order the views list apps in: Background apps last, then most time first, then name A to Z ignoring case.
+_Avoid_: Sort order, ordering
 
 **Local day**:
 A calendar day in the user's time zone. It lasts 23 or 25 hours when daylight saving changes.

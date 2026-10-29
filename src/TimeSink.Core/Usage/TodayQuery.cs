@@ -1,6 +1,5 @@
 using Microsoft.Data.Sqlite;
 
-using App = TimeSink.Core.Usage.UsageApp;
 using Seg = TimeSink.Core.Usage.UsageSeg;
 
 namespace TimeSink.Core.Usage;
@@ -92,7 +91,7 @@ public static class TodayQuery
             if (avgDays > 0) avg = avgSum / (double)avgDays;
 
             rows.Add(new TodayAppRow(
-                g.Key, apps.TryGetValue(g.Key, out var root) ? root.Name : groupSegs[0].AppId.ToString(),
+                g.Key, UsageRank.NameOf(apps, g.Key),
                 seconds, open.Count > 0,
                 open.Count > 0 ? open.Min(s => s.Start) : null,
                 closedToday.Count > 0 ? closedToday.Max(s => s.End) : null,
@@ -100,20 +99,20 @@ public static class TodayQuery
         }
         // The live day lists running apps first (most time first), then closed ones by most recent close; Background apps
         // stay after the rest within each group. A past day keeps the plain time ranking.
-        rows = (isToday
-            ? rows.OrderByDescending(r => r.IsRunning).ThenBy(r => UsageRank.Tier(apps, r.AppId))
+        rows = isToday
+            ? rows.OrderByDescending(r => r.IsRunning).ThenBy(r => UsageRank.IsBackground(apps, r.AppId))
                 .ThenByDescending(r => r.IsRunning ? r.Seconds : r.LastClosedUtc ?? 0)
-            : rows.OrderBy(r => UsageRank.Tier(apps, r.AppId)).ThenByDescending(r => r.Seconds))
-            .ThenByDescending(r => r.Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+                .ThenByDescending(r => r.Seconds).ThenBy(r => r.Name, UsageRank.ByName).ToList()
+            : UsageRank.Rank(rows, apps, r => r.AppId, r => r.Seconds);
 
         // Tiles.
         FirstAppTile? first = null;
         var started = segs.Where(s => s.Start >= d0 && s.Start < d1).OrderBy(s => s.Start).ThenBy(s => s.AppId).FirstOrDefault();
-        if (started != default) first = new FirstAppTile(NameOf(apps, started.Group), started.Start);
+        if (started != default) first = new FirstAppTile(UsageRank.NameOf(apps, started.Group), started.Start);
 
         LongestSessionTile? longest = null;
         var best = segs.OrderByDescending(s => Overlap(s, d0, d1)).FirstOrDefault();
-        if (best != default && Overlap(best, d0, d1) > 0) longest = new LongestSessionTile(best.Group, NameOf(apps, best.Group), Overlap(best, d0, d1));
+        if (best != default && Overlap(best, d0, d1) > 0) longest = new LongestSessionTile(best.Group, UsageRank.NameOf(apps, best.Group), Overlap(best, d0, d1));
 
         var total = rows.Sum(r => r.Seconds);
         var y0 = LocalDays.StartOf(date.AddDays(-1), zone);
@@ -134,8 +133,6 @@ public static class TodayQuery
             hours, typicalDays > 0, UsageUptime.SleepBands(segs, d0, Math.Min(nowUtc, d1)), first, longest, total - yesterdayByNow, rows,
             uptime, uptimeVs);
     }
-
-    private static string NameOf(Dictionary<long, App> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
 
 
     private static long Overlap(Seg s, long a, long b) => Math.Max(0, Math.Min(s.End, b) - Math.Max(s.Start, a));

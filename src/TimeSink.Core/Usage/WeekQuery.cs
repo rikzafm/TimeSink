@@ -32,7 +32,6 @@ public static class WeekQuery
         var lookStart = new[] { gridStart, today.AddDays(-StreakLookbackDays), shownWeek.AddDays(-7) }.Min();
 
         var apps = UsageLoader.LoadApps(c);
-        var names = apps.Values.Where(a => a.Id == a.Group).ToDictionary(a => a.Id, a => a.Name);
         var segs = UsageLoader.LoadSegments(c, LocalDays.StartOf(lookStart, zone), nowUtc, apps, running);
         var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc);
 
@@ -83,9 +82,9 @@ public static class WeekQuery
             if (week == 0) continue;
             var spark = Enumerable.Range(0, SparkDays)
                 .Select(i => perGroupDay.GetValueOrDefault((g, today.AddDays(i - (SparkDays - 1))))).ToList();
-            rows.Add(new WeekAppRow(g, names.GetValueOrDefault(g, g.ToString()), week, spark));
+            rows.Add(new WeekAppRow(g, UsageRank.NameOf(apps, g), week, spark));
         }
-        rows = rows.OrderBy(r => UsageRank.Tier(apps, r.AppId)).ThenByDescending(r => r.Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        rows = UsageRank.Rank(rows, apps, r => r.AppId, r => r.Seconds);
 
         return new WeekResult(today, shownWeek, nowUtc, days.Sum(d => d.Seconds), days, heat, streak, rows, weekTotals, prevWeek);
     }

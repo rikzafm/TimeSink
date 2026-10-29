@@ -63,16 +63,15 @@ public static class MatrixQuery
             if (idx >= 0 && idx < count) uptimeByMonth[idx] += secs;
         }
         var grand = uptimeByMonth.Sum();
-        var rows = perApp.Where(kv => kv.Value.Sum() > 0)
-            .Select(kv => BuildRow(kv.Key, NameOf(apps, kv.Key), kv.Value, first, grand))
-            .OrderBy(r => UsageRank.Tier(apps, r.AppId)).ThenByDescending(r => r.TotalSeconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        var rows = UsageRank.Rank(perApp.Where(kv => kv.Value.Sum() > 0)
+            .Select(kv => BuildRow(kv.Key, UsageRank.NameOf(apps, kv.Key), kv.Value, first, grand)),
+            apps, r => r.AppId, r => r.TotalSeconds);
 
         var months = new List<MatrixMonth>(count);
         for (var i = 0; i < count; i++)
         {
             var idx = i;
-            var top = rows.Where(r => r.Cells[idx].Seconds > 0)
-                .OrderBy(r => UsageRank.Tier(apps, r.AppId)).ThenByDescending(r => r.Cells[idx].Seconds).ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)
+            var top = UsageRank.Rank(rows.Where(r => r.Cells[idx].Seconds > 0), apps, r => r.AppId, r => r.Cells[idx].Seconds)
                 .Take(TopApps).Select(r => new YearAppShare(r.AppId, r.Name, r.Cells[idx].Seconds)).ToList();
             months.Add(new MatrixMonth(first + i, uptimeByMonth[idx], top));
         }
@@ -98,6 +97,4 @@ public static class MatrixQuery
         var share = grand <= 0 ? 0 : (int)Math.Round(total * 100.0 / grand, MidpointRounding.AwayFromZero);
         return new MatrixRow(id, name, cells, total, share, firstMonth + peak, best, trend);
     }
-
-    private static string NameOf(Dictionary<long, UsageApp> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
 }

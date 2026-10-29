@@ -1,6 +1,5 @@
 using Microsoft.Data.Sqlite;
 
-using App = TimeSink.Core.Usage.UsageApp;
 using Seg = TimeSink.Core.Usage.UsageSeg;
 
 namespace TimeSink.Core.Usage;
@@ -64,9 +63,8 @@ public static class MonthQuery
         for (var d = 0; d < dim; d++)
         {
             var date = first.AddDays(d);
-            var amounts = days[d]
-                .Select(kv => new MonthAppAmount(kv.Key, NameOf(apps, kv.Key), kv.Value))
-                .OrderBy(a => UsageRank.Tier(apps, a.AppId)).ThenByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+            var amounts = UsageRank.Rank(days[d].Select(kv => new MonthAppAmount(kv.Key, UsageRank.NameOf(apps, kv.Key), kv.Value)),
+                apps, a => a.AppId, a => a.Seconds);
             var seconds = uptime.GetValueOrDefault(date);
             foreach (var a in amounts) monthTotals[a.AppId] = monthTotals.GetValueOrDefault(a.AppId) + a.Seconds;
             total += seconds;
@@ -74,13 +72,11 @@ public static class MonthQuery
             monthDays.Add(new MonthDay(date, seconds, HeatScale.Level(seconds), date > today, date == today, amounts));
         }
 
-        var top = monthTotals
-            .Select(kv => (Id: kv.Key, Name: NameOf(apps, kv.Key), Seconds: kv.Value))
-            .OrderBy(a => UsageRank.Tier(apps, a.Id)).ThenByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
-            .Select(a =>
+        var top = UsageRank.Rank(monthTotals, apps, kv => kv.Key, kv => kv.Value)
+            .Select(kv =>
             {
-                var prev = prevTotals.GetValueOrDefault(a.Id);
-                return new MonthTopApp(a.Id, a.Name, a.Seconds, prev, a.Seconds - prev, prev > 0 ? (a.Seconds - prev) / (double)prev : null);
+                var prev = prevTotals.GetValueOrDefault(kv.Key);
+                return new MonthTopApp(kv.Key, UsageRank.NameOf(apps, kv.Key), kv.Value, prev, kv.Value - prev, prev > 0 ? (kv.Value - prev) / (double)prev : null);
             }).ToList();
 
         var lead = ((int)first.DayOfWeek - (int)weekStart + 7) % 7;
@@ -114,9 +110,6 @@ public static class MonthQuery
         }
         return d;
     }
-
-    private static string NameOf(Dictionary<long, App> apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
-
 
     private static long DayStart(DateOnly date, TimeZoneInfo zone) => LocalDays.StartOf(date, zone);
 }
