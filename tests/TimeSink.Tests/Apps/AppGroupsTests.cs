@@ -54,6 +54,24 @@ public sealed class AppGroupsTests : IDisposable
     }
 
     [Fact]
+    public void The_games_filter_keeps_game_and_gacha_apps_and_their_merged_apps()
+    {
+        var groups = AppGroups.From(
+        [
+            MainApp(1) with { Kind = AppKind.Game }, MainApp(2) with { Kind = AppKind.Gacha }, MainApp(3),
+            MergedApp(4, 1), MergedApp(5, 3),
+        ]).OnlyGames();
+
+        groups.Values.Select(a => a.Id).Should().BeEquivalentTo([1L, 2L, 4L]);
+    }
+
+    [Fact]
+    public void The_games_filter_leaves_nothing_when_no_app_is_a_game()
+    {
+        AppGroups.From([MainApp(1), MainApp(2)]).OnlyGames().Count.Should().Be(0);
+    }
+
+    [Fact]
     public void An_unknown_app_is_its_own_group()
     {
         AppGroups.From([MainApp(1)]).GroupOf(99).Should().Be(99);

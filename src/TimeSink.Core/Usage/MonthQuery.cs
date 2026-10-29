@@ -19,14 +19,14 @@ public static class MonthQuery
     public static DayOfWeek ParseWeekStart(string? value) => WeekStarts.Parse(value).ToDayOfWeek();
 
     public static MonthResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, int year, int month,
-        DayOfWeek weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
+        DayOfWeek weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
     {
         using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, year, month, weekStart, running, onSinceUtc);
+        return Run(c, now, zone, year, month, weekStart, running, onSinceUtc, gamesOnly: gamesOnly);
     }
 
     public static MonthResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, int year, int month,
-        DayOfWeek weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
+        DayOfWeek weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
@@ -39,7 +39,7 @@ public static class MonthQuery
         var prevDim = DateTime.DaysInMonth(prevFirst.Year, prevFirst.Month);
         var prevCounted = Math.Min(counted, prevDim);
 
-        var apps = AppGroups.Load(c);
+        var apps = AppGroups.Load(c, gamesOnly: gamesOnly);
         var start = TrackingStart.Of(apps, zone);
         var segs = UsageLoader.LoadSegments(c, DayStart(prevFirst, zone), nowUtc, apps, running, to: DayStart(first.AddMonths(1), zone));
 

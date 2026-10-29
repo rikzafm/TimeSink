@@ -15,13 +15,13 @@ public static class YearQuery
     private const int RecentMonths = 3;
 
 
-    public static YearResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
+    public static YearResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
     {
         using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, running, onSinceUtc);
+        return Run(c, now, zone, running, onSinceUtc, gamesOnly: gamesOnly);
     }
 
-    public static YearResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
+    public static YearResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
@@ -30,7 +30,7 @@ public static class YearQuery
         var yearIdx = Idx(year, 1);
         var firstIdx = yearIdx - RecentMonths + 1; // two earlier months feed the "last 3 months" and January's delta
 
-        var apps = AppGroups.Load(c);
+        var apps = AppGroups.Load(c, gamesOnly: gamesOnly);
         var start = TrackingStart.Of(apps, zone);
         var first = start.FirstDay;
         var startIdx = first is null ? int.MaxValue : Idx(first.Value.Year, first.Value.Month);

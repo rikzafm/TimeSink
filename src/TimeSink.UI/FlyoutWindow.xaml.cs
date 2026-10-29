@@ -51,6 +51,9 @@ public partial class FlyoutWindow : Window
         Deactivated += (_, _) => { if (_revealed && !KeepOpen && !TestKeepOpenActive) Close(); };
         SettingsButton.Click += (_, _) => ToggleSettings();
         AddAppButton.Click += (_, _) => ShowAddApp();
+        Live.GamesOnly = AppSettings.ForFile(_dbPath).Get(Setting.GamesOnly);
+        ShowGamesState();
+        GamesButton.Click += (_, _) => ToggleGamesOnly();
 
         foreach (RadioButton b in TabBar.Children)
         {
@@ -111,6 +114,22 @@ public partial class FlyoutWindow : Window
         _ => throw new ArgumentOutOfRangeException(nameof(tab)),
     };
 
+    /// <summary>The header Games button: flips the filter for every view, remembers it, and has the views re-query.</summary>
+    private void ToggleGamesOnly()
+    {
+        var on = !Live.GamesOnly;
+        Live.GamesOnly = on;
+        ShowGamesState();
+        SerialWriter.Run(() => AppSettings.ForFile(_dbPath).Set(Setting.GamesOnly, on));
+        Live.NotifyDataChanged();
+    }
+
+    private void ShowGamesState()
+    {
+        GamesButton.Tag = Live.GamesOnly ? "on" : null;
+        System.Windows.Automation.AutomationProperties.SetItemStatus(GamesButton, Live.GamesOnly ? "On" : "Off");
+    }
+
     /// <summary>Week's "open this day" link: switch to the Today tab showing that day.</summary>
     private void OpenDayInToday(DateOnly day)
     {
@@ -161,6 +180,7 @@ public partial class FlyoutWindow : Window
         {
             if (_settings.TryClosePicker()) return;
             TabStrip.Visibility = Visibility.Visible;
+            GamesButton.Visibility = Visibility.Visible;
             Body.Content = _bodies[_current];
             if (_rendered) StartBody(_bodies[_current]); // leaving the tree stopped it (Unloaded); resume ticking and refresh
             SettingsButton.Content = new TextBlock { FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"), Text = "", FontSize = 16 };
@@ -169,6 +189,7 @@ public partial class FlyoutWindow : Window
         }
         _settings ??= new SettingsView(_themes, _dbPath);
         TabStrip.Visibility = Visibility.Collapsed;
+        GamesButton.Visibility = Visibility.Collapsed;
         Body.Content = _settings;
         SettingsButton.SetResourceReference(ContentControl.ContentProperty, "Str.Back");
         SettingsButton.ToolTip = null;

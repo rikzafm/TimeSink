@@ -112,7 +112,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         root.Children.Add(bar);
         Content = root;
 
-        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw);
         Unloaded += (_, _) => Stop();
         Redraw(); // static text and an empty card; data follows in Start
@@ -136,7 +136,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
     {
         var path = _dbPath;
         WrappedResult? loaded = null;
-        if (!await _loader.Refresh(c => WrappedQuery.Run(path, c.Now, c.Zone, c.Running, c.SignInUtc), r => loaded = r)) return;
+        if (!await _loader.Refresh(c => WrappedQuery.Run(path, c.Now, c.Zone, c.Running, c.SignInUtc, c.GamesOnly), r => loaded = r)) return;
         var result = loaded!;
         _result = result;
         AppIcons.Load(_dbPath, result.Podium.Concat(result.Others).Concat(result.GamesTop?.Podium ?? []).Concat(result.GachaTop?.Podium ?? []).Concat(result.LongestSessions ?? []).Select(a => a.AppId));

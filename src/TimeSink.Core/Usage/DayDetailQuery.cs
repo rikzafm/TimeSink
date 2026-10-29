@@ -21,16 +21,16 @@ public sealed record DayDetail(
 public static class DayDetailQuery
 {
     public static DayDetail Run(string dbPath, DateOnly day, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart,
-        IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
+        IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
     {
         using var c = UsageDb.OpenReadOnly(dbPath);
         var today = LocalDays.DateOf(now.ToUnixTimeSeconds(), zone);
         var dow = weekStart.ToDayOfWeek();
         var weeksBack = Math.Max(0, (WeekStarts.Containing(today, dow).DayNumber - WeekStarts.Containing(day, dow).DayNumber) / 7);
 
-        var week = WeekQuery.Run(c, now, zone, weekStart, running, onSinceUtc, weeksBack);
-        var thisDay = TodayQuery.Run(c, now, zone, running, day, onSinceUtc);
-        var lastWeek = TodayQuery.Run(c, now, zone, running, day.AddDays(-7));
+        var week = WeekQuery.Run(c, now, zone, weekStart, running, onSinceUtc, weeksBack, gamesOnly);
+        var thisDay = TodayQuery.Run(c, now, zone, running, day, onSinceUtc, gamesOnly: gamesOnly);
+        var lastWeek = TodayQuery.Run(c, now, zone, running, day.AddDays(-7), gamesOnly: gamesOnly);
 
         var apps = thisDay.Apps.Select(a => new BarApp(a.AppId, a.Name, a.Seconds)).ToList();
         var sessions = thisDay.Apps.SelectMany(a => a.Sessions).ToList();

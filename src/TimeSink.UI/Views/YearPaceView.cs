@@ -122,7 +122,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
         root.Children.Add(scroller);
         Content = root;
 
-        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw);
         Unloaded += (_, _) => Stop();
         Redraw(); // static text and empty chart; data follows in Start
@@ -167,7 +167,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
     {
         var path = _dbPath;
         var now = DateTimeOffset.UtcNow;
-        if (!await _loader.Refresh(c => YearQuery.Run(path, c.Now, c.Zone, c.Running, c.SignInUtc), r =>
+        if (!await _loader.Refresh(c => YearQuery.Run(path, c.Now, c.Zone, c.Running, c.SignInUtc, c.GamesOnly), r =>
             {
                 if (_result is null || _result.Year != r.Year) _selected = -1;
                 _result = r;

@@ -27,16 +27,16 @@ public static class AllQuery
         public readonly Dictionary<(int, int), long> Months = [];
     }
 
-    public static AllResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
+    public static AllResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
     {
         using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, running, onSinceUtc);
+        return Run(c, now, zone, running, onSinceUtc, gamesOnly: gamesOnly);
     }
 
-    public static AllResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
+    public static AllResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
     {
         var nowUtc = now.ToUnixTimeSeconds();
-        var usageApps = AppGroups.Load(c, includeRetired: true);
+        var usageApps = AppGroups.Load(c, includeRetired: true, gamesOnly: gamesOnly);
         var groups = usageApps.Values.Where(a => a.Group == a.Id).ToDictionary(a => a.Id, a => new Group
         {
             Id = a.Id, Name = a.Name, Retired = a.Retired, RetiredUtc = a.RetiredUtc, Background = a.Background,

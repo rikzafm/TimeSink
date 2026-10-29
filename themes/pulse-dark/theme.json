@@ -122,6 +122,7 @@
     "addDangerNote": "Stop keeps history and can be restored from Installed. Clear history removes this app's recorded time for good.",
     "addNoFolder": "That folder does not exist on this PC.",
     "back": "Back",
+    "gamesOnly": "Games only",
     "stubComingSoon": "Coming soon",
     "todayCaption": "{0} · PC uptime",
     "todayCombined": "{0} combined app time",

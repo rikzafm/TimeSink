@@ -104,7 +104,7 @@ public partial class TodayView : UserControl, ILiveView
             ClosePanel();
             e.Handled = true;
         };
-        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(1), Load, Redraw, onTick: OnTick, onLiveChanged: Refresh);
         Unloaded += (_, _) => Stop();
     }
@@ -141,7 +141,7 @@ public partial class TodayView : UserControl, ILiveView
         _sinceRefresh = 0;
         var (path, day) = (_dbPath, _day);
         var applied = await _loader.Refresh(
-            c => (Result: TodayQuery.Run(path, c.Now, c.Zone, c.Running, day, c.SignInUtc), WeekStart: c.WeekStartDay), // no DB yet: keep the empty state
+            c => (Result: TodayQuery.Run(path, c.Now, c.Zone, c.Running, day, c.SignInUtc, c.GamesOnly), WeekStart: c.WeekStartDay), // no DB yet: keep the empty state
             r =>
             {
                 _result = r.Result;

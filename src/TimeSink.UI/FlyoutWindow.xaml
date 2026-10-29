@@ -19,18 +19,36 @@
                     <Ellipse Width="10" Height="10" Fill="{DynamicResource Brush.Accent}" Margin="0,0,8,0"/>
                     <TextBlock Style="{StaticResource Wordmark}" Text="{DynamicResource Str.AppName}"/>
                 </StackPanel>
-                <Button x:Name="SettingsButton" HorizontalAlignment="Right" ToolTip="{DynamicResource Str.Settings}">
-                    <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource LinkButton}">
-                            <Style.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE713;" FontSize="16"/>
-                </Button>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="GamesButton" AutomationProperties.Name="Games only" ToolTip="{DynamicResource Str.GamesOnly}" Focusable="False">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource LinkButton}">
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.TextSoft}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="on">
+                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}"/>
+                                    </DataTrigger>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE7FC;" FontSize="16"/>
+                    </Button>
+                    <Button x:Name="SettingsButton" ToolTip="{DynamicResource Str.Settings}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource LinkButton}">
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE713;" FontSize="16"/>
+                    </Button>
+                </StackPanel>
             </Grid>
 
             <!-- Tab bar -->

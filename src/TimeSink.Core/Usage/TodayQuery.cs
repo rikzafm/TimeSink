@@ -20,13 +20,13 @@ public static class TodayQuery
 
     /// <param name="forDay">The local day to show; null or any day after today means today (the live day).</param>
     /// <param name="onSinceUtc">When the PC became usable (sign-in); starts the live day's uptime. Null: first tracked session.</param>
-    public static TodayResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null, long? onSinceUtc = null)
+    public static TodayResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null, long? onSinceUtc = null, bool gamesOnly = false)
     {
         using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, running, forDay, onSinceUtc);
+        return Run(c, now, zone, running, forDay, onSinceUtc, gamesOnly: gamesOnly);
     }
 
-    public static TodayResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null, long? onSinceUtc = null)
+    public static TodayResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null, long? onSinceUtc = null, bool gamesOnly = false)
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
@@ -35,7 +35,7 @@ public static class TodayQuery
         var d0 = LocalDays.StartOf(date, zone);
         var d1 = LocalDays.StartOf(date.AddDays(1), zone);
 
-        var apps = AppGroups.Load(c);
+        var apps = AppGroups.Load(c, gamesOnly: gamesOnly);
         var segs = UsageLoader.LoadSegments(c, LocalDays.StartOf(date.AddDays(-TypicalWeeks * 7), zone), nowUtc, apps, running);
         var byGroup = segs.ToLookup(s => s.Group);
 

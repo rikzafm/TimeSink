@@ -57,7 +57,8 @@ internal sealed class AppGroups
         return new AppGroups(d);
     }
 
-    public static AppGroups Load(SqliteConnection c, bool includeRetired = false)
+    /// <param name="gamesOnly">Keeps only the apps whose group is a Game or Gacha game (the group's Main app decides; the Games filter).</param>
+    public static AppGroups Load(SqliteConnection c, bool includeRetired = false, bool gamesOnly = false)
     {
         using var cmd = c.CreateCommand();
         cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name, added_utc, is_background, exe_path, kind, state, retired_utc FROM apps"
@@ -67,6 +68,11 @@ internal sealed class AppGroups
         while (r.Read()) rows.Add(new GroupedApp(r.GetInt64(0), r.GetInt64(1), r.GetString(2), r.GetInt64(3), r.GetInt64(4) != 0,
             AppKinds.Resolve(r.IsDBNull(6) ? null : r.GetInt64(6), r.GetString(5), r.GetString(2)),
             AppStates.Parse(r.GetString(7)), r.IsDBNull(8) ? 0 : r.GetInt64(8), r.GetString(5)));
-        return From(rows);
+        var groups = From(rows);
+        return gamesOnly ? groups.OnlyGames() : groups;
     }
+
+    /// <summary>The groups whose Main app is a Game or Gacha game; a Merged app follows its Main app.</summary>
+    internal AppGroups OnlyGames() =>
+        new(_apps.Where(p => (_apps.TryGetValue(p.Value.Group, out var main) ? main : p.Value).Kind != AppKind.Other).ToDictionary(p => p.Key, p => p.Value));
 }

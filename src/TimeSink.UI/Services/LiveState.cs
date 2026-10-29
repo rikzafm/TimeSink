@@ -21,6 +21,9 @@ public sealed class LiveState : IDisposable
 
     public IReadOnlyCollection<long>? RunningIds => _running;
 
+    /// <summary>True while the Games filter is on (set by the header button, remembered in settings); every view reads it when it queries.</summary>
+    public bool GamesOnly { get; set; }
+
     public event Action? Changed;
 
     /// <summary>Connects (idempotent). Called once the first frame is on screen so it never delays first paint.</summary>

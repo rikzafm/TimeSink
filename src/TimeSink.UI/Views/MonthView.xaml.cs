@@ -53,7 +53,7 @@ public partial class MonthView : UserControl, ILiveView
         Calendar.DayClicked += d => { _selected = d; Redraw(); };
         SelBar.HoverChanged += ShowBarNote;
         SelBar.SegmentClicked += _ => ShowBarNote(-1);
-        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw,
             onLiveChanged: () => { if (_result?.IsCurrent == true) Refresh(); }, // only the current month follows the live state
             isIdle: () => _window is { IsRevealed: false });
@@ -87,7 +87,7 @@ public partial class MonthView : UserControl, ILiveView
         var (year, month) = (_year, _month);
         var path = _dbPath;
         var applied = await _loader.Refresh(
-            c => MonthQuery.Run(path, c.Now, c.Zone, year, month, c.WeekStartDay, c.Running, c.SignInUtc),
+            c => MonthQuery.Run(path, c.Now, c.Zone, year, month, c.WeekStartDay, c.Running, c.SignInUtc, c.GamesOnly),
             r =>
             {
                 _firstTracked = r.FirstTracked;

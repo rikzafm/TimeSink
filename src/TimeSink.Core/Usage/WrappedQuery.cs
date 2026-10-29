@@ -18,13 +18,13 @@ public static class WrappedQuery
     private const int OthersSize = 3;
 
 
-    public static WrappedResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
+    public static WrappedResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
     {
         using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, running, onSinceUtc);
+        return Run(c, now, zone, running, onSinceUtc, gamesOnly: gamesOnly);
     }
 
-    public static WrappedResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
+    public static WrappedResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var today = LocalDays.DateOf(nowUtc, zone);
@@ -32,7 +32,7 @@ public static class WrappedQuery
         var yearStart = LocalDays.StartOf(new DateOnly(year, 1, 1), zone);
         var windowStart = LocalDays.StartOf(new DateOnly(year - 1, 12, 1), zone); // December feeds January's month delta
 
-        var apps = AppGroups.Load(c);
+        var apps = AppGroups.Load(c, gamesOnly: gamesOnly);
         var start = TrackingStart.Of(apps, zone);
         var first = start.FirstDay;
         var groups = apps.Values.Select(a => a.Group).Distinct().ToList();

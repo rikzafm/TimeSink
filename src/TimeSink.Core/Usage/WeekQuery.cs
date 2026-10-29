@@ -16,13 +16,13 @@ public static class WeekQuery
     /// <summary>The streak is looked for this far back (and so tops out at this many days).</summary>
     public const int StreakLookbackDays = 365;
 
-    public static WeekResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, int weeksBack = 0)
+    public static WeekResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, int weeksBack = 0, bool gamesOnly = false)
     {
         using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, weekStart, running, onSinceUtc, weeksBack);
+        return Run(c, now, zone, weekStart, running, onSinceUtc, weeksBack, gamesOnly: gamesOnly);
     }
 
-    public static WeekResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, int weeksBack = 0)
+    public static WeekResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, WeekStart weekStart, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, int weeksBack = 0, bool gamesOnly = false)
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var today = LocalDays.DateOf(nowUtc, zone);
@@ -31,7 +31,7 @@ public static class WeekQuery
         var shownWeek = thisWeek.AddDays(-7 * weeksBack); // the seven columns and app rows; the grid and streak stay anchored to today
         var lookStart = new[] { gridStart, today.AddDays(-StreakLookbackDays), shownWeek.AddDays(-7) }.Min();
 
-        var apps = AppGroups.Load(c);
+        var apps = AppGroups.Load(c, gamesOnly: gamesOnly);
         var segs = UsageLoader.LoadSegments(c, LocalDays.StartOf(lookStart, zone), nowUtc, apps, running);
         var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc);
 

@@ -105,6 +105,7 @@ public static class Setting
     public static readonly Setting<YearSubView> LastYearView = Name("ui.lastYearView", YearSubView.Pace);
     public static readonly Setting<string> AllLayout = Choice("all.layout", "labeled", "labeled", "icons");
     public static readonly Setting<bool> InstantOpen = Switch("ui.instantOpen", false);
+    public static readonly Setting<bool> GamesOnly = Switch("ui.gamesOnly", false);
 
     public static readonly Setting<long> BackupLastUtc = Count("backup.lastUtc");
     public static readonly Setting<string?> BackupFolder = Text("backup.folder");
@@ -123,6 +124,6 @@ public static class Setting
     [
         Startup, WeekStartsOn, PauseOnSleep, CountWhenLocked, MinSessionSeconds, SuggestApps, SteamAutoTrack,
         Theme, Accent, Compact, AppIcon, GoalAlerts, WeeklySummary, BackupMode,
-        LastTab, LastYearView, AllLayout, InstantOpen, BackupLastUtc, BackupFolder, AlertsSent, AlertsWeeklyLast, SteamIconsRepaired,
+        LastTab, LastYearView, AllLayout, InstantOpen, GamesOnly, BackupLastUtc, BackupFolder, AlertsSent, AlertsWeeklyLast, SteamIconsRepaired,
     ];
 }

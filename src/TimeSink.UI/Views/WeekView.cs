@@ -150,8 +150,8 @@ public sealed class WeekView : UserControl, ILiveView
             e.Handled = true;
         };
 
-        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
-        _panelLoader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly);
+        _panelLoader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw,
             isIdle: () => Window.GetWindow(this) is FlyoutWindow { IsRevealed: false }); // warm standby: stay idle
         Unloaded += (_, _) => Stop();
@@ -183,7 +183,7 @@ public sealed class WeekView : UserControl, ILiveView
     {
         var path = _dbPath;
         var weeksBack = _weeksBack;
-        if (await _loader.Refresh(c => WeekQuery.Run(path, c.Now, c.Zone, c.WeekStart, c.Running, c.SignInUtc, weeksBack), r => _result = r)) Redraw();
+        if (await _loader.Refresh(c => WeekQuery.Run(path, c.Now, c.Zone, c.WeekStart, c.Running, c.SignInUtc, weeksBack, c.GamesOnly), r => _result = r)) Redraw();
     }
 
     private void Redraw()
@@ -339,7 +339,7 @@ public sealed class WeekView : UserControl, ILiveView
         var seq = ++_panelSeq;
         var path = _dbPath;
         DayDetail? loaded = null;
-        var applied = await _panelLoader.Refresh(c => DayDetailQuery.Run(path, day, c.Now, c.Zone, c.WeekStart, c.Running, c.SignInUtc), d => loaded = d);
+        var applied = await _panelLoader.Refresh(c => DayDetailQuery.Run(path, day, c.Now, c.Zone, c.WeekStart, c.Running, c.SignInUtc, c.GamesOnly), d => loaded = d);
         if (!applied || seq != _panelSeq || loaded is not { } detail) return; // overtaken, view stopped, no database, or the panel was closed meanwhile
 
         var compares = new List<(string, string, bool)>();

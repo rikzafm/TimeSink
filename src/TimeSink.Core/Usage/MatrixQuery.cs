@@ -22,18 +22,18 @@ public static class MatrixQuery
         return pct < 30 * best ? 0 : pct < 55 * best ? 1 : pct < 75 * best ? 2 : pct < 90 * best ? 3 : 4;
     }
 
-    public static MatrixResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
+    public static MatrixResult Run(string dbPath, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
     {
         using var c = UsageDb.OpenReadOnly(dbPath);
-        return Run(c, now, zone, running, onSinceUtc);
+        return Run(c, now, zone, running, onSinceUtc, gamesOnly: gamesOnly);
     }
 
-    public static MatrixResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
+    public static MatrixResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false)
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var today = LocalDays.DateOf(nowUtc, zone);
         var year = today.Year;
-        var apps = AppGroups.Load(c);
+        var apps = AppGroups.Load(c, gamesOnly: gamesOnly);
         var started = TrackingStart.Of(apps, zone).FirstDay;
         if (started is null) return new MatrixResult(year, nowUtc, null, 1, [], [], 0);
         var first = started is { } s && s.Year == year ? s.Month : 1;
