@@ -347,9 +347,9 @@ public sealed partial class AddAppView
 
     private void TrackInstalled(InstalledApp app)
     {
-        Task.Run(() => _icons.ForPath(app.ExePath, app.Aumid, app.IconFile, TileIconPx, cachedOnly: false, out _)).ContinueWith(t =>
+        Task.Run(() => _catalogue.AddApp(app.ToNewApp(), app.Aumid, app.IconFile, TileIconPx)).ContinueWith(t =>
         {
-            if (_catalogue.AddApp(app.ToNewApp(), t.Result) == CatalogueOutcome.Unavailable) return;
+            if (t.Result == CatalogueOutcome.Unavailable) return;
             UpdateCount();
             RenderInstalled();
         }, TaskScheduler.FromCurrentSynchronizationContext());

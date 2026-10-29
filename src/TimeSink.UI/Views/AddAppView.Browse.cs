@@ -148,9 +148,9 @@ public sealed partial class AddAppView
             ShowStatus(TimeText.Str(result.Error == BrowseError.TargetMissing ? AddAppStrings.TargetMissing : AddAppStrings.NotAnApp), error: true);
             return;
         }
-        Task.Run(() => _icons.ForPath(app.ExePath, null, null, TileIconPx, cachedOnly: false, out _)).ContinueWith(t =>
+        Task.Run(() => _catalogue.AddApp(app, null, null, TileIconPx)).ContinueWith(t =>
         {
-            if (_catalogue.AddApp(app, t.Result) == CatalogueOutcome.Unavailable) return;
+            if (t.Result == CatalogueOutcome.Unavailable) return;
             UpdateCount();
             ShowStatus(app.DisplayName + " · " + TimeText.Str(AddAppStrings.Tracking), error: false);
         }, TaskScheduler.FromCurrentSynchronizationContext());

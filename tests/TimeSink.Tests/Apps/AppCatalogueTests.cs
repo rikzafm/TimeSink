@@ -488,6 +488,34 @@ public sealed class AppCatalogueTests : IDisposable
     }
 
     [Fact]
+    public void Adding_an_app_with_an_icon_size_extracts_the_icon_first_and_stores_it()
+    {
+        var cat = Catalogue();
+
+        cat.AddApp(new NewApp(@"c:resh.exe", "Fresh", null), null, null, 256).Should().Be(CatalogueOutcome.Done);
+
+        var app = cat.Library().StateOf(@"c:resh.exe", null)!;
+        app.State.Should().Be(AppState.Tracked);
+        using var lib = AppLibrary.Open(_path);
+        lib.GetIcon(app.Id).Should().NotBeNullOrEmpty();
+        _icons.IconCalls.Should().Contain((@"c:resh.exe", 256));
+    }
+
+    [Fact]
+    public void Adding_an_app_whose_file_cannot_be_read_tracks_it_without_an_icon()
+    {
+        _icons.IconFails = new IOException("locked");
+        var cat = Catalogue();
+
+        cat.AddApp(new NewApp(@"c:resh.exe", "Fresh", null), null, null, 256).Should().Be(CatalogueOutcome.Done);
+
+        var app = cat.Library().StateOf(@"c:resh.exe", null)!;
+        app.State.Should().Be(AppState.Tracked);
+        using var lib = AppLibrary.Open(_path);
+        lib.GetIcon(app.Id).Should().BeNull();
+    }
+
+    [Fact]
     public void Adding_an_app_tracks_it_with_its_icon_and_counts_it_as_added()
     {
         var cat = Catalogue();

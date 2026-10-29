@@ -26,7 +26,7 @@ public sealed partial class AddAppView
         var slot = new StackPanel();
         void Show(IReadOnlyList<IconChoice> found)
         {
-            if (found.Count > 1 && _nav.State.SettingsId == app.Id && slot.Children.Count == 0) slot.Children.Add(IconRow(app, found));
+            if (IconPick.Offered(found) && _nav.State.SettingsId == app.Id && slot.Children.Count == 0) slot.Children.Add(IconRow(app, found));
         }
         if (_iconChoices.TryGetValue(app.Id, out var known)) Show(known);
         else
@@ -74,7 +74,7 @@ public sealed partial class AddAppView
         System.Windows.Automation.AutomationProperties.SetName(face, TimeText.Str(AddAppStrings.IconChange));
         face.MouseEnter += (_, _) => face.SetResourceReference(Border.BorderBrushProperty, "Brush.Accent");
         face.MouseLeave += (_, _) => face.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
-        face.MouseLeftButtonUp += (_, _) => ShowIconPicker(app, found, []);
+        face.MouseLeftButtonUp += (_, _) => ShowIconPicker(app, new IconPick(found, CurrentIcon(app)));
         Grid.SetColumn(face, 1);
         g.Children.Add(texts);
         g.Children.Add(face);
@@ -93,16 +93,14 @@ public sealed partial class AddAppView
         return box;
     }
 
-    private void ShowIconPicker(TrackedEntry app, IReadOnlyList<IconChoice> found, IReadOnlyList<IconChoice> picked, int? selected = null)
-    {
-        var all = found.Concat(picked).ToList();
-        var current = _catalogue.StoredIcon(app.Id) ?? _trackedIcons.GetValueOrDefault(app.Id);
-        var inUse = all.FindIndex(c => current is not null && c.Png.AsSpan().SequenceEqual(current));
-        Content = BuildIconPicker(app, found, picked, all, selected ?? Math.Max(inUse, 0), inUse);
-    }
+    private byte[]? CurrentIcon(TrackedEntry app) => _catalogue.StoredIcon(app.Id) ?? _trackedIcons.GetValueOrDefault(app.Id);
 
-    private UIElement BuildIconPicker(TrackedEntry app, IReadOnlyList<IconChoice> found, IReadOnlyList<IconChoice> picked, List<IconChoice> all, int selected, int inUse)
+    private void ShowIconPicker(TrackedEntry app, IconPick pick) => Content = BuildIconPicker(app, pick);
+
+    private UIElement BuildIconPicker(TrackedEntry app, IconPick pick)
     {
+        var all = pick.Choices;
+        var (selected, inUse) = (pick.Selected, pick.InUse);
         var root = new Grid();
         root.SetResourceReference(Panel.BackgroundProperty, "Brush.Surface");
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -156,9 +154,9 @@ public sealed partial class AddAppView
         for (var i = 0; i < all.Count; i++)
         {
             var index = i;
-            grid.Children.Add(IconCell(all[i], i == selected, i == inUse, () => ShowIconPicker(app, found, picked, index)));
+            grid.Children.Add(IconCell(all[i], i == selected, i == inUse, () => { pick.Select(index); ShowIconPicker(app, pick); }));
         }
-        grid.Children.Add(PickFileCell(app, found, picked));
+        grid.Children.Add(PickFileCell(app, pick));
         body.Children.Add(grid);
         var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = body };
         Grid.SetRow(scroll, 1);
@@ -166,7 +164,7 @@ public sealed partial class AddAppView
         var foot = new Grid { Margin = new Thickness(20, 10, 20, 10) };
         foot.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var changed = selected != inUse;
+        var changed = pick.Changed;
         var note = Text(null, "Double.FontSize.Small", "Brush.TextMuted");
         note.Text = changed ? TimeText.Str(AddAppStrings.IconPreviewing, IconLabel(all[selected])) : TimeText.Str(AddAppStrings.IconNoChange);
         note.VerticalAlignment = VerticalAlignment.Center;
@@ -175,7 +173,7 @@ public sealed partial class AddAppView
         var apply = Button(AddAppStrings.IconApply, changed ? BtnKind.Primary : BtnKind.Ghost, () =>
         {
             if (!changed) return;
-            var png = all[selected].Png;
+            var png = pick.SelectedPng;
             if (_catalogue.ApplyChange(AppChange.SetIcon(app.Id, png)) != CatalogueOutcome.Done) return;
             _trackedIcons[app.Id] = png;
             _chosenIcons = new HashSet<long>(_chosenIcons) { app.Id };
@@ -240,7 +238,7 @@ public sealed partial class AddAppView
         return cell;
     }
 
-    private UIElement PickFileCell(TrackedEntry app, IReadOnlyList<IconChoice> found, IReadOnlyList<IconChoice> picked)
+    private UIElement PickFileCell(TrackedEntry app, IconPick pick)
     {
         var cell = new StackPanel { Margin = new Thickness(0, 0, 12, 14), Cursor = Cursors.Hand, Background = Brushes.Transparent };
         var frame = new Grid { Width = 88, Height = 88, HorizontalAlignment = HorizontalAlignment.Left };
@@ -269,8 +267,8 @@ public sealed partial class AddAppView
             try { ok = dlg.ShowDialog(window) == true; }
             finally { if (window is not null) { window.KeepOpen = false; window.Activate(); } }
             if (!ok || IconChoices.FromFile(dlg.FileName, Win32IconExtractor.Instance, PickedIconPx) is not { } choice) return;
-            var next = picked.Where(c => !c.Png.AsSpan().SequenceEqual(choice.Png)).Append(choice).ToList();
-            ShowIconPicker(app, found, next, found.Count + next.Count - 1);
+            pick.Add(choice);
+            ShowIconPicker(app, pick);
         };
         return cell;
     }

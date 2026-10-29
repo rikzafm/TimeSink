@@ -147,6 +147,19 @@ public sealed class AppCatalogue
     }
 
     /// <summary>
+    /// <see cref="AddApp(NewApp, byte[])"/> with the icon extracted at <paramref name="iconPx"/> first (cached or not, see
+    /// <see cref="AppIconSource.ForPath"/>); a file that cannot be read only means the app has no icon. Extracts, so call
+    /// from a pool thread.
+    /// </summary>
+    public CatalogueOutcome AddApp(NewApp app, string? aumid, string? iconFile, int iconPx)
+    {
+        byte[]? png;
+        try { png = _icons.ForPath(app.ExePath, aumid, iconFile, iconPx, cachedOnly: false, out _); }
+        catch (IOException) { png = null; }
+        return AddApp(app, png);
+    }
+
+    /// <summary>
     /// A snapshot of the tracked (Main) apps with their Merged apps, read now, plus the stored icon of each one whose id
     /// is not in <paramref name="iconsKnown"/> (null where none is stored). Empty with
     /// <see cref="CatalogueOutcome.Unavailable"/> when the database is busy or missing.
