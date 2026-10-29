@@ -78,7 +78,7 @@ public class AppSettingsTests : IDisposable
     [Fact]
     public void The_steam_repair_flag_still_reads_the_one_that_earlier_builds_stored()
     {
-        new FileSettingsSource(_path).Set("icons.steamRepaired3", "1");
+        new FileSettingsSource(_path).Set("icons.steamRepaired4", "1");
         AppSettings.ForFile(_path).Get(Setting.SteamIconsRepaired).Should().BeTrue();
     }
 

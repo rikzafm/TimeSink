@@ -114,12 +114,11 @@ public static class Setting
     public static readonly Setting<string?> AlertsWeeklyLast = Text("alerts.weeklyLast");
 
     /// <summary>
-    /// Stored as "1" by builds before this module existed, so an already repaired database stays repaired. The key ends in 2
-    /// because "icons.steamRepaired" was the first pass, which used the exe icon alone; the key ends in 3 since Steam's art
-    /// replaced the exe icon for every Steam game (decision 152).
+    /// Stored as "1" by builds before this module existed, so an already repaired database stays repaired. The key ends in 4
+    /// because the earlier passes used the exe icon alone (1, 2) and Steam's art for every Steam game (3, decision 152, reversed by 154).
     /// </summary>
     public static readonly Setting<bool> SteamIconsRepaired =
-        new("icons.steamRepaired3", false, (string stored, out bool value) => { value = stored == "1"; return value; }, b => b ? "1" : "0");
+        new("icons.steamRepaired4", false, (string stored, out bool value) => { value = stored == "1"; return value; }, b => b ? "1" : "0");
 
     public static readonly IReadOnlyList<ISetting> All =
     [

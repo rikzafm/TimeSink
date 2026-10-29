@@ -7,7 +7,7 @@ namespace TimeSink.Core.Apps;
 
 /// <summary>
 /// Where every App icon comes from, as PNG bytes. <see cref="ForApps"/> answers by app id: the stored icon, or one
-/// extracted from its exe (Steam's cached art instead whenever the game has any) and stored when
+/// extracted from its exe (Steam's cached art instead when the exe's own icon is tiny or unreadable) and stored when
 /// the app has none; TimeSink's own row always shows the chosen tray icon. The first resolve of a database also
 /// re-extracts every stored Steam icon once, since those used to be Steam's 32 px icon scaled up. <see cref="ForPath"/> answers by exe path and size, for apps that have no id yet. <see cref="Stored"/>
 /// reads what is stored and never extracts. <see cref="AppLibrary"/> stays beneath it as the SQLite adapter and
@@ -160,7 +160,8 @@ public sealed class AppIconSource
 
     /// <summary>
     /// Steam games used to be stored as their 32 px community icon scaled up. Once per database, the first time any app
-    /// is resolved, every stored Steam exe icon is extracted again by the current rule (Steam's art when the game has any, else the exe's icon); an app that gets nothing keeps its icon, and the flag is set
+    /// is resolved, every stored Steam exe icon is extracted again by the current rule (the exe's icon, or Steam's art
+    /// when the exe's own icon is tiny or unreadable); an app that gets nothing keeps its icon, and the flag is set
     /// anyway so it does not run again.
     /// </summary>
     private void RepairSteamIcons(AppLibrary lib, ref IReadOnlyList<LibraryApp>? apps)
@@ -172,7 +173,8 @@ public sealed class AppIconSource
         if (!AppSettings.ForFile(_dbPath).Get(Setting.SteamIconsRepaired))
         {
             apps ??= lib.Library();
-            foreach (var app in apps.Where(a => SteamLibrary.IsInLibrary(a.ExePath) && !IsSelf(a.ExePath)))
+            var chosen = lib.ChosenIcons(); // an icon the user picked stays (decision 153)
+            foreach (var app in apps.Where(a => SteamLibrary.IsInLibrary(a.ExePath) && !IsSelf(a.ExePath) && !chosen.Contains(a.Id)))
                 if (Extract(app.ExePath, SteamLibrary.ArtForExe(app.ExePath)) is { } png) lib.PutIcon(app.Id, png);
             AppSettings.ForFile(_dbPath).Set(Setting.SteamIconsRepaired, true);
         }
