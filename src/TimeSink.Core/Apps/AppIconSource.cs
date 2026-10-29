@@ -6,8 +6,9 @@ namespace TimeSink.Core.Apps;
 
 /// <summary>
 /// Where every App icon comes from, as PNG bytes. <see cref="ForApps"/> answers by app id: the stored icon, or one
-/// extracted (Steam art for a Steam exe) and stored when the app has none; TimeSink's own row always shows the chosen
-/// tray icon. <see cref="ForPath"/> answers by exe path and size, for apps that have no id yet. <see cref="Stored"/>
+/// extracted from its exe (Steam's cached art only when the exe cannot be read) and stored when the app has none;
+/// TimeSink's own row always shows the chosen tray icon. The first resolve of a database also re-extracts every stored
+/// Steam icon once, since those used to be Steam's 32 px icon scaled up. <see cref="ForPath"/> answers by exe path and size, for apps that have no id yet. <see cref="Stored"/>
 /// reads what is stored and never extracts. <see cref="AppLibrary"/> stays beneath it as the SQLite adapter and
 /// <see cref="IDesktop"/> is the seam to icon extraction. A busy or missing database
 /// (<see cref="SqliteException"/>, <see cref="IOException"/>) leaves the apps without an icon, so their letter tiles
@@ -16,6 +17,7 @@ namespace TimeSink.Core.Apps;
 public sealed class AppIconSource
 {
     private const int StoredSize = 64;
+    private const string SteamRepairKey = "icons.steamRepaired";
 
     private readonly string _dbPath;
     private readonly IDesktop _desktop;
@@ -23,6 +25,7 @@ public sealed class AppIconSource
     private readonly Dictionary<long, byte[]> _found = new();
     private readonly HashSet<long> _tried = new();
     private readonly Dictionary<(string Path, int Size), byte[]?> _byPath = new();
+    private bool _steamChecked; // this run has seen the Steam repair done (under _gate)
 
     public AppIconSource(string dbPath, IDesktop desktop)
     {
@@ -86,6 +89,7 @@ public sealed class AppIconSource
         {
             using var lib = AppLibrary.Open(_dbPath);
             IReadOnlyList<LibraryApp>? apps = null;
+            RepairSteamIcons(lib, ref apps);
             byte[]? own = null;
             foreach (var id in want)
             {
@@ -99,7 +103,7 @@ public sealed class AppIconSource
                     if (!own.AsSpan().SequenceEqual(png)) lib.PutIcon(id, own);
                     png = own;
                 }
-                else if (png is null && app is not null && Extract(app.ExePath) is { } extracted)
+                else if (png is null && app is not null && Extract(app.ExePath, SteamLibrary.ArtForExe(app.ExePath)) is { } extracted)
                 {
                     lib.PutIcon(id, extracted);
                     png = extracted;
@@ -112,9 +116,30 @@ public sealed class AppIconSource
             foreach (var (id, png) in pngs) _found[id] = png;
     }
 
-    private byte[]? Extract(string exePath)
+    /// <summary>
+    /// Steam games used to be stored as their 32 px community icon scaled up. Once per database, the first time any app
+    /// is resolved, every stored Steam exe icon is re-extracted from the exe itself; one that cannot be read keeps its
+    /// icon, and the flag is set anyway so it does not run again.
+    /// </summary>
+    private void RepairSteamIcons(AppLibrary lib, ref IReadOnlyList<LibraryApp>? apps)
     {
-        try { return _desktop.ExtractIcon(exePath, null, SteamLibrary.ArtForExe(exePath), StoredSize); }
+        lock (_gate)
+        {
+            if (_steamChecked) return;
+        }
+        if (SettingsStore.Get(_dbPath, SteamRepairKey) != "1")
+        {
+            apps ??= lib.Library();
+            foreach (var app in apps.Where(a => SteamLibrary.IsInLibrary(a.ExePath) && !IsSelf(a.ExePath)))
+                if (Extract(app.ExePath, null) is { } png) lib.PutIcon(app.Id, png);
+            SettingsStore.Set(_dbPath, SteamRepairKey, "1");
+        }
+        lock (_gate) _steamChecked = true;
+    }
+
+    private byte[]? Extract(string exePath, string? imageFile)
+    {
+        try { return _desktop.ExtractIcon(exePath, null, imageFile, StoredSize); }
         catch (IOException) { return null; }
     }
 

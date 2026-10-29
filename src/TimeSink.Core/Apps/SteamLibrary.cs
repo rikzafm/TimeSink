@@ -34,17 +34,21 @@ public static class SteamLibrary
         catch { return null; }
     }
 
+    private const string CommonMarker = @"\steamapps\common\";
+
+    /// <summary>True for an exe under a Steam library's <c>steamapps\common</c> folder.</summary>
+    public static bool IsInLibrary(string exePath) => exePath.Contains(CommonMarker, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// The cached art for the game that owns <paramref name="exePath"/> (a file under <c>steamapps\common\&lt;installdir&gt;</c>),
     /// or null when the exe is not in a Steam library or Steam cached nothing.
     /// </summary>
     public static string? ArtForExe(string exePath)
     {
-        var marker = @"\steamapps\common\";
-        var at = exePath.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        var at = exePath.IndexOf(CommonMarker, StringComparison.OrdinalIgnoreCase);
         if (at < 0) return null;
         var steamapps = exePath[..(at + "\\steamapps".Length)];
-        var dir = exePath[(at + marker.Length)..].Split('\\')[0];
+        var dir = exePath[(at + CommonMarker.Length)..].Split('\\')[0];
         var root = FindRoot();
         if (root is null || !Directory.Exists(steamapps)) return null;
         try
@@ -119,8 +123,10 @@ public static class SteamLibrary
     }
 
     /// <summary>
-    /// The best image Steam has already cached for the game under <c>appcache\librarycache</c>: the small community
-    /// icon (a 40-hex-digit .jpg), else the capsule, else the header banner. Null when Steam cached none.
+    /// The best image Steam has already cached for the game under <c>appcache\librarycache</c> (also in its hash
+    /// subfolders), biggest first since it gets cropped square and scaled up: the 300x450 capsule
+    /// (<c>library_600x900.jpg</c>), the 460x215 header (<c>library_header.jpg</c>), the older <c>library_capsule.jpg</c> and
+    /// <c>header.jpg</c> names, and last the 32x32 community icon (a 40-hex-digit .jpg). Null when Steam cached none.
     /// </summary>
     public static string? CachedArt(string steamRoot, string appId)
     {
@@ -128,13 +134,15 @@ public static class SteamLibrary
         if (!Directory.Exists(dir)) return null;
         try
         {
-            var files = Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories).ToList();
-            return files.FirstOrDefault(f => Regex.IsMatch(Path.GetFileName(f), "^[0-9a-f]{40}\\.jpg$", RegexOptions.IgnoreCase))
-                   ?? files.FirstOrDefault(f => Path.GetFileName(f).Equals("library_capsule.jpg", StringComparison.OrdinalIgnoreCase))
-                   ?? files.FirstOrDefault(f => Path.GetFileName(f).Equals("header.jpg", StringComparison.OrdinalIgnoreCase));
+            var files = Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories).OrderBy(f => f.Count(c => c == Path.DirectorySeparatorChar)).ToList();
+            foreach (var name in ArtNames)
+                if (files.FirstOrDefault(f => Path.GetFileName(f).Equals(name, StringComparison.OrdinalIgnoreCase)) is { } found) return found;
+            return files.FirstOrDefault(f => Regex.IsMatch(Path.GetFileName(f), "^[0-9a-f]{40}\\.jpg$", RegexOptions.IgnoreCase));
         }
         catch { return null; }
     }
+
+    private static readonly string[] ArtNames = ["library_600x900.jpg", "library_header.jpg", "library_capsule.jpg", "header.jpg"];
 
     /// <summary>The largest non-helper .exe within a few levels of the install folder, or null when there is none.</summary>
     public static string? MainExe(string installDir)

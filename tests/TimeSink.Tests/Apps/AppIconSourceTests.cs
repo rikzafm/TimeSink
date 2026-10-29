@@ -129,6 +129,70 @@ public sealed class AppIconSourceTests : IDisposable
         Source().ForApps([id])[id].Should().Equal(IconCatalogue.ReadFrame(IconCatalogue.DefaultId, 64));
     }
 
+    private const string Balatro = @"c:\games\steamapps\common\Balatro\Balatro.exe";
+    private static readonly byte[] BalatroExe = Encoding.UTF8.GetBytes("png:" + Balatro);
+
+    private string? RepairFlag() => SettingsStore.Get(_path, "icons.steamRepaired");
+
+    [Fact]
+    public void A_stored_Steam_icon_is_re_extracted_from_the_exe_alone_and_stored()
+    {
+        var id = Track(Balatro, [7, 7]);
+
+        Source().ForApps([id])[id].Should().Equal(BalatroExe);
+
+        Stored(id).Should().Equal(BalatroExe);
+        _desktop.IconCalls.Should().Equal((Balatro, 64));
+        _desktop.Args.Single().ImageFile.Should().BeNull();
+        RepairFlag().Should().Be("1");
+    }
+
+    [Fact]
+    public void The_Steam_repair_covers_every_Steam_app_not_only_the_ones_asked_for()
+    {
+        var one = Track(Balatro, [7, 7]);
+        var two = Track(@"c:\games\steamapps\common\Atri\ATRI.exe", [8, 8]);
+
+        Source().ForApps([one]);
+
+        Stored(two).Should().Equal(Encoding.UTF8.GetBytes(@"png:c:\games\steamapps\common\Atri\ATRI.exe"));
+    }
+
+    [Fact]
+    public void The_Steam_repair_does_not_run_again_in_a_later_run()
+    {
+        var id = Track(Balatro, [7, 7]);
+        Source().ForApps([id]);
+
+        var icons = Source().ForApps([id]);
+
+        icons[id].Should().Equal(BalatroExe);
+        _desktop.IconCalls.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void A_Steam_exe_that_cannot_be_read_keeps_its_icon_and_the_repair_is_still_marked_done()
+    {
+        var id = Track(Balatro, [7, 7]);
+        _desktop.NoIcon.Add(Balatro);
+
+        Source().ForApps([id])[id].Should().Equal(7, 7);
+
+        Stored(id).Should().Equal(7, 7);
+        RepairFlag().Should().Be("1");
+    }
+
+    [Fact]
+    public void The_Steam_repair_leaves_other_apps_alone()
+    {
+        var id = Track(@"c:\a\one.exe", [1, 2, 3]);
+
+        Source().ForApps([id])[id].Should().Equal(1, 2, 3);
+
+        _desktop.IconCalls.Should().BeEmpty();
+        RepairFlag().Should().Be("1");
+    }
+
     [Fact]
     public void A_failed_extraction_by_id_leaves_the_app_without_an_icon()
     {

@@ -42,19 +42,31 @@ public sealed class SteamLibraryTests : IDisposable
     }
 
     [Fact]
-    public void Cached_art_prefers_the_community_icon_then_capsule_then_header()
+    public void Cached_art_prefers_the_big_capsule_then_header_then_the_old_names_and_the_small_icon_last()
     {
         var cache = Path.Combine(_root, "appcache", "librarycache");
-        Directory.CreateDirectory(Path.Combine(cache, "7"));
-        Directory.CreateDirectory(Path.Combine(cache, "8"));
-        File.WriteAllBytes(Path.Combine(cache, "7", "header.jpg"), [1]);
-        File.WriteAllBytes(Path.Combine(cache, "7", "library_capsule.jpg"), [1]);
-        File.WriteAllBytes(Path.Combine(cache, "7", new string('a', 40) + ".jpg"), [1]);
-        File.WriteAllBytes(Path.Combine(cache, "8", "header.jpg"), [1]);
+        void Put(string app, params string[] relative)
+        {
+            foreach (var r in relative)
+            {
+                var file = Path.Combine(cache, app, r);
+                Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                File.WriteAllBytes(file, [1]);
+            }
+        }
+        var icon = new string('a', 40) + ".jpg";
+        Put("7", icon, "library_header.jpg", "library_600x900.jpg", "header.jpg");
+        Put("8", icon, Path.Combine("abc123", "library_header.jpg"));
+        Put("9", icon, "header.jpg", "library_capsule.jpg");
+        Put("10", "header.jpg");
+        Put("11", icon);
 
-        Path.GetFileName(SteamLibrary.CachedArt(_root, "7")).Should().Be(new string('a', 40) + ".jpg");
-        Path.GetFileName(SteamLibrary.CachedArt(_root, "8")).Should().Be("header.jpg");
-        SteamLibrary.CachedArt(_root, "9").Should().BeNull();
+        Path.GetFileName(SteamLibrary.CachedArt(_root, "7")).Should().Be("library_600x900.jpg");
+        SteamLibrary.CachedArt(_root, "8").Should().EndWith(Path.Combine("abc123", "library_header.jpg"));
+        Path.GetFileName(SteamLibrary.CachedArt(_root, "9")).Should().Be("library_capsule.jpg");
+        Path.GetFileName(SteamLibrary.CachedArt(_root, "10")).Should().Be("header.jpg");
+        Path.GetFileName(SteamLibrary.CachedArt(_root, "11")).Should().Be(icon);
+        SteamLibrary.CachedArt(_root, "12").Should().BeNull();
     }
 
     [Fact]

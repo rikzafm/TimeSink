@@ -30,15 +30,19 @@ internal static class IconService
     private static Guid _iid = new("bcc18b79-ba16-442f-80c4-8a59c30c463b");
     private const int SIIGBF_BIGGERSIZEOK = 0x1;
 
-    /// <summary>PNG bytes (<paramref name="size"/> px, 64 by default) of the app's icon, from its Start tile when an AUMID is known, else from the exe; null on failure.</summary>
+    /// <summary>
+    /// PNG bytes (<paramref name="size"/> px, 64 by default) of the app's icon, from its Start tile when an AUMID is known,
+    /// else from the exe at full size; <paramref name="imageFile"/> (Steam's cached art, mostly small) only stands in when
+    /// neither can be read, for example an exe that was uninstalled. Null on failure.
+    /// </summary>
     public static byte[]? ExtractPng(string exePath, string? aumid, string? imageFile = null, int size = 64)
     {
-        if (imageFile is not null && FromImage(imageFile, size) is { } art) return art;
         if (aumid is not null && Extract(@"shell:AppsFolder\" + aumid, size) is { } tile) return tile;
-        return Extract(exePath, size);
+        if (Extract(exePath, size) is { } exe) return exe;
+        return imageFile is not null ? FromImage(imageFile, size) : null;
     }
 
-    /// <summary>An image file (Steam's cached art) centre-cropped to a square and scaled to 64 px; null when unreadable.</summary>
+    /// <summary>An image file (Steam's cached art) centre-cropped to a square and scaled to <paramref name="size"/> px; null when unreadable.</summary>
     private static byte[]? FromImage(string path, int size)
     {
         try
