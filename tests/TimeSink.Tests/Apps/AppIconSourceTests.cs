@@ -173,7 +173,7 @@ public sealed class AppIconSourceTests : IDisposable
     private const string Balatro = @"c:\games\steamapps\common\Balatro\Balatro.exe";
     private static readonly byte[] BalatroExe = Encoding.UTF8.GetBytes("png:" + Balatro);
 
-    private string? RepairFlag() => SettingsStore.Get(_path, "icons.steamRepaired2");
+    private string? RepairFlag() => SettingsStore.Get(_path, "icons.steamRepaired3");
 
     [Fact]
     public void A_stored_Steam_icon_is_extracted_again_and_stored()
