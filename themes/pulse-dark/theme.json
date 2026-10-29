@@ -356,6 +356,7 @@
     "detailOpenedAround": "Usually opened around {0}",
     "detailOpenedNone": "Not opened in this period",
     "weekCaption": "This week",
+    "weekLastCaption": "Last week",
     "weekStreak": "{0}-day streak",
     "weekStreakSub": "apps open daily",
     "weekGridCaption": "Last 20 weeks",

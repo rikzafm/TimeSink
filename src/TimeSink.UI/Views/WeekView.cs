@@ -191,7 +191,7 @@ public sealed class WeekView : UserControl, ILiveView
         _caption.Text = _weeksBack switch
         {
             0 => Str(StringKeys.WeekCaption),
-            1 => "Last week",
+            1 => Str(StringKeys.WeekLastCaption),
             _ => $"{UsageText.ShortDate(r.Days[0].Date)} – {UsageText.ShortDate(r.Days[^1].Date)}",
         };
         var nav = Navigator(r);
@@ -202,9 +202,8 @@ public sealed class WeekView : UserControl, ILiveView
         _columns.Days = r.Days;
         _trend.Values = r.WeekTotals;
 
-        var change = r.TotalSeconds - r.PrevWeekSeconds;
         var parts = new List<string>();
-        if (r.PrevWeekSeconds > 0)
+        if (r.ChangeSeconds is { } change)
             parts.Add(Str(StringKeys.WeekVsLast, (change >= 0 ? "▲ " : "▼ ") + UsageText.HoursMinutes(Math.Abs(change))));
         if (r.AverageSeconds > 0)
             parts.Add(Str(StringKeys.WeekAvg, UsageText.HoursMinutes((long)r.AverageSeconds)));

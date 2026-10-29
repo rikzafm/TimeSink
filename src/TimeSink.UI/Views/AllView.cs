@@ -197,7 +197,7 @@ public sealed class AllView : UserControl, ILiveView
             empty.Margin = new Thickness(12);
             _rows.Children.Add(empty);
         }
-        var nowUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var nowUtc = _loader.Now.ToUnixTimeSeconds();
         for (var i = 0; i < sorted.Count; i++) _rows.Children.Add(AppRow(sorted[i], sorted[i].AppId == _selected, nowUtc));
         if (r.Retired.Count > 0)
         {
@@ -386,18 +386,17 @@ public sealed class AllView : UserControl, ILiveView
         return s;
     }
 
-    private static string LastOpenedText(long lastUtc, long nowUtc)
+    private string LastOpenedText(long lastUtc, long nowUtc)
     {
-        if (lastUtc <= 0) return Str(AllStringKeys.Never);
-        var age = nowUtc - lastUtc;
-        if (age < 60) return Str(AllStringKeys.JustNow);
-        if (age < 3600) return Str(AllStringKeys.MinutesAgo, (age / 60).ToString(En));
-        var bucket = UsageText.DayOf(lastUtc, nowUtc, TimeZoneInfo.Local);
-        return bucket.Kind switch
+        var when = LastOpened.Of(lastUtc, nowUtc, _loader.Zone);
+        return when.Kind switch
         {
-            DayKind.Today => Str(AllStringKeys.HoursAgo, (age / 3600).ToString(En)),
-            DayKind.Yesterday => Str(AppDetailStringKeys.Yesterday),
-            _ => UsageText.ShortDate(bucket.Date, withYear: !bucket.InCurrentYear),
+            LastOpenedKind.Never => Str(AllStringKeys.Never),
+            LastOpenedKind.JustNow => Str(AllStringKeys.JustNow),
+            LastOpenedKind.MinutesAgo => Str(AllStringKeys.MinutesAgo, when.Amount.ToString(En)),
+            LastOpenedKind.HoursAgo => Str(AllStringKeys.HoursAgo, when.Amount.ToString(En)),
+            LastOpenedKind.Yesterday => Str(AppDetailStringKeys.Yesterday),
+            _ => UsageText.ShortDate(when.Date, withYear: !when.InCurrentYear),
         };
     }
 

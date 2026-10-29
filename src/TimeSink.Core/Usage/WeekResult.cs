@@ -49,6 +49,12 @@ public sealed record WeekResult(
     DateOnly? FirstTracked)
 {
     /// <summary>
+    /// This week's PC uptime minus <see cref="PrevWeekSeconds"/> (negative when down); null when the previous week has no
+    /// time to compare with, so the headline shows no change rather than a meaningless one.
+    /// </summary>
+    public long? ChangeSeconds => PrevWeekSeconds > 0 ? TotalSeconds - PrevWeekSeconds : null;
+
+    /// <summary>
     /// The mean PC uptime of the shown week's days that have time so far (decision 131); 0 when none has. The Week
     /// headline and the day panel's "vs the week's average" both read it, so empty days never count in one and not the other.
     /// </summary>

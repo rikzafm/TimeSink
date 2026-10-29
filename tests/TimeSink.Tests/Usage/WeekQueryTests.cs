@@ -207,3 +207,22 @@ public sealed class WeekQueryTests : IDisposable
         WeekStarts.Parse("bogus").Should().Be(WeekStart.Mon);
     }
 }
+
+public sealed class WeekChangeTests
+{
+    private static WeekResult Result(long total, long prev) => new(
+        new DateOnly(2026, 3, 4), new DateOnly(2026, 3, 2), 0, total, [], [], 0, [], [], prev, null);
+
+    [Fact]
+    public void Change_is_this_week_minus_the_baseline()
+    {
+        Result(5000, 3000).ChangeSeconds.Should().Be(2000);
+        Result(1000, 3000).ChangeSeconds.Should().Be(-2000);
+        Result(3000, 3000).ChangeSeconds.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Change_is_absent_when_the_baseline_is_not_above_zero(long prev) => Result(5000, prev).ChangeSeconds.Should().BeNull();
+}

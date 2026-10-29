@@ -83,6 +83,7 @@ public static class StringKeys
 
     // Week view.
     public const string WeekCaption = "weekCaption";
+    public const string WeekLastCaption = "weekLastCaption";
     public const string WeekStreak = "weekStreak";
     public const string WeekStreakSub = "weekStreakSub";
     public const string WeekGridCaption = "weekGridCaption";
@@ -98,7 +99,7 @@ public static class StringKeys
         LegendAsleep, TileFirstApp, TileLongest, TileVsYesterday, TileNone, TileLongestValue, TileVsYesterdayValue,
         StatusRunning, StatusClosed, SessionsToday, SessionLine, SessionNow, VsAverage, VsAverageNone,
         DialSessions, DialLongest, DialAverage, DialBlips, DialLabel,
-        WeekCaption, WeekStreak, WeekStreakSub, WeekGridCaption, WeekEmpty, WeekVsLast, WeekAvg, WeekTrendCaption,
+        WeekCaption, WeekLastCaption, WeekStreak, WeekStreakSub, WeekGridCaption, WeekEmpty, WeekVsLast, WeekAvg, WeekTrendCaption,
         .. MonthKeys,
     ];
 }
