@@ -27,7 +27,7 @@ internal static class AppIcons
         {
             if (_source is null || _sourceDb != dbPath)
             {
-                _source = new AppIconSource(dbPath, Win32Desktop.Instance);
+                _source = new AppIconSource(dbPath, Win32IconExtractor.Instance);
                 _sourceDb = dbPath;
             }
             return _source;

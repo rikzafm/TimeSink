@@ -30,7 +30,7 @@ public sealed partial class AddAppView
         }
         if (_iconChoices.TryGetValue(app.Id, out var known)) Show(known);
         else
-            Task.Run(() => IconChoices.Find(app.ExePath, Win32Desktop.Instance, PickedIconPx)).ContinueWith(t =>
+            Task.Run(() => IconChoices.Find(app.ExePath, Win32IconExtractor.Instance, PickedIconPx)).ContinueWith(t =>
             {
                 if (t.IsFaulted) return;
                 _iconChoices[app.Id] = t.Result;
@@ -268,7 +268,7 @@ public sealed partial class AddAppView
             bool ok;
             try { ok = dlg.ShowDialog(window) == true; }
             finally { if (window is not null) { window.KeepOpen = false; window.Activate(); } }
-            if (!ok || IconChoices.FromFile(dlg.FileName, Win32Desktop.Instance, PickedIconPx) is not { } choice) return;
+            if (!ok || IconChoices.FromFile(dlg.FileName, Win32IconExtractor.Instance, PickedIconPx) is not { } choice) return;
             var next = picked.Where(c => !c.Png.AsSpan().SequenceEqual(choice.Png)).Append(choice).ToList();
             ShowIconPicker(app, found, next, found.Count + next.Count - 1);
         };

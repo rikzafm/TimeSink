@@ -8,29 +8,9 @@ namespace TimeSink.Tests.Apps;
 
 public sealed class AppIconSourceTests : IDisposable
 {
-    private sealed class FakeDesktop : IDesktop
-    {
-        public List<(string Exe, int Size)> IconCalls { get; } = [];
-        public List<(string? Aumid, string? ImageFile)> Args { get; } = [];
-        public HashSet<string> NoIcon { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public Exception? IconFails { get; set; }
-
-        public WindowCapture CaptureWindows() => new([], new Dictionary<string, string>());
-
-        public byte[]? ExtractIcon(string exePath, string? aumid, string? imageFile, int size)
-        {
-            IconCalls.Add((exePath, size));
-            Args.Add((aumid, imageFile));
-            if (IconFails is { } fail) throw fail;
-            return NoIcon.Contains(exePath) ? null : Encoding.UTF8.GetBytes("png:" + exePath);
-        }
-
-        public IReadOnlyList<InstalledApp> ScanInstalled() => [];
-    }
-
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "timesink-tests-" + Guid.NewGuid().ToString("N"));
     private readonly string _path;
-    private readonly FakeDesktop _desktop = new();
+    private readonly FakeIcons _desktop = new();
 
     public AppIconSourceTests()
     {
@@ -71,7 +51,7 @@ public sealed class AppIconSourceTests : IDisposable
         found.Keys.Should().BeEquivalentTo(new long[] { 1, 2 });
         found[1].Should().Equal(Encoding.UTF8.GetBytes(@"png:c:\a\one.exe"));
         _desktop.IconCalls.Should().Equal((@"c:\a\one.exe", 256), (@"c:\a\two.exe", 256));
-        _desktop.Args.Should().Equal(("Pkg!App", @"c:\a\logo.png"), (null, null));
+        _desktop.TileCalls.Should().Equal(("Pkg!App", 256));
     }
 
     [Fact]
@@ -184,7 +164,7 @@ public sealed class AppIconSourceTests : IDisposable
 
         Stored(id).Should().Equal(BalatroExe);
         _desktop.IconCalls.Should().Equal((Balatro, 64));
-        _desktop.Args.Single().ImageFile.Should().BeNull();
+        _desktop.ImageCalls.Should().BeEmpty();
         RepairFlag().Should().Be("1");
     }
 
@@ -320,11 +300,13 @@ public sealed class AppIconSourceTests : IDisposable
     public void The_aumid_and_image_file_reach_the_extraction_and_do_not_change_the_cache_key()
     {
         var source = Source();
+        _desktop.Embedded[@"c:\a\one.exe"] = 64; // too small to be sharp, so the image file is used too
 
         source.ForPath(@"c:\a\one.exe", "Pkg!App", @"c:\art\logo.png", 256, cachedOnly: false, out _);
         source.ForPath(@"c:\a\one.exe", null, null, 256, cachedOnly: false, out var again);
 
-        _desktop.Args.Should().Equal(("Pkg!App", @"c:\art\logo.png"));
+        _desktop.TileCalls.Should().Equal(("Pkg!App", 256));
+        _desktop.ImageCalls.Should().Equal((@"c:\art\logo.png", 256));
         again.Should().BeFalse();
     }
 }

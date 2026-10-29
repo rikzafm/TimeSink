@@ -11,7 +11,7 @@ namespace TimeSink.Core.Apps;
 /// the app has none; TimeSink's own row always shows the chosen tray icon. The first resolve of a database also
 /// re-extracts every stored Steam icon once, since those used to be Steam's 32 px icon scaled up. <see cref="ForPath"/> answers by exe path and size, for apps that have no id yet. <see cref="Stored"/>
 /// reads what is stored and never extracts. <see cref="AppLibrary"/> stays beneath it as the SQLite adapter and
-/// <see cref="IDesktop"/> is the seam to icon extraction. A busy or missing database
+/// <see cref="IIconExtractor"/> is the seam to icon extraction and <see cref="IconRule"/> chooses among what it finds. A busy or missing database
 /// (<see cref="SqliteException"/>, <see cref="IOException"/>) leaves the apps without an icon, so their letter tiles
 /// stay; anything else propagates. Each app id is resolved once per run, so a redraw cannot retry it. Thread-safe.
 /// </summary>
@@ -20,7 +20,7 @@ public sealed class AppIconSource
     private const int StoredSize = 64;
 
     private readonly string _dbPath;
-    private readonly IDesktop _desktop;
+    private readonly IIconExtractor _extractor;
     private readonly object _gate = new();
     private readonly Dictionary<long, byte[]> _found = new();
     private readonly HashSet<long> _tried = new();
@@ -28,10 +28,10 @@ public sealed class AppIconSource
     private readonly Dictionary<(string Path, int Size), byte[]?> _byPath = new();
     private bool _steamChecked; // this run has seen the Steam repair done (under _gate)
 
-    public AppIconSource(string dbPath, IDesktop desktop)
+    public AppIconSource(string dbPath, IIconExtractor extractor)
     {
         _dbPath = dbPath;
-        _desktop = desktop;
+        _extractor = extractor;
     }
 
     /// <summary>
@@ -63,10 +63,7 @@ public sealed class AppIconSource
             if (_byPath.TryGetValue(key, out var known)) return known;
         }
         if (cachedOnly) return null;
-        if (imageFile is null && SteamLibrary.IsInLibrary(exePath)) imageFile = SteamLibrary.ArtForExe(exePath);
-        byte[]? png;
-        try { png = _desktop.ExtractIcon(exePath, aumid, imageFile, size); }
-        catch (IOException) { png = null; }
+        var png = Extract(exePath, aumid, imageFile, size);
         extracted = true;
         lock (_gate) _byPath[key] = png;
         return png;
@@ -145,7 +142,7 @@ public sealed class AppIconSource
                     if (!own.AsSpan().SequenceEqual(png)) lib.PutIcon(id, own);
                     png = own;
                 }
-                else if (png is null && app is not null && Extract(app.ExePath, SteamLibrary.ArtForExe(app.ExePath)) is { } extracted)
+                else if (png is null && app is not null && Extract(app.ExePath, null, null, StoredSize) is { } extracted)
                 {
                     lib.PutIcon(id, extracted);
                     png = extracted;
@@ -175,15 +172,16 @@ public sealed class AppIconSource
             apps ??= lib.Library();
             var chosen = lib.ChosenIcons(); // an icon the user picked stays (decision 153)
             foreach (var app in apps.Where(a => SteamLibrary.IsInLibrary(a.ExePath) && !IsSelf(a.ExePath) && !chosen.Contains(a.Id)))
-                if (Extract(app.ExePath, SteamLibrary.ArtForExe(app.ExePath)) is { } png) lib.PutIcon(app.Id, png);
+                if (Extract(app.ExePath, null, null, StoredSize) is { } png) lib.PutIcon(app.Id, png);
             AppSettings.ForFile(_dbPath).Set(Setting.SteamIconsRepaired, true);
         }
         lock (_gate) _steamChecked = true;
     }
 
-    private byte[]? Extract(string exePath, string? imageFile)
+    /// <summary>The icon by <see cref="IconRule"/>; a Steam exe with no image file given gets its cached art looked up.</summary>
+    private byte[]? Extract(string exePath, string? aumid, string? imageFile, int size)
     {
-        try { return _desktop.ExtractIcon(exePath, null, imageFile, StoredSize); }
+        try { return IconRule.Extract(_extractor, exePath, aumid, imageFile ?? SteamLibrary.ArtForExe(exePath), size); }
         catch (IOException) { return null; }
     }
 

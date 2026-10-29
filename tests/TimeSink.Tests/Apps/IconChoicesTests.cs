@@ -12,15 +12,20 @@ public sealed class IconChoicesTests : IDisposable
 
     public void Dispose() => Directory.Delete(_dir, true);
 
-    private sealed class FakeDesktop : IDesktop
+    private sealed class FakeDesktop : IIconExtractor
     {
         public HashSet<string> Same { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public WindowCapture CaptureWindows() => new([], new Dictionary<string, string>());
-        public IReadOnlyList<InstalledApp> ScanInstalled() => [];
 
-        public byte[]? ExtractIcon(string exePath, string? aumid, string? imageFile, int size) =>
-            imageFile is not null ? Encoding.UTF8.GetBytes("art:" + imageFile)
-            : Encoding.UTF8.GetBytes(Same.Contains(exePath) ? "same" : "exe:" + exePath);
+        public byte[]? FromTile(string aumid, int size) => null;
+
+        public byte[]? FromExe(string exePath, int size) =>
+            exePath.Length == 0 ? null : Encoding.UTF8.GetBytes(Same.Contains(exePath) ? "same" : "exe:" + exePath);
+
+        public int EmbeddedSide(string exePath) => 256;
+
+        public int? ImageSide(string imageFile) => 1024;
+
+        public byte[]? FromImage(string imageFile, int size) => Encoding.UTF8.GetBytes("art:" + imageFile);
     }
 
     private string Exe(string name, int bytes)

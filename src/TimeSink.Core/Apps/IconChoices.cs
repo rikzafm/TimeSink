@@ -15,7 +15,7 @@ public static class IconChoices
 {
     private const int MaxOtherExes = 3;
 
-    public static IReadOnlyList<IconChoice> Find(string exePath, IDesktop desktop, int size)
+    public static IReadOnlyList<IconChoice> Find(string exePath, IIconExtractor extractor, int size)
     {
         var found = new List<IconChoice>();
         void Add(IconChoiceKind kind, string detail, byte[]? png)
@@ -24,7 +24,7 @@ public static class IconChoices
         }
         byte[]? Extract(string exe, string? image)
         {
-            try { return desktop.ExtractIcon(exe, null, image, size); }
+            try { return IconRule.Extract(extractor, exe, null, image, size); }
             catch (IOException) { return null; }
         }
 
@@ -39,9 +39,9 @@ public static class IconChoices
     }
 
     /// <summary>An image file the user picked (PNG, JPG or ICO), centre-cropped to a square; null when it cannot be read.</summary>
-    public static IconChoice? FromFile(string path, IDesktop desktop, int size)
+    public static IconChoice? FromFile(string path, IIconExtractor extractor, int size)
     {
-        try { return desktop.ExtractIcon("", null, path, size) is { Length: > 0 } png ? new IconChoice(IconChoiceKind.File, Path.GetFileName(path), png) : null; }
+        try { return IconRule.Extract(extractor, "", null, path, size) is { Length: > 0 } png ? new IconChoice(IconChoiceKind.File, Path.GetFileName(path), png) : null; }
         catch (IOException) { return null; }
     }
 }

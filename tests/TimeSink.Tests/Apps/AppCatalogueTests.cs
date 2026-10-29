@@ -13,19 +13,9 @@ public sealed class AppCatalogueTests : IDisposable
     {
         public List<OpenWindow> Windows { get; } = [];
         public Dictionary<string, string> Aumids { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public List<(string Exe, int Size)> IconCalls { get; } = [];
         public Exception? CaptureFails { get; set; }
-        public Dictionary<string, Exception> IconFails { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public WindowCapture CaptureWindows() => CaptureFails is { } e ? throw e : new WindowCapture(Windows.ToList(), Aumids);
-
-        public byte[]? ExtractIcon(string exePath, string? aumid, string? imageFile, int size)
-        {
-            IconCalls.Add((exePath, size));
-            OnIcon?.Invoke(exePath);
-            if (IconFails.TryGetValue(exePath, out var fail)) throw fail;
-            return Encoding.UTF8.GetBytes("png:" + exePath);
-        }
 
         public List<InstalledApp> Installed { get; } = [];
 
@@ -33,7 +23,6 @@ public sealed class AppCatalogueTests : IDisposable
         public bool SlowScan { get; set; }
         public ManualResetEventSlim ScanEntered { get; } = new(false);
         public ManualResetEventSlim ScanRelease { get; } = new(false);
-        public Action<string>? OnIcon { get; set; }
 
         public IReadOnlyList<InstalledApp> ScanInstalled()
         {
@@ -53,6 +42,7 @@ public sealed class AppCatalogueTests : IDisposable
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "timesink-tests-" + Guid.NewGuid().ToString("N"));
     private readonly string _path;
     private readonly FakeDesktop _desktop = new();
+    private readonly FakeIcons _icons = new();
 
     public AppCatalogueTests()
     {
@@ -66,7 +56,7 @@ public sealed class AppCatalogueTests : IDisposable
         if (Directory.Exists(_dir)) Directory.Delete(_dir, true);
     }
 
-    private AppCatalogue Catalogue(string? path = null) => new(path ?? _path, _desktop, new AppIconSource(path ?? _path, _desktop));
+    private AppCatalogue Catalogue(string? path = null) => new(path ?? _path, _desktop, new AppIconSource(path ?? _path, _icons));
 
     private void Open(string exe, string name = "App", int minutesAgo = 10, string? family = null) =>
         _desktop.Windows.Add(new OpenWindow(exe, name, T0.AddMinutes(-minutesAgo), true, false, false, family));
@@ -220,7 +210,7 @@ public sealed class AppCatalogueTests : IDisposable
         var first = cat.Running(iconPx: 256).Candidates.Single();
         cat.Running(iconPx: 256);
 
-        _desktop.IconCalls.Should().Equal((@"c:\a\one.exe", 256));
+        _icons.IconCalls.Should().Equal((@"c:\a\one.exe", 256));
         first.Png.Should().Equal(Encoding.UTF8.GetBytes(@"png:c:\a\one.exe"));
     }
 
@@ -786,7 +776,7 @@ public sealed class AppCatalogueTests : IDisposable
 
         var merged = MainEntry(main).Merged.Should().ContainSingle().Subject;
         merged.ExePath.Should().Be(@"c:\b\fresh.exe");
-        _desktop.IconCalls.Should().Equal((@"c:\b\fresh.exe", 64));
+        _icons.IconCalls.Should().Equal((@"c:\b\fresh.exe", 64));
         using var lib = AppLibrary.Open(_path);
         lib.GetIcon(merged.Id).Should().Equal(Encoding.UTF8.GetBytes(@"png:c:\b\fresh.exe"));
         cat.AddedCount.Should().Be(1);
@@ -797,16 +787,16 @@ public sealed class AppCatalogueTests : IDisposable
     {
         var main = Track(@"c:\a\main.exe", "Main");
         _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Fresh"));
-        var icons = new AppIconSource(_path, _desktop);
+        var icons = new AppIconSource(_path, _icons);
         icons.ForPath(@"C:\B\FRESH.EXE", null, null, 256, cachedOnly: false, out _);
-        _desktop.IconCalls.Clear();
+        _icons.IconCalls.Clear();
         var plan = new AppCatalogue(_path, _desktop, icons).OpenMergePlan(main, iconPx: 256)!;
         plan.Candidates.Single().Png.Should().Equal(Encoding.UTF8.GetBytes(@"png:C:\B\FRESH.EXE"));
         plan.Toggle(plan.Candidates.Single().Key);
 
         plan.Confirm();
 
-        _desktop.IconCalls.Should().BeEmpty();
+        _icons.IconCalls.Should().BeEmpty();
         using var lib = AppLibrary.Open(_path);
         lib.GetIcon(MainEntry(main).Merged.Single().Id).Should().Equal(Encoding.UTF8.GetBytes(@"png:C:\B\FRESH.EXE"));
     }
@@ -820,7 +810,7 @@ public sealed class AppCatalogueTests : IDisposable
         var plan = Catalogue().OpenMergePlan(main)!;
 
         plan.Candidates.Single().Png.Should().BeNull();
-        _desktop.IconCalls.Should().BeEmpty();
+        _icons.IconCalls.Should().BeEmpty();
     }
 
     private const string BlockInserts = "CREATE TRIGGER block_inserts BEFORE INSERT ON apps BEGIN SELECT RAISE(ABORT, 'disk gone'); END";
@@ -848,7 +838,7 @@ public sealed class AppCatalogueTests : IDisposable
         var main = Track(@"c:\a\main.exe", "Main");
         var first = Track(@"c:\a\first.exe", "A first");   // sorted first: merged before the failure
         _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Z fresh"));
-        _desktop.OnIcon = _ => Exec(BlockInserts); // adding the installed app then fails in the database
+        _icons.OnIcon = _ => Exec(BlockInserts); // adding the installed app then fails in the database
         var cat = Catalogue();
         var plan = cat.OpenMergePlan(main)!;
         foreach (var c in plan.Candidates) plan.Toggle(c.Key);
@@ -867,12 +857,12 @@ public sealed class AppCatalogueTests : IDisposable
         var main = Track(@"c:\a\main.exe", "Main");
         var gone = Retire(@"c:\a\gone.exe", "A gone");   // restored and merged before the failure
         _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Z fresh"));
-        _desktop.OnIcon = _ => Exec(BlockInserts);
+        _icons.OnIcon = _ => Exec(BlockInserts);
         var cat = Catalogue();
         var plan = cat.OpenMergePlan(main)!;
         foreach (var c in plan.Candidates) plan.Toggle(c.Key);
         plan.Confirm().Should().Be(CatalogueOutcome.Unavailable);
-        _desktop.OnIcon = null;
+        _icons.OnIcon = null;
         Exec("DROP TRIGGER block_inserts");
         Exec($"UPDATE apps SET added_utc = 12345 WHERE id = {gone}"); // a Restore now would reset this
 
@@ -888,7 +878,7 @@ public sealed class AppCatalogueTests : IDisposable
     {
         var main = Track(@"c:\a\main.exe", "Main");
         _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Fresh"));
-        _desktop.IconFails[@"c:\b\fresh.exe"] = new IOException("icon file locked");
+        _icons.IconFailsFor[@"c:\b\fresh.exe"] = new IOException("icon file locked");
         var plan = Catalogue().OpenMergePlan(main)!;
         plan.Toggle(plan.Candidates.Single().Key);
 
@@ -904,7 +894,7 @@ public sealed class AppCatalogueTests : IDisposable
     {
         var main = Track(@"c:\a\main.exe", "Main");
         _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Fresh"));
-        _desktop.IconFails[@"c:\b\fresh.exe"] = new InvalidOperationException("boom");
+        _icons.IconFailsFor[@"c:\b\fresh.exe"] = new InvalidOperationException("boom");
         var plan = Catalogue().OpenMergePlan(main)!;
         plan.Toggle(plan.Candidates.Single().Key);
 
