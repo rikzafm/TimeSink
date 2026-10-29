@@ -45,4 +45,17 @@ public sealed record TodayResult(
     IReadOnlyList<TodayAppRow> Apps,
     long UptimeSeconds,
     long UptimeVsYesterdaySeconds,
-    DateOnly? FirstTracked = null);
+    DateOnly? FirstTracked = null)
+{
+    /// <summary>Seconds from the snapshot to <paramref name="nowUtc"/>, never negative.</summary>
+    public long ElapsedAt(long nowUtc) => Math.Max(0, nowUtc - NowUtc);
+
+    /// <summary>PC uptime at <paramref name="nowUtc"/>: the live day keeps counting after the snapshot, a past day does not.</summary>
+    public long UptimeAt(long nowUtc, bool live) => UptimeSeconds + (live ? ElapsedAt(nowUtc) : 0);
+
+    /// <summary>Combined app time at <paramref name="nowUtc"/>: every open Session keeps running (decision 149).</summary>
+    public long CombinedSecondsAt(long nowUtc) => TotalSeconds + ElapsedAt(nowUtc) * OpenSessionCount;
+
+    /// <summary>One row's time at <paramref name="nowUtc"/>: a running app keeps counting.</summary>
+    public long RowSecondsAt(TodayAppRow row, long nowUtc) => row.Seconds + (row.IsRunning ? ElapsedAt(nowUtc) : 0);
+}

@@ -21,7 +21,6 @@ namespace TimeSink.UI.Views;
 public partial class TodayView : UserControl, ILiveView
 {
     private const int RefreshEverySeconds = 30;
-    private const int MinShownSessionSeconds = 60; // shorter sessions are blips: not drawn, only counted in the note
     private const double DialSize = 150;
 #if DEBUG
     private static readonly bool ExpandAll = Environment.GetEnvironmentVariable("TS_EXPAND") == "1"; // test aid for screenshots (decision 115)
@@ -172,18 +171,17 @@ public partial class TodayView : UserControl, ILiveView
     private void UpdateLive()
     {
         var r = _result!;
-        var elapsed = ElapsedSinceSnapshot;
-        var uptime = r.UptimeSeconds + (_day is null ? elapsed : 0); // the PC is on while the view is live
+        var nowUtc = Math.Max(r.NowUtc, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        var uptime = r.UptimeAt(nowUtc, _day is null); // the PC is on while the view is live
         TotalMain.Text = UsageText.HoursMinutes(uptime);
         TotalSeconds.Text = $"{uptime % 60:00}s";
-        CombinedText.Text = Str(StringKeys.TodayCombined, UsageText.HoursMinutes(r.TotalSeconds + elapsed * r.OpenSessionCount));
-        var nowUtc = r.NowUtc + elapsed;
+        CombinedText.Text = Str(StringKeys.TodayCombined, UsageText.HoursMinutes(r.CombinedSecondsAt(nowUtc)));
         Chart.NowFraction = _day is null ? Fraction(r, nowUtc) : 0;
         Chart.NowLabel = Clock(nowUtc);
         foreach (var (_, (time, status, row)) in _rowViews)
         {
             if (!row.IsRunning) continue;
-            time.Text = UsageText.HoursMinutes(row.Seconds + elapsed);
+            time.Text = UsageText.HoursMinutes(r.RowSecondsAt(row, nowUtc));
             status.Text = Str(StringKeys.StatusRunning, UsageText.HoursMinutes(nowUtc - row.RunningSinceUtc!.Value));
         }
     }
@@ -368,7 +366,7 @@ public partial class TodayView : UserControl, ILiveView
             details.Child = BuildDetails(r, row, appBrush, link);
             link.Apply!();
         }
-        var shown = row.Sessions.Where(x => x.Seconds >= MinShownSessionSeconds).ToList();
+        var shown = RowDetails.ShownSessions(row).ToList();
         if (_pinnedSession.TryGetValue(row.AppId, out var pinnedStart))
             link.Pinned = shown.FindIndex(x => x.StartUtc == pinnedStart);
         // Opened by hand, not through ToolTipService: that only shows a tip once per enter, so dragging across the gap
@@ -449,17 +447,18 @@ public partial class TodayView : UserControl, ILiveView
         panel.SetResourceReference(Border.BorderThicknessProperty, "Thickness.Border");
         panel.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
 
-        var shown = row.Sessions.Where(s => s.Seconds >= MinShownSessionSeconds).ToList();
-        var hidden = row.Sessions.Count - shown.Count;
-        var avg = row.SevenDayAverageSeconds is { } a && a > 0 ? a : (double?)null;
+        var detail = RowDetails.Of(row);
+        var shown = detail.Shown.ToList();
+        var hidden = detail.Blips;
+        var avg = detail.AverageSeconds;
 
         var dial = new SessionDial
         {
             Width = DialSize, Height = DialSize, VerticalAlignment = VerticalAlignment.Top,
             Segments = shown.Select(s => (Fraction(r, s.StartUtc), Fraction(r, s.EndUtc))).ToList(),
             NowFraction = _day is null ? Fraction(r, r.NowUtc) : null,
-            TotalFraction = row.Seconds / 86400.0,
-            AverageFraction = avg is { } v ? v / 86400.0 : null,
+            TotalFraction = detail.TotalFraction,
+            AverageFraction = detail.AverageFraction,
         };
         dial.SetResourceReference(SessionDial.SegmentBrushProperty, appBrush);
         dial.SetResourceReference(SessionDial.TrackBrushProperty, "Brush.BorderSoft");
@@ -467,9 +466,9 @@ public partial class TodayView : UserControl, ILiveView
         dial.SetResourceReference(SessionDial.NowBrushProperty, "Brush.Accent");
         dial.SetResourceReference(SessionDial.LabelBrushProperty, "Brush.TextMuted");
         dial.SetResourceReference(SessionDial.NumberFontProperty, "FontFamily.Numbers");
-        if (avg is { } mean)
+        if (detail.VsAverageRatio is { } ratio)
         {
-            var delta = UsageText.DeltaOfRatio(row.Seconds / mean - 1);
+            var delta = UsageText.DeltaOfRatio(ratio);
             dial.CenterText = delta;
             dial.SetResourceReference(SessionDial.CenterBrushProperty, delta.StartsWith('-') ? "Brush.Warning" : "Brush.Accent");
         }
@@ -480,7 +479,7 @@ public partial class TodayView : UserControl, ILiveView
         }
         System.Windows.Automation.AutomationProperties.SetName(dial, Str(StringKeys.DialLabel, row.Name));
 
-        var longest = shown.Count > 0 ? shown.Max(s => s.Seconds) : 0;
+        var longest = detail.LongestSeconds;
         var stats = new StackPanel { Margin = new Thickness(14, 2, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         stats.Children.Add(Stat(StringKeys.DialSessions, shown.Count.ToString(), first: true));
         stats.Children.Add(Stat(StringKeys.DialLongest, longest > 0 ? UsageText.HoursMinutes(longest) : Str(StringKeys.TileNone)));
