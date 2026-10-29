@@ -65,11 +65,18 @@ public partial class MonthView : UserControl, ILiveView
 
     public void Stop() => _driver.Stop();
 
+    private PeriodNavigator Months()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        return new PeriodNavigator(PeriodUnit.Month, _firstTracked ?? today, today);
+    }
+
     private void Navigate(int delta)
     {
-        var m = new DateOnly(_year, _month, 1).AddMonths(delta);
-        if (m > DateOnly.FromDateTime(DateTime.Now)) return;
-        if (delta < 0 && (_firstTracked is not { } ft || m < new DateOnly(ft.Year, ft.Month, 1))) return;
+        var months = Months();
+        var shown = new DateOnly(_year, _month, 1);
+        if (delta < 0 ? !months.CanPrev(shown) : !months.CanNext(shown)) return;
+        var m = months.Step(shown, delta);
         _year = m.Year;
         _month = m.Month;
         _selected = null;
@@ -100,8 +107,9 @@ public partial class MonthView : UserControl, ILiveView
         if (_result is not { } r) return;
         var first = r.FirstDay;
         MonthName.Text = first.ToString("MMMM yyyy", En);
-        Prev.IsEnabled = _firstTracked is { } ft && first > new DateOnly(ft.Year, ft.Month, 1);
-        Next.IsEnabled = !r.IsCurrent && first.AddMonths(1) <= DateOnly.FromDateTime(DateTime.Now);
+        var months = Months();
+        Prev.IsEnabled = _firstTracked is not null && months.CanPrev(first);
+        Next.IsEnabled = months.CanNext(first);
 
         Total.Text = UsageText.HoursMinutes(r.TotalSeconds);
         BuildDelta(r);
