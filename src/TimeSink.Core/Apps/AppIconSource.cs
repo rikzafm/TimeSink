@@ -45,10 +45,11 @@ public sealed class AppIconSource
 
     /// <summary>
     /// The icon of an app by exe path at about <paramref name="size"/> px, extracted once per path and size (a failed
-    /// extraction is remembered as no icon). With <paramref name="cachedOnly"/> nothing is extracted and an unknown
-    /// path gives null. <paramref name="extracted"/> says whether this call ran an extraction.
+    /// extraction is remembered as no icon). <paramref name="aumid"/> and <paramref name="imageFile"/> help find the logo
+    /// of a packaged app or Steam game and do not change the cache key. With <paramref name="cachedOnly"/> nothing is
+    /// extracted and an unknown path gives null. <paramref name="extracted"/> says whether this call ran an extraction.
     /// </summary>
-    public byte[]? ForPath(string exePath, string? aumid, int size, bool cachedOnly, out bool extracted)
+    public byte[]? ForPath(string exePath, string? aumid, string? imageFile, int size, bool cachedOnly, out bool extracted)
     {
         extracted = false;
         var key = (exePath.ToLowerInvariant(), size);
@@ -58,7 +59,7 @@ public sealed class AppIconSource
         }
         if (cachedOnly) return null;
         byte[]? png;
-        try { png = _desktop.ExtractIcon(exePath, aumid, null, size); }
+        try { png = _desktop.ExtractIcon(exePath, aumid, imageFile, size); }
         catch (IOException) { png = null; }
         extracted = true;
         lock (_gate) _byPath[key] = png;

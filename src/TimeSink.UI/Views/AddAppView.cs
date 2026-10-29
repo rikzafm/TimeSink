@@ -43,7 +43,7 @@ public sealed partial class AddAppView : UserControl
     private readonly StackPanel _list = new();
     private readonly TextBlock _count = new();
     private readonly AppCatalogue _catalogue;
-    private readonly Dictionary<string, byte[]?> _iconCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly AppIconSource _icons;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(4) };
     private List<Row> _rows = [];
     private bool _loading;
@@ -57,7 +57,8 @@ public sealed partial class AddAppView : UserControl
         _themes = themes;
         _dbPath = dbPath;
         _close = close;
-        _catalogue = new AppCatalogue(dbPath, Win32Desktop.Instance, AppIcons.Source(dbPath));
+        _icons = AppIcons.Source(dbPath);
+        _catalogue = new AppCatalogue(dbPath, Win32Desktop.Instance, _icons);
         SetResourceReference(BackgroundProperty, "Brush.Surface");
         Content = _shell = BuildShell();
         _timer.Tick += (_, _) => Refresh();
@@ -329,6 +330,30 @@ public sealed partial class AddAppView : UserControl
     private const int TileIconPx = 256;
 
     private Border IconTile(Row row) => MakeTile(row.App.DisplayName, row.App.ExePath, row.Png);
+
+    /// <summary>The tile-size icon already extracted for the path (by any tab, or an earlier visit), or null.</summary>
+    private byte[]? CachedIcon(string exePath) => _icons.ForPath(exePath, null, null, TileIconPx, cachedOnly: true, out _);
+
+    /// <summary>
+    /// Extracts tile-size icons one by one on a pool thread, so the first rows of a long list come first. Each icon
+    /// extracted by this call is handed to <paramref name="arrived"/> on the UI thread so tiles already on screen can
+    /// swap their letter for it; icons that were already cached are not (their tiles were drawn from the cache).
+    /// </summary>
+    private void LoadTileIcons(IReadOnlyList<InstalledApp> apps, Action<InstalledApp, byte[]> arrived)
+    {
+        if (apps.Count == 0) return;
+        Task.Run(() =>
+        {
+            foreach (var a in apps)
+            {
+                byte[]? png;
+                bool extracted;
+                try { png = _icons.ForPath(a.ExePath, a.Aumid, a.IconFile, TileIconPx, cachedOnly: false, out extracted); }
+                catch { continue; }
+                if (extracted && png is not null) Dispatcher.BeginInvoke(() => arrived(a, png), DispatcherPriority.Background);
+            }
+        });
+    }
 
     /// <summary>Cached/extracted icon when there is one, else a letter tile in a palette colour.</summary>
     private Border MakeTile(string name, string exePath, byte[]? png)

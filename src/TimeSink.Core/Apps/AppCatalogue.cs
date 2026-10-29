@@ -76,7 +76,7 @@ public sealed class AppCatalogue
         foreach (var app in apps)
         {
             var aumid = capture.AumidByPath.GetValueOrDefault(app.ExePath);
-            var icon = _icons.ForPath(app.ExePath, aumid, iconPx, cachedOnly: budget <= 0, out var extracted);
+            var icon = _icons.ForPath(app.ExePath, aumid, null, iconPx, cachedOnly: budget <= 0, out var extracted);
             if (extracted) budget--;
             fresh.Add(new RunningCandidate(app, aumid, icon, false));
         }
@@ -230,10 +230,10 @@ public sealed class AppCatalogue
     /// Opens a merge for the Main app <paramref name="mainId"/>: the other Tracked apps, the apps already Merged into it
     /// (ticked), Retired apps with real history (not trivial ones, not Windows' own processes) and installed apps not
     /// yet known. Null when that app is not a Tracked Main app or the database is busy or missing. The first call of a
-    /// visit runs the installed-apps scan, so call from a pool thread. <paramref name="knownIcons"/> (by exe path)
-    /// supplies icons already extracted for installed apps.
+    /// visit runs the installed-apps scan, so call from a pool thread. Installed apps carry the icon already extracted
+    /// at <paramref name="iconPx"/> (see <see cref="AppIconSource.ForPath"/>), or none; nothing is extracted here.
     /// </summary>
-    public MergePlan? OpenMergePlan(long mainId, IReadOnlyDictionary<string, byte[]?>? knownIcons = null)
+    public MergePlan? OpenMergePlan(long mainId, int iconPx = 256)
     {
         TrackedEntry main;
         var list = new List<MergeCandidate>();
@@ -261,10 +261,11 @@ public sealed class AppCatalogue
         {
             if (state.StateOf(i.ExePath, i.PackageFamily) is not null) continue; // already tracked, stopped or merged
             var key = "i" + i.ExePath.ToLowerInvariant();
-            list.Add(new MergeCandidate(key, CandidateKind.Installed, i.Name, i.ExePath, 0, 0, i, knownIcons?.GetValueOrDefault(i.ExePath)));
+            var png = _icons.ForPath(i.ExePath, i.Aumid, i.IconFile, iconPx, cachedOnly: true, out _);
+            list.Add(new MergeCandidate(key, CandidateKind.Installed, i.Name, i.ExePath, 0, 0, i, png));
         }
         var sorted = list.OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
-        return new MergePlan(this, _dbPath, _desktop, main.Id, main.DisplayName, sorted);
+        return new MergePlan(this, _dbPath, _icons, main.Id, main.DisplayName, sorted);
     }
 
     /// <summary>

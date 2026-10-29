@@ -11,6 +11,7 @@ public sealed class AppIconSourceTests : IDisposable
     private sealed class FakeDesktop : IDesktop
     {
         public List<(string Exe, int Size)> IconCalls { get; } = [];
+        public List<(string? Aumid, string? ImageFile)> Args { get; } = [];
         public HashSet<string> NoIcon { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Exception? IconFails { get; set; }
 
@@ -19,6 +20,7 @@ public sealed class AppIconSourceTests : IDisposable
         public byte[]? ExtractIcon(string exePath, string? aumid, string? imageFile, int size)
         {
             IconCalls.Add((exePath, size));
+            Args.Add((aumid, imageFile));
             if (IconFails is { } fail) throw fail;
             return NoIcon.Contains(exePath) ? null : Encoding.UTF8.GetBytes("png:" + exePath);
         }
@@ -164,9 +166,9 @@ public sealed class AppIconSourceTests : IDisposable
     {
         var source = Source();
 
-        var small = source.ForPath(@"c:\a\One.exe", null, 64, cachedOnly: false, out var first);
-        source.ForPath(@"C:\A\ONE.EXE", null, 64, cachedOnly: false, out var again);
-        var large = source.ForPath(@"c:\a\one.exe", null, 256, cachedOnly: false, out var other);
+        var small = source.ForPath(@"c:\a\One.exe", null, null, 64, cachedOnly: false, out var first);
+        source.ForPath(@"C:\A\ONE.EXE", null, null, 64, cachedOnly: false, out var again);
+        var large = source.ForPath(@"c:\a\one.exe", null, null, 256, cachedOnly: false, out var other);
 
         small.Should().Equal(Encoding.UTF8.GetBytes(@"png:c:\a\One.exe"));
         (first, again, other).Should().Be((true, false, true));
@@ -179,7 +181,7 @@ public sealed class AppIconSourceTests : IDisposable
     {
         var source = Source();
 
-        source.ForPath(@"c:\a\one.exe", null, 64, cachedOnly: true, out var extracted).Should().BeNull();
+        source.ForPath(@"c:\a\one.exe", null, null, 64, cachedOnly: true, out var extracted).Should().BeNull();
 
         extracted.Should().BeFalse();
         _desktop.IconCalls.Should().BeEmpty();
@@ -191,10 +193,22 @@ public sealed class AppIconSourceTests : IDisposable
         var source = Source();
         _desktop.IconFails = new IOException("icon file locked");
 
-        source.ForPath(@"c:\a\one.exe", null, 64, cachedOnly: false, out var extracted).Should().BeNull();
-        source.ForPath(@"c:\a\one.exe", null, 64, cachedOnly: false, out var again).Should().BeNull();
+        source.ForPath(@"c:\a\one.exe", null, null, 64, cachedOnly: false, out var extracted).Should().BeNull();
+        source.ForPath(@"c:\a\one.exe", null, null, 64, cachedOnly: false, out var again).Should().BeNull();
 
         (extracted, again).Should().Be((true, false));
         _desktop.IconCalls.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void The_aumid_and_image_file_reach_the_extraction_and_do_not_change_the_cache_key()
+    {
+        var source = Source();
+
+        source.ForPath(@"c:\a\one.exe", "Pkg!App", @"c:\art\logo.png", 256, cachedOnly: false, out _);
+        source.ForPath(@"c:\a\one.exe", null, null, 256, cachedOnly: false, out var again);
+
+        _desktop.Args.Should().Equal(("Pkg!App", @"c:\art\logo.png"));
+        again.Should().BeFalse();
     }
 }

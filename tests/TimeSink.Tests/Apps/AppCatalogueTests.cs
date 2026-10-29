@@ -743,19 +743,34 @@ public sealed class AppCatalogueTests : IDisposable
     }
 
     [Fact]
-    public void Confirm_uses_the_icon_the_caller_already_knew_instead_of_extracting_one()
+    public void Confirm_uses_the_icon_already_extracted_at_tile_size_instead_of_extracting_one()
     {
         var main = Track(@"c:\a\main.exe", "Main");
         _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Fresh"));
-        var known = new Dictionary<string, byte[]?>(StringComparer.OrdinalIgnoreCase) { [@"C:\B\FRESH.EXE"] = [1, 2, 3] };
-        var plan = Catalogue().OpenMergePlan(main, known)!;
+        var icons = new AppIconSource(_path, _desktop);
+        icons.ForPath(@"C:\B\FRESH.EXE", null, null, 256, cachedOnly: false, out _);
+        _desktop.IconCalls.Clear();
+        var plan = new AppCatalogue(_path, _desktop, icons).OpenMergePlan(main, iconPx: 256)!;
+        plan.Candidates.Single().Png.Should().Equal(Encoding.UTF8.GetBytes(@"png:C:\B\FRESH.EXE"));
         plan.Toggle(plan.Candidates.Single().Key);
 
         plan.Confirm();
 
         _desktop.IconCalls.Should().BeEmpty();
         using var lib = AppLibrary.Open(_path);
-        lib.GetIcon(MainEntry(main).Merged.Single().Id).Should().Equal(1, 2, 3);
+        lib.GetIcon(MainEntry(main).Merged.Single().Id).Should().Equal(Encoding.UTF8.GetBytes(@"png:C:\B\FRESH.EXE"));
+    }
+
+    [Fact]
+    public void Opening_a_merge_plan_gives_an_installed_app_no_icon_until_one_was_extracted_and_never_extracts()
+    {
+        var main = Track(@"c:\a\main.exe", "Main");
+        _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Fresh"));
+
+        var plan = Catalogue().OpenMergePlan(main)!;
+
+        plan.Candidates.Single().Png.Should().BeNull();
+        _desktop.IconCalls.Should().BeEmpty();
     }
 
     private const string BlockInserts = "CREATE TRIGGER block_inserts BEFORE INSERT ON apps BEGIN SELECT RAISE(ABORT, 'disk gone'); END";

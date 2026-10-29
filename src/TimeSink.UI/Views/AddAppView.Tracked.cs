@@ -20,6 +20,7 @@ public sealed partial class AddAppView
 
     private IReadOnlyList<TrackedEntry> _tracked = [];
     private readonly Dictionary<long, byte[]?> _trackedIcons = new();
+    private readonly HashSet<long> _logoTried = new(); // tracked apps whose tile-size logo was asked for in this view
     private string _trackedQuery = "";
     private StackPanel _trackedList = null!;
     private ScrollViewer _trackedScroll = null!;
@@ -107,35 +108,31 @@ public sealed partial class AddAppView
 
     private void LoadTracked()
     {
-        var snapshot = _catalogue.Tracked(_trackedIcons.Keys.Concat(_hiResIcons.Keys).ToHashSet());
+        var snapshot = _catalogue.Tracked(_trackedIcons.Keys.ToHashSet());
         if (snapshot.Outcome == CatalogueOutcome.Done) // otherwise the database is busy: keep what is on screen
         {
             _tracked = snapshot.Apps;
-            foreach (var id in _tracked.Select(a => a.Id).Where(id => !_trackedIcons.ContainsKey(id)).ToList())
-                _trackedIcons[id] = _hiResIcons.GetValueOrDefault(id) ?? snapshot.Icons.GetValueOrDefault(id);
+            foreach (var a in _tracked.Where(a => !_trackedIcons.ContainsKey(a.Id)).ToList())
+                _trackedIcons[a.Id] = CachedIcon(a.ExePath) ?? snapshot.Icons.GetValueOrDefault(a.Id);
         }
         UpgradeTrackedIcons();
     }
 
-    // Shared by every Add app visit in this process, so reopening the screen does not extract the same logos again.
-    private static readonly HashSet<long> _trackedIconsHiRes = new();
-    private static readonly Dictionary<long, byte[]> _hiResIcons = new();
-
-    /// <summary>Stored icons are 64 px; re-extracts each tracked app's logo at tile resolution once, then redraws.</summary>
+    /// <summary>Stored icons are 64 px; asks for each tracked app's logo at tile resolution once per view, then redraws when one arrived.</summary>
     private void UpgradeTrackedIcons()
     {
-        var todo = _tracked.Where(a => _trackedIconsHiRes.Add(a.Id)).ToList();
+        var todo = _tracked.Where(a => _logoTried.Add(a.Id)).ToList();
         if (todo.Count == 0) return;
-        var aumids = (_catalogue.LastInstalled ?? Array.Empty<InstalledApp>()).GroupBy(i => i.ExePath, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        var installed = (_catalogue.LastInstalled ?? Array.Empty<InstalledApp>()).GroupBy(i => i.ExePath, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         Task.Run(() =>
         {
             var found = new Dictionary<long, byte[]>();
             foreach (var a in todo)
             {
-                aumids.TryGetValue(a.ExePath, out var inst);
+                installed.TryGetValue(a.ExePath, out var inst);
                 try
                 {
-                    if (IconService.ExtractPng(a.ExePath, inst?.Aumid, inst?.IconFile, TileIconPx) is { } png) found[a.Id] = png;
+                    if (_icons.ForPath(a.ExePath, inst?.Aumid, inst?.IconFile, TileIconPx, cachedOnly: false, out var extracted) is { } png && extracted) found[a.Id] = png;
                 }
                 catch { /* keep the stored icon */ }
             }
@@ -143,7 +140,7 @@ public sealed partial class AddAppView
         }).ContinueWith(t =>
         {
             if (t.Result.Count == 0) return;
-            foreach (var (id, png) in t.Result) _trackedIcons[id] = _hiResIcons[id] = png;
+            foreach (var (id, png) in t.Result) _trackedIcons[id] = png;
             if (_trackedList is not null) RenderTracked();
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }
@@ -361,8 +358,7 @@ public sealed partial class AddAppView
         _mergePlan = null;
         _mergeOpening = mainId;
         _body.Content = Note("Str.AddInstalledLoading");
-        var known = new Dictionary<string, byte[]?>(_iconCache, StringComparer.OrdinalIgnoreCase);
-        Task.Run(() => _catalogue.OpenMergePlan(mainId, known)).ContinueWith(t =>
+        Task.Run(() => _catalogue.OpenMergePlan(mainId, TileIconPx)).ContinueWith(t =>
         {
             if (_mergeOpening != mainId) return; // the user went elsewhere meanwhile
             _mergeOpening = null;
@@ -515,22 +511,11 @@ public sealed partial class AddAppView
     /// <summary>Extracts the logos of installed candidates one by one, top of the list first; rows already on screen swap their letter for the logo.</summary>
     private void LoadMergeIcons(IReadOnlyList<MergeCandidate> candidates, List<(Border Tile, string Name, string ExePath)> tiles)
     {
-        var todo = candidates.Where(c => c.Kind == CandidateKind.Installed && !_iconCache.ContainsKey(c.ExePath)).Select(c => c.Installed!).ToList();
-        if (todo.Count == 0) return;
-        Task.Run(() =>
+        var todo = candidates.Where(c => c.Kind == CandidateKind.Installed).Select(c => c.Installed!).ToList();
+        LoadTileIcons(todo, (a, png) =>
         {
-            foreach (var a in todo)
-            {
-                byte[]? png;
-                try { png = IconService.ExtractPng(a.ExePath, a.Aumid, a.IconFile); } catch { png = null; }
-                Dispatcher.BeginInvoke(() =>
-                {
-                    _iconCache[a.ExePath] = png;
-                    if (png is null) return;
-                    foreach (var (tile, name, path) in tiles.ToList())
-                        if (string.Equals(path, a.ExePath, StringComparison.OrdinalIgnoreCase)) FillTile(tile, name, a.ExePath, png);
-                }, DispatcherPriority.Background);
-            }
+            foreach (var (tile, name, path) in tiles.ToList())
+                if (string.Equals(path, a.ExePath, StringComparison.OrdinalIgnoreCase)) FillTile(tile, name, a.ExePath, png);
         });
     }
 

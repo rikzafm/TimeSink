@@ -107,25 +107,12 @@ public sealed partial class AddAppView
     }
 
     /// <summary>Extracts icons one by one on a pool thread; tiles already on screen swap their letter for the icon.</summary>
-    private void LoadInstalledIcons(IReadOnlyList<InstalledApp> apps)
-    {
-        var todo = apps.Where(a => !_iconCache.ContainsKey(a.ExePath)).ToList();
-        if (todo.Count == 0) return;
-        Task.Run(() =>
+    private void LoadInstalledIcons(IReadOnlyList<InstalledApp> apps) =>
+        LoadTileIcons(apps, (a, png) =>
         {
-            foreach (var a in todo)
-            {
-                byte[]? png;
-                try { png = IconService.ExtractPng(a.ExePath, a.Aumid, a.IconFile, TileIconPx); } catch { png = null; }
-                Dispatcher.BeginInvoke(() =>
-                {
-                    _iconCache[a.ExePath] = png;
-                    if (png is null || !_tiles.TryGetValue(a.ExePath, out var tiles)) return;
-                    foreach (var (tile, name) in tiles) FillTile(tile, name, a.ExePath, png);
-                }, System.Windows.Threading.DispatcherPriority.Background);
-            }
+            if (!_tiles.TryGetValue(a.ExePath, out var tiles)) return;
+            foreach (var (tile, name) in tiles) FillTile(tile, name, a.ExePath, png);
         });
-    }
 
     private bool _libraryLoaded;
 
@@ -227,7 +214,7 @@ public sealed partial class AddAppView
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var tile = MakeTile(name, exePath, _iconCache.GetValueOrDefault(exePath));
+        var tile = MakeTile(name, exePath, CachedIcon(exePath));
         tile.SetResourceReference(FrameworkElement.MarginProperty, "Thickness.RowTileTight");
         if (!_tiles.TryGetValue(exePath, out var list)) _tiles[exePath] = list = [];
         list.Add((tile, name));
@@ -366,11 +353,9 @@ public sealed partial class AddAppView
 
     private void TrackInstalled(InstalledApp app)
     {
-        var cached = _iconCache.GetValueOrDefault(app.ExePath);
-        Task.Run(() => cached ?? IconService.ExtractPng(app.ExePath, app.Aumid, app.IconFile, TileIconPx)).ContinueWith(t =>
+        Task.Run(() => _icons.ForPath(app.ExePath, app.Aumid, app.IconFile, TileIconPx, cachedOnly: false, out _)).ContinueWith(t =>
         {
             if (_catalogue.AddApp(app.ToNewApp(), t.Result) == CatalogueOutcome.Unavailable) return;
-            _iconCache[app.ExePath] = t.Result;
             UpdateCount();
             RenderInstalled();
         }, TaskScheduler.FromCurrentSynchronizationContext());

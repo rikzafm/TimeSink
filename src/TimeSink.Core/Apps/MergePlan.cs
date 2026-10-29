@@ -30,15 +30,15 @@ public sealed class MergePlan
 {
     private readonly AppCatalogue _catalogue;
     private readonly string _dbPath;
-    private readonly IDesktop _desktop;
+    private readonly AppIconSource _icons;
     private readonly HashSet<string> _ticked = new(StringComparer.Ordinal);
 
-    internal MergePlan(AppCatalogue catalogue, string dbPath, IDesktop desktop, long mainId, string mainName,
+    internal MergePlan(AppCatalogue catalogue, string dbPath, AppIconSource icons, long mainId, string mainName,
         IReadOnlyList<MergeCandidate> candidates)
     {
         _catalogue = catalogue;
         _dbPath = dbPath;
-        _desktop = desktop;
+        _icons = icons;
         MainId = mainId;
         MainName = mainName;
         Candidates = candidates;
@@ -104,7 +104,8 @@ public sealed class MergePlan
                 else
                 {
                     var app = c.Installed!;
-                    var png = c.Png ?? ExtractIcon(app);
+                    // a file that cannot be read is no reason to fail the confirm (or to call the database busy): the app just has no icon
+                    var png = c.Png ?? _icons.ForPath(app.ExePath, app.Aumid, app.IconFile, 64, cachedOnly: false, out _);
                     id = lib.AddTracked(app.ToNewApp(), now, png).AppId;
                 }
                 if (!lib.Merge(id, MainId)) continue;
@@ -113,12 +114,5 @@ public sealed class MergePlan
         }
         catch (Exception e) when (AppCatalogue.IsBusyOrMissing(e)) { return CatalogueOutcome.Unavailable; }
         return CatalogueOutcome.Done;
-    }
-
-    // a file that cannot be read is no reason to fail the confirm (or to call the database busy): the app just has no icon
-    private byte[]? ExtractIcon(InstalledApp app)
-    {
-        try { return _desktop.ExtractIcon(app.ExePath, app.Aumid, app.IconFile, 64); }
-        catch (IOException) { return null; }
     }
 }
