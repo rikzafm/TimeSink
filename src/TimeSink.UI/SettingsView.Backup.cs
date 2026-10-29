@@ -19,6 +19,8 @@ public sealed partial class SettingsView
     private TextBlock? _backupDesc;
     private Grid? _overlay;
 
+    private DataLifecycle Data => new(_dbPath, new NamedEventAgentSignal());
+
     private static string DefaultFolder => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeSink", "backups");
 
@@ -39,20 +41,19 @@ public sealed partial class SettingsView
     {
         button.IsEnabled = false;
         button.Content = Str(SettingsStrings.BackingUp);
-        var path = _dbPath;
-        try
+        var data = Data;
+        var result = await Task.Run(() => data.BackUpNow(DateTimeOffset.UtcNow, DefaultFolder, Version));
+        if (result.Succeeded)
         {
-            await Task.Run(() => AutoBackup.Now(path, DateTimeOffset.UtcNow, DefaultFolder, Version));
             button.Content = Str(SettingsStrings.BackupDone);
             RefreshLastBackup();
-            await Task.Delay(2500);
         }
-        catch (Exception ex) when (ex is IOException or Microsoft.Data.Sqlite.SqliteException or UnauthorizedAccessException)
+        else
         {
             button.Content = Str(SettingsStrings.BackupFailedShort);
-            if (_backupDesc is not null) _backupDesc.Text = Str(SettingsStrings.BackupFailed, ex.Message);
-            await Task.Delay(2500);
+            if (_backupDesc is not null) _backupDesc.Text = Str(SettingsStrings.BackupFailed, result.Error!);
         }
+        await Task.Delay(2500);
         button.Content = Str(SettingsStrings.BackUp);
         button.IsEnabled = true;
     }
@@ -65,13 +66,14 @@ public sealed partial class SettingsView
         if (NativeDialog(() => dlg.ShowDialog(Window.GetWindow(this)) == true) is not true) return;
         var file = dlg.FileName;
 
-        BackupInspection info;
-        try { info = await Task.Run(() => RestoreService.Inspect(file)); }
-        catch (Exception ex) when (ex is BackupException or Microsoft.Data.Sqlite.SqliteException or IOException)
+        var data = Data;
+        var inspected = await Task.Run(() => data.Inspect(file));
+        if (!inspected.Succeeded)
         {
-            ShowDialog(Str(SettingsStrings.RestoreCannot), ex.Message, null, (Str(SettingsStrings.Ok), CloseDialog, false, false));
+            ShowDialog(Str(SettingsStrings.RestoreCannot), inspected.Error!, null, (Str(SettingsStrings.Ok), CloseDialog, false, false));
             return;
         }
+        var info = inspected.Value!;
 
         var madeAt = info.Manifest.CreatedUtc.ToLocalTime().DateTime;
         var made = madeAt.ToString("d MMM yyyy ", CultureInfo.CurrentCulture) + ClockFormat.Clock(madeAt, CultureInfo.CurrentCulture);
@@ -86,26 +88,22 @@ public sealed partial class SettingsView
     private async void RunRestore(string file, bool replace)
     {
         ShowDialog(Str(replace ? SettingsStrings.Replacing : SettingsStrings.Merging), Str(SettingsStrings.Restoring), null);
-        var path = _dbPath;
+        var data = Data;
+        var zone = TimeZoneInfo.Local;
         string summary;
-        try
+        if (replace)
         {
-            summary = await Task.Run(() =>
-            {
-                var zone = TimeZoneInfo.Local;
-                if (replace)
-                {
-                    var r = RestoreService.Replace(file, path, AutoBackup.Folder(path, DefaultFolder), DateTimeOffset.UtcNow, zone);
-                    SignalAgentReset();
-                    return Str(SettingsStrings.Replaced) + (r.SafetyCopy is null ? "" : Str(SettingsStrings.SafetyCopy, Path.GetFileName(r.SafetyCopy)));
-                }
-                var m = RestoreService.Merge(file, path, zone);
-                return Str(SettingsStrings.Merged, m.SessionsAdded.ToString("N0", CultureInfo.CurrentCulture), m.AppsAdded, m.SessionsSkipped.ToString("N0", CultureInfo.CurrentCulture));
-            });
+            var r = await Task.Run(() => data.ReplaceFromBackup(file, DefaultFolder, DateTimeOffset.UtcNow, zone));
+            summary = r.Succeeded
+                ? Str(SettingsStrings.Replaced) + (r.Value!.SafetyCopy is null ? "" : Str(SettingsStrings.SafetyCopy, Path.GetFileName(r.Value.SafetyCopy)))
+                : Str(SettingsStrings.RestoreFailed, r.Error!);
         }
-        catch (Exception ex) when (ex is BackupException or Microsoft.Data.Sqlite.SqliteException or IOException)
+        else
         {
-            summary = Str(SettingsStrings.RestoreFailed, ex.Message);
+            var m = await Task.Run(() => data.Merge(file, zone));
+            summary = m.Succeeded
+                ? Str(SettingsStrings.Merged, m.Value!.SessionsAdded.ToString("N0", CultureInfo.CurrentCulture), m.Value.AppsAdded, m.Value.SessionsSkipped.ToString("N0", CultureInfo.CurrentCulture))
+                : Str(SettingsStrings.RestoreFailed, m.Error!);
         }
         ShowDialog(Str(replace ? SettingsStrings.ReplaceFinished : SettingsStrings.MergeFinished), summary, null, (Str(SettingsStrings.Ok), CloseDialog, true, false));
         RefreshInfo();
@@ -122,30 +120,25 @@ public sealed partial class SettingsView
     private async void RunExport(bool csv)
     {
         CloseDialog();
-        var path = _dbPath;
-        string? result = null;
-        try
+        var data = Data;
+        string result;
+        if (csv)
         {
-            if (csv)
-            {
-                var dlg = new OpenFolderDialog { Title = Str(SettingsStrings.ExportFolderTitle) };
-                if (NativeDialog(() => dlg.ShowDialog(Window.GetWindow(this)) == true) is not true) return;
-                var folder = dlg.FolderName;
-                var files = await Task.Run(() => DataExport.ExportCsv(path, folder));
-                result = Str(SettingsStrings.ExportSavedTwo, Path.GetFileName(files.SessionsCsv), Path.GetFileName(files.DailyCsv), folder);
-            }
-            else
-            {
-                var dlg = new SaveFileDialog { Title = Str(SettingsStrings.ExportJsonTitle), FileName = "timesink-export.json", Filter = Str(SettingsStrings.ExportJsonFilter) };
-                if (NativeDialog(() => dlg.ShowDialog(Window.GetWindow(this)) == true) is not true) return;
-                var file = dlg.FileName;
-                await Task.Run(() => DataExport.ExportJson(path, file));
-                result = Str(SettingsStrings.ExportSaved, file);
-            }
+            var dlg = new OpenFolderDialog { Title = Str(SettingsStrings.ExportFolderTitle) };
+            if (NativeDialog(() => dlg.ShowDialog(Window.GetWindow(this)) == true) is not true) return;
+            var folder = dlg.FolderName;
+            var exported = await Task.Run(() => data.ExportCsv(folder));
+            result = exported.Succeeded
+                ? Str(SettingsStrings.ExportSavedTwo, Path.GetFileName(exported.Value!.SessionsCsv), Path.GetFileName(exported.Value.DailyCsv), folder)
+                : Str(SettingsStrings.ExportFailed, exported.Error!);
         }
-        catch (Exception ex) when (ex is IOException or Microsoft.Data.Sqlite.SqliteException or UnauthorizedAccessException)
+        else
         {
-            result = Str(SettingsStrings.ExportFailed, ex.Message);
+            var dlg = new SaveFileDialog { Title = Str(SettingsStrings.ExportJsonTitle), FileName = "timesink-export.json", Filter = Str(SettingsStrings.ExportJsonFilter) };
+            if (NativeDialog(() => dlg.ShowDialog(Window.GetWindow(this)) == true) is not true) return;
+            var file = dlg.FileName;
+            var exported = await Task.Run(() => data.ExportJson(file));
+            result = exported.Succeeded ? Str(SettingsStrings.ExportSaved, file) : Str(SettingsStrings.ExportFailed, exported.Error!);
         }
         ShowDialog(Str(SettingsStrings.ExportResultTitle), result, null, (Str(SettingsStrings.Ok), CloseDialog, true, false));
     }
@@ -168,17 +161,9 @@ public sealed partial class SettingsView
         async void RunDelete()
         {
             var typed = box.Text;
-            var path = _dbPath;
-            string result;
-            try
-            {
-                await Task.Run(() => { HistoryDeleter.DeleteAll(path, typed); SignalAgentReset(); });
-                result = Str(SettingsStrings.DeleteDone);
-            }
-            catch (Exception ex) when (ex is ArgumentException or Microsoft.Data.Sqlite.SqliteException or IOException)
-            {
-                result = Str(SettingsStrings.DeleteFailed, ex.Message);
-            }
+            var data = Data;
+            var deleted = await Task.Run(() => data.DeleteAllHistory(typed));
+            var result = deleted.Succeeded ? Str(SettingsStrings.DeleteDone) : Str(SettingsStrings.DeleteFailed, deleted.Error!);
             ShowDialog(Str(SettingsStrings.DeleteTitle), result, null, (Str(SettingsStrings.Ok), CloseDialog, true, false));
             RefreshInfo();
         }
@@ -235,13 +220,6 @@ public sealed partial class SettingsView
     }
 
     // ---- helpers ---------------------------------------------------------------------------------------
-
-    /// <summary>Tells the running Agent that the database changed underneath it (no-op when it is not running).</summary>
-    private static void SignalAgentReset()
-    {
-        try { using var ev = EventWaitHandle.OpenExisting(AgentSignals.ResetEventName); ev.Set(); }
-        catch (WaitHandleCannotBeOpenedException) { }
-    }
 
     /// <summary>Runs a native dialog without letting the flyout close because it lost activation.</summary>
     private T NativeDialog<T>(Func<T> show)
