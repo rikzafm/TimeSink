@@ -4,7 +4,7 @@ namespace TimeSink.Core.Usage;
 public sealed record BarApp(long AppId, string Name, long Seconds);
 
 /// <summary>One session (clipped to the clicked hour) of a clicked Today bar.</summary>
-public sealed record BarSession(string AppName, long StartUtc, long EndUtc)
+public sealed record BarSession(long AppId, string AppName, long StartUtc, long EndUtc)
 {
     public long Seconds => Math.Max(0, EndUtc - StartUtc);
 }
@@ -22,12 +22,12 @@ public sealed record HourDetail(
 public static class BarDetail
 {
     /// <summary>
-    /// The detail of wall-clock hour column <paramref name="hour"/> (0-23) of the day in <paramref name="r"/>, cut at local whole
+    /// The detail of wall-clock hour column <paramref name="hour"/> (0-23) of the day in <paramref name="r"/>, cut in its zone at local whole
     /// hours the same way the chart is (a repeated hour on a 25 h day holds both passes; a skipped hour is empty).
     /// </summary>
-    public static HourDetail ForHour(TodayResult r, int hour, TimeZoneInfo zone)
+    public static HourDetail ForHour(TodayResult r, int hour)
     {
-        var windows = UsageDays.HourPieces(r.DayStartUtc, r.DayEndUtc, zone)
+        var windows = UsageDays.HourPieces(r.DayStartUtc, r.DayEndUtc, r.Zone)
             .Where(p => p.Hour == hour).Select(p => (S: p.Start, E: p.End)).ToList();
 
         var apps = new List<BarApp>();
@@ -42,7 +42,7 @@ public static class BarDetail
                     var b = Math.Min(s.EndUtc, we);
                     if (b <= a) continue;
                     secs += b - a;
-                    sessions.Add(new BarSession(row.Name, a, b));
+                    sessions.Add(new BarSession(row.AppId, row.Name, a, b));
                 }
             if (secs > 0) apps.Add(new BarApp(row.AppId, row.Name, secs));
         }

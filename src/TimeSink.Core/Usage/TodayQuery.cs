@@ -104,7 +104,7 @@ public static class TodayQuery
         // Tiles.
         FirstAppTile? first = null;
         var started = segs.Where(s => s.Start >= d0 && s.Start < d1).OrderBy(s => s.Start).ThenBy(s => s.AppId).FirstOrDefault();
-        if (started != default) first = new FirstAppTile(UsageRank.NameOf(apps, started.Group), started.Start);
+        if (started != default) first = new FirstAppTile(started.Group, UsageRank.NameOf(apps, started.Group), started.Start);
 
         LongestSessionTile? longest = null;
         var best = segs.OrderByDescending(s => UsageDays.Overlap(s, d0, d1)).FirstOrDefault();
@@ -127,6 +127,6 @@ public static class TodayQuery
         return new TodayResult(date, d0, d1, nowUtc, total,
             openSegs.Select(s => s.Group).Distinct().Count(), openSegs.Count,
             hours, typicalDays > 0, UsageUptime.SleepBands(segs, d0, Math.Min(nowUtc, d1)), first, longest, total - yesterdayByNow, rows,
-            uptime, uptimeVs, start.FirstDay, gamesOnly);
+            uptime, uptimeVs, zone, start.FirstDay, gamesOnly);
     }
 }

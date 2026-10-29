@@ -41,7 +41,7 @@ public sealed class GamesUptimeTests
     [Fact]
     public void A_live_games_day_stops_counting_when_no_game_is_open()
     {
-        var none = new TodayResult(new DateOnly(2026, 3, 11), 0, 86400, 1000, 0, 0, 0, [], false, [], null, null, 0, [], 600, 0, null, GamesOnly: true);
+        var none = new TodayResult(new DateOnly(2026, 3, 11), 0, 86400, 1000, 0, 0, 0, [], false, [], null, null, 0, [], 600, 0, TimeZoneInfo.Utc, null, GamesOnly: true);
         var open = none with { OpenSessionCount = 1 };
 
         none.UptimeAt(1060, live: true).Should().Be(600);

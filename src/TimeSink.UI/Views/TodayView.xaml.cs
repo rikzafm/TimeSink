@@ -72,7 +72,7 @@ public partial class TodayView : UserControl, ILiveView
         ToolTipService.SetPlacement(Chart, System.Windows.Controls.Primitives.PlacementMode.Top);
         Chart.HourHovered += OnHourHovered;
         Chart.HourClicked += OnHourClicked;
-        TileFirstBox.MouseLeftButtonUp += (_, _) => { if (_result?.FirstApp is { } f && _result.Apps.FirstOrDefault(a => a.Name == f.AppName) is { } row) JumpToApp(row.AppId); };
+        TileFirstBox.MouseLeftButtonUp += (_, _) => { if (_result?.FirstApp is { } f) JumpToApp(f.AppId); };
         TileLongestBox.MouseLeftButtonUp += (_, _) => { if (_result?.Longest is { } l) JumpToApp(l.AppId); };
         TileVsBox.MouseLeftButtonUp += (_, _) =>
         {
@@ -239,7 +239,7 @@ public partial class TodayView : UserControl, ILiveView
     private void OnHourHovered(int h, Point p)
     {
         if (h < 0 || _result is not { } r) { _tip.IsOpen = false; return; }
-        var d = BarDetail.ForHour(r, h, TimeZoneInfo.Local);
+        var d = BarDetail.ForHour(r, h);
         var lines = new List<string> { $"{HourRange(h)} · " + (d.AppSeconds > 0 ? UsageText.HoursMinutes(d.AppSeconds) : "no activity") };
         lines.AddRange(d.Apps.Take(3).Select(a => $"{a.Name} {UsageText.HoursMinutes(a.Seconds)}"));
         _tip.Content = string.Join(Environment.NewLine, lines);
@@ -272,18 +272,16 @@ public partial class TodayView : UserControl, ILiveView
     private void ShowHourPanel(int h)
     {
         if (_result is not { } r) return;
-        var d = BarDetail.ForHour(r, h, TimeZoneInfo.Local);
-        var compares = new List<(string, string, bool)>();
-        if (r.HasTypical)
-        {
-            var diff = (long)Math.Round(d.AppSeconds - d.TypicalAppSeconds);
-            compares.Add(("Typical for this hour", $"{UsageText.HoursMinutes((long)Math.Round(d.TypicalAppSeconds))} · {UsageText.SignedHoursMinutes(diff)}", diff >= 0));
-        }
+        var c = PanelContents.ForHour(r, h);
+        var compares = c.Comparisons.Select(x => (
+            Str(PanelStringKeys.HourTypical),
+            Str(PanelStringKeys.HourTypicalValue, UsageText.HoursMinutes(x.ReferenceSeconds ?? 0), UsageText.SignedHoursMinutes(x.DeltaSeconds)),
+            x.Good)).ToList();
         Panel.Show(
             HourRange(h),
-            d.AppSeconds > 0 ? $"{UsageText.HoursMinutes(d.AppSeconds)} app time · {d.Sessions.Count} sessions" : "No activity this hour",
-            d.Apps.Select(a => (a.Name, a.Seconds, _themes.AppSlot(a.AppId))).ToList(),
-            d.Sessions.Select(s => (s.AppName, Str(StringKeys.SessionLine, Clock(s.StartUtc), Clock(s.EndUtc)), UsageText.HoursMinutes(s.Seconds))).ToList(),
+            c.TotalSeconds > 0 ? Str(PanelStringKeys.HourSummary, UsageText.HoursMinutes(c.TotalSeconds), c.SessionCount) : Str(PanelStringKeys.HourEmpty),
+            c.Apps.Select(a => (a.Name, a.Seconds, _themes.AppSlot(a.AppId))).ToList(),
+            c.Sessions.Select(s => (s.AppName, Str(StringKeys.SessionLine, Clock(s.StartUtc), Clock(s.EndUtc)), UsageText.HoursMinutes(s.Seconds))).ToList(),
             compares);
     }
 

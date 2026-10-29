@@ -39,7 +39,7 @@ public sealed class TodayPastDayTests : IDisposable
     public void Hour_detail_splits_the_hour_by_app_and_session()
     {
         var r = Run(null);
-        var d = BarDetail.ForHour(r, 9, TimeZoneInfo.Utc);
+        var d = BarDetail.ForHour(r, 9);
         d.AppSeconds.Should().Be(3600); // Chrome 9:00-9:30 and Code 8:30-9:30 clipped to 9:00-9:30...
         d.Apps.Select(a => a.Name).Should().BeEquivalentTo("Chrome", "Code");
         d.Apps.Sum(a => a.Seconds).Should().Be(d.AppSeconds);

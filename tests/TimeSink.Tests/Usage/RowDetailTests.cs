@@ -55,7 +55,7 @@ public sealed class RowDetailTests
     {
         var running = Row(1000, null, true, S(0, 1000, open: true));
         var closed = Row(500, null, false, S(2000, 500));
-        var r = new TodayResult(new DateOnly(2026, 3, 11), 0, 86400, 5000, 1500, 2, 2, [], false, [], null, null, 0, [running, closed], 4000, 0);
+        var r = new TodayResult(new DateOnly(2026, 3, 11), 0, 86400, 5000, 1500, 2, 2, [], false, [], null, null, 0, [running, closed], 4000, 0, TimeZoneInfo.Utc);
 
         r.ElapsedAt(5010).Should().Be(10);
         r.ElapsedAt(4000).Should().Be(0);                  // never negative

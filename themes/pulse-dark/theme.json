@@ -416,6 +416,16 @@
     "setUninstallBody": "TimeSink will close and its uninstaller will start. The uninstaller asks whether to keep your usage history.",
     "setUninstallConfirm": "Uninstall",
     "setUninstallMissing": "No uninstaller was found next to this copy of TimeSink, so it was not installed with the setup program. Remove it by deleting its folder: {0}",
-    "setOpenFailed": "Could not open the folder: {0}"
+    "setOpenFailed": "Could not open the folder: {0}",
+    "panelHourTypical": "Typical for this hour",
+    "panelHourTypicalValue": "{0} · {1}",
+    "panelHourSummary": "{0} app time · {1} sessions",
+    "panelHourEmpty": "No activity this hour",
+    "panelDayVsAverage": "vs the week's average",
+    "panelDayVsLastWeek": "vs the same day last week",
+    "panelDaySpan": " · active {0} – {1}",
+    "panelDayFocus": "{0} {1} of {2}{3}",
+    "panelDayNotUsed": "not used",
+    "panelDayOpenInToday": "Open this day in Today →"
   }
 }

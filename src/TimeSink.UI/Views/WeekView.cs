@@ -340,28 +340,24 @@ public sealed class WeekView : UserControl, ILiveView
         var applied = await _panelLoader.Refresh(c => DayDetailQuery.Run(c, day), d => loaded = d);
         if (!applied || seq != _panelSeq || loaded is not { } detail) return; // overtaken, view stopped, no database, or the panel was closed meanwhile
 
-        var compares = new List<(string, string, bool)>();
-        var vsAvg = (long)Math.Round(detail.TotalSeconds - detail.WeekAverageSeconds);
-        compares.Add(("vs the week's average", UsageText.SignedHoursMinutes(vsAvg), vsAvg >= 0));
-        var vsLast = detail.TotalSeconds - detail.SameDayLastWeekSeconds;
-        compares.Add(("vs the same day last week", UsageText.SignedHoursMinutes(vsLast), vsLast >= 0));
-        var span = detail.FirstStartUtc is { } a && detail.LastEndUtc is { } b ? $" · active {Clock(a)} – {Clock(b)}" : "";
-        var apps = detail.Apps.Select(x => (x.Name, x.Seconds, _themes.AppSlot(x.AppId))).ToList();
-        var subtitle = UsageText.HoursMinutes(detail.TotalSeconds) + span;
-        if (focus is not null)
-        {
-            var at = apps.FindIndex(x => x.Name == focus.Name);
-            var secs = at >= 0 ? apps[at].Seconds : 0;
-            if (at > 0) { var f = apps[at]; apps.RemoveAt(at); apps.Insert(0, f); }
-            subtitle = $"{focus.Name} {(secs > 0 ? UsageText.HoursMinutes(secs) : "not used")} of {UsageText.HoursMinutes(detail.TotalSeconds)}{span}";
-        }
+        var content = PanelContents.ForDay(detail, focus is null ? null : (focus.AppId, focus.Name));
+        var compares = content.Comparisons.Select(x => (
+            Str(x.Kind == PanelComparisonKind.VsWeekAverage ? PanelStringKeys.DayVsAverage : PanelStringKeys.DayVsLastWeek),
+            UsageText.SignedHoursMinutes(x.DeltaSeconds),
+            x.Good)).ToList();
+        var span = content is { SpanStartUtc: { } a, SpanEndUtc: { } b } ? Str(PanelStringKeys.DaySpan, Clock(a), Clock(b)) : "";
+        var apps = content.Apps.Select(x => (x.Name, x.Seconds, _themes.AppSlot(x.AppId))).ToList();
+        var subtitle = UsageText.HoursMinutes(content.TotalSeconds) + span;
+        if (content.Focus is { } f)
+            subtitle = Str(PanelStringKeys.DayFocus, f.Name,
+                f.Seconds > 0 ? UsageText.HoursMinutes(f.Seconds) : Str(PanelStringKeys.DayNotUsed), UsageText.HoursMinutes(content.TotalSeconds), span);
         _panel.Show(
             UsageText.WeekdayDate(day, full: true),
             subtitle,
             apps,
             [],
             compares,
-            "Open this day in Today →",
+            Str(PanelStringKeys.DayOpenInToday),
             _openDay is null ? null : () => _openDay(day));
         _panel.BringIntoView();
     }

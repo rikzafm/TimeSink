@@ -11,7 +11,7 @@ public sealed record SleepBand(long StartUtc, long EndUtc);
 /// <summary>One hour column: app-seconds open in that hour (sum over apps) and the typical-day average for it.</summary>
 public sealed record HourBucket(int Hour, long AppSeconds, double TypicalAppSeconds);
 
-public sealed record FirstAppTile(string AppName, long StartUtc);
+public sealed record FirstAppTile(long AppId, string AppName, long StartUtc);
 
 public sealed record LongestSessionTile(long AppId, string AppName, long Seconds);
 
@@ -27,7 +27,7 @@ public sealed record TodayAppRow(
     double? SevenDayAverageSeconds,
     int SevenDayDays);
 
-/// <summary>Everything the Today view shows, computed at <see cref="NowUtc"/>.</summary>
+/// <summary>Everything the Today view shows, computed at <see cref="NowUtc"/> with the day cut in <see cref="Zone"/>.</summary>
 public sealed record TodayResult(
     DateOnly Date,
     long DayStartUtc,
@@ -45,6 +45,7 @@ public sealed record TodayResult(
     IReadOnlyList<TodayAppRow> Apps,
     long UptimeSeconds,
     long UptimeVsYesterdaySeconds,
+    TimeZoneInfo Zone,
     DateOnly? FirstTracked = null,
     bool GamesOnly = false)
 {
