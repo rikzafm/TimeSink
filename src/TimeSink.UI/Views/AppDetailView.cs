@@ -557,14 +557,14 @@ public sealed class AppDetailView : UserControl
         var grid = new UniformGrid4();
         for (var m = 1; m <= 12; m++)
         {
-            var first = new DateOnly(r.Year, m, 1);
-            var lead = ((int)first.DayOfWeek - (int)weekStart + 7) % 7;
+            var month = MonthGrid.Layout(r.Year, m, weekStart);
+            var first = month.First;
             var slots = new AppDetailDay?[42];
             long seconds = 0;
-            for (var d = 0; d < DateTime.DaysInMonth(r.Year, m); d++)
+            for (var d = 0; d < month.Days; d++)
             {
                 var day = byDate[first.AddDays(d)];
-                slots[lead + d] = day;
+                slots[month.Lead + d] = day;
                 seconds += day.Seconds;
             }
 

@@ -119,7 +119,7 @@ public partial class MonthView : UserControl, ILiveView
         else Best.Text = "";
 
         // Calendar.
-        var names = Enumerable.Range(0, 7).Select(i => En.DateTimeFormat.GetAbbreviatedDayName((DayOfWeek)(((int)r.WeekStart + i) % 7))).ToList();
+        var names = MonthGrid.Layout(r.Year, r.Month, r.WeekStart).Weekdays.Select(d => En.DateTimeFormat.GetAbbreviatedDayName(d)).ToList();
         names.Add(Str(StringKeys.MonthWeek));
         Calendar.Headers = names;
         Calendar.Rows = r.Weeks.Select(w => (IReadOnlyList<CalendarCell?>)w.Days

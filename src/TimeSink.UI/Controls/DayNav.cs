@@ -22,6 +22,7 @@ public sealed class DayNav : Grid
     private PeriodNavigator _days = new(PeriodUnit.Day, default, default);
     private PeriodNavigator _months = new(PeriodUnit.Month, default, default);
     private DateOnly _selected, _month;
+    private DayOfWeek _weekStart = DayOfWeek.Monday;
 
     /// <summary>The user picked a day (never earlier than the first tracked day or later than today).</summary>
     public event Action<DateOnly>? DateChosen;
@@ -59,8 +60,9 @@ public sealed class DayNav : Grid
         _popup.Child = _popupBody;
     }
 
-    public void Configure(DateOnly today, DateOnly first, DateOnly selected)
+    public void Configure(DateOnly today, DateOnly first, DateOnly selected, DayOfWeek weekStart)
     {
+        _weekStart = weekStart;
         _days = new PeriodNavigator(PeriodUnit.Day, first, today);
         _months = new PeriodNavigator(PeriodUnit.Month, first, today);
         _selected = selected;
@@ -126,11 +128,10 @@ public sealed class DayNav : Grid
         head.Children.Add(next);
         stack.Children.Add(head);
 
-        var fdw = CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+        var month = MonthGrid.Layout(_month.Year, _month.Month, _weekStart);
         var grid = new UniformGrid { Columns = 7 };
-        for (var i = 0; i < 7; i++)
+        foreach (var dow in month.Weekdays)
         {
-            var dow = (DayOfWeek)(((int)fdw + i) % 7);
             var name = CultureInfo.CurrentCulture.DateTimeFormat.GetAbbreviatedDayName(dow);
             grid.Children.Add(Themed(new TextBlock
             {
@@ -138,11 +139,10 @@ public sealed class DayNav : Grid
                 HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 2),
             }, "Brush.TextMuted", "Double.FontSize.Small"));
         }
-        var offset = ((int)_month.DayOfWeek - (int)fdw + 7) % 7;
-        for (var i = 0; i < offset; i++) grid.Children.Add(new Border());
-        for (var n = 1; n <= DateTime.DaysInMonth(_month.Year, _month.Month); n++)
+        for (var i = 0; i < month.Lead; i++) grid.Children.Add(new Border());
+        for (var n = 1; n <= month.Days; n++)
         {
-            var d = new DateOnly(_month.Year, _month.Month, n);
+            var d = month.First.AddDays(n - 1);
             var ok = _days.Contains(d);
             var label = Themed(new TextBlock { Text = n.ToString(CultureInfo.CurrentCulture), HorizontalAlignment = HorizontalAlignment.Center }, "Brush.Text");
             var cell = new Border { Margin = new Thickness(1), Padding = new Thickness(0, 4, 0, 4), Child = label, Opacity = ok ? 1 : 0.3 };

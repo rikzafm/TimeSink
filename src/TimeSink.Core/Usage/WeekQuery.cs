@@ -26,8 +26,7 @@ public static class WeekQuery
     {
         var nowUtc = now.ToUnixTimeSeconds();
         var today = LocalDays.DateOf(nowUtc, zone);
-        var offset = ((int)today.DayOfWeek - (int)weekStart.ToDayOfWeek() + 7) % 7;
-        var thisWeek = today.AddDays(-offset);
+        var thisWeek = WeekStarts.Containing(today, weekStart.ToDayOfWeek());
         var gridStart = thisWeek.AddDays(-7 * (GridWeeks - 1));
         var shownWeek = thisWeek.AddDays(-7 * weeksBack); // the seven columns and app rows; the grid and streak stay anchored to today
         var lookStart = new[] { gridStart, today.AddDays(-StreakLookbackDays), shownWeek.AddDays(-7) }.Min();

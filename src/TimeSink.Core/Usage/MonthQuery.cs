@@ -80,18 +80,12 @@ public static class MonthQuery
                 return new MonthTopApp(kv.Key, UsageRank.NameOf(apps, kv.Key), kv.Value, prev, kv.Value - prev, prev > 0 ? (kv.Value - prev) / (double)prev : null);
             }).ToList();
 
-        var lead = ((int)first.DayOfWeek - (int)weekStart + 7) % 7;
-        var weeks = new List<MonthWeek>();
-        for (var offset = -lead; offset < dim; offset += 7)
-        {
-            var cells = new List<MonthDay?>(7);
-            for (var k = 0; k < 7; k++)
+        var weeks = MonthGrid.Layout(year, month, weekStart).Weeks
+            .Select(row =>
             {
-                var idx = offset + k;
-                cells.Add(idx >= 0 && idx < dim ? monthDays[idx] : null);
-            }
-            weeks.Add(new MonthWeek(cells, cells.Sum(x => x?.Seconds ?? 0)));
-        }
+                var cells = row.Select(d => d is { } date ? monthDays[date.Day - 1] : null).ToList();
+                return new MonthWeek(cells, cells.Sum(x => x?.Seconds ?? 0));
+            }).ToList();
 
         var selected = isCurrent ? today : counted == 0 ? first : first.AddDays(dim - 1);
         return new MonthResult(year, month, first, dim, counted, isCurrent, weekStart, nowUtc, monthDays, weeks,

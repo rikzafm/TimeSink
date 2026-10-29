@@ -64,6 +64,14 @@ _Avoid_: Sort order, ordering
 A calendar day in the user's time zone. It lasts 23 or 25 hours when daylight saving changes.
 _Avoid_: Day (unqualified), UTC day
 
+**Week start**:
+The weekday a week begins on (Monday, Sunday or Saturday), chosen in Settings. Every calendar, week and weekly summary uses it, the Today date picker included.
+_Avoid_: First day of week, week offset
+
+**Month grid**:
+One month cut into rows of seven for a Week start: the blank cells before the 1st, the weekday of each column and the date in each cell. It holds dates only; each view adds its own numbers.
+_Avoid_: Calendar layout, month matrix
+
 ### Settings
 
 **Setting**:

@@ -120,7 +120,7 @@ public sealed class AlertEngine(Db db, TimeZoneInfo zone)
     private void CheckWeekly(DateOnly today, TimeSpan timeOfDay, List<AlertNotice> notices)
     {
         var startDay = _settings.Get(Setting.WeekStartsOn).ToDayOfWeek();
-        var thisWeek = today.AddDays(-(((int)today.DayOfWeek - (int)startDay + 7) % 7));
+        var thisWeek = WeekStarts.Containing(today, startDay);
         if (today == thisWeek && timeOfDay < TimeSpan.FromHours(WeeklyHour)) return; // wait for the morning
 
         var marker = thisWeek.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);

@@ -35,7 +35,7 @@ public sealed class PeriodNavigator
     /// <summary>The first day of the period holding <paramref name="day"/>.</summary>
     public DateOnly StartOf(DateOnly day) => Unit switch
     {
-        PeriodUnit.Week => day.AddDays(-(((int)day.DayOfWeek - (int)_weekStart + 7) % 7)),
+        PeriodUnit.Week => WeekStarts.Containing(day, _weekStart),
         PeriodUnit.Month => new DateOnly(day.Year, day.Month, 1),
         PeriodUnit.Year => new DateOnly(day.Year, 1, 1),
         _ => day,

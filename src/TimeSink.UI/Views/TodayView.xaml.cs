@@ -39,6 +39,7 @@ public partial class TodayView : UserControl, ILiveView
     private TodayResult? _result;
     private int _sinceRefresh;
     private DateOnly? _day;   // null = the live day; otherwise a past day being browsed
+    private DayOfWeek _weekStart = DayOfWeek.Monday; // the picker's first column
     private DateOnly? _first; // first tracked day, the earliest the picker allows
     private readonly ToolTip _tip = new();
     private readonly Dictionary<long, (Border Card, Action<bool> SetOpen)> _cards = new();
@@ -141,11 +142,12 @@ public partial class TodayView : UserControl, ILiveView
         _sinceRefresh = 0;
         var (path, day) = (_dbPath, _day);
         var applied = await _loader.Refresh(
-            c => (Result: TodayQuery.Run(path, c.Now, c.Zone, c.Running, day, c.SignInUtc), First: TodayQuery.FirstDate(path, c.Zone)), // no DB yet: keep the empty state
+            c => (Result: TodayQuery.Run(path, c.Now, c.Zone, c.Running, day, c.SignInUtc), First: TodayQuery.FirstDate(path, c.Zone), WeekStart: c.WeekStartDay), // no DB yet: keep the empty state
             r =>
             {
                 _result = r.Result;
                 _first = r.First;
+                _weekStart = r.WeekStart;
             });
         if (!applied) return;
         Redraw();
@@ -198,7 +200,7 @@ public partial class TodayView : UserControl, ILiveView
         var early = live && TodayEarly.ShowCaption(r.UptimeSeconds);
         var since = early ? TodayEarly.TrackingSinceUtc(r.DayStartUtc, SignInTime.Cached(), r.FirstApp?.StartUtc) : null;
 
-        Nav.Configure(Today, _first ?? r.Date, r.Date);
+        Nav.Configure(Today, _first ?? r.Date, r.Date, _weekStart);
         Nav.CaptionText = since is not null
             ? Str(StringKeys.TodayEarlyCaption, Clock(since.Value))
             : Str(StringKeys.TodayCaption, r.Date.ToString("dddd, d MMM", System.Globalization.CultureInfo.CurrentCulture));

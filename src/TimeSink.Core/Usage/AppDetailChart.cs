@@ -99,8 +99,7 @@ public static class AppDetailChart
                 var m = new DateOnly(anchor.Year, anchor.Month, 1);
                 return (m, m.AddMonths(1).AddDays(-1));
             default:
-                var back = ((int)anchor.DayOfWeek - (int)weekStart + 7) % 7;
-                var w = anchor.AddDays(-back);
+                var w = WeekStarts.Containing(anchor, weekStart);
                 return (w, w.AddDays(6));
         }
     }

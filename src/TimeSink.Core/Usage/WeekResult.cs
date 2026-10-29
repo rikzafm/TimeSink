@@ -8,6 +8,12 @@ public static class WeekStarts
     public static WeekStart Parse(string? stored) =>
         Enum.TryParse<WeekStart>(stored, ignoreCase: false, out var w) && Enum.IsDefined(w) ? w : WeekStart.Mon;
 
+    /// <summary>How many days <paramref name="day"/> is after the first day of its week (0 on the Week start itself).</summary>
+    public static int DaysIntoWeek(DateOnly day, DayOfWeek weekStart) => ((int)day.DayOfWeek - (int)weekStart + 7) % 7;
+
+    /// <summary>The first day of the week holding <paramref name="day"/>.</summary>
+    public static DateOnly Containing(DateOnly day, DayOfWeek weekStart) => day.AddDays(-DaysIntoWeek(day, weekStart));
+
     public static DayOfWeek ToDayOfWeek(this WeekStart w) => w switch
     {
         WeekStart.Sun => DayOfWeek.Sunday,
