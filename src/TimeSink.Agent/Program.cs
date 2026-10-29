@@ -21,7 +21,7 @@ internal static class Program
     private static AlertHost? s_alerts;
     private static SteamScanHost? s_steam;
     private static string s_dbPath = "";
-    private static readonly FlyoutToggle s_toggle = new();
+    private static readonly FlyoutLifecycle s_flyout = new();
     private static Process? s_ui;
 
     private const uint IconResourceVersion = 0x00030000; // the version CreateIconFromResourceEx requires
@@ -203,61 +203,80 @@ internal static class Program
         else if (command == IdQuit) NativeMethods.DestroyWindow(s_hwnd);
     }
 
-    // UI process state. A "standby" UI is started (hover or ui.instantOpen) and renders off-screen; it counts as
-    // not shown until the Show signal. Touched from the message loop and from Process.Exited, hence the lock.
+    // UI process. A "standby" UI is started (hover or ui.instantOpen) and renders off-screen; FlyoutLifecycle decides what
+    // each event leads to and this code performs it. Touched from the message loop and from Process.Exited, hence the lock.
     private static readonly object s_gate = new();
-    private static bool s_uiShown;
-    private static DateTime s_lastStandbyStart = DateTime.MinValue;
     private static EventWaitHandle? s_showEvent;
-    private static readonly TimeSpan HoverCooldown = TimeSpan.FromSeconds(15);
+
+    private static bool UiAlive()
+    {
+        try { return s_ui is { HasExited: false }; }
+        catch (InvalidOperationException) { return false; }
+    }
 
     /// <summary>Tray left-click or "Open" menu item: toggle the flyout.</summary>
     private static void ToggleFlyout()
     {
+        lock (s_gate) Perform(s_flyout.OnTrayClick(DateTime.UtcNow, UiAlive()));
+    }
+
+    /// <summary>Mouse over the tray icon: a click is likely, so warm the UI up (at most once per cooldown).</summary>
+    private static void OnTrayHover()
+    {
+        lock (s_gate) Perform(s_flyout.OnTrayHover(DateTime.UtcNow, s_ui is not null));
+    }
+
+    private static void OnUiExited(Process p)
+    {
         lock (s_gate)
         {
-            var alive = false;
-            try { alive = s_ui is { HasExited: false }; } catch (InvalidOperationException) { }
-
-            switch (s_toggle.OnTrayClick(DateTime.UtcNow, alive && s_uiShown))
-            {
-                case FlyoutAction.Open:
-                    if (alive) ShowStandby(); else OpenUi();
-                    break;
-                case FlyoutAction.Close:
-                    try { using var ev = EventWaitHandle.OpenExisting(FlyoutProtocol.CloseEventName); ev.Set(); }
-                    catch (WaitHandleCannotBeOpenedException) { }
-                    break;
-            }
+            if (!ReferenceEquals(s_ui, p)) return;
+            s_ui = null;
+            // ui.instantOpen: keep a warm UI ready at all times (about 40 MB, opt-in).
+            Perform(s_flyout.OnUiExited(DateTime.UtcNow, InstantOpen()));
         }
     }
 
-    /// <summary>Cold start: the UI shows itself as soon as it can.</summary>
-    private static void OpenUi()
+    private static bool InstantOpen() => AppSettings.ForFile(s_dbPath).Get(Setting.InstantOpen);
+
+    private static void Perform(FlyoutCommand command)
     {
-        if (StartUi(ComputeLaunchArgs().ToArgs()) is not null) s_uiShown = true;
+        switch (command)
+        {
+            case FlyoutCommand.OpenCold:
+                if (StartUi(ComputeLaunchArgs().ToArgs()) is null) s_flyout.OnStartFailed();
+                break;
+            case FlyoutCommand.RevealStandby:
+                RevealStandby();
+                break;
+            case FlyoutCommand.Close:
+                try { using var ev = EventWaitHandle.OpenExisting(FlyoutProtocol.CloseEventName); ev.Set(); }
+                catch (WaitHandleCannotBeOpenedException) { }
+                break;
+            case FlyoutCommand.StartStandby:
+                StartStandby(keep: false);
+                break;
+            case FlyoutCommand.StartKeptStandby:
+                StartStandby(keep: true);
+                break;
+        }
     }
 
     /// <summary>Hand the launch geometry to a running standby UI and wake it.</summary>
-    private static void ShowStandby()
+    private static void RevealStandby()
     {
         File.WriteAllText(FlyoutProtocol.HandoffPath, ComputeLaunchArgs().ToFileText());
         s_showEvent ??= new EventWaitHandle(false, EventResetMode.AutoReset, FlyoutProtocol.ShowEventName);
         s_showEvent.Set();
-        s_uiShown = true;
     }
 
     /// <summary>Start the UI hidden so a following click is near-instant. Idle standbys exit on their own.</summary>
     private static void StartStandby(bool keep)
     {
-        lock (s_gate)
-        {
-            if (s_ui is { HasExited: false }) return;
-            s_lastStandbyStart = DateTime.UtcNow;
-            s_showEvent ??= new EventWaitHandle(false, EventResetMode.AutoReset, FlyoutProtocol.ShowEventName);
-            s_showEvent.Reset(); // drop a stale signal from an earlier standby
-            if (StartUi(FlyoutProtocol.StandbyArgs(keep)) is not null) s_uiShown = false;
-        }
+        if (UiAlive()) return;
+        s_showEvent ??= new EventWaitHandle(false, EventResetMode.AutoReset, FlyoutProtocol.ShowEventName);
+        s_showEvent.Reset(); // drop a stale signal from an earlier standby
+        StartUi(FlyoutProtocol.StandbyArgs(keep));
     }
 
     private static Process? StartUi(string[] args)
@@ -277,35 +296,6 @@ internal static class Program
         p.Exited += (_, _) => OnUiExited(p);
         s_ui = p;
         return p;
-    }
-
-    private static void OnUiExited(Process p)
-    {
-        lock (s_gate)
-        {
-            if (!ReferenceEquals(s_ui, p)) return;
-            s_toggle.OnUiExited(DateTime.UtcNow);
-            s_ui = null;
-            s_uiShown = false;
-            // ui.instantOpen: keep a warm UI ready at all times (about 40 MB, opt-in).
-            if (InstantOpen()) StartStandby(keep: true);
-        }
-    }
-
-    private static bool InstantOpen()
-    {
-        return AppSettings.ForFile(s_dbPath).Get(Setting.InstantOpen);
-    }
-
-    /// <summary>Mouse over the tray icon: a click is likely, so warm the UI up (at most once per cooldown).</summary>
-    private static void OnTrayHover()
-    {
-        lock (s_gate)
-        {
-            if (s_ui is not null) return;
-            if (DateTime.UtcNow - s_lastStandbyStart < HoverCooldown) return;
-        }
-        StartStandby(keep: false);
     }
 
     private static FlyoutLaunchArgs ComputeLaunchArgs()
