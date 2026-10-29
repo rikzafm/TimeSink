@@ -6,9 +6,9 @@ namespace TimeSink.Core.Apps;
 
 /// <summary>
 /// Where every App icon comes from, as PNG bytes. <see cref="ForApps"/> answers by app id: the stored icon, or one
-/// extracted from its exe (Steam's cached art only when the exe cannot be read) and stored when the app has none;
-/// TimeSink's own row always shows the chosen tray icon. The first resolve of a database also re-extracts every stored
-/// Steam icon once, since those used to be Steam's 32 px icon scaled up. <see cref="ForPath"/> answers by exe path and size, for apps that have no id yet. <see cref="Stored"/>
+/// extracted from its exe (Steam's cached art instead when the exe's own icon is tiny or unreadable) and stored when
+/// the app has none; TimeSink's own row always shows the chosen tray icon. The first resolve of a database also
+/// re-extracts every stored Steam icon once, since those used to be Steam's 32 px icon scaled up. <see cref="ForPath"/> answers by exe path and size, for apps that have no id yet. <see cref="Stored"/>
 /// reads what is stored and never extracts. <see cref="AppLibrary"/> stays beneath it as the SQLite adapter and
 /// <see cref="IDesktop"/> is the seam to icon extraction. A busy or missing database
 /// (<see cref="SqliteException"/>, <see cref="IOException"/>) leaves the apps without an icon, so their letter tiles
@@ -17,7 +17,7 @@ namespace TimeSink.Core.Apps;
 public sealed class AppIconSource
 {
     private const int StoredSize = 64;
-    private const string SteamRepairKey = "icons.steamRepaired";
+    private const string SteamRepairKey = "icons.steamRepaired2"; // "icons.steamRepaired" was the first pass, which used the exe icon alone
 
     private readonly string _dbPath;
     private readonly IDesktop _desktop;
@@ -49,7 +49,8 @@ public sealed class AppIconSource
     /// <summary>
     /// The icon of an app by exe path at about <paramref name="size"/> px, extracted once per path and size (a failed
     /// extraction is remembered as no icon). <paramref name="aumid"/> and <paramref name="imageFile"/> help find the logo
-    /// of a packaged app or Steam game and do not change the cache key. With <paramref name="cachedOnly"/> nothing is
+    /// of a packaged app or Steam game (a Steam exe gets its cached art looked up when none is given) and do not change
+    /// the cache key. With <paramref name="cachedOnly"/> nothing is
     /// extracted and an unknown path gives null. <paramref name="extracted"/> says whether this call ran an extraction.
     /// </summary>
     public byte[]? ForPath(string exePath, string? aumid, string? imageFile, int size, bool cachedOnly, out bool extracted)
@@ -61,6 +62,7 @@ public sealed class AppIconSource
             if (_byPath.TryGetValue(key, out var known)) return known;
         }
         if (cachedOnly) return null;
+        if (imageFile is null && SteamLibrary.IsInLibrary(exePath)) imageFile = SteamLibrary.ArtForExe(exePath);
         byte[]? png;
         try { png = _desktop.ExtractIcon(exePath, aumid, imageFile, size); }
         catch (IOException) { png = null; }
@@ -118,8 +120,9 @@ public sealed class AppIconSource
 
     /// <summary>
     /// Steam games used to be stored as their 32 px community icon scaled up. Once per database, the first time any app
-    /// is resolved, every stored Steam exe icon is re-extracted from the exe itself; one that cannot be read keeps its
-    /// icon, and the flag is set anyway so it does not run again.
+    /// is resolved, every stored Steam exe icon is extracted again by the current rule (the exe's icon, or Steam's art
+    /// when the exe's own icon is tiny or unreadable); an app that gets nothing keeps its icon, and the flag is set
+    /// anyway so it does not run again.
     /// </summary>
     private void RepairSteamIcons(AppLibrary lib, ref IReadOnlyList<LibraryApp>? apps)
     {
@@ -131,7 +134,7 @@ public sealed class AppIconSource
         {
             apps ??= lib.Library();
             foreach (var app in apps.Where(a => SteamLibrary.IsInLibrary(a.ExePath) && !IsSelf(a.ExePath)))
-                if (Extract(app.ExePath, null) is { } png) lib.PutIcon(app.Id, png);
+                if (Extract(app.ExePath, SteamLibrary.ArtForExe(app.ExePath)) is { } png) lib.PutIcon(app.Id, png);
             SettingsStore.Set(_dbPath, SteamRepairKey, "1");
         }
         lock (_gate) _steamChecked = true;

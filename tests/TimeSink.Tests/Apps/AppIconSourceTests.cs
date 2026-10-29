@@ -132,10 +132,10 @@ public sealed class AppIconSourceTests : IDisposable
     private const string Balatro = @"c:\games\steamapps\common\Balatro\Balatro.exe";
     private static readonly byte[] BalatroExe = Encoding.UTF8.GetBytes("png:" + Balatro);
 
-    private string? RepairFlag() => SettingsStore.Get(_path, "icons.steamRepaired");
+    private string? RepairFlag() => SettingsStore.Get(_path, "icons.steamRepaired2");
 
     [Fact]
-    public void A_stored_Steam_icon_is_re_extracted_from_the_exe_alone_and_stored()
+    public void A_stored_Steam_icon_is_extracted_again_and_stored()
     {
         var id = Track(Balatro, [7, 7]);
 
@@ -171,7 +171,7 @@ public sealed class AppIconSourceTests : IDisposable
     }
 
     [Fact]
-    public void A_Steam_exe_that_cannot_be_read_keeps_its_icon_and_the_repair_is_still_marked_done()
+    public void A_Steam_exe_that_gives_no_icon_keeps_its_stored_one_and_the_repair_is_still_marked_done()
     {
         var id = Track(Balatro, [7, 7]);
         _desktop.NoIcon.Add(Balatro);
@@ -179,6 +179,17 @@ public sealed class AppIconSourceTests : IDisposable
         Source().ForApps([id])[id].Should().Equal(7, 7);
 
         Stored(id).Should().Equal(7, 7);
+        RepairFlag().Should().Be("1");
+    }
+
+    [Fact]
+    public void The_first_Steam_repair_flag_does_not_stop_the_second_repair()
+    {
+        var id = Track(Balatro, [7, 7]);
+        SettingsStore.Set(_path, "icons.steamRepaired", "1");
+
+        Source().ForApps([id])[id].Should().Equal(BalatroExe);
+
         RepairFlag().Should().Be("1");
     }
 
