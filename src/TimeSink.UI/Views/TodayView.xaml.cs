@@ -77,9 +77,9 @@ public partial class TodayView : UserControl, ILiveView
         TileVsBox.MouseLeftButtonUp += (_, _) =>
         {
             if (_result is not { } r) return;
-            var prev = r.Date.AddDays(-1);
-            if (_first is { } first && prev < first) return;
-            ShowDay(prev);
+            var days = new PeriodNavigator(PeriodUnit.Day, _first ?? DateOnly.MinValue, Today);
+            if (!days.CanPrev(r.Date)) return;
+            ShowDay(days.Step(r.Date, -1));
         };
         TileFirstBox.ToolTip = "Jump to the app you opened first";
         TileLongestBox.ToolTip = "Jump to the app with the longest session";

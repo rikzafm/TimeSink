@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using TimeSink.Core.Usage;
 
 namespace TimeSink.UI.Controls;
 
@@ -18,7 +19,9 @@ public sealed class DayNav : Grid
     private readonly Popup _popup = new() { StaysOpen = false, AllowsTransparency = true, Placement = PlacementMode.Bottom };
     private readonly Border _popupBody = new() { Width = 252, Padding = new Thickness(8) };
 
-    private DateOnly _today, _first, _selected, _month;
+    private PeriodNavigator _days = new(PeriodUnit.Day, default, default);
+    private PeriodNavigator _months = new(PeriodUnit.Month, default, default);
+    private DateOnly _selected, _month;
 
     /// <summary>The user picked a day (never earlier than the first tracked day or later than today).</summary>
     public event Action<DateOnly>? DateChosen;
@@ -47,8 +50,8 @@ public sealed class DayNav : Grid
         Children.Add(_next);
         Children.Add(_prev);
 
-        _prev.MouseLeftButtonUp += (_, _) => { if (_selected > _first) Choose(_selected.AddDays(-1)); };
-        _next.MouseLeftButtonUp += (_, _) => { if (_selected < _today) Choose(_selected.AddDays(1)); };
+        _prev.MouseLeftButtonUp += (_, _) => { if (_days.CanPrev(_selected)) Choose(_days.Step(_selected, -1)); };
+        _next.MouseLeftButtonUp += (_, _) => { if (_days.CanNext(_selected)) Choose(_days.Step(_selected, 1)); };
         _popupBody.SetResourceReference(Border.BackgroundProperty, "Brush.Surface");
         _popupBody.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         _popupBody.SetResourceReference(Border.BorderThicknessProperty, "Thickness.Border");
@@ -58,11 +61,11 @@ public sealed class DayNav : Grid
 
     public void Configure(DateOnly today, DateOnly first, DateOnly selected)
     {
-        _today = today;
-        _first = first > today ? today : first;
+        _days = new PeriodNavigator(PeriodUnit.Day, first, today);
+        _months = new PeriodNavigator(PeriodUnit.Month, first, today);
         _selected = selected;
-        SetEnabled(_prev, selected > _first);
-        SetEnabled(_next, selected < today);
+        SetEnabled(_prev, _days.CanPrev(selected));
+        SetEnabled(_next, _days.CanNext(selected));
     }
 
     private static void SetEnabled(TextBlock glyph, bool on)
@@ -85,14 +88,14 @@ public sealed class DayNav : Grid
 
     private void Choose(DateOnly d)
     {
-        d = d < _first ? _first : d > _today ? _today : d;
+        d = _days.Clamp(d);
         _popup.IsOpen = false;
         if (d != _selected) DateChosen?.Invoke(d);
     }
 
     private void OpenPicker(UIElement target)
     {
-        _month = new DateOnly(_selected.Year, _selected.Month, 1);
+        _month = _months.StartOf(_selected);
         _popup.PlacementTarget = target;
         BuildMonth();
         _popup.IsOpen = true;
@@ -112,10 +115,10 @@ public sealed class DayNav : Grid
             Text = _month.ToString("MMMM yyyy", CultureInfo.CurrentCulture),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold,
         }, "Brush.Text");
-        prev.IsEnabled = _month > new DateOnly(_first.Year, _first.Month, 1);
-        next.IsEnabled = _month < new DateOnly(_today.Year, _today.Month, 1);
-        prev.Click += (_, _) => { _month = _month.AddMonths(-1); BuildMonth(); };
-        next.Click += (_, _) => { _month = _month.AddMonths(1); BuildMonth(); };
+        prev.IsEnabled = _months.CanPrev(_month);
+        next.IsEnabled = _months.CanNext(_month);
+        prev.Click += (_, _) => { _month = _months.Step(_month, -1); BuildMonth(); };
+        next.Click += (_, _) => { _month = _months.Step(_month, 1); BuildMonth(); };
         SetColumn(title, 1);
         SetColumn(next, 2);
         head.Children.Add(prev);
@@ -140,7 +143,7 @@ public sealed class DayNav : Grid
         for (var n = 1; n <= DateTime.DaysInMonth(_month.Year, _month.Month); n++)
         {
             var d = new DateOnly(_month.Year, _month.Month, n);
-            var ok = d >= _first && d <= _today;
+            var ok = _days.Contains(d);
             var label = Themed(new TextBlock { Text = n.ToString(CultureInfo.CurrentCulture), HorizontalAlignment = HorizontalAlignment.Center }, "Brush.Text");
             var cell = new Border { Margin = new Thickness(1), Padding = new Thickness(0, 4, 0, 4), Child = label, Opacity = ok ? 1 : 0.3 };
             cell.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
@@ -149,7 +152,7 @@ public sealed class DayNav : Grid
                 cell.SetResourceReference(Border.BackgroundProperty, "Brush.Accent");
                 label.SetResourceReference(TextBlock.ForegroundProperty, "Brush.OnAccent");
             }
-            else if (d == _today)
+            else if (d == _days.Today)
             {
                 cell.SetResourceReference(Border.BorderBrushProperty, "Brush.Accent");
                 cell.BorderThickness = new Thickness(1);
