@@ -52,6 +52,8 @@ public sealed partial class AddAppView : UserControl
     private UIElement _shell = null!;
     private readonly AddAppNavigation _nav = new();
     private readonly Dictionary<string, RadioButton> _tabButtons = new();
+    private readonly TileRegistry _tiles;      // Installed tab rows waiting for their icon
+    private readonly TileRegistry _mergeTiles; // merge screen rows waiting for their icon
 
     public AddAppView(ThemeService themes, string dbPath, Action close)
     {
@@ -59,6 +61,8 @@ public sealed partial class AddAppView : UserControl
         _dbPath = dbPath;
         _close = close;
         _icons = AppIcons.Source(dbPath);
+        _tiles = new TileRegistry(themes, TileStyle.CandidateRow);
+        _mergeTiles = new TileRegistry(themes, TileStyle.CandidateRow);
         _catalogue = new AppCatalogue(dbPath, Win32Desktop.Instance, _icons);
         SetResourceReference(BackgroundProperty, "Brush.Surface");
         Focusable = true; // a click on a Tracked row focuses the view, so Esc reaches it

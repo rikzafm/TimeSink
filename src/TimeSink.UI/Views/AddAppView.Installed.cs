@@ -18,7 +18,6 @@ public sealed partial class AddAppView
     private StackPanel _instList = null!;
     private StackPanel _rail = null!;
     private readonly Dictionary<string, UIElement> _groupHeaders = new();
-    private readonly Dictionary<string, List<(Border Tile, string Name)>> _tiles = new(StringComparer.OrdinalIgnoreCase);
     private LibraryState _library = null!; // read by RenderInstalled before any row asks
 
     private UIElement BuildInstalledTab()
@@ -109,11 +108,7 @@ public sealed partial class AddAppView
 
     /// <summary>Extracts icons one by one on a pool thread; tiles already on screen swap their letter for the icon.</summary>
     private void LoadInstalledIcons(IReadOnlyList<InstalledApp> apps) =>
-        LoadTileIcons(apps, (a, png) =>
-        {
-            if (!_tiles.TryGetValue(a.ExePath, out var tiles)) return;
-            foreach (var (tile, name) in tiles) AppTile.Fill(tile, _themes, a.ExePath, name, png, TileStyle.CandidateRow);
-        });
+        LoadTileIcons(apps, (a, png) => _tiles.Fill(a.ExePath, png));
 
     private bool _libraryLoaded;
 
@@ -217,8 +212,7 @@ public sealed partial class AddAppView
 
         var tile = AppTile.Candidate(_themes, exePath, name, CachedIcon(exePath), TileStyle.CandidateRow);
         tile.SetResourceReference(FrameworkElement.MarginProperty, "Thickness.RowTileTight");
-        if (!_tiles.TryGetValue(exePath, out var list)) _tiles[exePath] = list = [];
-        list.Add((tile, name));
+        _tiles.Register(exePath, tile, name);
 
         var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         var n = new TextBlock { Text = name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -226,8 +220,7 @@ public sealed partial class AddAppView
         n.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         n.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
         texts.Children.Add(n);
-        var sub = app is { IsSteam: true } ? InstalledApp.SteamSource : app?.Publisher;
-        if (sub is { Length: > 0 } pub)
+        if (app?.Byline is { } pub)
         {
             var p = new TextBlock { Text = pub, TextTrimming = TextTrimming.CharacterEllipsis };
             p.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");

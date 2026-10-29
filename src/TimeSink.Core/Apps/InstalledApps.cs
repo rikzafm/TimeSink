@@ -16,6 +16,9 @@ public sealed record InstalledApp(string Name, string ExePath, string? PackageFa
 
     public bool IsSteam => Source == SteamSource;
 
+    /// <summary>The line under the app's name: Steam for a Steam game, otherwise the publisher; null when it has neither.</summary>
+    public string? Byline => IsSteam ? SteamSource : Publisher is { Length: > 0 } pub ? pub : null;
+
     public NewApp ToNewApp() => new(ExePath, Name, PackageFamily);
 }
 
@@ -94,7 +97,7 @@ public static class InstalledCatalog
     {
         if (string.IsNullOrWhiteSpace(query)) return apps.ToList();
         return apps
-            .Select(a => (App: a, Score: FuzzySearch.Score(query, a.Name, a.IsSteam ? InstalledApp.SteamSource : a.Publisher)))
+            .Select(a => (App: a, Score: FuzzySearch.Score(query, a.Name, a.Byline)))
             .Where(x => x.Score is not null)
             .OrderByDescending(x => x.Score).ThenBy(x => SortKey(x.App.Name), StringComparer.Ordinal)
             .Select(x => x.App).ToList();

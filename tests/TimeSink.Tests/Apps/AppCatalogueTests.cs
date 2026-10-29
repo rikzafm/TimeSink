@@ -353,6 +353,44 @@ public sealed class AppCatalogueTests : IDisposable
     }
 
     [Fact]
+    public void An_installed_app_is_found_by_exe_path_ignoring_case_once_a_scan_has_run()
+    {
+        _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Fresh"));
+        var cat = Catalogue();
+        cat.InstalledBy(@"c:\b\fresh.exe").Should().BeNull();
+
+        cat.Installed();
+
+        cat.InstalledBy(@"C:\B\FRESH.EXE")!.Name.Should().Be("Fresh");
+        cat.InstalledBy(@"c:\b\other.exe").Should().BeNull();
+    }
+
+    [Fact]
+    public void The_first_of_two_installed_apps_with_one_exe_path_wins()
+    {
+        _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "First"));
+        _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Second"));
+        var cat = Catalogue();
+        cat.Installed();
+
+        cat.InstalledBy(@"c:\b\fresh.exe")!.Name.Should().Be("First");
+    }
+
+    [Fact]
+    public void The_installed_lookup_follows_the_last_scan_into_the_next_visit_and_survives_an_empty_rescan()
+    {
+        _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Fresh"));
+        var cat = Catalogue();
+        cat.Installed();
+
+        cat.NewVisit();
+        cat.InstalledBy(@"c:\b\fresh.exe")!.Name.Should().Be("Fresh");
+        _desktop.Installed.Clear(); // the scan failed
+        cat.Installed();
+        cat.InstalledBy(@"c:\b\fresh.exe")!.Name.Should().Be("Fresh");
+    }
+
+    [Fact]
     public async Task The_last_scan_and_a_new_visit_do_not_wait_for_a_scan_in_progress()
     {
         _desktop.Installed.Add(Installed(@"c:\b\fresh.exe", "Fresh"));

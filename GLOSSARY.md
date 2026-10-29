@@ -30,6 +30,14 @@ _Avoid_: Idle app, always-on app
 Any app the merge picker offers for folding into a Main app: a Tracked, Retired, already Merged or merely installed app.
 _Avoid_: Merge target, option
 
+**Installed app**:
+An app found by the installed-apps scan. It can be offered as a Candidate, and is matched to a Tracked app by exe path.
+_Avoid_: Discovered app, detected app
+
+**Byline**:
+The label under an Installed app's name: Steam for a Steam game, otherwise the publisher. An app with neither has no Byline. (`InstalledApp.Source` is a different thing: where the scan found the app.)
+_Avoid_: Publisher label, subtitle
+
 **Palette slot**:
 The index into the theme's `apps` colours that an app always uses, derived from its Main app id. Every view colours an app by its Palette slot.
 _Avoid_: Color index, palette index, app colour

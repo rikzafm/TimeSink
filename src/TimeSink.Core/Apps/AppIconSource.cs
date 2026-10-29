@@ -24,6 +24,7 @@ public sealed class AppIconSource
     private readonly object _gate = new();
     private readonly Dictionary<long, byte[]> _found = new();
     private readonly HashSet<long> _tried = new();
+    private readonly HashSet<long> _upgradeTried = new(); // tracked apps asked for a tile-size logo this visit (under _gate)
     private readonly Dictionary<(string Path, int Size), byte[]?> _byPath = new();
     private bool _steamChecked; // this run has seen the Steam repair done (under _gate)
 
@@ -69,6 +70,35 @@ public sealed class AppIconSource
         extracted = true;
         lock (_gate) _byPath[key] = png;
         return png;
+    }
+
+    /// <summary>
+    /// Asks for each tracked app's logo at <paramref name="size"/> px, once per visit (see <see cref="NewVisit"/>), using
+    /// the Aumid and icon file of its installed entry when <paramref name="installedBy"/> finds one by exe path. Returns the
+    /// logos extracted by this call by app id; an app whose logo was already cached by path, or has none, is left out, so
+    /// its stored icon stays. Call from a pool thread.
+    /// </summary>
+    public IReadOnlyDictionary<long, byte[]> UpgradeTracked(IEnumerable<TrackedEntry> apps, Func<string, InstalledApp?> installedBy, int size)
+    {
+        List<TrackedEntry> todo;
+        lock (_gate) todo = apps.Where(a => _upgradeTried.Add(a.Id)).ToList();
+        var found = new Dictionary<long, byte[]>();
+        foreach (var a in todo)
+        {
+            var inst = installedBy(a.ExePath);
+            try
+            {
+                if (ForPath(a.ExePath, inst?.Aumid, inst?.IconFile, size, cachedOnly: false, out var extracted) is { } png && extracted) found[a.Id] = png;
+            }
+            catch { /* keep the stored icon */ }
+        }
+        return found;
+    }
+
+    /// <summary>Starts a fresh visit: tracked apps may be asked for their logo again. Extracted icons are kept.</summary>
+    public void NewVisit()
+    {
+        lock (_gate) _upgradeTried.Clear();
     }
 
     /// <summary>The stored icons of the given apps (a Merged app too); an app with none stored is left out. Never extracts.</summary>

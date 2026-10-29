@@ -58,6 +58,47 @@ public sealed class AppIconSourceTests : IDisposable
         return lib.GetIcon(id);
     }
 
+    private static TrackedEntry Entry(long id, string exe) => new(id, exe, Path.GetFileNameWithoutExtension(exe), 100, 0, []);
+
+    [Fact]
+    public void Upgrading_tracked_apps_extracts_each_at_tile_size_with_the_installed_aumid_and_icon_file()
+    {
+        var installed = new InstalledApp("One", @"c:\a\one.exe", null, "Pkg!App", null, null, @"c:\a\logo.png");
+
+        var found = Source().UpgradeTracked([Entry(1, @"c:\a\one.exe"), Entry(2, @"c:\a\two.exe")],
+            p => string.Equals(p, installed.ExePath, StringComparison.OrdinalIgnoreCase) ? installed : null, 256);
+
+        found.Keys.Should().BeEquivalentTo(new long[] { 1, 2 });
+        found[1].Should().Equal(Encoding.UTF8.GetBytes(@"png:c:\a\one.exe"));
+        _desktop.IconCalls.Should().Equal((@"c:\a\one.exe", 256), (@"c:\a\two.exe", 256));
+        _desktop.Args.Should().Equal(("Pkg!App", @"c:\a\logo.png"), (null, null));
+    }
+
+    [Fact]
+    public void An_app_is_upgraded_once_until_the_next_visit()
+    {
+        var source = Source();
+        var app = Entry(1, @"c:\a\one.exe");
+
+        source.UpgradeTracked([app], _ => null, 256).Should().HaveCount(1);
+        source.UpgradeTracked([app], _ => null, 256).Should().BeEmpty();
+        _desktop.IconCalls.Should().HaveCount(1);
+
+        source.NewVisit();
+        source.UpgradeTracked([app], _ => null, 256).Should().BeEmpty("the logo is cached by path, so nothing is extracted again");
+        _desktop.IconCalls.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void A_failed_or_missing_logo_is_left_out_and_does_not_stop_the_others()
+    {
+        _desktop.NoIcon.Add(@"c:\a\one.exe");
+
+        var found = Source().UpgradeTracked([Entry(1, @"c:\a\one.exe"), Entry(2, @"c:\a\two.exe")], _ => null, 256);
+
+        found.Keys.Should().BeEquivalentTo(new long[] { 2 });
+    }
+
     [Fact]
     public void A_stored_icon_is_returned_without_extracting()
     {

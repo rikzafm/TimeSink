@@ -38,6 +38,7 @@ public sealed class AppCatalogue
     private readonly AppIconSource _icons;
     private IReadOnlyList<InstalledApp>? _installed; // the slow scan, taken lazily once per visit (under _gate)
     private IReadOnlyList<InstalledApp>? _lastInstalled; // survives NewVisit, so a reopened screen can draw at once (under _gate)
+    private Dictionary<string, InstalledApp>? _lastInstalledByPath; // _lastInstalled by exe path, built with it (under _gate)
     private int _visit; // bumped by NewVisit, so a scan that began in an earlier visit does not count for this one (under _gate)
 
     public AppCatalogue(string dbPath, IDesktop desktop, AppIconSource icons)
@@ -224,6 +225,7 @@ public sealed class AppCatalogue
             _installed = null;
             _visit++;
         }
+        _icons.NewVisit();
     }
 
     /// <summary>
@@ -291,6 +293,8 @@ public sealed class AppCatalogue
             {
                 if (scan.Count == 0 && _lastInstalled is { Count: > 0 } last) scan = last;
                 _lastInstalled = scan;
+                _lastInstalledByPath = scan.GroupBy(i => i.ExePath, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
                 if (visit == _visit) _installed = scan; // a NewVisit meanwhile: the next caller scans afresh
             }
             return scan;
@@ -301,6 +305,12 @@ public sealed class AppCatalogue
     public IReadOnlyList<InstalledApp>? LastInstalled
     {
         get { lock (_gate) return _lastInstalled; }
+    }
+
+    /// <summary>The installed app with this exe path (case ignored) in the newest scan, or null before the first scan or when it is not in it; never scans.</summary>
+    public InstalledApp? InstalledBy(string exePath)
+    {
+        lock (_gate) return _lastInstalledByPath?.GetValueOrDefault(exePath);
     }
 
     /// <summary>True for the failures that mean a busy or missing database (the only ones the catalogue turns into <see cref="CatalogueOutcome.Unavailable"/>).</summary>

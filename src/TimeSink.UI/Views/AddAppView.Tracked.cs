@@ -21,7 +21,6 @@ public sealed partial class AddAppView
 
     private IReadOnlyList<TrackedEntry> _tracked = [];
     private readonly Dictionary<long, byte[]?> _trackedIcons = new();
-    private readonly HashSet<long> _logoTried = new(); // tracked apps whose tile-size logo was asked for in this view
     private string _trackedQuery = "";
     private StackPanel _trackedList = null!;
     private ScrollViewer _trackedScroll = null!;
@@ -29,7 +28,6 @@ public sealed partial class AddAppView
     private static readonly object TrackedRowTag = new(); // marks a row's card, so a click can tell a row from empty list space
     private string _draft = "";
     private MergePlan? _mergePlan;      // the open merge screen's plan (Candidates, ticks, confirm) lives in AppCatalogue; which screen shows is in _nav
-    private List<(Border Tile, string Name, string ExePath)> _mergeTiles = [];
     private double _listOffset;            // Tracked list scroll position when Merge… was opened
     private string _mergeFilter = "Tracked";  // Tracked | Untracked | All
 
@@ -121,26 +119,12 @@ public sealed partial class AddAppView
         UpgradeTrackedIcons();
     }
 
-    /// <summary>Stored icons are 64 px; asks for each tracked app's logo at tile resolution once per view, then redraws when one arrived.</summary>
+    /// <summary>Stored icons are 64 px; asks for each tracked app's logo at tile resolution (once per visit), then redraws when one arrived.</summary>
     private void UpgradeTrackedIcons()
     {
-        var todo = _tracked.Where(a => _logoTried.Add(a.Id)).ToList();
+        var todo = _tracked.ToList();
         if (todo.Count == 0) return;
-        var installed = (_catalogue.LastInstalled ?? Array.Empty<InstalledApp>()).GroupBy(i => i.ExePath, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-        Task.Run(() =>
-        {
-            var found = new Dictionary<long, byte[]>();
-            foreach (var a in todo)
-            {
-                installed.TryGetValue(a.ExePath, out var inst);
-                try
-                {
-                    if (_icons.ForPath(a.ExePath, inst?.Aumid, inst?.IconFile, TileIconPx, cachedOnly: false, out var extracted) is { } png && extracted) found[a.Id] = png;
-                }
-                catch { /* keep the stored icon */ }
-            }
-            return found;
-        }).ContinueWith(t =>
+        Task.Run(() => _icons.UpgradeTracked(todo, _catalogue.InstalledBy, TileIconPx)).ContinueWith(t =>
         {
             if (t.Result.Count == 0) return;
             foreach (var (id, png) in t.Result) _trackedIcons[id] = png;
@@ -281,10 +265,8 @@ public sealed partial class AddAppView
     /// <summary>The publisher from the installed-apps scan (matched by exe path); null until the scan has loaded or when the app is not in it.</summary>
     private string? PublisherOf(TrackedEntry app)
     {
-        if (_catalogue.LastInstalled is not { } installed) { LoadInstalled(); return null; }
-        var inst = installed.FirstOrDefault(i => string.Equals(i.ExePath, app.ExePath, StringComparison.OrdinalIgnoreCase));
-        if (inst is null) return null;
-        return inst.IsSteam ? InstalledApp.SteamSource : inst.Publisher is { Length: > 0 } pub ? pub : null;
+        if (_catalogue.LastInstalled is null) { LoadInstalled(); return null; }
+        return _catalogue.InstalledBy(app.ExePath)?.Byline;
     }
 
     /// <summary>Number of merged apps, pinned to the logo's bottom-right corner.</summary>
@@ -398,7 +380,7 @@ public sealed partial class AddAppView
     {
         CandidateKind.Tracked or CandidateKind.Merged => UsageText.HoursMinutes(c.Seconds),
         CandidateKind.Retired => TimeText.Str(AddAppStrings.SubStopped),
-        _ => c.Installed!.IsSteam ? InstalledApp.SteamSource : c.Installed.Publisher is { Length: > 0 } pub ? pub : TimeText.Str(AddAppStrings.SubInstalled),
+        _ => c.Installed!.Byline ?? TimeText.Str(AddAppStrings.SubInstalled),
     };
 
     /// <summary>A tracked Candidate shows the tile-resolution logo when this process already extracted it.</summary>
@@ -408,7 +390,7 @@ public sealed partial class AddAppView
     {
         var candidates = plan.Candidates;
         var query = "";
-        _mergeTiles = [];
+        _mergeTiles.Clear();
 
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -521,7 +503,7 @@ public sealed partial class AddAppView
             else go.SetResourceReference(ContentControl.ContentProperty, "Str.AddSaveChanges");
         }
         Render();
-        LoadMergeIcons(candidates, _mergeTiles);
+        LoadMergeIcons(candidates);
 
         var search = SearchBox("Str.AddTrackedSearch", AddAppStrings.TrackedSearch, "", text => { query = text; Render(); });
         search.Margin = new Thickness(20, 0, 20, 10);
@@ -535,14 +517,10 @@ public sealed partial class AddAppView
     }
 
     /// <summary>Extracts the logos of installed candidates one by one, top of the list first; rows already on screen swap their letter for the logo.</summary>
-    private void LoadMergeIcons(IReadOnlyList<MergeCandidate> candidates, List<(Border Tile, string Name, string ExePath)> tiles)
+    private void LoadMergeIcons(IReadOnlyList<MergeCandidate> candidates)
     {
         var todo = candidates.Where(c => c.Kind == CandidateKind.Installed).Select(c => c.Installed!).ToList();
-        LoadTileIcons(todo, (a, png) =>
-        {
-            foreach (var (tile, name, path) in tiles.ToList())
-                if (string.Equals(path, a.ExePath, StringComparison.OrdinalIgnoreCase)) AppTile.Fill(tile, _themes, a.ExePath, name, png, TileStyle.CandidateRow);
-        });
+        LoadTileIcons(todo, (a, png) => _mergeTiles.Fill(a.ExePath, png));
     }
 
     private UIElement MergeTargetRow(MergeCandidate t, bool picked, Action toggle)
@@ -565,7 +543,7 @@ public sealed partial class AddAppView
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var tile = AppTile.Candidate(_themes, t.ExePath, t.Name, PngOf(t), TileStyle.CandidateRow);
         tile.Margin = new Thickness(0, 0, 12, 0);
-        if (t.Kind == CandidateKind.Installed) _mergeTiles.Add((tile, t.Name, t.ExePath)); // icons arrive in the background and fill these
+        if (t.Kind == CandidateKind.Installed) _mergeTiles.Register(t.ExePath, tile, t.Name); // icons arrive in the background and fill these
         var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         var n = Text(null, "Double.FontSize.Body", "Brush.Text");
         n.Text = t.Name;
