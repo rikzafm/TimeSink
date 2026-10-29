@@ -35,11 +35,12 @@ internal static class Program
             ? over
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeSink", "timesink.db");
         var shift = (GetAsyncKeyState(0x10) & 0x8000) != 0; // Shift forces pulse-dark for this session
-        var id = shift ? ThemeLoader.DefaultId : ThemeService.IdFor(SettingsStore.Get(dbPath, "ui.theme"), ThemeService.SystemIsLight());
-        var theme = Accents.Apply(ThemeService.Load(id), SettingsCatalogue.Read(dbPath, SettingsCatalogue.Find("accent")));
-        var tab = ShellTabs.Parse(SettingsStore.Get(dbPath, ShellTabs.SettingKey));
+        var settings = AppSettings.ForFile(dbPath);
+        var id = shift ? ThemeLoader.DefaultId : ThemeService.IdFor(settings.Get(Setting.Theme), ThemeService.SystemIsLight());
+        var theme = Accents.Apply(ThemeService.Load(id), settings.Get(Setting.Accent));
+        var tab = settings.Get(Setting.LastTab);
         StartupTrace.Mark("prepared");
-        return new Prepared(theme, tab, dbPath, SettingsCatalogue.Read(dbPath, SettingsCatalogue.Find("compact")) == "true");
+        return new Prepared(theme, tab, dbPath, settings.Get(Setting.Compact));
     }
 
     [DllImport("user32.dll")]

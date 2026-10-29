@@ -1,3 +1,4 @@
+using TimeSink.Core.Settings;
 using TimeSink.Core.Theming;
 using TimeSink.Core.Usage;
 
@@ -97,6 +98,6 @@ public sealed class YearQueryTests : IDisposable
         YearSubViews.Parse(null).Should().Be(YearSubView.Pace);
         YearSubViews.Parse("garbage").Should().Be(YearSubView.Pace);
         YearSubViews.Parse("Matrix").Should().Be(YearSubView.Matrix);
-        YearSubViews.SettingKey.Should().Be("ui.lastYearView");
+        Setting.LastYearView.Key.Should().Be("ui.lastYearView");
     }
 }

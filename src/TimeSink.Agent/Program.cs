@@ -4,6 +4,7 @@ using TimeSink.Core.Data;
 using TimeSink.Core.Flyout;
 using TimeSink.Core.Icons;
 using TimeSink.Core.Ipc;
+using TimeSink.Core.Settings;
 
 namespace TimeSink.Agent;
 
@@ -75,7 +76,7 @@ internal static class Program
     {
         s_taskbarCreated = NativeMethods.RegisterWindowMessage("TaskbarCreated");
         var instance = NativeMethods.GetModuleHandle(0);
-        s_icon = LoadTrayIcon(IconCatalogue.Resolve(SettingsStore.Get(s_dbPath, "ui.icon")));
+        s_icon = LoadTrayIcon(AppSettings.ForFile(s_dbPath).Get(Setting.AppIcon));
         if (s_icon == 0) s_icon = NativeMethods.LoadIcon(0, NativeMethods.IDI_APPLICATION); // never add the tray entry without an icon
 
         fixed (char* className = ClassName)
@@ -296,8 +297,7 @@ internal static class Program
 
     private static bool InstantOpen()
     {
-        var v = SettingsStore.Get(s_dbPath, "ui.instantOpen");
-        return v is not null && (v.Equals("true", StringComparison.OrdinalIgnoreCase) || v == "1");
+        return AppSettings.ForFile(s_dbPath).Get(Setting.InstantOpen);
     }
 
     /// <summary>Mouse over the tray icon: a click is likely, so warm the UI up (at most once per cooldown).</summary>

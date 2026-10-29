@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using TimeSink.Core.Data;
+using TimeSink.Core.Settings;
 using TimeSink.Core.Theming;
 using TimeSink.Core.Usage;
 using TimeSink.UI.Controls;
@@ -25,7 +26,6 @@ namespace TimeSink.UI.Views;
 public sealed class AllView : UserControl, ILiveView
 {
     private const int RefreshEverySeconds = 30;
-    private const string LayoutKey = "all.layout"; // "labeled" (default) or "icons"
     private const string ClockPath = "M12,4 A8,8 0 1 0 12,20 A8,8 0 1 0 12,4 M12,8 L12,12 L15,14";
     private const string RestorePath = "M4.5,12 A7.5,7.5 0 1 0 7,6.5 M4,3.5 L4,8.5 L9,8.5";
     private const string LayoutPath = "M4,4 L10,4 L10,10 L4,10 Z M13,6 L20,6 M13,9 L18,9 M4,14 L10,14 L10,20 L4,20 Z M13,16 L20,16 M13,19 L18,19";
@@ -60,7 +60,7 @@ public sealed class AllView : UserControl, ILiveView
         _themes = themes;
         _live = live;
         _window = window;
-        _icons = SettingsStore.Get(dbPath, LayoutKey) == "icons";
+        _icons = AppSettings.ForFile(dbPath).Get(Setting.AllLayout) == "icons";
 
         Focusable = true;
         Loaded += (_, _) => Focus();
@@ -157,7 +157,7 @@ public sealed class AllView : UserControl, ILiveView
     private void SetLayout(bool icons)
     {
         _icons = icons;
-        SettingsStore.Set(_dbPath, LayoutKey, icons ? "icons" : "labeled");
+        AppSettings.ForFile(_dbPath).Set(Setting.AllLayout, icons ? "icons" : "labeled");
         Redraw();
     }
 

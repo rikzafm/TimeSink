@@ -5,8 +5,6 @@ public enum WeekStart { Mon, Sun, Sat }
 
 public static class WeekStarts
 {
-    public const string SettingKey = "week.start";
-
     public static WeekStart Parse(string? stored) =>
         Enum.TryParse<WeekStart>(stored, ignoreCase: false, out var w) && Enum.IsDefined(w) ? w : WeekStart.Mon;
 

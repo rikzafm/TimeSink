@@ -74,11 +74,11 @@ public static class SettingsCatalogue
             : row.Default;
 
     public static string Read(string dbPath, SettingRow row)
-        => Resolve(row, row.Key is null ? null : SettingsStore.Get(dbPath, row.Key));
+        => Resolve(row, row.Key is null ? null : new FileSettingsSource(dbPath).Get(row.Key));
 
     public static void Write(string dbPath, SettingRow row, string value)
     {
         if (row.Key is null) return;
-        SettingsStore.Set(dbPath, row.Key, Resolve(row, value));
+        new FileSettingsSource(dbPath).Set(row.Key, Resolve(row, value));
     }
 }

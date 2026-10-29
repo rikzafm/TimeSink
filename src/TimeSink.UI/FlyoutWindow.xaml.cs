@@ -8,6 +8,7 @@ using System.Windows.Interop;
 using TimeSink.Core.Data;
 using TimeSink.Core.Flyout;
 using TimeSink.Core.Ipc;
+using TimeSink.Core.Settings;
 using TimeSink.Core.Theming;
 using TimeSink.UI.Services;
 using TimeSink.UI.Theming;
@@ -91,8 +92,7 @@ public partial class FlyoutWindow : Window
         if (_rendered) StartBody(body); // before first render, OnContentRendered starts it
         if (persist)
         {
-            var value = tab.ToString();
-            SerialWriter.Run(() => SettingsStore.Set(_dbPath, ShellTabs.SettingKey, value));
+            SerialWriter.Run(() => AppSettings.ForFile(_dbPath).Set(Setting.LastTab, tab));
         }
     }
 

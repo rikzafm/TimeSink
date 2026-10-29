@@ -1,6 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
-using TimeSink.Core.Data;
+using TimeSink.Core.Settings;
 using TimeSink.Core.Theming;
 using TimeSink.UI.Services;
 using TimeSink.UI.Theming;
@@ -28,7 +28,7 @@ public sealed class YearView : UserControl, ILiveView
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
-        _current = YearSubViews.Parse(SettingsStore.Get(dbPath, YearSubViews.SettingKey));
+        _current = AppSettings.ForFile(dbPath).Get(Setting.LastYearView);
 
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -82,8 +82,7 @@ public sealed class YearView : UserControl, ILiveView
         if (_started) (body as IYearSubView)?.Start();
         if (!persist) return;
         var path = _dbPath;
-        var value = sub.ToString();
-        Task.Run(() => SettingsStore.Set(path, YearSubViews.SettingKey, value));
+        Task.Run(() => AppSettings.ForFile(path).Set(Setting.LastYearView, sub));
     }
 
     /// <summary>Begin loading the visible sub-view (called once the window has rendered).</summary>

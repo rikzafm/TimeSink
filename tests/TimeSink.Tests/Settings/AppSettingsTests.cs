@@ -135,9 +135,6 @@ public class AppSettingsTests : IDisposable
     [Fact]
     public void Keys_that_callers_still_spell_out_match_the_declared_settings()
     {
-        ShellTabs.SettingKey.Should().Be(Setting.LastTab.Key);
-        YearSubViews.SettingKey.Should().Be(Setting.LastYearView.Key);
-        WeekStarts.SettingKey.Should().Be(Setting.WeekStartsOn.Key);
     }
 
     [Fact]

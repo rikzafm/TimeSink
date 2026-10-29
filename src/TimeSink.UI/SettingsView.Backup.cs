@@ -28,7 +28,7 @@ public sealed partial class SettingsView
     {
         if (_backupDesc is null) return;
         var path = _dbPath;
-        Task.Run(() => long.TryParse(SettingsStore.Get(path, "backup.lastUtc"), out var l) ? l : 0)
+        Task.Run(() => AppSettings.ForFile(path).Get(Setting.BackupLastUtc))
             .ContinueWith(t => _backupDesc.Text = LastBackupText.Describe(t.Result, DateTimeOffset.UtcNow),
                 TaskScheduler.FromCurrentSynchronizationContext());
     }
