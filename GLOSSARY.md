@@ -64,6 +64,16 @@ _Avoid_: Sort order, ordering
 A calendar day in the user's time zone. It lasts 23 or 25 hours when daylight saving changes.
 _Avoid_: Day (unqualified), UTC day
 
+### Settings
+
+**Setting**:
+A stored preference with a key and a default, shown as a row on the Settings page. A missing or invalid stored value reads as the default.
+_Avoid_: Option, preference, config
+
+**Internal state**:
+A value the app remembers for itself (the last tab, when the last backup ran), stored like a Setting but with no row on the Settings page.
+_Avoid_: Hidden setting, cache
+
 ### Screens
 
 **Add app screen**:
