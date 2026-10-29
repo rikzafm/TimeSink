@@ -117,20 +117,14 @@ public sealed class AppLibrary : IDisposable
         using (var r = cmd.ExecuteReader())
             while (r.Read()) seconds[r.GetInt64(0)] = r.GetInt64(1);
 
-        var rows = new List<(long Id, long? Canonical, string Exe, string Name, long Added, bool Background, AppKind Kind)>();
-        using (var cmd = Cmd("SELECT id, canonical_id, exe_path, display_name, added_utc, is_background, kind FROM apps WHERE state = 'tracked'"))
-        using (var r = cmd.ExecuteReader())
-            while (r.Read())
-                rows.Add((r.GetInt64(0), r.IsDBNull(1) ? null : r.GetInt64(1), r.GetString(2), r.GetString(3), r.GetInt64(4), r.GetInt64(5) != 0,
-                    AppKinds.Resolve(r.IsDBNull(6) ? null : r.GetInt64(6), r.GetString(2), r.GetString(3))));
-
-        return rows.Where(a => a.Canonical is null)
+        var groups = AppGroups.Load(_c);
+        return groups.Values.Where(a => a.Group == a.Id)
             .Select(a =>
             {
-                var merged = rows.Where(m => m.Canonical == a.Id)
-                    .Select(m => new MergedApp(m.Id, m.Exe, m.Name, seconds.GetValueOrDefault(m.Id)))
+                var merged = groups.Members(a.Id).Where(m => m.Id != a.Id)
+                    .Select(m => new MergedApp(m.Id, m.ExePath, m.Name, seconds.GetValueOrDefault(m.Id)))
                     .OrderBy(m => m.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToList();
-                return new TrackedEntry(a.Id, a.Exe, a.Name, a.Added, seconds.GetValueOrDefault(a.Id) + merged.Sum(m => m.Seconds), merged, a.Background, a.Kind);
+                return new TrackedEntry(a.Id, a.ExePath, a.Name, a.AddedUtc, seconds.GetValueOrDefault(a.Id) + merged.Sum(m => m.Seconds), merged, a.Background, a.Kind);
             })
             .OrderBy(a => a.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToList();
     }

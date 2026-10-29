@@ -78,6 +78,28 @@ public sealed class TrackedTabTests : IDisposable
     }
 
     [Fact]
+    public void A_merged_app_whose_main_app_is_retired_is_listed_as_its_own_app()
+    {
+        using var lib = AppLibrary.Open(_path);
+        var chrome = Add(lib, @"C:\chrome.exe", "Chrome", 100);
+        var beta = Add(lib, @"C:\beta.exe", "Chrome Beta", 40);
+        lib.Merge(beta, chrome).Should().BeTrue();
+        using (var c = new SqliteConnection($"Data Source={_path};Pooling=False"))
+        {
+            c.Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = $"UPDATE apps SET state = 'retired', retired_utc = 1 WHERE id = {chrome}";
+            cmd.ExecuteNonQuery();
+        }
+
+        var listed = lib.Tracked().Should().ContainSingle().Subject;
+
+        listed.Id.Should().Be(beta);
+        listed.Seconds.Should().Be(40);
+        listed.Merged.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Merging_an_app_that_has_aliases_moves_them_along_and_rejects_bad_targets()
     {
         using var lib = AppLibrary.Open(_path);
