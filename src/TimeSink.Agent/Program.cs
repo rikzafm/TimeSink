@@ -23,7 +23,6 @@ internal static class Program
     private static string s_dbPath = "";
     private static readonly FlyoutToggle s_toggle = new();
     private static Process? s_ui;
-    private const string CloseEventName = @"Local\TimeSink.UI.Close";
 
     private const uint IconResourceVersion = 0x00030000; // the version CreateIconFromResourceEx requires
     private const uint TrayCallback = NativeMethods.WM_APP + 1;
@@ -210,7 +209,6 @@ internal static class Program
     private static bool s_uiShown;
     private static DateTime s_lastStandbyStart = DateTime.MinValue;
     private static EventWaitHandle? s_showEvent;
-    private const string ShowEventName = @"Local\TimeSink.UI.Show";
     private static readonly TimeSpan HoverCooldown = TimeSpan.FromSeconds(15);
 
     /// <summary>Tray left-click or "Open" menu item: toggle the flyout.</summary>
@@ -227,7 +225,7 @@ internal static class Program
                     if (alive) ShowStandby(); else OpenUi();
                     break;
                 case FlyoutAction.Close:
-                    try { using var ev = EventWaitHandle.OpenExisting(CloseEventName); ev.Set(); }
+                    try { using var ev = EventWaitHandle.OpenExisting(FlyoutProtocol.CloseEventName); ev.Set(); }
                     catch (WaitHandleCannotBeOpenedException) { }
                     break;
             }
@@ -243,9 +241,8 @@ internal static class Program
     /// <summary>Hand the launch geometry to a running standby UI and wake it.</summary>
     private static void ShowStandby()
     {
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeSink");
-        File.WriteAllText(Path.Combine(dir, "flyout.args"), ComputeLaunchArgs().ToFileText());
-        s_showEvent ??= new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+        File.WriteAllText(FlyoutProtocol.HandoffPath, ComputeLaunchArgs().ToFileText());
+        s_showEvent ??= new EventWaitHandle(false, EventResetMode.AutoReset, FlyoutProtocol.ShowEventName);
         s_showEvent.Set();
         s_uiShown = true;
     }
@@ -257,9 +254,9 @@ internal static class Program
         {
             if (s_ui is { HasExited: false }) return;
             s_lastStandbyStart = DateTime.UtcNow;
-            s_showEvent ??= new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+            s_showEvent ??= new EventWaitHandle(false, EventResetMode.AutoReset, FlyoutProtocol.ShowEventName);
             s_showEvent.Reset(); // drop a stale signal from an earlier standby
-            if (StartUi(keep ? ["--standby", "--keep"] : ["--standby"]) is not null) s_uiShown = false;
+            if (StartUi(FlyoutProtocol.StandbyArgs(keep)) is not null) s_uiShown = false;
         }
     }
 

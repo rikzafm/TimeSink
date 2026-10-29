@@ -11,15 +11,7 @@ namespace TimeSink.UI;
 public partial class App : Application
 {
     public const string MutexName = @"Local\TimeSink.UI";
-    public const string CloseEventName = @"Local\TimeSink.UI.Close";
-    public const string ShowEventName = @"Local\TimeSink.UI.Show";
-    public const string StandbyArg = "--standby";
-    public const string KeepArg = "--keep";
     private static readonly TimeSpan StandbyTimeout = TimeSpan.FromSeconds(10);
-
-    /// <summary>Where the Agent leaves the launch geometry for a standby UI (see <see cref="FlyoutLaunchArgs.ToFileText"/>).</summary>
-    public static string HandoffPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeSink", "flyout.args");
 
     private Mutex? _mutex;
     private EventWaitHandle? _closeEvent, _showEvent;
@@ -56,8 +48,8 @@ public partial class App : Application
             return;
         }
 
-        var standby = e.Args.Contains(StandbyArg);
-        var keep = e.Args.Contains(KeepArg);
+        var standby = e.Args.Contains(FlyoutProtocol.StandbyArg);
+        var keep = e.Args.Contains(FlyoutProtocol.KeepArg);
 
         if (!FlyoutLaunchArgs.TryParse(e.Args, out var launch))
         {
@@ -76,21 +68,21 @@ public partial class App : Application
         var window = new FlyoutWindow(launch, themes, prepared.DbPath, prepared.Tab, standby);
         StartupTrace.Mark("windowBuilt");
 
-        _closeEvent = new EventWaitHandle(false, EventResetMode.AutoReset, CloseEventName);
+        _closeEvent = new EventWaitHandle(false, EventResetMode.AutoReset, FlyoutProtocol.CloseEventName);
         _closeWait = ThreadPool.RegisterWaitForSingleObject(_closeEvent,
             (_, _) => Dispatcher.BeginInvoke(window.Close), null, Timeout.Infinite, false);
 
         if (standby)
         {
             // Wait (off-screen, already rendered) for the Agent's Show signal; give up unless asked to stay.
-            _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+            _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, FlyoutProtocol.ShowEventName);
             _showWait = ThreadPool.RegisterWaitForSingleObject(_showEvent, (_, timedOut) =>
             {
                 if (timedOut) { Dispatcher.BeginInvoke(window.Close); return; }
                 Dispatcher.BeginInvoke(() =>
                 {
                     string text;
-                    try { text = File.ReadAllText(HandoffPath); } catch (IOException) { window.Close(); return; }
+                    try { text = File.ReadAllText(FlyoutProtocol.HandoffPath); } catch (IOException) { window.Close(); return; }
                     if (FlyoutLaunchArgs.TryParseFileText(text, out var l)) window.Reveal(l);
                     else window.Close();
                 });
