@@ -31,9 +31,10 @@ public static class YearQuery
         var firstIdx = yearIdx - RecentMonths + 1; // two earlier months feed the "last 3 months" and January's delta
 
         var apps = AppGroups.Load(c);
-        var first = apps.Count == 0 ? (DateOnly?)null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
+        var start = TrackingStart.Of(apps, zone);
+        var first = start.FirstDay;
         var startIdx = first is null ? int.MaxValue : Idx(first.Value.Year, first.Value.Month);
-        var partialFirst = first is { Day: > 1 } ? startIdx : -1; // started mid-month: not a full month
+        var partialFirst = first is { } f && start.IsPartialMonth(f.Year, f.Month) ? startIdx : -1; // started mid-month: not a full month
 
         // Seconds per (group, month index) over the window [two months before the year .. now].
         var winFrom = LocalDays.StartOf(new DateOnly(firstIdx / 12, firstIdx % 12 + 1, 1), zone);
@@ -63,7 +64,7 @@ public static class YearQuery
         if (hasPace)
         {
             var monthFirst = new DateOnly(today.Year, today.Month, 1);
-            var from = first!.Value > monthFirst ? first.Value : monthFirst;
+            var from = start.Since(monthFirst);
             var elapsed = Math.Max(1, today.DayNumber - from.DayNumber + 1);
             curProj = (long)Math.Round(curSecs / (double)elapsed * DateTime.DaysInMonth(today.Year, today.Month));
         }

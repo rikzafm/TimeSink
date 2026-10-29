@@ -34,7 +34,7 @@ public static class MatrixQuery
         var today = LocalDays.DateOf(nowUtc, zone);
         var year = today.Year;
         var apps = AppGroups.Load(c);
-        DateOnly? started = apps.Count == 0 ? null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
+        var started = TrackingStart.Of(apps, zone).FirstDay;
         if (started is null) return new MatrixResult(year, nowUtc, null, 1, [], [], 0);
         var first = started is { } s && s.Year == year ? s.Month : 1;
         var count = today.Month - first + 1;

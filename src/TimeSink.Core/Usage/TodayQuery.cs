@@ -26,14 +26,6 @@ public static class TodayQuery
         return Run(c, now, zone, running, forDay, onSinceUtc);
     }
 
-    /// <summary>The local date of the first tracked app, or null when nothing is tracked yet.</summary>
-    public static DateOnly? FirstDate(string dbPath, TimeZoneInfo zone)
-    {
-        using var c = UsageDb.OpenReadOnly(dbPath);
-        var apps = AppGroups.Load(c);
-        return apps.Count == 0 ? null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
-    }
-
     public static TodayResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, DateOnly? forDay = null, long? onSinceUtc = null)
     {
         var nowUtc = now.ToUnixTimeSeconds();
@@ -49,13 +41,13 @@ public static class TodayQuery
 
         // Hourly chart + typical day.
         var todayHours = UsageDays.HourSums(segs, date, zone);
-        var firstDate = apps.Count == 0 ? (DateOnly?)null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
+        var start = TrackingStart.Of(apps, zone);
         var typical = new double[Hours];
         var typicalDays = 0;
         for (var k = 1; k <= TypicalWeeks; k++)
         {
             var day = date.AddDays(-7 * k);
-            if (firstDate is null || day < firstDate) continue;
+            if (!start.Counts(day)) continue;
             var sums = UsageDays.HourSums(segs, day, zone);
             for (var h = 0; h < Hours; h++) typical[h] += sums[h];
             typicalDays++;
@@ -132,6 +124,6 @@ public static class TodayQuery
         return new TodayResult(date, d0, d1, nowUtc, total,
             openSegs.Select(s => s.Group).Distinct().Count(), openSegs.Count,
             hours, typicalDays > 0, UsageUptime.SleepBands(segs, d0, Math.Min(nowUtc, d1)), first, longest, total - yesterdayByNow, rows,
-            uptime, uptimeVs);
+            uptime, uptimeVs, start.FirstDay);
     }
 }

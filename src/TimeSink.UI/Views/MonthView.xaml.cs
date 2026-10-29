@@ -88,12 +88,11 @@ public partial class MonthView : UserControl, ILiveView
         var (year, month) = (_year, _month);
         var path = _dbPath;
         var applied = await _loader.Refresh(
-            c => (Result: MonthQuery.Run(path, c.Now, c.Zone, year, month, c.WeekStartDay, c.Running, c.SignInUtc),
-                  First: TodayQuery.FirstDate(path, c.Zone)),
+            c => MonthQuery.Run(path, c.Now, c.Zone, year, month, c.WeekStartDay, c.Running, c.SignInUtc),
             r =>
             {
-                _firstTracked = r.First;
-                _result = r.Result;
+                _firstTracked = r.FirstTracked;
+                _result = r;
             });
         if (!applied) return;
         if (_selected is not { } s || s.Year != year || s.Month != month) _selected = _result!.DefaultSelected;

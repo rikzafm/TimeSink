@@ -45,4 +45,5 @@ public sealed record MonthResult(
     double DailyAverageSeconds,
     BestDay? Best,
     IReadOnlyList<MonthTopApp> TopApps,
-    DateOnly DefaultSelected);
+    DateOnly DefaultSelected,
+    DateOnly? FirstTracked = null);

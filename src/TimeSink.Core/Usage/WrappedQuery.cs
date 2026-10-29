@@ -33,7 +33,8 @@ public static class WrappedQuery
         var windowStart = LocalDays.StartOf(new DateOnly(year - 1, 12, 1), zone); // December feeds January's month delta
 
         var apps = AppGroups.Load(c);
-        var first = apps.Count == 0 ? (DateOnly?)null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
+        var start = TrackingStart.Of(apps, zone);
+        var first = start.FirstDay;
         var groups = apps.Values.Select(a => a.Group).Distinct().ToList();
 
         var perDay = new Dictionary<int, long>();          // DateOnly.DayNumber -> seconds (this year)
@@ -109,9 +110,9 @@ public static class WrappedQuery
             if (perHour[h] > peakSecs) { peak = h; peakSecs = perHour[h]; }
 
         var daysTracked = 0;
-        if (first is { } f)
+        if (start.FirstDay is not null)
         {
-            var from = f > new DateOnly(year, 1, 1) ? f : new DateOnly(year, 1, 1);
+            var from = start.Since(new DateOnly(year, 1, 1));
             daysTracked = Math.Max(0, today.DayNumber - from.DayNumber + 1);
         }
 

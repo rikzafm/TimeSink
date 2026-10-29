@@ -64,6 +64,10 @@ _Avoid_: Sort order, ordering
 A calendar day in the user's time zone. It lasts 23 or 25 hours when daylight saving changes.
 _Avoid_: Day (unqualified), UTC day
 
+**Tracking start**:
+The first Local day on which a non-retired Tracked app existed. Days before it are not counted, and a month that begins after the 1st is only partly tracked. Retiring the oldest app moves it later.
+_Avoid_: First day, start date
+
 **Week start**:
 The weekday a week begins on (Monday, Sunday or Saturday), chosen in Settings. Every calendar, week and weekly summary uses it, the Today date picker included.
 _Avoid_: First day of week, week offset

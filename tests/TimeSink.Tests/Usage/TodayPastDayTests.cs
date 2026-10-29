@@ -50,6 +50,6 @@ public sealed class TodayPastDayTests : IDisposable
     [Fact]
     public void First_date_is_the_day_tracking_began()
     {
-        TodayQuery.FirstDate(_f.DbPath, TimeZoneInfo.Utc).Should().Be(new DateOnly(2026, 2, 20));
+        TodayQuery.Run(_f.DbPath, TodayFixture.Now, TimeZoneInfo.Utc).FirstTracked.Should().Be(new DateOnly(2026, 2, 20));
     }
 }

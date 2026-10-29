@@ -40,6 +40,7 @@ public static class MonthQuery
         var prevCounted = Math.Min(counted, prevDim);
 
         var apps = AppGroups.Load(c);
+        var start = TrackingStart.Of(apps, zone);
         var segs = UsageLoader.LoadSegments(c, DayStart(prevFirst, zone), nowUtc, apps, running, to: DayStart(first.AddMonths(1), zone));
 
         // PC uptime per local day: the headline numbers; per-app seconds below feed the day detail and the top apps.
@@ -89,10 +90,12 @@ public static class MonthQuery
                 return new MonthWeek(cells, cells.Sum(x => x?.Seconds ?? 0));
             }).ToList();
 
+        // The daily average counts only the elapsed days from the Tracking start on (decision 147, replacing 78).
+        var averageDays = Enumerable.Range(0, counted).Count(d => start.Counts(first.AddDays(d)));
         var selected = isCurrent ? today : counted == 0 ? first : first.AddDays(dim - 1);
         return new MonthResult(year, month, first, dim, counted, isCurrent, weekStart, nowUtc, monthDays, weeks,
             total, prevTotal, total - prevTotal, prevTotal > 0 ? (total - prevTotal) / (double)prevTotal : null,
-            counted > 0 ? total / (double)counted : 0, best, top, selected);
+            averageDays > 0 ? total / (double)averageDays : 0, best, top, selected, start.FirstDay);
     }
 
     private static long DayStart(DateOnly date, TimeZoneInfo zone) => LocalDays.StartOf(date, zone);

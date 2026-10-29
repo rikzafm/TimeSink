@@ -86,7 +86,7 @@ public static class WeekQuery
         }
         rows = UsageRank.Rank(rows, apps, r => r.AppId, r => r.Seconds);
 
-        var firstTracked = apps.Count == 0 ? (DateOnly?)null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
+        var firstTracked = TrackingStart.Of(apps, zone).FirstDay;
         return new WeekResult(today, shownWeek, nowUtc, days.Sum(d => d.Seconds), days, heat, streak, rows, weekTotals, prevWeek, firstTracked);
     }
 

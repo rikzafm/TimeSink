@@ -44,4 +44,5 @@ public sealed record TodayResult(
     long VsYesterdaySeconds,
     IReadOnlyList<TodayAppRow> Apps,
     long UptimeSeconds,
-    long UptimeVsYesterdaySeconds);
+    long UptimeVsYesterdaySeconds,
+    DateOnly? FirstTracked = null);

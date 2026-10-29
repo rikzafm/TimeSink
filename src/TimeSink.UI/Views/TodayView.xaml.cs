@@ -142,11 +142,11 @@ public partial class TodayView : UserControl, ILiveView
         _sinceRefresh = 0;
         var (path, day) = (_dbPath, _day);
         var applied = await _loader.Refresh(
-            c => (Result: TodayQuery.Run(path, c.Now, c.Zone, c.Running, day, c.SignInUtc), First: TodayQuery.FirstDate(path, c.Zone), WeekStart: c.WeekStartDay), // no DB yet: keep the empty state
+            c => (Result: TodayQuery.Run(path, c.Now, c.Zone, c.Running, day, c.SignInUtc), WeekStart: c.WeekStartDay), // no DB yet: keep the empty state
             r =>
             {
                 _result = r.Result;
-                _first = r.First;
+                _first = r.Result.FirstTracked;
                 _weekStart = r.WeekStart;
             });
         if (!applied) return;
