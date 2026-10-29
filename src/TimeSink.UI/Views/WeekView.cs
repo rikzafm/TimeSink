@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
-using TimeSink.Core.Data;
 using TimeSink.Core.Theming;
 using TimeSink.Core.Usage;
 using TimeSink.UI.Controls;
@@ -26,6 +25,7 @@ public sealed class WeekView : UserControl, ILiveView
     private readonly ThemeService _themes;
     private readonly LiveState _live;
     private readonly UsageSnapshotLoader _loader;
+    private readonly UsageSnapshotLoader _panelLoader; // its own sequence, so opening a day never drops a week refresh or the other way round
     private readonly LiveViewDriver _driver;
 
     private readonly TextBlock _caption = Text("Soft", "Double.FontSize.Body", "Brush.TextMuted");
@@ -152,6 +152,7 @@ public sealed class WeekView : UserControl, ILiveView
         };
 
         _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _panelLoader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw,
             isIdle: () => Window.GetWindow(this) is FlyoutWindow { IsRevealed: false }); // warm standby: stay idle
         Unloaded += (_, _) => Stop();
@@ -167,9 +168,17 @@ public sealed class WeekView : UserControl, ILiveView
     }
 
     /// <summary>Begin loading and refreshing. Called once the window has rendered.</summary>
-    public void Start() => _driver.Start();
+    public void Start()
+    {
+        _driver.Start();
+        _panelLoader.Start();
+    }
 
-    public void Stop() => _driver.Stop();
+    public void Stop()
+    {
+        _driver.Stop();
+        _panelLoader.Stop();
+    }
 
     public async void Refresh()
     {
@@ -322,16 +331,10 @@ public sealed class WeekView : UserControl, ILiveView
         _columns.SelectedIndex = index;
         Focus();
         var seq = ++_panelSeq;
-        var now = DateTimeOffset.UtcNow;
         var path = _dbPath;
-        DayDetail detail;
-        try
-        {
-            detail = await Task.Run(() =>
-                BarDetail.ForDay(path, day, now, TimeZoneInfo.Local, WeekStarts.Parse(SettingsStore.Get(path, WeekStarts.SettingKey))));
-        }
-        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or System.IO.IOException) { return; }
-        if (seq != _panelSeq) return;
+        DayDetail? loaded = null;
+        var applied = await _panelLoader.Refresh(c => BarDetail.ForDay(path, day, c.Now, c.Zone, c.WeekStart), d => loaded = d);
+        if (!applied || seq != _panelSeq || loaded is not { } detail) return; // overtaken, view stopped, no database, or the panel was closed meanwhile
 
         var compares = new List<(string, string, bool)>();
         var vsAvg = (long)Math.Round(detail.TotalSeconds - detail.WeekAverageSeconds);
