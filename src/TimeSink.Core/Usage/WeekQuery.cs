@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Apps;
 
 namespace TimeSink.Core.Usage;
 
@@ -31,7 +32,7 @@ public static class WeekQuery
         var shownWeek = thisWeek.AddDays(-7 * weeksBack); // the seven columns and app rows; the grid and streak stay anchored to today
         var lookStart = new[] { gridStart, today.AddDays(-StreakLookbackDays), shownWeek.AddDays(-7) }.Min();
 
-        var apps = UsageLoader.LoadApps(c);
+        var apps = AppGroups.Load(c);
         var segs = UsageLoader.LoadSegments(c, LocalDays.StartOf(lookStart, zone), nowUtc, apps, running);
         var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc);
 

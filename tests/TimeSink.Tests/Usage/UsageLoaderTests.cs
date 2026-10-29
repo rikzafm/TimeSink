@@ -1,3 +1,4 @@
+using TimeSink.Core.Apps;
 using TimeSink.Core.Usage;
 using static TimeSink.Tests.Usage.MonthFixture;
 
@@ -12,13 +13,13 @@ public sealed class UsageLoaderTests : IDisposable
     private static readonly long NowUtc = Now.ToUnixTimeSeconds();
     private static readonly long Day = U(2026, 3, 11, 0);
 
-    private Dictionary<long, UsageApp> Apps(bool includeRetired = false)
+    private AppGroups Apps(bool includeRetired = false)
     {
         using var c = UsageDb.OpenReadOnly(_f.DbPath);
-        return UsageLoader.LoadApps(c, includeRetired);
+        return AppGroups.Load(c, includeRetired);
     }
 
-    private List<UsageSeg> Segments(IReadOnlyCollection<long>? running, Dictionary<long, UsageApp> apps)
+    private List<UsageSeg> Segments(IReadOnlyCollection<long>? running, AppGroups apps)
     {
         using var c = UsageDb.OpenReadOnly(_f.DbPath);
         return UsageLoader.LoadSegments(c, Day, NowUtc, apps, running);
@@ -43,22 +44,6 @@ public sealed class UsageLoaderTests : IDisposable
     {
         _f.Exec($"INSERT INTO sessions(app_id,start_utc,end_utc,last_seen_utc,end_reason) VALUES ({_f.Chrome}, {Day + 100}, {Day + 200}, {Day + 200}, '{reason}')");
         Segments(null, Apps()).Single(s => s.Start == Day + 100).Sleep.Should().Be(off);
-    }
-
-    [Fact]
-    public void A_merged_app_shares_its_canonical_group()
-    {
-        _f.Exec($"INSERT INTO apps(id, canonical_id, exe_path, display_name, added_utc) VALUES (900, {_f.Chrome}, 'chrome-beta.exe', 'Chrome Beta', 0)");
-        Apps()[900].Group.Should().Be(_f.Chrome);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_tracked_alias_of_a_retired_main_app_is_its_own_group(bool includeRetired)
-    {
-        _f.Exec("INSERT INTO apps(id, canonical_id, exe_path, display_name, added_utc) VALUES (901, (SELECT id FROM apps WHERE display_name = 'Old'), 'old2.exe', 'Old Beta', 0)");
-        Apps(includeRetired)[901].Group.Should().Be(901);
     }
 
     [Fact]

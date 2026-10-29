@@ -1,3 +1,4 @@
+using TimeSink.Core.Apps;
 using TimeSink.Core.Usage;
 
 namespace TimeSink.Tests.Usage;
@@ -5,12 +6,12 @@ namespace TimeSink.Tests.Usage;
 /// <summary>The Ranking rule on its own: Background apps last, then most time first, then name A to Z ignoring case.</summary>
 public sealed class UsageRankTests
 {
-    private static UsageApp App(long id, string name, bool background = false, long group = 0) =>
+    private static GroupedApp App(long id, string name, bool background = false, long group = 0) =>
         new(id, group == 0 ? id : group, name, 0, background);
 
-    private static Dictionary<long, UsageApp> Apps(params UsageApp[] apps) => apps.ToDictionary(a => a.Id);
+    private static AppGroups Apps(params GroupedApp[] apps) => AppGroups.From(apps);
 
-    private static List<long> Order(Dictionary<long, UsageApp> apps, IEnumerable<(long Group, long Seconds)> items) =>
+    private static List<long> Order(AppGroups apps, IEnumerable<(long Group, long Seconds)> items) =>
         UsageRank.Rank(items, apps, i => i.Group, i => i.Seconds).Select(i => i.Group).ToList();
 
     [Fact]

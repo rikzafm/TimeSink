@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Apps;
 
 namespace TimeSink.Core.Usage;
 
@@ -32,7 +33,7 @@ public static class MatrixQuery
         var nowUtc = now.ToUnixTimeSeconds();
         var today = LocalDays.DateOf(nowUtc, zone);
         var year = today.Year;
-        var apps = UsageLoader.LoadApps(c);
+        var apps = AppGroups.Load(c);
         DateOnly? started = apps.Count == 0 ? null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
         if (started is null) return new MatrixResult(year, nowUtc, null, 1, [], [], 0);
         var first = started is { } s && s.Year == year ? s.Month : 1;

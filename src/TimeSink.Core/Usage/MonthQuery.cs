@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Apps;
 
 using Seg = TimeSink.Core.Usage.UsageSeg;
 
@@ -38,7 +39,7 @@ public static class MonthQuery
         var prevDim = DateTime.DaysInMonth(prevFirst.Year, prevFirst.Month);
         var prevCounted = Math.Min(counted, prevDim);
 
-        var apps = UsageLoader.LoadApps(c);
+        var apps = AppGroups.Load(c);
         var segs = UsageLoader.LoadSegments(c, DayStart(prevFirst, zone), nowUtc, apps, running, to: DayStart(first.AddMonths(1), zone));
 
         // PC uptime per local day: the headline numbers; per-app seconds below feed the day detail and the top apps.

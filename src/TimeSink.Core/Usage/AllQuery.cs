@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Apps;
 
 namespace TimeSink.Core.Usage;
 
@@ -35,7 +36,7 @@ public static class AllQuery
     public static AllResult Run(SqliteConnection c, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null, long? onSinceUtc = null)
     {
         var nowUtc = now.ToUnixTimeSeconds();
-        var usageApps = UsageLoader.LoadApps(c, includeRetired: true);
+        var usageApps = AppGroups.Load(c, includeRetired: true);
         var groups = usageApps.Values.Where(a => a.Group == a.Id).ToDictionary(a => a.Id, a => new Group
         {
             Id = a.Id, Name = a.Name, Retired = a.Retired, RetiredUtc = a.RetiredUtc, Background = a.Background,

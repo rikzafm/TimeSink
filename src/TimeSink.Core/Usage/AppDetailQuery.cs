@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Apps;
 
 namespace TimeSink.Core.Usage;
 
@@ -30,7 +31,7 @@ public static class AppDetailQuery
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
 
         // Retired apps are loaded so a retired alias of this app still counts, as it does on the All tab.
-        var apps = UsageLoader.LoadApps(c, includeRetired: true);
+        var apps = AppGroups.Load(c, includeRetired: true);
         if (!apps.TryGetValue(appId, out var app) || app.Retired || app.Group != appId) return null; // aliases are shown under their canonical app
         var name = app.Name;
         var exe = Path.GetFileName(app.ExePath);

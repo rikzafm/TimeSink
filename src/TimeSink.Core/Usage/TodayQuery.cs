@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Apps;
 
 using Seg = TimeSink.Core.Usage.UsageSeg;
 
@@ -29,7 +30,7 @@ public static class TodayQuery
     public static DateOnly? FirstDate(string dbPath, TimeZoneInfo zone)
     {
         using var c = UsageDb.OpenReadOnly(dbPath);
-        var apps = UsageLoader.LoadApps(c);
+        var apps = AppGroups.Load(c);
         return apps.Count == 0 ? null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
     }
 
@@ -42,7 +43,7 @@ public static class TodayQuery
         var d0 = LocalDays.StartOf(date, zone);
         var d1 = LocalDays.StartOf(date.AddDays(1), zone);
 
-        var apps = UsageLoader.LoadApps(c);
+        var apps = AppGroups.Load(c);
         var segs = UsageLoader.LoadSegments(c, LocalDays.StartOf(date.AddDays(-TypicalWeeks * 7), zone), nowUtc, apps, running);
         var byGroup = segs.ToLookup(s => s.Group);
 

@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Apps;
 
 using Seg = TimeSink.Core.Usage.UsageSeg;
 
@@ -29,7 +30,7 @@ public static class YearQuery
         var yearIdx = Idx(year, 1);
         var firstIdx = yearIdx - RecentMonths + 1; // two earlier months feed the "last 3 months" and January's delta
 
-        var apps = UsageLoader.LoadApps(c);
+        var apps = AppGroups.Load(c);
         var first = apps.Count == 0 ? (DateOnly?)null : LocalDate(apps.Values.Min(a => a.AddedUtc), zone);
         var startIdx = first is null ? int.MaxValue : Idx(first.Value.Year, first.Value.Month);
         var partialFirst = first is { Day: > 1 } ? startIdx : -1; // started mid-month: not a full month

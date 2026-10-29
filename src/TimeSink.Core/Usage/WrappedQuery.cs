@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Apps;
 
 using Seg = TimeSink.Core.Usage.UsageSeg;
 
@@ -31,7 +32,7 @@ public static class WrappedQuery
         var yearStart = LocalDays.StartOf(new DateOnly(year, 1, 1), zone);
         var windowStart = LocalDays.StartOf(new DateOnly(year - 1, 12, 1), zone); // December feeds January's month delta
 
-        var apps = UsageLoader.LoadApps(c);
+        var apps = AppGroups.Load(c);
         var first = apps.Count == 0 ? (DateOnly?)null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
         var groups = apps.Values.Select(a => a.Group).Distinct().ToList();
 
