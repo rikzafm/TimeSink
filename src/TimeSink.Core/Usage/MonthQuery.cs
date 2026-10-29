@@ -46,13 +46,15 @@ public static class MonthQuery
         var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc);
 
         // group -> seconds, per day of this month and of the comparison window.
+        var perDay = UsageDays.PerDayGroup(segs, zone);
+        Dictionary<long, long> DayTotals(DateOnly date) => perDay.GetValueOrDefault(date) ?? [];
         var days = new Dictionary<long, long>[dim];
-        for (var d = 0; d < dim; d++) days[d] = DayTotals(segs, first.AddDays(d), zone);
+        for (var d = 0; d < dim; d++) days[d] = DayTotals(first.AddDays(d));
         var prevTotals = new Dictionary<long, long>();
         long prevTotal = 0;
         for (var d = 0; d < prevCounted; d++)
         {
-            foreach (var (g, s) in DayTotals(segs, prevFirst.AddDays(d), zone))
+            foreach (var (g, s) in DayTotals(prevFirst.AddDays(d)))
                 prevTotals[g] = prevTotals.GetValueOrDefault(g) + s;
             prevTotal += uptime.GetValueOrDefault(prevFirst.AddDays(d));
         }
@@ -91,19 +93,6 @@ public static class MonthQuery
         return new MonthResult(year, month, first, dim, counted, isCurrent, weekStart, nowUtc, monthDays, weeks,
             total, prevTotal, total - prevTotal, prevTotal > 0 ? (total - prevTotal) / (double)prevTotal : null,
             counted > 0 ? total / (double)counted : 0, best, top, selected);
-    }
-
-    private static Dictionary<long, long> DayTotals(List<Seg> segs, DateOnly date, TimeZoneInfo zone)
-    {
-        var a = DayStart(date, zone);
-        var b = DayStart(date.AddDays(1), zone);
-        var d = new Dictionary<long, long>();
-        foreach (var s in segs)
-        {
-            var o = Math.Min(s.End, b) - Math.Max(s.Start, a);
-            if (o > 0) d[s.Group] = d.GetValueOrDefault(s.Group) + o;
-        }
-        return d;
     }
 
     private static long DayStart(DateOnly date, TimeZoneInfo zone) => LocalDays.StartOf(date, zone);

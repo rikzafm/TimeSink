@@ -8,9 +8,9 @@ namespace TimeSink.Core.Usage;
 /// <summary>
 /// The Year "Wrapped" numbers (implementation.md 8.3), year to date at <c>now</c>, from <c>apps</c> and <c>sessions</c>.
 /// Same rules as <see cref="YearQuery"/>: retired apps excluded, merged apps one group, an open session counts to
-/// <c>now</c> if the Agent reports it running (or <c>running</c> is null), else to its heartbeat. Sessions are walked in
-/// pieces that never cross a local hour (or day), so days, months, hour-of-day and "before noon" use local time.
-/// (The piece length uses the offset at its start, so a DST change inside an hour is off by at most that hour.)
+/// <c>now</c> if the Agent reports it running (or <c>running</c> is null), else to its heartbeat. Sessions are cut by
+/// <see cref="UsageDays"/> into Local days, and each day into wall-clock hours, so days, months, hour-of-day and
+/// "before noon" are exact on a DST day like Today (decisions 118, 146).
 /// </summary>
 public static class WrappedQuery
 {
@@ -36,36 +36,27 @@ public static class WrappedQuery
         var first = apps.Count == 0 ? (DateOnly?)null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
         var groups = apps.Values.Select(a => a.Group).Distinct().ToList();
 
-        var perDay = new Dictionary<int, long>();          // local day number -> seconds (this year)
+        var perDay = new Dictionary<int, long>();          // DateOnly.DayNumber -> seconds (this year)
         var perMonth = new Dictionary<int, long>();        // year * 12 + month - 1 -> seconds (window)
         var perHour = new long[24];                        // local hour of day -> seconds (this year)
         var perGroup = new Dictionary<long, long>();       // this year
         long beforeNoon = 0, total = 0;
 
         var segs = UsageLoader.LoadSegments(c, windowStart, nowUtc, apps, running);
-        foreach (var s in segs)
+        var windowed = segs.Select(s => s with { Start = Math.Max(s.Start, windowStart), End = Math.Min(s.End, nowUtc) });
+        foreach (var sl in UsageDays.Slices(windowed, zone))
         {
-            var t = Math.Max(s.Start, windowStart);
-            var end = Math.Min(s.End, nowUtc);
-            while (t < end)
+            var len = sl.End - sl.Start;
+            var monthIdx = sl.Day.Year * 12 + sl.Day.Month - 1;
+            perMonth[monthIdx] = perMonth.GetValueOrDefault(monthIdx) + len;
+            if (sl.Day.Year != year) continue;
+            perDay[sl.Day.DayNumber] = perDay.GetValueOrDefault(sl.Day.DayNumber) + len;
+            perGroup[sl.Seg.Group] = perGroup.GetValueOrDefault(sl.Seg.Group) + len;
+            total += len;
+            foreach (var p in UsageDays.HourPieces(sl.Start, sl.End, zone))
             {
-                var offset = (long)zone.GetUtcOffset(DateTimeOffset.FromUnixTimeSeconds(t)).TotalSeconds;
-                var localSecs = t + offset;
-                var dayNumber = (int)((localSecs - Mod(localSecs, 86400)) / 86400);
-                var secOfDay = (int)Mod(localSecs, 86400);
-                var step = Math.Min(end - t, 3600 - secOfDay % 3600);
-                var date = DateOnly.FromDayNumber(719162 + dayNumber); // 719162 = day number of 1970-01-01
-                var monthIdx = date.Year * 12 + date.Month - 1;
-                perMonth[monthIdx] = perMonth.GetValueOrDefault(monthIdx) + step;
-                if (t >= yearStart && date.Year == year)
-                {
-                    perDay[dayNumber] = perDay.GetValueOrDefault(dayNumber) + step;
-                    perHour[secOfDay / 3600] += step;
-                    perGroup[s.Group] = perGroup.GetValueOrDefault(s.Group) + step;
-                    if (secOfDay < 12 * 3600) beforeNoon += step;
-                    total += step;
-                }
-                t += step;
+                perHour[p.Hour] += p.End - p.Start;
+                if (p.Hour < 12) beforeNoon += p.End - p.Start;
             }
         }
 
@@ -127,12 +118,10 @@ public static class WrappedQuery
         return new WrappedResult(
             year, nowUtc, first, uptime, total, daysTracked, perDay.Count(kv => kv.Value > 0), groups.Count,
             ranked.Take(PodiumSize).ToList(), ranked.Skip(PodiumSize).Take(OthersSize).ToList(),
-            bestLen, bestLen == 0 ? null : DateOnly.FromDayNumber(719162 + bestStartDay),
-            bestLen == 0 ? null : DateOnly.FromDayNumber(719162 + bestStartDay + bestLen - 1),
+            bestLen, bestLen == 0 ? null : DateOnly.FromDayNumber(bestStartDay),
+            bestLen == 0 ? null : DateOnly.FromDayNumber(bestStartDay + bestLen - 1),
             busiest, busiestSecs, delta, peak, peakSecs,
             total == 0 ? 0 : (int)Math.Round(beforeNoon * 100.0 / total, MidpointRounding.AwayFromZero),
             TopOf(Apps.AppKind.Game), TopOf(Apps.AppKind.Gacha), longest);
     }
-
-    private static long Mod(long a, long m) => (a % m + m) % m;
 }

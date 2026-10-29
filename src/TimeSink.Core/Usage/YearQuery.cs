@@ -31,25 +31,20 @@ public static class YearQuery
         var firstIdx = yearIdx - RecentMonths + 1; // two earlier months feed the "last 3 months" and January's delta
 
         var apps = AppGroups.Load(c);
-        var first = apps.Count == 0 ? (DateOnly?)null : LocalDate(apps.Values.Min(a => a.AddedUtc), zone);
+        var first = apps.Count == 0 ? (DateOnly?)null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
         var startIdx = first is null ? int.MaxValue : Idx(first.Value.Year, first.Value.Month);
         var partialFirst = first is { Day: > 1 } ? startIdx : -1; // started mid-month: not a full month
 
         // Seconds per (group, month index) over the window [two months before the year .. now].
-        var winFrom = MonthStart(firstIdx, zone);
+        var winFrom = LocalDays.StartOf(new DateOnly(firstIdx / 12, firstIdx % 12 + 1, 1), zone);
         var segs = UsageLoader.LoadSegments(c, winFrom, nowUtc, apps, running);
-        var bounds = new long[curIdx - firstIdx + 2];
-        for (var i = 0; i < bounds.Length; i++) bounds[i] = MonthStart(firstIdx + i, zone);
         var perMonth = new Dictionary<int, Dictionary<long, long>>();
-        foreach (var s in segs)
+        foreach (var sl in UsageDays.Slices(segs, zone))
         {
-            for (var i = 0; i < bounds.Length - 1; i++)
-            {
-                var o = Math.Max(0, Math.Min(s.End, bounds[i + 1]) - Math.Max(s.Start, bounds[i]));
-                if (o == 0) continue;
-                if (!perMonth.TryGetValue(firstIdx + i, out var g)) perMonth[firstIdx + i] = g = new Dictionary<long, long>();
-                g[s.Group] = g.GetValueOrDefault(s.Group) + o;
-            }
+            var idx = Idx(sl.Day.Year, sl.Day.Month);
+            if (idx < firstIdx || idx > curIdx) continue;
+            if (!perMonth.TryGetValue(idx, out var g)) perMonth[idx] = g = new Dictionary<long, long>();
+            g[sl.Seg.Group] = g.GetValueOrDefault(sl.Seg.Group) + (sl.End - sl.Start);
         }
 
         // Month totals are PC uptime; the per-app shares above only feed each month's top apps.
@@ -125,16 +120,4 @@ public static class YearQuery
     }
 
     private static int Idx(int year, int month) => year * 12 + month - 1;
-
-
-    private static DateOnly LocalDate(long utc, TimeZoneInfo zone) =>
-        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(utc), zone).DateTime);
-
-    private static long MonthStart(int idx, TimeZoneInfo zone)
-    {
-        var local = new DateTime(idx / 12, idx % 12 + 1, 1);
-        while (zone.IsInvalidTime(local)) local = local.AddHours(1);
-        var offset = zone.IsAmbiguousTime(local) ? zone.GetAmbiguousTimeOffsets(local).Max() : zone.GetUtcOffset(local);
-        return new DateTimeOffset(local, offset).ToUnixTimeSeconds();
-    }
 }

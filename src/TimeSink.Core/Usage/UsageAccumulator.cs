@@ -51,20 +51,10 @@ public sealed class UsageAccumulator
         while (cur < to)
         {
             var local = TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(cur), _zone);
-            var next = Math.Min(to, NextLocalMidnightUtc(local.Date));
+            var next = Math.Min(to, LocalDays.StartOf(DateOnly.FromDateTime(local.Date).AddDays(1), _zone));
             if (next <= cur) next = to; // defensive: never loop forever
             yield return (local.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), sign * (next - cur));
             cur = next;
         }
-    }
-
-    private long NextLocalMidnightUtc(DateTime localDate)
-    {
-        var next = localDate.AddDays(1);
-        while (_zone.IsInvalidTime(next)) next = next.AddHours(1);
-        var offset = _zone.IsAmbiguousTime(next)
-            ? _zone.GetAmbiguousTimeOffsets(next).Max() // earlier instant
-            : _zone.GetUtcOffset(next);
-        return new DateTimeOffset(next, offset).ToUnixTimeSeconds();
     }
 }

@@ -40,20 +40,14 @@ public static class MatrixQuery
         var count = today.Month - first + 1;
         if (count < 1) return new MatrixResult(year, nowUtc, started, first, [], [], 0);
 
-        var bounds = new long[count + 1];
-        for (var i = 0; i <= count; i++) bounds[i] = LocalDays.StartOf(new DateOnly(year, first, 1).AddMonths(i), zone);
-
-        var segs = UsageLoader.LoadSegments(c, bounds[0], nowUtc, apps, running);
+        var segs = UsageLoader.LoadSegments(c, LocalDays.StartOf(new DateOnly(year, first, 1), zone), nowUtc, apps, running);
         var perApp = new Dictionary<long, long[]>();
-        foreach (var seg in segs)
+        foreach (var sl in UsageDays.Slices(segs, zone))
         {
-            for (var i = 0; i < count; i++)
-            {
-                var o = Math.Min(seg.End, bounds[i + 1]) - Math.Max(seg.Start, bounds[i]);
-                if (o <= 0) continue;
-                if (!perApp.TryGetValue(seg.Group, out var arr)) perApp[seg.Group] = arr = new long[count];
-                arr[i] += o;
-            }
+            var i = (sl.Day.Year - year) * 12 + sl.Day.Month - first;
+            if (i < 0 || i >= count) continue;
+            if (!perApp.TryGetValue(sl.Seg.Group, out var arr)) perApp[sl.Seg.Group] = arr = new long[count];
+            arr[i] += sl.End - sl.Start;
         }
 
         // Month totals and the headline are PC uptime (decision 125); the per-app cells stay per-app.

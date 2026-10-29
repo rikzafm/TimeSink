@@ -48,7 +48,7 @@ public static class TodayQuery
         var byGroup = segs.ToLookup(s => s.Group);
 
         // Hourly chart + typical day.
-        var todayHours = HourSums(segs, d0, d1, zone);
+        var todayHours = UsageDays.HourSums(segs, date, zone);
         var firstDate = apps.Count == 0 ? (DateOnly?)null : LocalDays.DateOf(apps.Values.Min(a => a.AddedUtc), zone);
         var typical = new double[Hours];
         var typicalDays = 0;
@@ -56,7 +56,7 @@ public static class TodayQuery
         {
             var day = date.AddDays(-7 * k);
             if (firstDate is null || day < firstDate) continue;
-            var sums = HourSums(segs, LocalDays.StartOf(day, zone), LocalDays.StartOf(day.AddDays(1), zone), zone);
+            var sums = UsageDays.HourSums(segs, day, zone);
             for (var h = 0; h < Hours; h++) typical[h] += sums[h];
             typicalDays++;
         }
@@ -68,11 +68,11 @@ public static class TodayQuery
         foreach (var g in byGroup)
         {
             var groupSegs = g.ToList();
-            var sessions = groupSegs.Where(s => Overlap(s, d0, d1) > 0 || (s.Open && s.End >= d0))
+            var sessions = groupSegs.Where(s => UsageDays.Overlap(s, d0, d1) > 0 || (s.Open && s.End >= d0))
                 .OrderBy(s => s.Start)
                 .Select(s => new TodaySession(Math.Max(s.Start, d0), Math.Min(s.End, d1), s.Open && isToday)).ToList();
             var open = isToday ? groupSegs.Where(s => s.Open).ToList() : [];
-            var seconds = groupSegs.Sum(s => Overlap(s, d0, d1));
+            var seconds = groupSegs.Sum(s => UsageDays.Overlap(s, d0, d1));
             if (seconds == 0 && open.Count == 0) continue;
 
             var closedToday = groupSegs.Where(s => !s.Open && s.End >= d0 && s.End < d1).ToList();
@@ -87,7 +87,7 @@ public static class TodayQuery
                 avgDays++;
                 var a = LocalDays.StartOf(day, zone);
                 var b = LocalDays.StartOf(day.AddDays(1), zone);
-                avgSum += groupSegs.Sum(s => Overlap(s, a, b));
+                avgSum += groupSegs.Sum(s => UsageDays.Overlap(s, a, b));
             }
             if (avgDays > 0) avg = avgSum / (double)avgDays;
 
@@ -112,15 +112,15 @@ public static class TodayQuery
         if (started != default) first = new FirstAppTile(UsageRank.NameOf(apps, started.Group), started.Start);
 
         LongestSessionTile? longest = null;
-        var best = segs.OrderByDescending(s => Overlap(s, d0, d1)).FirstOrDefault();
-        if (best != default && Overlap(best, d0, d1) > 0) longest = new LongestSessionTile(best.Group, UsageRank.NameOf(apps, best.Group), Overlap(best, d0, d1));
+        var best = segs.OrderByDescending(s => UsageDays.Overlap(s, d0, d1)).FirstOrDefault();
+        if (best != default && UsageDays.Overlap(best, d0, d1) > 0) longest = new LongestSessionTile(best.Group, UsageRank.NameOf(apps, best.Group), UsageDays.Overlap(best, d0, d1));
 
         var total = rows.Sum(r => r.Seconds);
         var y0 = LocalDays.StartOf(date.AddDays(-1), zone);
         // Same wall-clock time yesterday (a DST change makes elapsed time differ from clock time).
         // A past day is compared with the whole day before it.
         var cut = isToday ? Math.Min(LocalDays.AtTime(date.AddDays(-1), TimeZoneInfo.ConvertTime(now, zone).TimeOfDay, zone), d0) : d0;
-        var yesterdayByNow = segs.Sum(s => Overlap(s, y0, cut));
+        var yesterdayByNow = segs.Sum(s => UsageDays.Overlap(s, y0, cut));
 
         // PC uptime: shown from the sign-in time when known, but compared like-for-like (first activity) with yesterday.
         var dayEnd = isToday ? nowUtc : d1;
@@ -133,25 +133,5 @@ public static class TodayQuery
             openSegs.Select(s => s.Group).Distinct().Count(), openSegs.Count,
             hours, typicalDays > 0, UsageUptime.SleepBands(segs, d0, Math.Min(nowUtc, d1)), first, longest, total - yesterdayByNow, rows,
             uptime, uptimeVs);
-    }
-
-
-    private static long Overlap(Seg s, long a, long b) => Math.Max(0, Math.Min(s.End, b) - Math.Max(s.Start, a));
-
-    /// <summary>
-    /// App-seconds per wall-clock hour column (0-23). The day is cut at every local whole hour, so on a 23 h day the
-    /// skipped hour's column stays empty and on a 25 h day the repeated hour's column holds both passes.
-    /// </summary>
-    private static long[] HourSums(List<Seg> segs, long d0, long d1, TimeZoneInfo zone)
-    {
-        var sums = new long[Hours];
-        for (var t = d0; t < d1;)
-        {
-            var local = TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(t), zone);
-            var next = Math.Min(t + 3600 - (local.Minute * 60 + local.Second), d1);
-            foreach (var s in segs) sums[local.Hour] += Overlap(s, t, next);
-            t = next;
-        }
-        return sums;
     }
 }
