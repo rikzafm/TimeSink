@@ -135,14 +135,9 @@ public class AppSettingsTests : IDisposable
     [Fact]
     public void Keys_that_callers_still_spell_out_match_the_declared_settings()
     {
-        AlertEngine.GoalsKey.Should().Be(Setting.GoalAlerts.Key);
-        AlertEngine.WeeklyKey.Should().Be(Setting.WeeklySummary.Key);
-        AlertEngine.SentKey.Should().Be(Setting.AlertsSent.Key);
-        AlertEngine.WeeklyLastKey.Should().Be(Setting.AlertsWeeklyLast.Key);
         ShellTabs.SettingKey.Should().Be(Setting.LastTab.Key);
         YearSubViews.SettingKey.Should().Be(Setting.LastYearView.Key);
         WeekStarts.SettingKey.Should().Be(Setting.WeekStartsOn.Key);
-        SteamAutoTracker.SettingKey.Should().Be(Setting.SteamAutoTrack.Key);
     }
 
     [Fact]
@@ -151,8 +146,6 @@ public class AppSettingsTests : IDisposable
         ShellTabs.Parse(null).Should().Be(Setting.LastTab.Default);
         YearSubViews.Parse(null).Should().Be(Setting.LastYearView.Default);
         WeekStarts.Parse(null).Should().Be(Setting.WeekStartsOn.Default);
-        SteamAutoTracker.Enabled(null).Should().Be(Setting.SteamAutoTrack.Default);
-        TodayEarly.SuggestionsEnabled(null).Should().Be(Setting.SuggestApps.Default);
 
         using var db = Db.Open(_path);
         var tracking = new DbTrackingSettings(db);

@@ -112,7 +112,10 @@ public static class Setting
     public static readonly Setting<string?> AlertsSent = Text("alerts.sent");
     public static readonly Setting<string?> AlertsWeeklyLast = Text("alerts.weeklyLast");
 
-    /// <summary>Stored as "1" by builds before this module existed, so an already repaired database stays repaired.</summary>
+    /// <summary>
+    /// Stored as "1" by builds before this module existed, so an already repaired database stays repaired. The key ends in 2
+    /// because "icons.steamRepaired" was the first pass, which used the exe icon alone.
+    /// </summary>
     public static readonly Setting<bool> SteamIconsRepaired =
         new("icons.steamRepaired2", false, (string stored, out bool value) => { value = stored == "1"; return value; }, b => b ? "1" : "0");
 

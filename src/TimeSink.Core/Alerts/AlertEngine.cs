@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.Data.Sqlite;
 using TimeSink.Core.Apps;
 using TimeSink.Core.Data;
+using TimeSink.Core.Settings;
 using TimeSink.Core.Usage;
 
 namespace TimeSink.Core.Alerts;
@@ -26,17 +27,17 @@ public sealed record AlertNotice(AlertKind Kind, string Title, string Body);
 /// </summary>
 public sealed class AlertEngine(Db db, TimeZoneInfo zone)
 {
-    public const string GoalsKey = "alerts.goals", WeeklyKey = "alerts.weekly";
-    public const string SentKey = "alerts.sent", WeeklyLastKey = "alerts.weeklyLast";
     public const int WeeklyHour = 8;
+
+    private readonly AppSettings _settings = AppSettings.ForDb(db);
 
     public IReadOnlyList<AlertNotice> Check(DateTimeOffset now)
     {
         var local = TimeZoneInfo.ConvertTime(now, zone);
         var today = DateOnly.FromDateTime(local.DateTime);
         var notices = new List<AlertNotice>();
-        if (db.GetSetting(GoalsKey) != "false") CheckGoals(today, notices);
-        if (db.GetSetting(WeeklyKey) == "true") CheckWeekly(today, local.TimeOfDay, notices);
+        if (_settings.Get(Setting.GoalAlerts)) CheckGoals(today, notices);
+        if (_settings.Get(Setting.WeeklySummary)) CheckWeekly(today, local.TimeOfDay, notices);
         return notices;
     }
 
@@ -72,7 +73,7 @@ public sealed class AlertEngine(Db db, TimeZoneInfo zone)
                 : new AlertNotice(AlertKind.Goal, "Goal reached",
                     $"{name}: {UsageText.HoursMinutes(seconds)} today (goal {UsageText.HoursMinutes(g.Seconds)})."));
         }
-        if (changed) db.SetSetting(SentKey, day + "|" + string.Join("|", sent));
+        if (changed) _settings.Set(Setting.AlertsSent, day + "|" + string.Join("|", sent));
     }
 
     private List<Goal> LoadGoals()
@@ -110,7 +111,7 @@ public sealed class AlertEngine(Db db, TimeZoneInfo zone)
 
     private HashSet<string> LoadSent(string day)
     {
-        var parts = (db.GetSetting(SentKey) ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries);
+        var parts = (_settings.Get(Setting.AlertsSent) ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries);
         return parts.Length > 0 && parts[0] == day ? new HashSet<string>(parts.Skip(1)) : [];
     }
 
@@ -118,13 +119,13 @@ public sealed class AlertEngine(Db db, TimeZoneInfo zone)
 
     private void CheckWeekly(DateOnly today, TimeSpan timeOfDay, List<AlertNotice> notices)
     {
-        var startDay = WeekStarts.Parse(db.GetSetting(WeekStarts.SettingKey)).ToDayOfWeek();
+        var startDay = _settings.Get(Setting.WeekStartsOn).ToDayOfWeek();
         var thisWeek = today.AddDays(-(((int)today.DayOfWeek - (int)startDay + 7) % 7));
         if (today == thisWeek && timeOfDay < TimeSpan.FromHours(WeeklyHour)) return; // wait for the morning
 
         var marker = thisWeek.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        if (db.GetSetting(WeeklyLastKey) == marker) return;
-        db.SetSetting(WeeklyLastKey, marker); // decided for this week whether or not there is anything to say
+        if (_settings.Get(Setting.AlertsWeeklyLast) == marker) return;
+        _settings.Set(Setting.AlertsWeeklyLast, marker); // decided for this week whether or not there is anything to say
 
         var from = thisWeek.AddDays(-7);
         var perApp = new Dictionary<long, long>();

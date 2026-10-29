@@ -3,7 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using TimeSink.Core.Apps;
-using TimeSink.Core.Data;
+using TimeSink.Core.Settings;
 using TimeSink.UI.Controls;
 using TimeSink.UI.Services;
 using TimeSink.UI.Theming;
@@ -52,7 +52,7 @@ internal sealed class UntrackedCardView : StackPanel
         {
             try
             {
-                var on = TodayEarly.SuggestionsEnabled(SettingsStore.Get(path, "tracking.suggestApps"));
+                var on = AppSettings.ForFile(path).Get(Setting.SuggestApps);
                 if (!on) return new Snapshot(false, []);
                 _catalogue.NewVisit(); // rows tracked here drop out through the database, not the visit state
                 var running = _catalogue.Running(iconPx: 64, iconLimit: TodayEarly.DefaultMaxShown + 2);

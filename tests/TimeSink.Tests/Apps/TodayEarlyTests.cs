@@ -75,14 +75,6 @@ public sealed class TodayEarlyTests
         TodayEarly.UntrackedCard(true, [Win(@"c:\a\t.exe", "T", 5)], new ExcludedApps([@"c:\a\t.exe"], [])).Should().BeNull();
     }
 
-    [Theory]
-    [InlineData(null, true)]
-    [InlineData("true", true)]
-    [InlineData("false", false)]
-    [InlineData("garbage", true)]
-    public void Suggestions_setting_defaults_on(string? raw, bool expected) =>
-        TodayEarly.SuggestionsEnabled(raw).Should().Be(expected);
-
     [Fact]
     public void Tracking_or_dismissing_a_suggestion_removes_it_from_the_card_via_the_real_library()
     {

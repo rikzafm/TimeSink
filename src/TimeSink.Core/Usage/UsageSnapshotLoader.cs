@@ -1,5 +1,5 @@
 using Microsoft.Data.Sqlite;
-using TimeSink.Core.Data;
+using TimeSink.Core.Settings;
 
 namespace TimeSink.Core.Usage;
 
@@ -62,7 +62,7 @@ public sealed class UsageSnapshotLoader
     /// <summary>A loader on the real clock and local zone that reads the week start from the settings table on demand.</summary>
     public static UsageSnapshotLoader ForDb(string dbPath, Func<IReadOnlyCollection<long>?> running, Func<long?> signInUtc) =>
         new(() => DateTimeOffset.UtcNow, TimeZoneInfo.Local, running, signInUtc,
-            () => WeekStarts.Parse(SettingsStore.Get(dbPath, WeekStarts.SettingKey)));
+            () => AppSettings.ForFile(dbPath).Get(Setting.WeekStartsOn));
 
     public bool Started => _started;
 

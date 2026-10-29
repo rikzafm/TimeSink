@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using TimeSink.Core.Apps;
 using TimeSink.Core.Data;
+using TimeSink.Core.Settings;
 
 namespace TimeSink.Tests.Apps;
 
@@ -65,16 +66,18 @@ public sealed class SteamAutoTrackerTests : IDisposable
     public void Does_nothing_when_the_setting_is_off()
     {
         Game(1, "Hades");
-        SettingsStore.Set(_db, SteamAutoTracker.SettingKey, "false");
+        AppSettings.ForFile(_db).Set(Setting.SteamAutoTrack, false);
 
         SteamAutoTracker.Run(_db, _dir, 100).Should().Be(0);
         Library().Should().BeEmpty();
     }
 
-    [Theory]
-    [InlineData(null, true)]
-    [InlineData("true", true)]
-    [InlineData("false", false)]
-    [InlineData("junk", true)]
-    public void Setting_defaults_to_on(string? raw, bool expected) => SteamAutoTracker.Enabled(raw).Should().Be(expected);
+    [Fact]
+    public void Runs_when_the_setting_is_unreadable()
+    {
+        Game(1, "Hades");
+        new FileSettingsSource(_db).Set(Setting.SteamAutoTrack.Key, "junk");
+
+        SteamAutoTracker.Run(_db, _dir, 100).Should().Be(1);
+    }
 }

@@ -1,5 +1,5 @@
 using System.Globalization;
-using TimeSink.Core.Data;
+using TimeSink.Core.Settings;
 
 namespace TimeSink.Core.Backup;
 
@@ -48,12 +48,12 @@ public static class AutoBackup
     /// </summary>
     public static string? RunIfDue(string dbPath, DateTimeOffset now, string defaultFolder, string appVersion = "0.0.0")
     {
-        var mode = SettingsStore.Get(dbPath, "backup.mode") ?? "Daily";
+        var settings = AppSettings.ForFile(dbPath);
+        var mode = settings.Get(Setting.BackupMode);
         var interval = mode switch { "Daily" => TimeSpan.FromHours(23), "Weekly" => TimeSpan.FromDays(7) - TimeSpan.FromHours(1), _ => (TimeSpan?)null };
         if (interval is null) return null;
 
-        var last = long.TryParse(SettingsStore.Get(dbPath, "backup.lastUtc"), out var l) ? l : 0;
-        if (now.ToUnixTimeSeconds() - last < interval.Value.TotalSeconds) return null;
+        if (now.ToUnixTimeSeconds() - settings.Get(Setting.BackupLastUtc) < interval.Value.TotalSeconds) return null;
 
         var prefix = mode == "Weekly" ? "weekly" : "daily";
         return Run(dbPath, now, defaultFolder, $"{prefix}-{now.UtcDateTime:yyyyMMdd}{BackupService.Extension}", appVersion);
@@ -66,7 +66,7 @@ public static class AutoBackup
     /// <summary>The folder from <c>backup.folder</c>, or <paramref name="defaultFolder"/>.</summary>
     public static string Folder(string dbPath, string defaultFolder)
     {
-        var f = SettingsStore.Get(dbPath, "backup.folder");
+        var f = AppSettings.ForFile(dbPath).Get(Setting.BackupFolder);
         return string.IsNullOrWhiteSpace(f) ? defaultFolder : f;
     }
 
@@ -75,7 +75,7 @@ public static class AutoBackup
         var folder = Folder(dbPath, defaultFolder);
         var file = Path.Combine(folder, fileName);
         BackupService.Create(dbPath, file, now, appVersion);
-        SettingsStore.Set(dbPath, "backup.lastUtc", now.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture));
+        AppSettings.ForFile(dbPath).Set(Setting.BackupLastUtc, now.ToUnixTimeSeconds());
         foreach (var name in BackupRetention.FilesToDelete(Directory.EnumerateFiles(folder).Select(f => Path.GetFileName(f)!), now))
         {
             try { File.Delete(Path.Combine(folder, name)); } catch (IOException) { }

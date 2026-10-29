@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using TimeSink.Core.Data;
 using TimeSink.Core.Icons;
+using TimeSink.Core.Settings;
 
 namespace TimeSink.Core.Apps;
 
@@ -17,7 +18,6 @@ namespace TimeSink.Core.Apps;
 public sealed class AppIconSource
 {
     private const int StoredSize = 64;
-    private const string SteamRepairKey = "icons.steamRepaired2"; // "icons.steamRepaired" was the first pass, which used the exe icon alone
 
     private readonly string _dbPath;
     private readonly IDesktop _desktop;
@@ -131,7 +131,7 @@ public sealed class AppIconSource
                 if (app is not null && IsSelf(app.ExePath))
                 {
                     // TimeSink's own row shows the chosen app icon; an exe-extracted copy can be a stale generic one.
-                    own ??= IconCatalogue.ReadFrame(IconCatalogue.Resolve(SettingsStore.Get(_dbPath, "ui.icon")), StoredSize);
+                    own ??= IconCatalogue.ReadFrame(AppSettings.ForFile(_dbPath).Get(Setting.AppIcon), StoredSize);
                     if (!own.AsSpan().SequenceEqual(png)) lib.PutIcon(id, own);
                     png = own;
                 }
@@ -160,12 +160,12 @@ public sealed class AppIconSource
         {
             if (_steamChecked) return;
         }
-        if (SettingsStore.Get(_dbPath, SteamRepairKey) != "1")
+        if (!AppSettings.ForFile(_dbPath).Get(Setting.SteamIconsRepaired))
         {
             apps ??= lib.Library();
             foreach (var app in apps.Where(a => SteamLibrary.IsInLibrary(a.ExePath) && !IsSelf(a.ExePath)))
                 if (Extract(app.ExePath, SteamLibrary.ArtForExe(app.ExePath)) is { } png) lib.PutIcon(app.Id, png);
-            SettingsStore.Set(_dbPath, SteamRepairKey, "1");
+            AppSettings.ForFile(_dbPath).Set(Setting.SteamIconsRepaired, true);
         }
         lock (_gate) _steamChecked = true;
     }

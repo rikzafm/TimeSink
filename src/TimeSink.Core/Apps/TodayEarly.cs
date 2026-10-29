@@ -31,9 +31,6 @@ public static class TodayEarly
     public static long? TrackingSinceUtc(long dayStartUtc, long? signInUtc, long? firstAppStartUtc) =>
         signInUtc is { } s && s >= dayStartUtc ? s : firstAppStartUtc;
 
-    /// <summary><c>tracking.suggestApps</c> defaults to on when unset or unreadable.</summary>
-    public static bool SuggestionsEnabled(string? raw) => !bool.TryParse(raw, out var v) || v;
-
     /// <summary>
     /// Untracked running apps (tracked and ignored ones excluded, longest open first) when suggestions are on and any
     /// exist; otherwise null. Reuses the Running tab's rules.

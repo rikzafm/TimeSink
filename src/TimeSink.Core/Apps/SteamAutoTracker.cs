@@ -1,4 +1,4 @@
-using TimeSink.Core.Data;
+using TimeSink.Core.Settings;
 
 namespace TimeSink.Core.Apps;
 
@@ -9,15 +9,10 @@ namespace TimeSink.Core.Apps;
 /// </summary>
 public static class SteamAutoTracker
 {
-    public const string SettingKey = "steam.autoTrack";
-
-    /// <summary>On unless the setting is explicitly "false".</summary>
-    public static bool Enabled(string? raw) => !bool.TryParse(raw, out var v) || v;
-
     /// <summary>Scans <paramref name="steamRoot"/> and adds new games; returns how many were added.</summary>
     public static int Run(string dbPath, string? steamRoot, long nowUtc)
     {
-        if (!Enabled(SettingsStore.Get(dbPath, SettingKey))) return 0;
+        if (!AppSettings.ForFile(dbPath).Get(Setting.SteamAutoTrack)) return 0;
         using var lib = AppLibrary.Open(dbPath);
 
         var known = lib.Library().Select(a => a.ExePath).Concat(lib.MergedAliases().Select(a => a.ExePath)).Concat(lib.ExcludedFromRunning().Paths).ToList();
