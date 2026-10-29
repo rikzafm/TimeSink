@@ -127,6 +127,20 @@ public sealed class AlertEngineTests : IDisposable
     }
 
     [Fact]
+    public void A_merged_app_of_a_retired_main_app_is_watched_as_its_own_app()
+    {
+        var alias = _db.InsertApp(@"c:\chrome2.exe", "Chrome Beta", 0);
+        Sql($"UPDATE apps SET canonical_id = {_chrome} WHERE id = {alias}");
+        _db.SetAppState(_chrome, "retired", 1);
+        Goal(alias, "limit", 3600);
+        Usage(alias, "2026-03-11", 3600);
+
+        var n = _engine.Check(At(11, 14)).Should().ContainSingle().Subject;
+
+        n.Body.Should().Contain("Chrome Beta");
+    }
+
+    [Fact]
     public void Usage_on_other_days_does_not_count_and_the_switch_turns_alerts_off()
     {
         Goal(_chrome, "limit", 3600);
@@ -210,5 +224,19 @@ public sealed class AlertEngineTests : IDisposable
         _engine.Check(At(7, 9)).Should().BeEmpty(); // Saturday: still inside the week
         var n = _engine.Check(At(8, 9)).Should().ContainSingle().Subject; // Sunday
         n.Body.Should().Contain("1h 00m");
+    }
+
+    [Fact]
+    public void The_weekly_summary_names_a_merged_app_of_a_retired_main_app_as_its_own_app()
+    {
+        _db.SetSetting("alerts.weekly", "true");
+        var alias = _db.InsertApp(@"c:\chrome2.exe", "Chrome Beta", 0);
+        Sql($"UPDATE apps SET canonical_id = {_chrome} WHERE id = {alias}");
+        _db.SetAppState(_chrome, "retired", 1);
+        Usage(alias, "2026-03-04", 3600);
+
+        var n = _engine.Check(At(9, 9)).Should().ContainSingle().Subject;
+
+        n.Body.Should().Contain("1 app").And.Contain("Chrome Beta (1h 00m)");
     }
 }

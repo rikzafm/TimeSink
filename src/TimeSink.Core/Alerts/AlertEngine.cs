@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Apps;
 using TimeSink.Core.Data;
 using TimeSink.Core.Usage;
 
@@ -90,23 +91,20 @@ public sealed class AlertEngine(Db db, TimeZoneInfo zone)
         var usage = new Dictionary<long, long>();
         names = [];
         total = 0;
+        var groups = AppGroups.Load(db.Connection);
         using (var cmd = db.Connection.CreateCommand())
         {
-            cmd.CommandText = """
-                SELECT COALESCE(a.canonical_id, a.id), SUM(d.seconds)
-                FROM daily_usage d JOIN apps a ON a.id = d.app_id
-                WHERE d.day = $day AND a.state = 'tracked' GROUP BY 1
-                """;
+            cmd.CommandText = "SELECT app_id, seconds FROM daily_usage WHERE day = $day";
             cmd.Parameters.AddWithValue("$day", day);
             using var r = cmd.ExecuteReader();
-            while (r.Read()) { usage[r.GetInt64(0)] = r.GetInt64(1); total += r.GetInt64(1); }
+            while (r.Read())
+            {
+                if (!groups.TryGetValue(r.GetInt64(0), out var app)) continue; // retired or unknown
+                usage[app.Group] = usage.GetValueOrDefault(app.Group) + r.GetInt64(1);
+                total += r.GetInt64(1);
+            }
         }
-        using (var cmd = db.Connection.CreateCommand())
-        {
-            cmd.CommandText = "SELECT id, display_name FROM apps WHERE state = 'tracked'";
-            using var r = cmd.ExecuteReader();
-            while (r.Read()) names[r.GetInt64(0)] = r.GetString(1);
-        }
+        foreach (var app in groups.Values) names[app.Id] = app.Name;
         return usage;
     }
 
@@ -132,31 +130,24 @@ public sealed class AlertEngine(Db db, TimeZoneInfo zone)
         var perApp = new Dictionary<long, long>();
         var perDay = new Dictionary<string, long>();
         var names = new Dictionary<long, string>();
+        var groups = AppGroups.Load(db.Connection);
         using (var cmd = db.Connection.CreateCommand())
         {
-            cmd.CommandText = """
-                SELECT COALESCE(a.canonical_id, a.id), d.day, d.seconds
-                FROM daily_usage d JOIN apps a ON a.id = d.app_id
-                WHERE a.state = 'tracked' AND d.day >= $from AND d.day < $to
-                """;
+            cmd.CommandText = "SELECT app_id, day, seconds FROM daily_usage WHERE day >= $from AND day < $to";
             cmd.Parameters.AddWithValue("$from", from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
             cmd.Parameters.AddWithValue("$to", marker);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
-                perApp[r.GetInt64(0)] = perApp.GetValueOrDefault(r.GetInt64(0)) + r.GetInt64(2);
+                if (!groups.TryGetValue(r.GetInt64(0), out var app)) continue; // retired or unknown
+                perApp[app.Group] = perApp.GetValueOrDefault(app.Group) + r.GetInt64(2);
                 perDay[r.GetString(1)] = perDay.GetValueOrDefault(r.GetString(1)) + r.GetInt64(2);
             }
         }
         var total = perApp.Values.Sum();
         if (total <= 0) return;
 
-        using (var cmd = db.Connection.CreateCommand())
-        {
-            cmd.CommandText = "SELECT id, display_name FROM apps";
-            using var r = cmd.ExecuteReader();
-            while (r.Read()) names[r.GetInt64(0)] = r.GetString(1);
-        }
+        foreach (var app in groups.Values) names[app.Id] = app.Name;
         var top = perApp.OrderByDescending(p => p.Value).ThenBy(p => p.Key).First();
         var best = perDay.OrderByDescending(p => p.Value).ThenBy(p => p.Key, StringComparer.Ordinal).First();
         var bestDay = DateOnly.ParseExact(best.Key, "yyyy-MM-dd", CultureInfo.InvariantCulture).DayOfWeek;
