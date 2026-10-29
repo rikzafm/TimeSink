@@ -26,7 +26,7 @@ public sealed class RetireRestoreTests
         new SqliteSessionStore(db).GetTrackedApps().Select(t => t.Id).Should().Equal(b);
         using var lib2 = AppLibrary.Open(f.DbPath);
         lib2.Retired().Should().ContainSingle().Which.Should().Be(new RetiredApp(a, @"c:\alpha.exe", "Alpha", 1_000));
-        lib2.Library().Select(x => (x.DisplayName, x.State)).Should().BeEquivalentTo([("Alpha", "retired"), ("Beta", "tracked")]);
+        lib2.Library().Select(x => (x.DisplayName, x.State)).Should().BeEquivalentTo([("Alpha", AppState.Retired), ("Beta", AppState.Tracked)]);
 
         using var cmd = db.Connection.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*) FROM sessions WHERE app_id = " + a;

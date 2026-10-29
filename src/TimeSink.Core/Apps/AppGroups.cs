@@ -4,6 +4,14 @@ namespace TimeSink.Core.Apps;
 
 public enum AppState { Tracked, Retired }
 
+/// <summary>The <c>apps.state</c> column's text, kept at the SQL edge.</summary>
+internal static class AppStates
+{
+    public static AppState Parse(string state) => state == "retired" ? AppState.Retired : AppState.Tracked;
+
+    public static string Sql(AppState state) => state == AppState.Retired ? "retired" : "tracked";
+}
+
 /// <summary>An app as the readers of <c>apps</c> see it. <c>Group</c> is the Main app id its time counts under (a Main app is its own group).</summary>
 internal sealed record GroupedApp(long Id, long Group, string Name, long AddedUtc, bool Background = false, AppKind Kind = AppKind.Other,
     AppState State = AppState.Tracked, long RetiredUtc = 0, string ExePath = "")
@@ -58,7 +66,7 @@ internal sealed class AppGroups
         var rows = new List<GroupedApp>();
         while (r.Read()) rows.Add(new GroupedApp(r.GetInt64(0), r.GetInt64(1), r.GetString(2), r.GetInt64(3), r.GetInt64(4) != 0,
             AppKinds.Resolve(r.IsDBNull(6) ? null : r.GetInt64(6), r.GetString(5), r.GetString(2)),
-            r.GetString(7) == "retired" ? AppState.Retired : AppState.Tracked, r.IsDBNull(8) ? 0 : r.GetInt64(8), r.GetString(5)));
+            AppStates.Parse(r.GetString(7)), r.IsDBNull(8) ? 0 : r.GetInt64(8), r.GetString(5)));
         return From(rows);
     }
 }

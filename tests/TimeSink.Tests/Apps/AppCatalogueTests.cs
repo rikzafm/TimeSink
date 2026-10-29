@@ -404,8 +404,8 @@ public sealed class AppCatalogueTests : IDisposable
         var library = Catalogue().Library();
 
         library.Outcome.Should().Be(CatalogueOutcome.Done);
-        library.StateOf(@"C:\A\LIVE.EXE", null)!.State.Should().Be("tracked");
-        library.StateOf(@"c:\a\gone.exe", null)!.State.Should().Be("retired");
+        library.StateOf(@"C:\A\LIVE.EXE", null)!.State.Should().Be(AppState.Tracked);
+        library.StateOf(@"c:\a\gone.exe", null)!.State.Should().Be(AppState.Retired);
         library.StateOf(@"c:\a\never.exe", null).Should().BeNull();
     }
 
@@ -467,7 +467,7 @@ public sealed class AppCatalogueTests : IDisposable
         cat.AddApp(new NewApp(@"c:\b\fresh.exe", "Fresh", null), [9, 8]).Should().Be(CatalogueOutcome.Done);
 
         var app = cat.Library().StateOf(@"c:\b\fresh.exe", null)!;
-        app.State.Should().Be("tracked");
+        app.State.Should().Be(AppState.Tracked);
         using var lib = AppLibrary.Open(_path);
         lib.GetIcon(app.Id).Should().Equal(9, 8);
         cat.AddedCount.Should().Be(1);
@@ -482,11 +482,11 @@ public sealed class AppCatalogueTests : IDisposable
         var app = cat.Library().StateOf(@"c:\a\one.exe", null)!;
 
         cat.ApplyChange(AppChange.Retire(app)).Should().Be(CatalogueOutcome.Done);
-        cat.Library().StateOf(@"c:\a\one.exe", null)!.State.Should().Be("retired");
+        cat.Library().StateOf(@"c:\a\one.exe", null)!.State.Should().Be(AppState.Retired);
         cat.AddedCount.Should().Be(0);
 
         cat.ApplyChange(AppChange.Restore(app)).Should().Be(CatalogueOutcome.Done);
-        cat.Library().StateOf(@"c:\a\one.exe", null)!.Should().Match<LibraryApp>(a => a.Id == id && a.State == "tracked");
+        cat.Library().StateOf(@"c:\a\one.exe", null)!.Should().Match<LibraryApp>(a => a.Id == id && a.State == AppState.Tracked);
         cat.AddedCount.Should().Be(1);
     }
 
@@ -494,7 +494,7 @@ public sealed class AppCatalogueTests : IDisposable
     public void Adding_retiring_and_restoring_with_the_database_missing_give_an_outcome_and_change_nothing()
     {
         var cat = Catalogue(Path.Combine(_dir, "nope", "missing.db"));
-        var app = new LibraryApp(1, @"c:\a\one.exe", null, "One", "tracked", null);
+        var app = new LibraryApp(1, @"c:\a\one.exe", null, "One", AppState.Tracked, null);
 
         cat.AddApp(new NewApp(@"c:\a\one.exe", "One", null), null).Should().Be(CatalogueOutcome.Unavailable);
         cat.ApplyChange(AppChange.Retire(app)).Should().Be(CatalogueOutcome.Unavailable);
@@ -567,14 +567,14 @@ public sealed class AppCatalogueTests : IDisposable
         cat.ApplyChange(AppChange.Retire(MainEntry(main))).Should().Be(CatalogueOutcome.Done);
 
         cat.AddedCount.Should().Be(0);
-        cat.Library().StateOf(@"c:\a\main.exe", null)!.State.Should().Be("retired");
+        cat.Library().StateOf(@"c:\a\main.exe", null)!.State.Should().Be(AppState.Retired);
     }
 
     [Fact]
     public void Every_change_reports_a_missing_database()
     {
         var cat = Catalogue(Path.Combine(_dir, "nope", "missing.db"));
-        var app = new LibraryApp(1, @"c:\a\one.exe", null, "One", "tracked", null);
+        var app = new LibraryApp(1, @"c:\a\one.exe", null, "One", AppState.Tracked, null);
         var entry = new TrackedEntry(1, @"c:\a\one.exe", "One", 0, 0, []);
         AppChange[] changes =
         [

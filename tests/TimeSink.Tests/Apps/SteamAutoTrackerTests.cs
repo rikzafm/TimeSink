@@ -43,7 +43,7 @@ public sealed class SteamAutoTrackerTests : IDisposable
         SteamAutoTracker.Run(_db, _dir, 100).Should().Be(1);
         SteamAutoTracker.Run(_db, _dir, 200).Should().Be(0);
 
-        Library().Should().ContainSingle(a => a.DisplayName == "Hades" && a.State == "tracked");
+        Library().Should().ContainSingle(a => a.DisplayName == "Hades" && a.State == AppState.Tracked);
 
         Game(2, "Celeste");
         SteamAutoTracker.Run(_db, _dir, 300).Should().Be(1);
@@ -58,7 +58,7 @@ public sealed class SteamAutoTrackerTests : IDisposable
         using (var l = AppLibrary.Open(_db)) l.Retire(l.Library().Single().Id, 150);
 
         SteamAutoTracker.Run(_db, _dir, 200).Should().Be(0);
-        Library().Single().State.Should().Be("retired");
+        Library().Single().State.Should().Be(AppState.Retired);
     }
 
     [Fact]

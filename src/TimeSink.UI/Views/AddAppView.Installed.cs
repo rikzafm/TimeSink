@@ -222,7 +222,7 @@ public sealed partial class AddAppView
 
         var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         var n = new TextBlock { Text = name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
-        n.SetResourceReference(TextBlock.ForegroundProperty, lib is { State: "retired" } ? "Brush.TextMuted" : "Brush.Text");
+        n.SetResourceReference(TextBlock.ForegroundProperty, lib is { State: AppState.Retired } ? "Brush.TextMuted" : "Brush.Text");
         n.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         n.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
         texts.Children.Add(n);
@@ -237,7 +237,7 @@ public sealed partial class AddAppView
         }
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
-        if (lib is { State: "tracked" })
+        if (lib is { State: AppState.Tracked })
         {
             actions.Children.Add(KindSwitch(lib.Kind, () => SetKind(lib.Id, AppKinds.Next(lib.Kind), RenderInstalled)));
             actions.Children.Add(BackgroundSwitch(lib.Background, () => SetBackground(lib.Id, !lib.Background, RenderInstalled)));
@@ -245,7 +245,7 @@ public sealed partial class AddAppView
             stop.Click += (_, _) => Retire(lib);
             actions.Children.Add(stop);
         }
-        else if (lib is { State: "retired" })
+        else if (lib is { State: AppState.Retired })
         {
             var restore = ActionIcon(IconEyeClosed, PillStyle.Filled, AddAppStrings.Restore, AddAppStrings.Restore);
             restore.Click += (_, _) => Restore(lib);

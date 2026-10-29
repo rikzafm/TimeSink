@@ -15,7 +15,7 @@ public sealed class LibraryState
         Outcome = outcome;
         _library = library;
         _aliases = aliases;
-        Retired = library.Where(a => a.State == "retired" && !trivialRetired.Contains(a.Id)).OrderByDescending(a => a.RetiredUtc).ToList();
+        Retired = library.Where(a => a.State == AppState.Retired && !trivialRetired.Contains(a.Id)).OrderByDescending(a => a.RetiredUtc).ToList();
     }
 
     public CatalogueOutcome Outcome { get; }
@@ -34,7 +34,7 @@ public sealed class LibraryState
 
         return _library.FirstOrDefault(a => Same(a.ExePath, exePath))
             ?? KeeperOf(_aliases.FirstOrDefault(m => Same(m.ExePath, exePath)))
-            ?? (family is null ? null : _library.FirstOrDefault(a => a.State == "tracked" && Same(a.PackageFamily, family)))
+            ?? (family is null ? null : _library.FirstOrDefault(a => a.State == AppState.Tracked && Same(a.PackageFamily, family)))
             ?? (family is null ? null : KeeperOf(_aliases.FirstOrDefault(m => Same(m.PackageFamily, family))));
     }
 }

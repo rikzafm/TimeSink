@@ -5,7 +5,7 @@ namespace TimeSink.Core.Apps;
 
 public sealed record NewApp(string ExePath, string DisplayName, string? PackageFamily);
 
-public sealed record LibraryApp(long Id, string ExePath, string? PackageFamily, string DisplayName, string State, long? RetiredUtc, bool Background = false, AppKind Kind = AppKind.Other);
+public sealed record LibraryApp(long Id, string ExePath, string? PackageFamily, string DisplayName, AppState State, long? RetiredUtc, bool Background = false, AppKind Kind = AppKind.Other);
 
 public sealed record RetiredApp(long Id, string ExePath, string DisplayName, long RetiredUtc);
 
@@ -58,9 +58,9 @@ public sealed class AppLibrary : IDisposable
             if (r.Read())
             {
                 var id = r.GetInt64(0);
-                var state = r.GetString(1);
+                var state = AppStates.Parse(r.GetString(1));
                 r.Close();
-                if (state == "tracked")
+                if (state == AppState.Tracked)
                 {
                     tx.Commit();
                     return new AddResult(id, AddOutcome.AlreadyTracked);
@@ -93,15 +93,15 @@ public sealed class AppLibrary : IDisposable
     /// Stops tracking an app: history stays, totals and tracking stop. The Agent's per-tick reload closes any open
     /// session as 'removed' (engine behaviour, decision 39).
     /// </summary>
-    public void Retire(long appId, long nowUtc) => SetState(appId, "retired", nowUtc);
+    public void Retire(long appId, long nowUtc) => SetState(appId, AppState.Retired, nowUtc);
 
     /// <summary>Tracks a retired app again, counting from <paramref name="nowUtc"/>.</summary>
-    public void Restore(long appId, long nowUtc) => SetState(appId, "tracked", nowUtc);
+    public void Restore(long appId, long nowUtc) => SetState(appId, AppState.Tracked, nowUtc);
 
     // an app's merged aliases follow it, so stopping or restoring a merged app never leaves orphans behind
-    private void SetState(long appId, string state, long nowUtc)
+    private void SetState(long appId, AppState state, long nowUtc)
     {
-        using var cmd = Cmd(state == "retired"
+        using var cmd = Cmd(state == AppState.Retired
             ? "UPDATE apps SET state='retired', retired_utc=$t WHERE id=$id OR canonical_id=$id"
             : "UPDATE apps SET state='tracked', retired_utc=NULL, added_utc=$t WHERE id=$id OR canonical_id=$id");
         cmd.Parameters.AddWithValue("$t", nowUtc);
@@ -269,7 +269,7 @@ public sealed class AppLibrary : IDisposable
         using var cmd = Cmd("SELECT id, exe_path, package_family, display_name, state, retired_utc, is_background, kind FROM apps WHERE canonical_id IS NULL ORDER BY display_name COLLATE NOCASE");
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new LibraryApp(r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2), r.GetString(3), r.GetString(4),
+            list.Add(new LibraryApp(r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2), r.GetString(3), AppStates.Parse(r.GetString(4)),
                 r.IsDBNull(5) ? null : r.GetInt64(5), r.GetInt64(6) != 0,
                 AppKinds.Resolve(r.IsDBNull(7) ? null : r.GetInt64(7), r.GetString(1), r.GetString(3))));
         return list;
@@ -302,7 +302,7 @@ public sealed class AppLibrary : IDisposable
 
     /// <summary>Retired apps, most recently retired first.</summary>
     public IReadOnlyList<RetiredApp> Retired() =>
-        Library().Where(a => a.State == "retired")
+        Library().Where(a => a.State == AppState.Retired)
             .OrderByDescending(a => a.RetiredUtc)
             .Select(a => new RetiredApp(a.Id, a.ExePath, a.DisplayName, a.RetiredUtc ?? 0)).ToList();
 
