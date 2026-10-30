@@ -48,7 +48,6 @@ public static class StringKeys
     public const string SessionsToday = "sessionsToday";
     public const string SessionLine = "sessionLine";
     public const string SessionNow = "sessionNow";
-    public const string SessionToday = "sessionToday";
     public const string VsAverage = "vsAverage";
     public const string VsAverageNone = "vsAverageNone";
     public const string DialSessions = "dialSessions";
@@ -98,7 +97,7 @@ public static class StringKeys
         AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, Back, GamesOnly, StubComingSoon,
         TodayCaption, TodayCombined, TodayEarlyCaption,TodayEarlyHint, TodayEmpty, RunningPill, LegendAppsOpen, LegendTypical,
         LegendAsleep, TileFirstApp, TileLongest, TileVsYesterday, TileNone, TileLongestValue, TileVsYesterdayValue,
-        StatusRunning, StatusClosed, SessionsToday, SessionLine, SessionNow, SessionToday, VsAverage, VsAverageNone,
+        StatusRunning, StatusClosed, SessionsToday, SessionLine, SessionNow, VsAverage, VsAverageNone,
         DialSessions, DialLongest, DialAverage, DialBlips, DialLabel,
         WeekCaption, WeekLastCaption, WeekStreak, WeekStreakSub, WeekGridCaption, WeekEmpty, WeekVsLast, WeekAvg, WeekTrendCaption,
         .. MonthKeys,

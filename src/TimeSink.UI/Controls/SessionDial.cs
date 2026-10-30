@@ -120,7 +120,11 @@ public sealed class SessionDial : FrameworkElement
         dc.DrawEllipse(null, Ring(TrackBrush, InnerStroke), c, InnerRadius * k, InnerRadius * k);
 
         var outer = Ring(SegmentBrush, OuterStroke);
-        var dotted = new Pen(SegmentBrush, OuterStroke * k) { DashStyle = new DashStyle([0.17, 0.5], 0), StartLineCap = PenLineCap.Flat, EndLineCap = PenLineCap.Flat };
+        var dotted = new Pen(SegmentBrush, OuterStroke * k)
+        {
+            DashStyle = new DashStyle(new DoubleCollection { 0.17, 0.5 }, 0),
+            DashCap = PenLineCap.Flat, StartLineCap = PenLineCap.Flat, EndLineCap = PenLineCap.Flat,
+        };
         dotted.Freeze();
         var carried = false;
         if (Segments is not null)
@@ -142,7 +146,7 @@ public sealed class SessionDial : FrameworkElement
         if (carried)
         {
             var tick = new Pen(TickBrush, Math.Max(1.5, 1.5 * k * 1.6));
-            dc.DrawLine(tick, At(c, (OuterRadius - OuterStroke / 2 - 4) * k, 0), At(c, (OuterRadius + OuterStroke / 2 + 4) * k, 0));
+            dc.DrawLine(tick, At(c, (OuterRadius - OuterStroke / 2 - 4) * k, 0), At(c, (OuterRadius + OuterStroke / 2 + 1) * k, 0));
         }
 
         var total = Math.Clamp(TotalFraction, 0, 1);

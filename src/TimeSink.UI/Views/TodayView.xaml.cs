@@ -488,15 +488,9 @@ public partial class TodayView : UserControl, ILiveView
         var pillBorders = new List<Border>();
         foreach (var s in shown)
         {
-            var pill = Pill(s);
+            var pill = Pill(s, appBrush);
             pillBorders.Add(pill);
             pills.Children.Add(pill);
-            if (s.CarriesOver)
-            {
-                var note = new TextBlock { Text = Str(StringKeys.SessionToday, UsageText.HoursMinutes(s.Seconds)), Margin = new Thickness(0, 3, 10, 0), Style = (Style)FindResource("Small") };
-                note.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
-                pills.Children.Add(note);
-            }
         }
 
         link.ApplyDetails = () =>
@@ -561,7 +555,7 @@ public partial class TodayView : UserControl, ILiveView
     }
 
     /// <summary>One session as a rounded chip: time span, then its length; the open session reads in the accent colour.</summary>
-    private Border Pill(TodaySession s)
+    private Border Pill(TodaySession s, string appBrush)
     {
         // A session carried over from the day before reads with its real start and whole length, behind a moon.
         var span = new Run(Str(StringKeys.SessionLine, Clock(s.FullStartUtc), s.IsOpen ? Str(StringKeys.SessionNow) : Clock(s.EndUtc)) + " · ");
@@ -579,7 +573,7 @@ public partial class TodayView : UserControl, ILiveView
                 StrokeLineJoin = System.Windows.Media.PenLineJoin.Round, Stretch = System.Windows.Media.Stretch.Uniform, Width = 11, Height = 11, Margin = new Thickness(0, 0, 6, 0),
                 VerticalAlignment = VerticalAlignment.Center,
             };
-            moon.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Brush.Accent");
+            moon.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, appBrush);
             var row = new StackPanel { Orientation = Orientation.Horizontal };
             row.Children.Add(moon);
             row.Children.Add(text);

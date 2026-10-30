@@ -49,8 +49,25 @@ internal static class Program
         s_pipeName = PipeNames.For(scratch);
         s_db = Db.Open(dbPath);
 
+        SeedAutostart(dbPath);
         LowerPower();
         return RunMessageLoop();
+    }
+
+    // Not for `--db` scratch runs: tests must not write the real Run key.
+    private static void SeedAutostart(string dbPath)
+    {
+        if (Environment.GetEnvironmentVariable("TIMESINK_DB") is not null) return;
+        try
+        {
+            var exe = Environment.ProcessPath;
+            if (exe is null) return;
+            new Autostart(new RegistryRunKey(), exe).SeedDefault(new FileSettingsSource(dbPath));
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+        {
+            Log.Error(ex.Message);
+        }
     }
 
     /// <summary>implementation.md 6.6: below-normal priority and EcoQoS.</summary>

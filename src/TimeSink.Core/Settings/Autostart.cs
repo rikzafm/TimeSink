@@ -24,6 +24,14 @@ public sealed class Autostart(IRunKey key, string agentExePath)
         if (enabled) key.Set(ValueName, Command);
         else key.Remove(ValueName);
     }
+
+    /// <summary>First run: Start with Windows defaults to on. Once the setting has been stored (by this or by the toggle) the user's choice stands.</summary>
+    public void SeedDefault(ISettingsSource settings)
+    {
+        if (settings.Get(Setting.Startup.Key) is not null) return;
+        SetEnabled(Setting.Startup.Default);
+        settings.Set(Setting.Startup.Key, Setting.Startup.DefaultText);
+    }
 }
 
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
