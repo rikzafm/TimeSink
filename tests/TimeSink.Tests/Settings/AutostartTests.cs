@@ -56,7 +56,7 @@ public class AutostartTests
     {
         var key = new FakeRunKey();
         var settings = new FakeSettings();
-        new Autostart(key, Exe).SeedDefault(settings);
+        new Autostart(key, Exe).Reconcile(settings);
         key.Values.Should().ContainKey("TimeSink");
         settings.Values["startup.enabled"].Should().Be("true");
     }
@@ -67,8 +67,18 @@ public class AutostartTests
         var key = new FakeRunKey();
         var settings = new FakeSettings();
         settings.Values["startup.enabled"] = "false";
-        new Autostart(key, Exe).SeedDefault(settings);
+        new Autostart(key, Exe).Reconcile(settings);
         key.Values.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_reinstall_with_the_setting_on_registers_the_missing_entry()
+    {
+        var key = new FakeRunKey();
+        var settings = new FakeSettings();
+        settings.Values["startup.enabled"] = "true";
+        new Autostart(key, Exe).Reconcile(settings);
+        key.Values["TimeSink"].Should().Contain(Exe);
     }
 
     [Fact]

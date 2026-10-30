@@ -62,7 +62,7 @@ internal static class Program
         {
             var exe = Environment.ProcessPath;
             if (exe is null) return;
-            new Autostart(new RegistryRunKey(), exe).SeedDefault(new FileSettingsSource(dbPath));
+            new Autostart(new RegistryRunKey(), exe).Reconcile(new FileSettingsSource(dbPath));
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         {

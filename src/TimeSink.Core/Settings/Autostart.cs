@@ -25,12 +25,17 @@ public sealed class Autostart(IRunKey key, string agentExePath)
         else key.Remove(ValueName);
     }
 
-    /// <summary>First run: Start with Windows defaults to on. Once the setting has been stored (by this or by the toggle) the user's choice stands.</summary>
-    public void SeedDefault(ISettingsSource settings)
+    /// <summary>
+    /// Start with Windows defaults to on and the stored setting is the user's choice. While it is on, the Run value is
+    /// (re)written when missing or pointing elsewhere: uninstalling removes the value but keeps the database, so a
+    /// reinstall would otherwise show the setting on with nothing registered.
+    /// </summary>
+    public void Reconcile(ISettingsSource settings)
     {
-        if (settings.Get(Setting.Startup.Key) is not null) return;
-        SetEnabled(Setting.Startup.Default);
-        settings.Set(Setting.Startup.Key, Setting.Startup.DefaultText);
+        var stored = settings.Get(Setting.Startup.Key);
+        if (stored is null) settings.Set(Setting.Startup.Key, Setting.Startup.DefaultText);
+        if (!Setting.Startup.Parse(stored)) return;
+        if (key.Get(ValueName) != Command) SetEnabled(true);
     }
 }
 
