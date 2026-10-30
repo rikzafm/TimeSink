@@ -55,6 +55,25 @@ public sealed class TodayQueryTests : IDisposable
     }
 
     [Fact]
+    public void A_session_from_the_evening_before_keeps_its_real_start_and_whole_length_but_counts_only_todays_part()
+    {
+        var r = Run();
+        var carried = r.Apps[0].Sessions[0];
+        carried.CarriesOver.Should().BeTrue();
+        carried.BeganUtc.Should().Be(U(2026, 3, 10, 23));
+        carried.FullStartUtc.Should().Be(U(2026, 3, 10, 23));
+        carried.Seconds.Should().Be(1800);
+        carried.FullSeconds.Should().Be(5400);
+        r.DayFractionBefore(carried.FullStartUtc).Should().BeApproximately(23 / 24.0, 1e-9);
+        r.DayFractionBefore(U(2026, 3, 9, 20)).Should().Be(0); // more than a day back: the whole ring
+
+        var sameDay = r.Apps[0].Sessions[1];
+        sameDay.CarriesOver.Should().BeFalse();
+        sameDay.FullStartUtc.Should().Be(sameDay.StartUtc);
+        sameDay.FullSeconds.Should().Be(sameDay.Seconds);
+    }
+
+    [Fact]
     public void Hourly_buckets_count_app_seconds_per_hour_with_the_current_hour_partial()
     {
         var h = Run().Hours.Select(x => x.AppSeconds).ToArray();

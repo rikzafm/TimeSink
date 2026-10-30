@@ -65,7 +65,7 @@ public static class TodayQuery
             var groupSegs = g.ToList();
             var sessions = groupSegs.Where(s => UsageDays.Overlap(s, d0, d1) > 0 || (s.Open && s.End >= d0))
                 .OrderBy(s => s.Start)
-                .Select(s => new TodaySession(Math.Max(s.Start, d0), Math.Min(s.End, d1), s.Open && isToday)).ToList();
+                .Select(s => new TodaySession(Math.Max(s.Start, d0), Math.Min(s.End, d1), s.Open && isToday, s.Start < d0 ? s.Start : null)).ToList();
             var open = isToday ? groupSegs.Where(s => s.Open).ToList() : [];
             var seconds = groupSegs.Sum(s => UsageDays.Overlap(s, d0, d1));
             if (seconds == 0 && open.Count == 0) continue;

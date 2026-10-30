@@ -374,7 +374,7 @@ public partial class TodayView : UserControl, ILiveView
             link.Apply!();
             if (i < 0) { stripTip.IsOpen = false; return; }
             var s = row.Sessions[i];
-            stripTip.Content = $"{Clock(s.StartUtc)} – {(s.IsOpen ? Str(StringKeys.SessionNow) : Clock(s.EndUtc))} · {UsageText.HoursMinutes(s.Seconds)}";
+            stripTip.Content = $"{Clock(s.FullStartUtc)} – {(s.IsOpen ? Str(StringKeys.SessionNow) : Clock(s.EndUtc))} · {UsageText.HoursMinutes(s.FullSeconds)}";
             stripTip.HorizontalOffset = p.X + 8;
             stripTip.IsOpen = true;
         };
@@ -450,6 +450,7 @@ public partial class TodayView : UserControl, ILiveView
         {
             Width = DialSize, Height = DialSize, VerticalAlignment = VerticalAlignment.Top,
             Segments = shown.Select(s => (r.DayFraction(s.StartUtc), r.DayFraction(s.EndUtc))).ToList(),
+            Tails = shown.Select(s => s.CarriesOver ? (double?)r.DayFractionBefore(s.FullStartUtc) : null).ToList(),
             NowFraction = _day is null ? r.DayFraction(r.NowUtc) : null,
             TotalFraction = detail.TotalFraction,
             AverageFraction = detail.AverageFraction,
@@ -485,7 +486,18 @@ public partial class TodayView : UserControl, ILiveView
 
         var pills = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
         var pillBorders = new List<Border>();
-        foreach (var s in shown) { var pill = Pill(s); pillBorders.Add(pill); pills.Children.Add(pill); }
+        foreach (var s in shown)
+        {
+            var pill = Pill(s);
+            pillBorders.Add(pill);
+            pills.Children.Add(pill);
+            if (s.CarriesOver)
+            {
+                var note = new TextBlock { Text = Str(StringKeys.SessionToday, UsageText.HoursMinutes(s.Seconds)), Margin = new Thickness(0, 3, 10, 0), Style = (Style)FindResource("Small") };
+                note.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+                pills.Children.Add(note);
+            }
+        }
 
         link.ApplyDetails = () =>
         {
@@ -551,13 +563,29 @@ public partial class TodayView : UserControl, ILiveView
     /// <summary>One session as a rounded chip: time span, then its length; the open session reads in the accent colour.</summary>
     private Border Pill(TodaySession s)
     {
-        var span = new Run(Str(StringKeys.SessionLine, Clock(s.StartUtc), s.IsOpen ? Str(StringKeys.SessionNow) : Clock(s.EndUtc)) + " · ");
-        var dur = new Run(UsageText.HoursMinutes(s.Seconds)) { FontWeight = FontWeights.SemiBold };
+        // A session carried over from the day before reads with its real start and whole length, behind a moon.
+        var span = new Run(Str(StringKeys.SessionLine, Clock(s.FullStartUtc), s.IsOpen ? Str(StringKeys.SessionNow) : Clock(s.EndUtc)) + " · ");
+        var dur = new Run(UsageText.HoursMinutes(s.FullSeconds)) { FontWeight = FontWeights.SemiBold };
         var text = new TextBlock { Style = (Style)FindResource("Small") };
         text.Inlines.Add(span);
         text.Inlines.Add(dur);
         if (s.IsOpen) text.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
-        var pill = new Border { Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 6, 6), Child = text };
+        UIElement content = text;
+        if (s.CarriesOver)
+        {
+            var moon = new System.Windows.Shapes.Path
+            {
+                Data = System.Windows.Media.Geometry.Parse("M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"), StrokeThickness = 2,
+                StrokeLineJoin = System.Windows.Media.PenLineJoin.Round, Stretch = System.Windows.Media.Stretch.Uniform, Width = 11, Height = 11, Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            moon.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Brush.Accent");
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(moon);
+            row.Children.Add(text);
+            content = row;
+        }
+        var pill = new Border { Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 6, 6), Child = content };
         pill.SetResourceReference(Border.BorderBrushProperty, s.IsOpen ? "Brush.Accent" : "Brush.Border");
         pill.SetResourceReference(Border.BorderThicknessProperty, "Thickness.Border");
         pill.SizeChanged += (_, e) => pill.CornerRadius = new CornerRadius(e.NewSize.Height / 2); // as RunningPill: WPF does not clamp

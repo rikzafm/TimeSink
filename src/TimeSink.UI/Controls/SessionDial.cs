@@ -18,6 +18,7 @@ public sealed class SessionDial : FrameworkElement
             new FrameworkPropertyMetadata(def, FrameworkPropertyMetadataOptions.AffectsRender));
 
     public static readonly DependencyProperty SegmentsProperty = Reg<IReadOnlyList<(double Start, double End)>?>(nameof(Segments));
+    public static readonly DependencyProperty TailsProperty = Reg<IReadOnlyList<double?>?>(nameof(Tails));
     public static readonly DependencyProperty NowFractionProperty = Reg<double?>(nameof(NowFraction));
     public static readonly DependencyProperty TotalFractionProperty = Reg<double>(nameof(TotalFraction));
     public static readonly DependencyProperty AverageFractionProperty = Reg<double?>(nameof(AverageFraction));
@@ -31,6 +32,11 @@ public sealed class SessionDial : FrameworkElement
     public static readonly DependencyProperty NumberFontProperty = Reg<FontFamily?>(nameof(NumberFont));
 
     public IReadOnlyList<(double Start, double End)>? Segments { get => (IReadOnlyList<(double, double)>?)GetValue(SegmentsProperty); set => SetValue(SegmentsProperty, value); }
+    /// <summary>
+    /// Per segment, where its part before midnight began (0 to 1, drawn dotted from there round to the top); null for a
+    /// session that started within the day. Same length as <see cref="Segments"/>.
+    /// </summary>
+    public IReadOnlyList<double?>? Tails { get => (IReadOnlyList<double?>?)GetValue(TailsProperty); set => SetValue(TailsProperty, value); }
     /// <summary>Wall-clock position of now (0 to 1); null on a past day.</summary>
     public double? NowFraction { get => (double?)GetValue(NowFractionProperty); set => SetValue(NowFractionProperty, value); }
     /// <summary>App time as a share of the day (0 to 1).</summary>
@@ -69,7 +75,10 @@ public sealed class SessionDial : FrameworkElement
         if (f < 0) f += 1;
         var slop = MinSweep(k);
         for (var i = 0; i < Segments.Count; i++)
+        {
             if (f >= Segments[i].Start - slop && f <= Math.Max(Segments[i].End, Segments[i].Start + 2 * slop) + slop) return i;
+            if (TailOf(i) is { } tail && f >= tail) return i;
+        }
         return -1;
     }
 
@@ -111,15 +120,30 @@ public sealed class SessionDial : FrameworkElement
         dc.DrawEllipse(null, Ring(TrackBrush, InnerStroke), c, InnerRadius * k, InnerRadius * k);
 
         var outer = Ring(SegmentBrush, OuterStroke);
+        var dotted = new Pen(SegmentBrush, OuterStroke * k) { DashStyle = new DashStyle([0.17, 0.5], 0), StartLineCap = PenLineCap.Flat, EndLineCap = PenLineCap.Flat };
+        dotted.Freeze();
+        var carried = false;
         if (Segments is not null)
             for (var i = 0; i < Segments.Count; i++)
             {
                 var (s, e) = Segments[i];
                 var dim = HighlightIndex >= 0 && i != HighlightIndex;
                 if (dim) dc.PushOpacity(0.35);
+                if (TailOf(i) is { } tail)
+                {
+                    carried = true;
+                    dc.PushOpacity(0.75);
+                    Arc(dc, dotted, c, OuterRadius * k, tail, 1);
+                    dc.Pop();
+                }
                 Arc(dc, outer, c, OuterRadius * k, s, Math.Max(e, s + MinSweep(k)));
                 if (dim) dc.Pop();
             }
+        if (carried)
+        {
+            var tick = new Pen(TickBrush, Math.Max(1.5, 1.5 * k * 1.6));
+            dc.DrawLine(tick, At(c, (OuterRadius - OuterStroke / 2 - 4) * k, 0), At(c, (OuterRadius + OuterStroke / 2 + 4) * k, 0));
+        }
 
         var total = Math.Clamp(TotalFraction, 0, 1);
         if (total > 0)
@@ -159,6 +183,8 @@ public sealed class SessionDial : FrameworkElement
             dc.DrawText(t, new Point(c.X - t.Width / 2, c.Y - t.Height / 2));
         }
     }
+
+    private double? TailOf(int i) => Tails is { } t && i < t.Count ? t[i] : null;
 
     /// <summary>Shortest arc worth drawing (about one device pixel on the outer ring), so a short session never vanishes.</summary>
     private static double MinSweep(double k) => 1.5 / (2 * Math.PI * OuterRadius * k);

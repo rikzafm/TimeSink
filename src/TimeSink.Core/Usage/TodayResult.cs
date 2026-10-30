@@ -1,9 +1,21 @@
 namespace TimeSink.Core.Usage;
 
-/// <summary>A span of one local day (UTC unix seconds), already clipped to that day.</summary>
-public sealed record TodaySession(long StartUtc, long EndUtc, bool IsOpen)
+/// <summary>
+/// A span of one local day (UTC unix seconds), already clipped to that day. <paramref name="BeganUtc"/> is where the whole
+/// Session really started when that was before the day began (a carry-over from the day before); null otherwise.
+/// </summary>
+public sealed record TodaySession(long StartUtc, long EndUtc, bool IsOpen, long? BeganUtc = null)
 {
+    /// <summary>Time inside this day.</summary>
     public long Seconds => Math.Max(0, EndUtc - StartUtc);
+
+    public bool CarriesOver => BeganUtc is { } b && b < StartUtc;
+
+    /// <summary>The Session's start, including the part before this day.</summary>
+    public long FullStartUtc => CarriesOver ? BeganUtc!.Value : StartUtc;
+
+    /// <summary>The whole Session's length, including the part before this day.</summary>
+    public long FullSeconds => Math.Max(0, EndUtc - FullStartUtc);
 }
 
 public sealed record SleepBand(long StartUtc, long EndUtc);
@@ -57,6 +69,16 @@ public sealed record TodayResult(
     {
         var wall = TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(utc), Zone).DateTime;
         return Math.Clamp((wall - Date.ToDateTime(TimeOnly.MinValue)).TotalSeconds / 86400.0, 0, 1);
+    }
+
+    /// <summary>
+    /// Where an instant before the day started falls on the 24 h dial, as the same wall-clock position it had on its own day
+    /// (22:10 the evening before is 0.924); one more than a day back clamps to 0, the whole ring.
+    /// </summary>
+    public double DayFractionBefore(long utc)
+    {
+        var wall = TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(utc), Zone).DateTime;
+        return Math.Clamp(1 + (wall - Date.ToDateTime(TimeOnly.MinValue)).TotalSeconds / 86400.0, 0, 1);
     }
 
     /// <summary>Seconds from the snapshot to <paramref name="nowUtc"/>, never negative.</summary>
