@@ -194,9 +194,9 @@ public sealed class WeekView : UserControl, ILiveView
             1 => Str(StringKeys.WeekLastCaption),
             _ => $"{UsageText.ShortDate(r.Days[0].Date)} – {UsageText.ShortDate(r.Days[^1].Date)}",
         };
-        var nav = Navigator(r);
-        _prev.IsEnabled = nav.CanPrev(r.WeekStartDate);
-        _next.IsEnabled = nav.CanNext(r.WeekStartDate);
+        var browse = new WeekBrowse(r);
+        _prev.IsEnabled = browse.CanEarlier;
+        _next.IsEnabled = browse.CanLater;
         _total.Text = UsageText.HoursMinutes(r.TotalSeconds);
         _streak.Text = Str(StringKeys.WeekStreak, r.StreakDays);
         _columns.Days = r.Days;
@@ -217,17 +217,13 @@ public sealed class WeekView : UserControl, ILiveView
         }
     }
 
-    /// <summary>Week navigation between the first tracked week and this one, for the week the result shows.</summary>
-    private static PeriodNavigator Navigator(WeekResult r) =>
-        new(PeriodUnit.Week, r.FirstTracked ?? r.Today, r.Today, r.WeekStartDate.DayOfWeek);
-
     /// <summary>Steps to the week before (<paramref name="delta"/> 1) or after (-1) the shown one; does nothing at either end.</summary>
     private void Navigate(int delta)
     {
         if (_result is not { } r) return;
-        var nav = Navigator(r);
-        if (delta > 0 ? !nav.CanPrev(r.WeekStartDate) : !nav.CanNext(r.WeekStartDate)) return;
-        _weeksBack = nav.WeeksBack(nav.Step(r.WeekStartDate, -delta));
+        var browse = new WeekBrowse(r);
+        if ((delta > 0 ? browse.Earlier() : browse.Later()) is not { } target) return;
+        _weeksBack = target;
         ClosePanel();
         Refresh();
     }
@@ -284,22 +280,16 @@ public sealed class WeekView : UserControl, ILiveView
         tip.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
     }
 
-    /// <summary>First day of the week behind trend bar <paramref name="i"/>: the strip is anchored to the current week and runs oldest first.</summary>
-    private static DateOnly TrendWeekStart(WeekResult r, int i) => Navigator(r).WeekAnchor(r.WeekTotals.Count - 1 - i);
-
     private void OnTrendHovered(int i, Point _)
     {
         if (i < 0 || _result is not { } r) { _trendTip.IsOpen = false; return; }
-        var from = TrendWeekStart(r, i);
+        var from = new WeekBrowse(r).TrendBarStart(i);
         _trendTip.Content = $"{UsageText.ShortDate(from)} – {UsageText.ShortDate(from.AddDays(6))}{Environment.NewLine}{UsageText.HoursMinutes(r.WeekTotals[i])}";
     }
 
     private void OnTrendClicked(int i)
     {
-        if (_result is not { } r) return;
-        var nav = Navigator(r);
-        var target = nav.WeeksBack(nav.WeekAnchor(r.WeekTotals.Count - 1 - i));
-        if (target == _weeksBack) return;
+        if (_result is not { } r || new WeekBrowse(r).TrendBar(i) is not { } target) return;
         _weeksBack = target;
         ClosePanel();
         Refresh();
@@ -320,15 +310,14 @@ public sealed class WeekView : UserControl, ILiveView
     private async Task ShowDayPanel(DateOnly day, WeekAppRow? focus)
     {
         if (_result is not { } r) return;
-        var index = r.Days.ToList().FindIndex(d => d.Date == day);
-        if (index < 0)
+        if (new WeekBrowse(r).OnDayClicked(day).LoadWeeksBack is { } load)
         {
-            _weeksBack = Navigator(r).WeeksBack(day);
+            _weeksBack = load;
             _pendingDay = (day, focus?.AppId);
             Refresh();
             return;
         }
-        _columns.SelectedIndex = index;
+        _columns.SelectedIndex = r.Days.ToList().FindIndex(d => d.Date == day);
         Focus();
         var seq = ++_panelSeq;
         DayDetail? loaded = null;
