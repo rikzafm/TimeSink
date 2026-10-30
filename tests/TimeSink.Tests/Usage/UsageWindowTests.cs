@@ -51,6 +51,36 @@ public sealed class UsageWindowTests
     private static UsageContext Context(IReadOnlyCollection<long>? running = null, bool gamesOnly = false) =>
         new(Now, TimeZoneInfo.Utc, running, () => null, () => WeekStart.Mon, gamesOnly);
 
+    [Fact]
+    public void Over_a_context_with_no_database_is_an_error_not_an_empty_window()
+    {
+        var act = () => UsageWindow.Over(Context(), _ => 0);
+
+        act.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void Today_is_the_Local_day_of_now_in_the_zone_through_a_daylight_saving_change()
+    {
+        var ny = TimeZoneInfo.FindSystemTimeZoneById(OperatingSystem.IsWindows() ? "Eastern Standard Time" : "America/New_York");
+        // Spring forward 2026-03-08 02:00 and fall back 2026-11-01 02:00, with the minutes either side of local midnight.
+        var instants = new[]
+        {
+            new DateTimeOffset(2026, 3, 8, 6, 59, 59, TimeSpan.Zero), new DateTimeOffset(2026, 3, 8, 7, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 3, 9, 3, 59, 59, TimeSpan.Zero), new DateTimeOffset(2026, 3, 9, 4, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 11, 1, 5, 59, 59, TimeSpan.Zero), new DateTimeOffset(2026, 11, 1, 6, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 11, 2, 4, 59, 59, TimeSpan.Zero), new DateTimeOffset(2026, 11, 2, 5, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 3, 11, 14, 20, 0, 500, TimeSpan.Zero),
+        };
+
+        foreach (var now in instants)
+        {
+            var window = new UsageWindow(new InMemoryUsageSource(), new UsageContext(now, ny, null, () => null, () => WeekStart.Mon, false));
+
+            window.Today.Should().Be(DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, ny).DateTime), $"at {now:O}");
+        }
+    }
+
     private static InMemoryUsageSource Source() =>
         new InMemoryUsageSource()
             .App(1, "Chrome", At(1, 0))

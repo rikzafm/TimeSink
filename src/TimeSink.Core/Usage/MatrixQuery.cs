@@ -22,18 +22,14 @@ public static class MatrixQuery
         return pct < 30 * best ? 0 : pct < 55 * best ? 1 : pct < 75 * best ? 2 : pct < 90 * best ? 3 : 4;
     }
 
-    public static MatrixResult Run(UsageContext context)
-    {
-        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
-        return Run(new UsageWindow(new SqliteUsageSource(c), context));
-    }
+    public static MatrixResult Run(UsageContext context) => UsageWindow.Over(context, Run);
 
     internal static MatrixResult Run(UsageWindow window)
     {
         var context = window.Context;
         var (now, zone, gamesOnly, onSinceUtc) = (context.Now, context.Zone, context.GamesOnly, context.SignInUtc);
         var nowUtc = now.ToUnixTimeSeconds();
-        var today = LocalDays.DateOf(nowUtc, zone);
+        var today = window.Today;
         var year = today.Year;
         var apps = window.Apps;
         var started = TrackingStart.Of(apps, zone).FirstDay;

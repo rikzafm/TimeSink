@@ -19,17 +19,14 @@ public static class AppDetailQuery
         return pct <= 25 * peak ? 1 : pct <= 50 * peak ? 2 : pct <= 75 * peak ? 3 : 4;
     }
 
-    public static AppDetailResult? Run(UsageContext context, long appId, int year)
-    {
-        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
-        return Run(new UsageWindow(new SqliteUsageSource(c), context), appId, year);
-    }
+    public static AppDetailResult? Run(UsageContext context, long appId, int year) =>
+        UsageWindow.Over(context, w => Run(w, appId, year));
 
     internal static AppDetailResult? Run(UsageWindow window, long appId, int year)
     {
-        var (now, zone) = (window.Context.Now, window.Context.Zone);
+        var zone = window.Context.Zone;
         var nowUtc = window.NowUtc;
-        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        var today = window.Today;
 
         // Retired apps are loaded so a retired alias of this app still counts, as it does on the All tab.
         var apps = window.AllApps;

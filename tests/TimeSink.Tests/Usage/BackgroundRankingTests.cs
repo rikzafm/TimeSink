@@ -36,7 +36,7 @@ public sealed class BackgroundRankingTests : IDisposable
     {
         FlagChrome();
 
-        var month = Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 3, DayOfWeek.Monday);
+        var month = Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 3, WeekStart.Mon);
         month.TopApps.Last().Name.Should().Be("Chrome");
 
         var wrapped = Q.Wrapped(_f.DbPath, Now, TimeZoneInfo.Utc);

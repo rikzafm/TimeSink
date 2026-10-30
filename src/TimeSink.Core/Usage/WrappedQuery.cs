@@ -18,18 +18,14 @@ public static class WrappedQuery
     private const int OthersSize = 3;
 
 
-    public static WrappedResult Run(UsageContext context)
-    {
-        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
-        return Run(new UsageWindow(new SqliteUsageSource(c), context));
-    }
+    public static WrappedResult Run(UsageContext context) => UsageWindow.Over(context, Run);
 
     internal static WrappedResult Run(UsageWindow window)
     {
         var context = window.Context;
         var (now, zone, gamesOnly, onSinceUtc) = (context.Now, context.Zone, context.GamesOnly, context.SignInUtc);
         var nowUtc = now.ToUnixTimeSeconds();
-        var today = LocalDays.DateOf(nowUtc, zone);
+        var today = window.Today;
         var year = today.Year;
         var yearStart = LocalDays.StartOf(new DateOnly(year, 1, 1), zone);
         var windowStart = LocalDays.StartOf(new DateOnly(year - 1, 12, 1), zone); // December feeds January's month delta

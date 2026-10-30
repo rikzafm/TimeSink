@@ -18,11 +18,7 @@ public static class MonthQuery
     /// <summary>The <c>week.start</c> setting (Mon / Sun / Sat); anything else is Monday.</summary>
     public static DayOfWeek ParseWeekStart(string? value) => WeekStarts.Parse(value).ToDayOfWeek();
 
-    public static MonthResult Run(UsageContext context, int year, int month)
-    {
-        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
-        return Run(new UsageWindow(new SqliteUsageSource(c), context), year, month);
-    }
+    public static MonthResult Run(UsageContext context, int year, int month) => UsageWindow.Over(context, w => Run(w, year, month));
 
     internal static MonthResult Run(UsageWindow window, int year, int month)
     {
@@ -30,7 +26,7 @@ public static class MonthQuery
         var (now, zone, gamesOnly) = (context.Now, context.Zone, context.GamesOnly);
         var (weekStart, onSinceUtc) = (context.WeekStartDay, context.SignInUtc);
         var nowUtc = now.ToUnixTimeSeconds();
-        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        var today = window.Today;
         var first = new DateOnly(year, month, 1);
         var dim = DateTime.DaysInMonth(year, month);
         var isCurrent = today.Year == year && today.Month == month;

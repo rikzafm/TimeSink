@@ -9,7 +9,7 @@ public sealed class MonthExportTests : IDisposable
     private readonly MonthFixture _f = new();
     public void Dispose() => _f.Dispose();
 
-    private MonthResult March() => Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 3, DayOfWeek.Monday);
+    private MonthResult March() => Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 3, WeekStart.Mon);
 
     [Fact]
     public void Csv_has_one_row_per_day_and_app_with_RFC4180_quoting()
@@ -54,7 +54,7 @@ public sealed class MonthExportTests : IDisposable
     [Fact]
     public void An_empty_month_exports_just_the_header()
     {
-        var r = Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 4, DayOfWeek.Monday);
+        var r = Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 4, WeekStart.Mon);
         MonthExport.ToCsv(r).Should().Be("date,app,seconds\r\n");
     }
 }

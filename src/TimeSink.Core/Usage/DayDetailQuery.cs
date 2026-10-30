@@ -20,17 +20,13 @@ public sealed record DayDetail(
 /// </summary>
 public static class DayDetailQuery
 {
-    public static DayDetail Run(UsageContext context, DateOnly day)
-    {
-        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
-        return Run(new UsageWindow(new SqliteUsageSource(c), context), day);
-    }
+    public static DayDetail Run(UsageContext context, DateOnly day) => UsageWindow.Over(context, w => Run(w, day));
 
     /// <remarks>Week runs first: it reads furthest back, so Today's two runs are answered from the sessions already loaded.</remarks>
     internal static DayDetail Run(UsageWindow window, DateOnly day)
     {
         var (now, zone) = (window.Context.Now, window.Context.Zone);
-        var today = LocalDays.DateOf(now.ToUnixTimeSeconds(), zone);
+        var today = window.Today;
         var dow = window.Context.WeekStartDay;
         var weeksBack = Math.Max(0, (WeekStarts.Containing(today, dow).DayNumber - WeekStarts.Containing(day, dow).DayNumber) / 7);
 

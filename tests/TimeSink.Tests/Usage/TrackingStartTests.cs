@@ -68,7 +68,7 @@ public sealed class TrackingStartTests : IDisposable
             Session(app, U(2026, 3, 6, 10), U(2026, 3, 6, 11));   // 3600
             Session(app, U(2026, 3, 10, 10), U(2026, 3, 10, 12)); // 7200
         }
-        var r = Q.Month(_db, Utc(2026, 3, 11, 14, 20), TimeZoneInfo.Utc, 2026, 3, DayOfWeek.Monday, Array.Empty<long>());
+        var r = Q.Month(_db, Utc(2026, 3, 11, 14, 20), TimeZoneInfo.Utc, 2026, 3, WeekStart.Mon, Array.Empty<long>());
         r.DaysCounted.Should().Be(11);
         r.TotalSeconds.Should().Be(10800);
         r.DailyAverageSeconds.Should().BeApproximately(10800 / 6.0, 1e-9); // Mar 6..11, not Mar 1..11

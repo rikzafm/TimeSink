@@ -17,8 +17,7 @@ public static class YearQuery
 
     public static YearResult Run(UsageContext context)
     {
-        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
-        return Run(new UsageWindow(new SqliteUsageSource(c), context));
+        return UsageWindow.Over(context, Run);
     }
 
     internal static YearResult Run(UsageWindow window)
@@ -26,7 +25,7 @@ public static class YearQuery
         var context = window.Context;
         var (now, zone, gamesOnly, onSinceUtc) = (context.Now, context.Zone, context.GamesOnly, context.SignInUtc);
         var nowUtc = now.ToUnixTimeSeconds();
-        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        var today = window.Today;
         var year = today.Year;
         var cur = MonthKey.Of(today);
         var firstMonth = new MonthKey(year, 1).AddMonths(-(RecentMonths - 1)); // two earlier months feed the "last 3 months" and January's delta

@@ -8,7 +8,7 @@ public sealed class MonthQueryTests : IDisposable
     private readonly MonthFixture _f = new();
     public void Dispose() => _f.Dispose();
 
-    private MonthResult March(DayOfWeek start = DayOfWeek.Monday, TimeZoneInfo? zone = null, IReadOnlyCollection<long>? running = null) =>
+    private MonthResult March(WeekStart start = WeekStart.Mon, TimeZoneInfo? zone = null, IReadOnlyCollection<long>? running = null) =>
         Q.Month(_f.DbPath, Now, zone ?? TimeZoneInfo.Utc, 2026, 3, start, running);
 
     private static MonthDay Day(MonthResult r, int d) => r.Days.Single(x => x.Date.Day == d);
@@ -82,13 +82,13 @@ public sealed class MonthQueryTests : IDisposable
     public void Default_selected_day_is_today_for_the_current_month_and_the_last_day_otherwise()
     {
         March().DefaultSelected.Should().Be(new DateOnly(2026, 3, 11));
-        Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 2, DayOfWeek.Monday).DefaultSelected.Should().Be(new DateOnly(2026, 2, 28));
+        Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 2, WeekStart.Mon).DefaultSelected.Should().Be(new DateOnly(2026, 2, 28));
     }
 
     [Fact]
     public void Monday_first_grid_pads_leading_blanks_and_totals_each_week()
     {
-        var r = March(DayOfWeek.Monday);
+        var r = March(WeekStart.Mon);
         r.Weeks.Should().HaveCount(6);
         r.Weeks[0].Days.Select(d => d?.Date.Day).Should().Equal(null, null, null, null, null, null, 1);
         r.Weeks[0].TotalSeconds.Should().Be(1800);
@@ -102,7 +102,7 @@ public sealed class MonthQueryTests : IDisposable
     [Fact]
     public void Sunday_first_grid_starts_on_the_first_with_no_blanks()
     {
-        var r = March(DayOfWeek.Sunday);
+        var r = March(WeekStart.Sun);
         r.Weeks.Should().HaveCount(5);
         r.Weeks[0].Days.Select(d => d!.Date.Day).Should().Equal(1, 2, 3, 4, 5, 6, 7);
         r.Weeks[0].TotalSeconds.Should().Be(1800 + 43200 + 54000 + 7200 + 1800);
@@ -122,7 +122,7 @@ public sealed class MonthQueryTests : IDisposable
     [Fact]
     public void A_completed_month_counts_every_day_and_has_no_baseline_when_last_month_is_empty()
     {
-        var r = Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 2, DayOfWeek.Monday);
+        var r = Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 2, WeekStart.Mon);
         r.IsCurrent.Should().BeFalse();
         r.DaysCounted.Should().Be(28);
         r.TotalSeconds.Should().Be(75600);
@@ -136,7 +136,7 @@ public sealed class MonthQueryTests : IDisposable
     [Fact]
     public void A_future_month_is_empty()
     {
-        var r = Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 4, DayOfWeek.Monday);
+        var r = Q.Month(_f.DbPath, Now, TimeZoneInfo.Utc, 2026, 4, WeekStart.Mon);
         r.DaysCounted.Should().Be(0);
         r.TotalSeconds.Should().Be(0);
         r.DailyAverageSeconds.Should().Be(0);

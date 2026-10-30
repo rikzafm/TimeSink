@@ -24,9 +24,9 @@ internal static class Q
         IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false) =>
         DayDetailQuery.Run(Ctx(db, now, zone, running, onSinceUtc, weekStart, gamesOnly), day);
 
-    public static MonthResult Month(string db, DateTimeOffset now, TimeZoneInfo zone, int year, int month, DayOfWeek weekStart,
+    public static MonthResult Month(string db, DateTimeOffset now, TimeZoneInfo zone, int year, int month, WeekStart weekStart,
         IReadOnlyCollection<long>? running = null, long? onSinceUtc = null, bool gamesOnly = false) =>
-        MonthQuery.Run(Ctx(db, now, zone, running, onSinceUtc, weekStart switch { DayOfWeek.Sunday => WeekStart.Sun, DayOfWeek.Saturday => WeekStart.Sat, _ => WeekStart.Mon }, gamesOnly), year, month);
+        MonthQuery.Run(Ctx(db, now, zone, running, onSinceUtc, weekStart, gamesOnly), year, month);
 
     public static YearResult Year(string db, DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running = null,
         long? onSinceUtc = null, bool gamesOnly = false) =>

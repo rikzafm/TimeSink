@@ -16,11 +16,7 @@ public static class WeekQuery
     /// <summary>The streak is looked for this far back (and so tops out at this many days).</summary>
     public const int StreakLookbackDays = 365;
 
-    public static WeekResult Run(UsageContext context, int weeksBack = 0)
-    {
-        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
-        return Run(new UsageWindow(new SqliteUsageSource(c), context), weeksBack);
-    }
+    public static WeekResult Run(UsageContext context, int weeksBack = 0) => UsageWindow.Over(context, w => Run(w, weeksBack));
 
     internal static WeekResult Run(UsageWindow window, int weeksBack = 0)
     {
@@ -28,7 +24,7 @@ public static class WeekQuery
         var (now, zone, gamesOnly) = (context.Now, context.Zone, context.GamesOnly);
         var (weekStart, onSinceUtc) = (context.WeekStart, context.SignInUtc);
         var nowUtc = now.ToUnixTimeSeconds();
-        var today = LocalDays.DateOf(nowUtc, zone);
+        var today = window.Today;
         var thisWeek = WeekStarts.Containing(today, weekStart.ToDayOfWeek());
         var gridStart = thisWeek.AddDays(-7 * (GridWeeks - 1));
         var shownWeek = thisWeek.AddDays(-7 * weeksBack); // the seven columns and app rows; the grid and streak stay anchored to today

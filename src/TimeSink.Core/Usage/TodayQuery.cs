@@ -19,11 +19,7 @@ public static class TodayQuery
 
 
     /// <param name="forDay">The local day to show; null or any day after today means today (the live day).</param>
-    public static TodayResult Run(UsageContext context, DateOnly? forDay = null)
-    {
-        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
-        return Run(new UsageWindow(new SqliteUsageSource(c), context), forDay);
-    }
+    public static TodayResult Run(UsageContext context, DateOnly? forDay = null) => UsageWindow.Over(context, w => Run(w, forDay));
 
     /// <param name="useSignIn">False compares like-for-like (the day's own first activity) instead of starting the uptime at sign-in.</param>
     internal static TodayResult Run(UsageWindow window, DateOnly? forDay = null, bool useSignIn = true)
@@ -32,7 +28,7 @@ public static class TodayQuery
         var (now, zone, gamesOnly) = (context.Now, context.Zone, context.GamesOnly);
         var onSinceUtc = useSignIn ? context.SignInUtc : null; // when the PC became usable; starts the live day's uptime. Null: first tracked session.
         var nowUtc = now.ToUnixTimeSeconds();
-        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        var today = window.Today;
         var date = forDay is { } want && want < today ? want : today;
         var isToday = date == today;
         var d0 = LocalDays.StartOf(date, zone);

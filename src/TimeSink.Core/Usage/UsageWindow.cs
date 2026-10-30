@@ -66,6 +66,16 @@ internal sealed class UsageWindow(IUsageSource source, UsageContext context)
 
     public long NowUtc => Context.Now.ToUnixTimeSeconds();
 
+    /// <summary>The Local day now falls on in the context's zone; every query takes its "today" from here.</summary>
+    public DateOnly Today => LocalDays.DateOf(NowUtc, Context.Zone);
+
+    /// <summary>Opens the context's database read-only, hands a window over it to <paramref name="read"/> and closes it again. A context with no database is an error.</summary>
+    public static T Over<T>(UsageContext context, Func<UsageWindow, T> read)
+    {
+        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
+        return read(new UsageWindow(new SqliteUsageSource(c), context));
+    }
+
     /// <summary>The tracked apps (retired ones are left out of every segment).</summary>
     public AppGroups Apps => _apps ??= source.Apps(false, Context.GamesOnly);
 

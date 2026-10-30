@@ -27,11 +27,7 @@ public static class AllQuery
         public readonly Dictionary<(int, int), long> Months = [];
     }
 
-    public static AllResult Run(UsageContext context)
-    {
-        using var c = UsageDb.OpenReadOnly(context.DbPath ?? throw new ArgumentException("The context has no database.", nameof(context)));
-        return Run(new UsageWindow(new SqliteUsageSource(c), context));
-    }
+    public static AllResult Run(UsageContext context) => UsageWindow.Over(context, Run);
 
     internal static AllResult Run(UsageWindow window)
     {
