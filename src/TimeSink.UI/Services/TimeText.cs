@@ -17,6 +17,9 @@ internal static class TimeText
         return args.Length == 0 ? text : string.Format(CultureInfo.CurrentCulture, text, args);
     }
 
+    /// <summary>The text of a <see cref="Phrase"/> Core chose: its key looked up in the current theme and formatted with its arguments.</summary>
+    public static string Str(Phrase phrase) => Str(phrase.Key, phrase.Args.Select(a => a is Phrase inner ? Str(inner) : a).ToArray());
+
     public static DateTime Local(long utcSeconds) =>
         TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(utcSeconds), TimeZoneInfo.Local).DateTime;
 

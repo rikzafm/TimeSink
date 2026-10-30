@@ -361,7 +361,8 @@
     "weekStreakSub": "apps open daily",
     "weekGridCaption": "Last 20 weeks",
     "weekEmpty": "No tracked app has run this week yet.",
-    "weekVsLast": "{0} vs last week so far",
+    "weekVsLastUp": "▲ {0} vs last week so far",
+    "weekVsLastDown": "▼ {0} vs last week so far",
     "weekAvg": "avg {0} / day",
     "weekTrendCaption": "weekly total",
     "setBackingUp": "Backing up…",
@@ -425,7 +426,9 @@
     "panelDayVsAverage": "vs the week's average",
     "panelDayVsLastWeek": "vs the same day last week",
     "panelDaySpan": " · active {0} – {1}",
+    "panelDayTotal": "{0}{1}",
     "panelDayFocus": "{0} {1} of {2}{3}",
+    "panelDelta": "{0}",
     "panelDayNotUsed": "not used",
     "panelDayOpenInToday": "Open this day in Today →"
   }

@@ -80,6 +80,14 @@ _Avoid_: First day of week, week offset
 One month cut into rows of seven for a Week start: the blank cells before the 1st, the weekday of each column and the date in each cell. It holds dates only; each view adds its own numbers.
 _Avoid_: Calendar layout, month matrix
 
+**Tone**:
+How a change is drawn: Gain, Loss or Muted (no change to compare with). A change is a Gain at or above its baseline, judged before rounding, so -0.3% is a Loss even though it reads "0%".
+_Avoid_: Colour, sentiment
+
+**Phrase**:
+A string-table key with its arguments, chosen by Core from a result. The view turns it into text; Core never produces the finished sentence.
+_Avoid_: Message, text, label
+
 ### Settings
 
 **Setting**:

@@ -13,13 +13,15 @@ public static class PanelStringKeys
     public const string DayVsAverage = "panelDayVsAverage";
     public const string DayVsLastWeek = "panelDayVsLastWeek";
     public const string DaySpan = "panelDaySpan";
+    public const string DayTotal = "panelDayTotal";
     public const string DayFocus = "panelDayFocus";
+    public const string Delta = "panelDelta";
     public const string DayNotUsed = "panelDayNotUsed";
     public const string DayOpenInToday = "panelDayOpenInToday";
 
     public static readonly IReadOnlyList<string> All =
     [
         HourTypical, HourTypicalValue, HourSummary, HourEmpty,
-        DayVsAverage, DayVsLastWeek, DaySpan, DayFocus, DayNotUsed, DayOpenInToday,
+        DayVsAverage, DayVsLastWeek, DaySpan, DayTotal, DayFocus, DayNotUsed, Delta, DayOpenInToday,
     ];
 }

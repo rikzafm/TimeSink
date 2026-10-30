@@ -269,13 +269,10 @@ public partial class TodayView : UserControl, ILiveView
     {
         if (_result is not { } r) return;
         var c = PanelContents.ForHour(r, h);
-        var compares = c.Comparisons.Select(x => (
-            Str(PanelStringKeys.HourTypical),
-            Str(PanelStringKeys.HourTypicalValue, UsageText.HoursMinutes(x.ReferenceSeconds ?? 0), UsageText.SignedHoursMinutes(x.DeltaSeconds)),
-            x.Good)).ToList();
+        var compares = UsagePhrases.PanelLines(c).Select(l => (Str(l.Label), Str(l.Value), l.Good)).ToList();
         Panel.Show(
             HourRange(h),
-            c.TotalSeconds > 0 ? Str(PanelStringKeys.HourSummary, UsageText.HoursMinutes(c.TotalSeconds), c.SessionCount) : Str(PanelStringKeys.HourEmpty),
+            Str(UsagePhrases.HourSubtitle(c)),
             c.Apps.Select(a => (a.Name, a.Seconds, _themes.AppSlot(a.AppId))).ToList(),
             c.Sessions.Select(s => (s.AppName, Str(StringKeys.SessionLine, Clock(s.StartUtc), Clock(s.EndUtc)), UsageText.HoursMinutes(s.Seconds))).ToList(),
             compares);
@@ -463,9 +460,8 @@ public partial class TodayView : UserControl, ILiveView
         dial.SetResourceReference(SessionDial.NumberFontProperty, "FontFamily.Numbers");
         if (detail.VsAverage is { } change)
         {
-            var delta = UsageText.Delta(change);
-            dial.CenterText = delta;
-            dial.SetResourceReference(SessionDial.CenterBrushProperty, delta.StartsWith('-') ? "Brush.Warning" : "Brush.Accent");
+            dial.CenterText = UsageText.Delta(change);
+            dial.SetResourceReference(SessionDial.CenterBrushProperty, Tones.Of(change).Key());
         }
         else
         {

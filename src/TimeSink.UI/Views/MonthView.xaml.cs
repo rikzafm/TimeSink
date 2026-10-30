@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -22,7 +21,6 @@ namespace TimeSink.UI.Views;
 public partial class MonthView : UserControl, ILiveView
 {
     private const int RefreshEverySeconds = 30;
-    private static readonly CultureInfo En = CultureInfo.InvariantCulture; // English names in v1 (spec 8.1)
 
     private readonly string _dbPath;
     private readonly ThemeService _themes;
@@ -145,7 +143,7 @@ public partial class MonthView : UserControl, ILiveView
         DeltaPill.Visibility = Visibility.Visible;
         var prev = UsageText.MonthAbbr(r.FirstDay.AddMonths(-1).Month);
         Delta.Text = Str(StringKeys.MonthDeltaVs, UsageText.Delta(change), prev);
-        var key = change.IsGain ? "Brush.Accent" : "Brush.Warning";
+        var key = Tones.Of(change).Key();
         Delta.SetResourceReference(TextBlock.ForegroundProperty, key);
         var tint = Res(key).Clone();
         tint.Opacity = Application.Current.TryFindResource("Double.Opacity.Wash") is double wash ? wash : 0;
@@ -223,8 +221,7 @@ public partial class MonthView : UserControl, ILiveView
             time.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
             time.Inlines.Add(new System.Windows.Documents.Run(UsageText.HoursMinutes(app.Seconds) + " "));
             var deltaRun = new System.Windows.Documents.Run(app.Delta is { } p ? UsageText.Delta(p) : Str(StringKeys.MonthNewApp)) { FontWeight = FontWeights.SemiBold };
-            deltaRun.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty,
-                app.Delta is not { } d ? "Brush.TextMuted" : d.IsGain ? "Brush.Accent" : "Brush.Warning");
+            deltaRun.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, Tones.Of(app.Delta).Key());
             time.Inlines.Add(deltaRun);
 
             var top = new Grid();
@@ -258,11 +255,5 @@ public partial class MonthView : UserControl, ILiveView
             row.Children.Add(body);
             TopApps.Children.Add(row);
         }
-    }
-
-    private static string Ordinal(int n)
-    {
-        var suffix = (n % 100) is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" };
-        return n.ToString(En) + suffix;
     }
 }

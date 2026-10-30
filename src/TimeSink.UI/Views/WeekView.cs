@@ -202,12 +202,8 @@ public sealed class WeekView : UserControl, ILiveView
         _columns.Days = r.Days;
         _trend.Values = r.WeekTotals;
 
-        var parts = new List<string>();
-        if (r.ChangeSeconds is { } change)
-            parts.Add(Str(StringKeys.WeekVsLast, (change >= 0 ? "▲ " : "▼ ") + UsageText.HoursMinutes(Math.Abs(change))));
-        if (r.AverageSeconds > 0)
-            parts.Add(Str(StringKeys.WeekAvg, UsageText.HoursMinutes((long)r.AverageSeconds)));
-        _delta.Text = string.Join(" · ", parts);
+        var parts = UsagePhrases.WeekSummary(r);
+        _delta.Text = string.Join(" · ", parts.Select(p => Str(p)));
         _delta.Visibility = parts.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         _empty.Visibility = r.Apps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -340,19 +336,11 @@ public sealed class WeekView : UserControl, ILiveView
         if (!applied || seq != _panelSeq || loaded is not { } detail) return; // overtaken, view stopped, no database, or the panel was closed meanwhile
 
         var content = PanelContents.ForDay(detail, focus is null ? null : (focus.AppId, focus.Name));
-        var compares = content.Comparisons.Select(x => (
-            Str(x.Kind == PanelComparisonKind.VsWeekAverage ? PanelStringKeys.DayVsAverage : PanelStringKeys.DayVsLastWeek),
-            UsageText.SignedHoursMinutes(x.DeltaSeconds),
-            x.Good)).ToList();
-        var span = content is { SpanStartUtc: { } a, SpanEndUtc: { } b } ? Str(PanelStringKeys.DaySpan, Clock(a), Clock(b)) : "";
+        var compares = UsagePhrases.PanelLines(content).Select(l => (Str(l.Label), Str(l.Value), l.Good)).ToList();
         var apps = content.Apps.Select(x => (x.Name, x.Seconds, _themes.AppSlot(x.AppId))).ToList();
-        var subtitle = UsageText.HoursMinutes(content.TotalSeconds) + span;
-        if (content.Focus is { } f)
-            subtitle = Str(PanelStringKeys.DayFocus, f.Name,
-                f.Seconds > 0 ? UsageText.HoursMinutes(f.Seconds) : Str(PanelStringKeys.DayNotUsed), UsageText.HoursMinutes(content.TotalSeconds), span);
         _panel.Show(
             UsageText.WeekdayDate(day, full: true),
-            subtitle,
+            Str(UsagePhrases.DaySubtitle(content, Clock)),
             apps,
             [],
             compares,
