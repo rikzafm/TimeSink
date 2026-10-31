@@ -103,3 +103,21 @@ _Avoid_: Hidden setting, cache
 **Add app screen**:
 The full-flyout overlay with the Running, Installed, Tracked and Browse tabs, plus the App settings and Merge screens it opens. `AddAppNavigation` decides which of them shows.
 _Avoid_: Add dialog, picker
+
+### Multi-device
+
+**Device**:
+A physical computer (Windows PC or Mac) running TimeSink, identified by a persistent UUID.
+_Avoid_: Machine, host, client
+
+**Device scope**:
+The filter applied to usage queries and views: either This device (only local usage) or All devices (combined usage across all synced devices with union uptime).
+_Avoid_: View mode, machine filter
+
+**Snapshot**:
+The `<deviceId>.tssync` zip file written by a device into the shared sync folder, containing `manifest.json` and a stripped `snapshot.db` copy of only that device's apps and sessions.
+_Avoid_: Sync file, export archive, backup
+
+**On both**:
+The duration or time interval during which both devices were active simultaneously (the overlap in union uptime).
+_Avoid_: Concurrent time, overlap time, dual usage
