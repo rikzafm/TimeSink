@@ -1,4 +1,4 @@
-﻿using TimeSink.Agent.Native;
+using TimeSink.Agent.Native;
 using TimeSink.Core.Data;
 using TimeSink.Core.Flyout;
 using TimeSink.Core.Icons;
@@ -19,6 +19,7 @@ internal static class Program
     private static BackupScheduler? s_backup;
     private static AlertHost? s_alerts;
     private static SteamScanHost? s_steam;
+    private static SyncAgentHost? s_sync;
     private static string s_dbPath = "";
     private static FlyoutHost? s_flyout;
 
@@ -123,11 +124,15 @@ internal static class Program
         s_alerts.Start();
         s_steam = new SteamScanHost(s_dbPath);
         s_steam.Start();
+        s_sync = new SyncAgentHost(s_dbPath, s_hwnd);
+        s_ipc.SyncRequested += () => s_sync.SyncNow();
+        s_sync.Start();
 
         MSG msg;
         while (NativeMethods.GetMessageW(&msg, 0, 0, 0) > 0)
             NativeMethods.DispatchMessageW(&msg);
 
+        s_sync?.Dispose();
         s_steam?.Dispose();
         s_ipc?.Dispose();
         s_db?.Dispose();
@@ -233,6 +238,7 @@ internal static class Program
             return msg == NativeMethods.WM_POWERBROADCAST ? 1 : 0;
         if (s_backup is { } backup && backup.HandleMessage(msg, wParam)) return 0;
         if (s_alerts is { } alerts && alerts.HandleMessage(msg, wParam)) return 0;
+        if (s_sync is { } sync && sync.HandleMessage(msg)) return 0;
         switch (msg)
         {
             case TrayCallback:
@@ -245,6 +251,7 @@ internal static class Program
                 ApplyTrayIcon();
                 return 0;
             case NativeMethods.WM_DESTROY:
+                s_sync?.Dispose();
                 s_backup?.Stop();
                 s_alerts?.Stop();
                 s_tracking?.Stop();

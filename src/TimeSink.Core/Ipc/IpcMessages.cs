@@ -8,6 +8,7 @@ namespace TimeSink.Core.Ipc;
 [JsonDerivedType(typeof(GetStateMessage), "getState")]
 [JsonDerivedType(typeof(StateMessage), "state")]
 [JsonDerivedType(typeof(SetIconMessage), "setIcon")]
+[JsonDerivedType(typeof(SyncNowMessage), "syncNow")]
 public abstract record IpcMessage;
 
 /// <summary>UI to Agent: send me the current state.</summary>
@@ -15,6 +16,9 @@ public sealed record GetStateMessage : IpcMessage;
 
 /// <summary>UI to Agent: the user applied a new app icon (<c>ui.icon</c> is already saved); swap the tray icon now.</summary>
 public sealed record SetIconMessage(string IconId) : IpcMessage;
+
+/// <summary>UI to Agent: perform sync immediately.</summary>
+public sealed record SyncNowMessage : IpcMessage;
 
 public sealed record RunningApp(long AppId, long SessionStartUtc);
 
@@ -25,6 +29,7 @@ public sealed record StateMessage(bool Paused, IReadOnlyList<RunningApp> Running
 [JsonSerializable(typeof(StateMessage))]
 [JsonSerializable(typeof(GetStateMessage))]
 [JsonSerializable(typeof(SetIconMessage))]
+[JsonSerializable(typeof(SyncNowMessage))]
 internal sealed partial class IpcJson : JsonSerializerContext;
 
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]

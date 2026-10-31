@@ -8,4 +8,9 @@ public static class AgentSignals
     /// open sessions so they are re-detected against the new content.
     /// </summary>
     public const string ResetEventName = @"Local\TimeSink.Agent.Reset";
+
+    /// <summary>
+    /// Set by the UI when the user clicks "Sync now": the Agent immediately exports and scans for imports.
+    /// </summary>
+    public const string SyncNowEventName = @"Local\TimeSink.Agent.SyncNow";
 }
