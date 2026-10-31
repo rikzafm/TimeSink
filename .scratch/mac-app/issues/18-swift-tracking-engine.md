@@ -1,6 +1,6 @@
 # Swift tracking engine and usage accumulator
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 4)
 Blocked by: 02, 17
 Needs a Mac.

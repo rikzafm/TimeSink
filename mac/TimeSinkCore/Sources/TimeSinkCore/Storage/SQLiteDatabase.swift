@@ -120,6 +120,11 @@ public final class SQLiteDatabase: @unchecked Sendable {
         }
     }
 
+    public var lastInsertRowid: Int64 {
+        guard let handle = db else { return 0 }
+        return sqlite3_last_insert_rowid(handle)
+    }
+
     public func transaction<T>(_ block: () throws -> T) throws -> T {
         try exec("BEGIN TRANSACTION;")
         do {
@@ -195,6 +200,13 @@ public final class SQLiteStatement {
         }
     }
 
+    public func bind(int32: Int32, at index: Int32) throws {
+        guard let stmt = stmt else { throw SQLiteError.generic("Statement finalized") }
+        if sqlite3_bind_int(stmt, index, int32) != SQLITE_OK {
+            throw SQLiteError.bindFailed("Failed to bind int32 at index \(index)")
+        }
+    }
+
     public func bind(double: Double, at index: Int32) throws {
         guard let stmt = stmt else { throw SQLiteError.generic("Statement finalized") }
         if sqlite3_bind_double(stmt, index, double) != SQLITE_OK {
@@ -237,6 +249,11 @@ public final class SQLiteStatement {
     public func columnInt64(at index: Int32) -> Int64 {
         guard let stmt = stmt else { return 0 }
         return sqlite3_column_int64(stmt, index)
+    }
+
+    public func columnInt32(at index: Int32) -> Int32 {
+        guard let stmt = stmt else { return 0 }
+        return sqlite3_column_int(stmt, index)
     }
 
     public func columnText(at index: Int32) -> String? {
