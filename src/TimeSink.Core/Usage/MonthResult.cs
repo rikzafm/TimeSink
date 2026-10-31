@@ -10,7 +10,9 @@ public sealed record MonthDay(
     int Heat,
     bool IsFuture,
     bool IsToday,
-    IReadOnlyList<MonthAppAmount> Apps)
+    IReadOnlyList<MonthAppAmount> Apps,
+    IReadOnlyDictionary<string, long>? DeviceSeconds = null,
+    long OnBothSeconds = 0)
 {
     /// <summary>The day's bar: top apps by time, an Other bucket and the Mostly / Spread verdict (see <see cref="DayBars"/>).</summary>
     public DayBar Bar => DayBars.Of(Apps);
@@ -50,4 +52,6 @@ public sealed record MonthResult(
     BestDay? Best,
     IReadOnlyList<MonthTopApp> TopApps,
     DateOnly DefaultSelected,
-    DateOnly? FirstTracked = null);
+    DateOnly? FirstTracked = null,
+    IReadOnlyDictionary<string, long>? DeviceTotals = null,
+    long OnBothSeconds = 0);

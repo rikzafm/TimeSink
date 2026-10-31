@@ -20,12 +20,18 @@ public sealed record TodaySession(long StartUtc, long EndUtc, bool IsOpen, long?
 
 public sealed record SleepBand(long StartUtc, long EndUtc);
 
-/// <summary>One hour column: app-seconds open in that hour (sum over apps) and the typical-day average for it.</summary>
-public sealed record HourBucket(int Hour, long AppSeconds, double TypicalAppSeconds);
+/// <summary>App time and distinct apps active in one hour for one device.</summary>
+public sealed record DeviceHour(long AppSeconds, int DistinctApps);
+
+/// <summary>One hour column: app-seconds open in that hour (sum over apps) and the typical-day average for it, with optional per-device breakdown.</summary>
+public sealed record HourBucket(int Hour, long AppSeconds, double TypicalAppSeconds, IReadOnlyDictionary<string, DeviceHour>? ByDevice = null);
 
 public sealed record FirstAppTile(long AppId, string AppName, long StartUtc);
 
 public sealed record LongestSessionTile(long AppId, string AppName, long Seconds);
+
+/// <summary>Uptime figures for a single device today.</summary>
+public sealed record DeviceUptime(string DeviceId, long UptimeSeconds, long? LastActiveUtc = null, bool IsLive = false);
 
 /// <summary>One app row (merged apps are one row under their canonical app).</summary>
 public sealed record TodayAppRow(
@@ -59,7 +65,9 @@ public sealed record TodayResult(
     long UptimeVsYesterdaySeconds,
     TimeZoneInfo Zone,
     DateOnly? FirstTracked = null,
-    bool GamesOnly = false)
+    bool GamesOnly = false,
+    IReadOnlyDictionary<string, DeviceUptime>? DeviceUptimes = null,
+    long OnBothSeconds = 0)
 {
     /// <summary>
     /// Position of <paramref name="utc"/> in the day as a wall-clock fraction from 0 to 1 (the hour columns are wall-clock

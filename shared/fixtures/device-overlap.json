@@ -1,0 +1,188 @@
+{
+  "name": "device-overlap",
+  "description": "Multi-device union uptime and overlap figures across queries",
+  "devices": [
+    {
+      "id": "dev-win",
+      "name": "Windows PC",
+      "platform": "windows",
+      "isLocal": true,
+      "state": "active"
+    },
+    {
+      "id": "dev-mac",
+      "name": "MacBook",
+      "platform": "macos",
+      "isLocal": false,
+      "state": "active"
+    }
+  ],
+  "apps": [
+    {
+      "id": 1,
+      "deviceId": "dev-win",
+      "name": "VS Code Win",
+      "path": "c:\\code.exe",
+      "bundleId": null,
+      "addedUtc": 0
+    },
+    {
+      "id": 2,
+      "deviceId": "dev-mac",
+      "name": "VS Code Mac",
+      "path": "/Applications/Code.app",
+      "bundleId": "com.microsoft.VSCode",
+      "addedUtc": 0
+    }
+  ],
+  "cases": [
+    {
+      "name": "overlap-counted-once",
+      "description": "Two devices active on the same day with overlap counted once in headline uptime",
+      "timeZoneId": "UTC",
+      "nowUtc": 1773165600,
+      "deviceScope": "All",
+      "sessions": [
+        {
+          "appId": 1,
+          "startUtc": 1773136800,
+          "endUtc": 1773151200,
+          "lastSeenUtc": 1773151200,
+          "endReason": "shutdown"
+        },
+        {
+          "appId": 2,
+          "startUtc": 1773144000,
+          "endUtc": 1773158400,
+          "lastSeenUtc": 1773158400,
+          "endReason": "shutdown"
+        }
+      ],
+      "expected": {
+        "headlineUptime": 21600,
+        "deviceUptimes": {
+          "dev-win": 14400,
+          "dev-mac": 14400
+        },
+        "onBothSeconds": 7200
+      }
+    },
+    {
+      "name": "one-device-only",
+      "description": "Only local device active; headline equals local uptime and overlap is 0",
+      "timeZoneId": "UTC",
+      "nowUtc": 1773165600,
+      "deviceScope": "All",
+      "sessions": [
+        {
+          "appId": 1,
+          "startUtc": 1773136800,
+          "endUtc": 1773151200,
+          "lastSeenUtc": 1773151200,
+          "endReason": "shutdown"
+        }
+      ],
+      "expected": {
+        "headlineUptime": 14400,
+        "deviceUptimes": {
+          "dev-win": 14400
+        },
+        "onBothSeconds": 0
+      }
+    },
+    {
+      "name": "device-in-another-time-zone",
+      "description": "Device sessions recorded in UTC across viewer's local day in America/New_York",
+      "timeZoneId": "America/New_York",
+      "nowUtc": 1773183600,
+      "deviceScope": "All",
+      "sessions": [
+        {
+          "appId": 1,
+          "startUtc": 1773151200,
+          "endUtc": 1773165600,
+          "lastSeenUtc": 1773165600,
+          "endReason": "shutdown"
+        },
+        {
+          "appId": 2,
+          "startUtc": 1773158400,
+          "endUtc": 1773172800,
+          "lastSeenUtc": 1773172800,
+          "endReason": "shutdown"
+        }
+      ],
+      "expected": {
+        "headlineUptime": 21600,
+        "deviceUptimes": {
+          "dev-win": 14400,
+          "dev-mac": 14400
+        },
+        "onBothSeconds": 7200
+      }
+    },
+    {
+      "name": "dst-day",
+      "description": "Spring forward 23h DST transition day in America/New_York with overlapping sessions",
+      "timeZoneId": "America/New_York",
+      "nowUtc": 1773007200,
+      "deviceScope": "All",
+      "sessions": [
+        {
+          "appId": 1,
+          "startUtc": 1772953200,
+          "endUtc": 1772971200,
+          "lastSeenUtc": 1772971200,
+          "endReason": "shutdown"
+        },
+        {
+          "appId": 2,
+          "startUtc": 1772964000,
+          "endUtc": 1772982000,
+          "lastSeenUtc": 1772982000,
+          "endReason": "shutdown"
+        }
+      ],
+      "expected": {
+        "headlineUptime": 28800,
+        "deviceUptimes": {
+          "dev-win": 18000,
+          "dev-mac": 18000
+        },
+        "onBothSeconds": 7200
+      }
+    },
+    {
+      "name": "forgotten-device",
+      "description": "Historical data of forgotten device is retained and counted in All scope, excluded in This scope",
+      "timeZoneId": "UTC",
+      "nowUtc": 1773165600,
+      "deviceScope": "All",
+      "forgottenDeviceId": "dev-mac",
+      "sessions": [
+        {
+          "appId": 1,
+          "startUtc": 1773136800,
+          "endUtc": 1773147600,
+          "lastSeenUtc": 1773147600,
+          "endReason": "shutdown"
+        },
+        {
+          "appId": 2,
+          "startUtc": 1773144000,
+          "endUtc": 1773154800,
+          "lastSeenUtc": 1773154800,
+          "endReason": "shutdown"
+        }
+      ],
+      "expected": {
+        "headlineUptime": 18000,
+        "deviceUptimes": {
+          "dev-win": 10800,
+          "dev-mac": 10800
+        },
+        "onBothSeconds": 3600
+      }
+    }
+  ]
+}

@@ -28,7 +28,9 @@ public sealed record YearMonth(
     long ProjectedSeconds,
     Change? Delta,
     long? PreviousSeconds,
-    IReadOnlyList<YearAppShare> TopApps);
+    IReadOnlyList<YearAppShare> TopApps,
+    IReadOnlyDictionary<string, long>? DeviceSeconds = null,
+    long OnBothSeconds = 0);
 
 /// <summary>Everything the Year "Pace" sub-view shows, computed at <see cref="NowUtc"/>.</summary>
 public sealed record YearResult(
@@ -41,4 +43,6 @@ public sealed record YearResult(
     int? BestMonth,
     long BestMonthSeconds,
     long? PaceYearSeconds,
-    int RecentMonthCount);
+    int RecentMonthCount,
+    IReadOnlyDictionary<string, long>? DeviceTotals = null,
+    long OnBothSeconds = 0);

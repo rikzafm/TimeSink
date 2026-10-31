@@ -57,8 +57,18 @@ public static class WrappedQuery
             }
         }
 
-        // The headline is PC uptime (decision 125); everything else here stays app-seconds.
-        var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc, gamesOnly).Where(kv => kv.Key.Year == year).Sum(kv => kv.Value);
+        // The headline is PC uptime (decision 125, 168); everything else here stays app-seconds.
+        var breakdownPerDay = UsageUptime.PerDayBreakdown(segs, zone, nowUtc, onSinceUtc, gamesOnly, window.LocalDeviceId)
+            .Where(kv => kv.Key.Year == year).ToList();
+        var uptime = breakdownPerDay.Sum(kv => kv.Value.UnionSeconds);
+        var wrappedDeviceTotals = new Dictionary<string, long>();
+        long wrappedOnBoth = 0;
+        foreach (var (_, bd) in breakdownPerDay)
+        {
+            foreach (var (dev, s) in bd.DeviceSeconds)
+                wrappedDeviceTotals[dev] = wrappedDeviceTotals.GetValueOrDefault(dev) + s;
+            wrappedOnBoth += bd.OnBothSeconds;
+        }
 
         // Background apps (Steam, Wallpaper Engine) stay out of every ranking here; their time still counts in the totals.
         var ranked = UsageRank.Rank(perGroup.Where(kv => !UsageRank.IsBackground(apps, kv.Key))
@@ -115,6 +125,7 @@ public static class WrappedQuery
             bestLen == 0 ? null : DateOnly.FromDayNumber(bestStartDay + bestLen - 1),
             busiest, busiestSecs, delta, peak, peakSecs,
             total == 0 ? 0 : (int)Math.Round(beforeNoon * 100.0 / total, MidpointRounding.AwayFromZero),
-            TopOf(Apps.AppKind.Game), TopOf(Apps.AppKind.Gacha), longest);
+            TopOf(Apps.AppKind.Game), TopOf(Apps.AppKind.Gacha), longest,
+            wrappedDeviceTotals.Count > 0 ? wrappedDeviceTotals : null, wrappedOnBoth);
     }
 }

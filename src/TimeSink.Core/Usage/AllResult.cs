@@ -19,7 +19,8 @@ public sealed record AllAppRow(
     long LongestSessionSeconds,
     bool Background = false,
     int SessionCount = 0,
-    long LastUsedUtc = 0)
+    long LastUsedUtc = 0,
+    IReadOnlyList<string>? Devices = null)
 {
     /// <summary>Mean length of one session in seconds (0 when the app never ran).</summary>
     public double AverageSessionSeconds => SessionCount > 0 ? Seconds / (double)SessionCount : 0;
@@ -35,7 +36,23 @@ public sealed record AllRetiredRow(
     DateOnly StoppedDate);
 
 /// <summary>Totals over tracked apps only. <see cref="Seconds"/> is PC uptime; <see cref="DaysUsed"/> counts days on which any tracked app had time.</summary>
-public sealed record AllTotals(long Seconds, int DaysUsed, double AverageSecondsPerDay);
+public sealed record AllTotals(long Seconds, int DaysUsed, double AverageSecondsPerDay, IReadOnlyDictionary<string, long>? DeviceTotals = null, long OnBothSeconds = 0)
+{
+    public bool Equals(AllTotals? other)
+    {
+        if (other is null) return false;
+        if (ReferenceEquals(this, other)) return true;
+        if (Seconds != other.Seconds || DaysUsed != other.DaysUsed || Math.Abs(AverageSecondsPerDay - other.AverageSecondsPerDay) > 0.0001 || OnBothSeconds != other.OnBothSeconds)
+            return false;
+        if (DeviceTotals is null && other.DeviceTotals is null) return true;
+        if (DeviceTotals is null || other.DeviceTotals is null || DeviceTotals.Count != other.DeviceTotals.Count) return false;
+        foreach (var (k, v) in DeviceTotals)
+            if (!other.DeviceTotals.TryGetValue(k, out var ov) || ov != v) return false;
+        return true;
+    }
+
+    public override int GetHashCode() => HashCode.Combine(Seconds, DaysUsed, AverageSecondsPerDay, OnBothSeconds);
+}
 
 /// <summary>Everything the All tab shows (rows are unsorted: see <see cref="AllSorting"/>).</summary>
 public sealed record AllResult(

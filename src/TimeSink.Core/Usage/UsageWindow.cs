@@ -16,11 +16,13 @@ internal interface IUsageSource
     /// <summary>The apps by group (retired ones too when asked); with <paramref name="gamesOnly"/> only the Game and Gacha groups; filtered by <paramref name="deviceScope"/>.</summary>
     AppGroups Apps(bool includeRetired, bool gamesOnly, DeviceScope deviceScope = DeviceScope.This);
 
-    /// <summary>
-    /// The sessions that started at or before <paramref name="nowUtc"/> (and before <paramref name="to"/> when given) and
+    /// <summary>The sessions that started at or before <paramref name="nowUtc"/> (and before <paramref name="to"/> when given) and
     /// that are open or ended at or after <paramref name="from"/>, in start order.
     /// </summary>
     IEnumerable<RawSession> Sessions(long from, long nowUtc, long? to);
+
+    /// <summary>The local device ID when known.</summary>
+    string? LocalDeviceId => null;
 }
 
 /// <summary>The SQLite adapter of <see cref="IUsageSource"/>. The caller owns the connection.</summary>
@@ -49,6 +51,16 @@ internal sealed class SqliteUsageSource(SqliteConnection connection) : IUsageSou
         }
         return list;
     }
+
+    public string? LocalDeviceId
+    {
+        get
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT COALESCE((SELECT value FROM settings WHERE key = 'device.id'), (SELECT device_id FROM devices WHERE is_local = 1))";
+            try { return cmd.ExecuteScalar() as string; } catch { return null; }
+        }
+    }
 }
 
 /// <summary>
@@ -65,6 +77,8 @@ internal sealed class UsageWindow(IUsageSource source, UsageContext context)
     private long _rawFrom;
 
     public UsageContext Context { get; } = context;
+
+    public string? LocalDeviceId => Context.LocalDeviceId ?? source.LocalDeviceId;
 
     public long NowUtc => Context.Now.ToUnixTimeSeconds();
 

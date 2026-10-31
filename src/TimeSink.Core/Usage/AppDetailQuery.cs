@@ -32,7 +32,7 @@ public static class AppDetailQuery
         var apps = window.AllApps;
         if (!apps.TryGetValue(appId, out var app) || app.Retired || app.Group != appId) return null; // aliases are shown under their canonical app
         var name = app.Name;
-        var exe = Path.GetFileName(app.ExePath);
+        var exe = Path.GetFileName(app.ExePath.Replace('\\', '/'));
         var background = app.Background;
 
         var segs = window.Segments(0, includeRetired: true).Where(s => s.Group == appId && s.End > s.Start).ToList();
@@ -77,9 +77,18 @@ public static class AppDetailQuery
             days.Add(new AppDetailDay(d, secs, daySessions.GetValueOrDefault(d), kind == AppDetailDayKind.Tracked ? Level(secs, peak) : 0, kind));
         }
 
+        var deviceSeconds = new Dictionary<string, long>();
+        foreach (var s in segs)
+        {
+            var dev = string.IsNullOrEmpty(s.DeviceId) ? (apps.TryGetValue(s.AppId, out var ga) ? ga.DeviceId : "") : s.DeviceId;
+            if (!string.IsNullOrEmpty(dev))
+                deviceSeconds[dev] = deviceSeconds.GetValueOrDefault(dev) + (s.End - s.Start);
+        }
+
         return new AppDetailResult(appId, name, exe ?? "", first, lastOpened, total, segs.Count,
             segs.Count > 0 ? total / segs.Count : 0, longest, shown, firstYear, today.Year, yearSeconds, peak, days, background,
             daySeconds,
-            segs.Select(s => new AppDetailOpen(LocalDays.DateOf(s.Start, zone), TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(s.Start), zone).Hour)).ToList());
+            segs.Select(s => new AppDetailOpen(LocalDays.DateOf(s.Start, zone), TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(s.Start), zone).Hour)).ToList(),
+            deviceSeconds.Count > 0 ? deviceSeconds : null);
     }
 }

@@ -36,7 +36,9 @@ public sealed record WrappedResult(
     int BeforeNoonPercent,
     WrappedKindTop? GamesTop = null,
     WrappedKindTop? GachaTop = null,
-    IReadOnlyList<WrappedApp>? LongestSessions = null)
+    IReadOnlyList<WrappedApp>? LongestSessions = null,
+    IReadOnlyDictionary<string, long>? DeviceTotals = null,
+    long OnBothSeconds = 0)
 {
     /// <summary>"N days and M hours" the PC was on: whole days of the total.</summary>
     public int EquivalentDays => (int)(TotalSeconds / 86400);

@@ -62,16 +62,34 @@ public static class AllQuery
             trackedDays.UnionWith(g.Days);
         }
 
-        var apps = groups.Values.Where(g => !g.Retired).OrderBy(g => g.Id).Select(g => new AllAppRow(
-            g.Id, g.Name, g.Seconds, g.Days.Count, Average(g.Seconds, g.Days.Count), total > 0 ? g.Seconds / (double)total : 0,
-            g.Days.Count > 0 ? g.Days.Min : null, BestMonth(g), g.Longest, g.Background, g.Sessions, g.LastUsed)).ToList();
+        var apps = groups.Values.Where(g => !g.Retired).OrderBy(g => g.Id).Select(g =>
+        {
+            var memberDevs = usageApps.Members(g.Id).Select(m => m.DeviceId).Where(d => !string.IsNullOrEmpty(d));
+            var segDevs = segs.Where(s => s.Group == g.Id && !string.IsNullOrEmpty(s.DeviceId)).Select(s => s.DeviceId);
+            var devList = memberDevs.Concat(segDevs).Distinct().OrderBy(d => d).ToList();
+            return new AllAppRow(
+                g.Id, g.Name, g.Seconds, g.Days.Count, Average(g.Seconds, g.Days.Count), total > 0 ? g.Seconds / (double)total : 0,
+                g.Days.Count > 0 ? g.Days.Min : null, BestMonth(g), g.Longest, g.Background, g.Sessions, g.LastUsed,
+                devList.Count > 0 ? devList : null);
+        }).ToList();
         var retired = groups.Values.Where(g => g.Retired && g.Seconds >= TimeSink.Core.Apps.AppLibrary.MinRetiredSeconds).OrderByDescending(g => g.RetiredUtc).ThenBy(g => g.Id).Select(g => new AllRetiredRow(
             g.Id, g.Name, g.Seconds, g.Days.Count, Average(g.Seconds, g.Days.Count),
             LocalDays.DateOf(g.RetiredUtc, zone))).ToList();
 
         // The footer total is PC uptime, not the app sum.
-        var uptime = UsageUptime.PerDay(loaded.Where(s => !usageApps[s.AppId].Retired).ToList(), zone, nowUtc, onSinceUtc, gamesOnly).Values.Sum();
-        return new AllResult(apps, retired, new AllTotals(uptime, trackedDays.Count, Average(uptime, trackedDays.Count)));
+        var uptimeBreakdown = UsageUptime.PerDayBreakdown(loaded.Where(s => !usageApps[s.AppId].Retired).ToList(), zone, nowUtc, onSinceUtc, gamesOnly, window.LocalDeviceId);
+        var uptime = uptimeBreakdown.Values.Sum(b => b.UnionSeconds);
+        var allDevTotals = new Dictionary<string, long>();
+        long allOnBoth = 0;
+        foreach (var bd in uptimeBreakdown.Values)
+        {
+            foreach (var (dev, s) in bd.DeviceSeconds)
+                allDevTotals[dev] = allDevTotals.GetValueOrDefault(dev) + s;
+            allOnBoth += bd.OnBothSeconds;
+        }
+
+        return new AllResult(apps, retired, new AllTotals(uptime, trackedDays.Count, Average(uptime, trackedDays.Count),
+            allDevTotals.Count > 0 ? allDevTotals : null, allOnBoth));
     }
 
     private static void AddDays(Dictionary<long, Group> groups, List<UsageSeg> segs, TimeZoneInfo zone)

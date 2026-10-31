@@ -23,7 +23,7 @@ public static class WeekStarts
 }
 
 /// <summary>One of the seven columns of the current week.</summary>
-public sealed record WeekDay(DateOnly Date, long Seconds, bool IsToday, bool IsFuture);
+public sealed record WeekDay(DateOnly Date, long Seconds, bool IsToday, bool IsFuture, IReadOnlyDictionary<string, long>? DeviceSeconds = null, long OnBothSeconds = 0);
 
 /// <summary>One cell of the 20-week grid. <see cref="Level"/> is the heat step 0-4 (0 for no or little time, and for future days).</summary>
 public sealed record HeatCell(DateOnly Date, long Seconds, int Level, bool IsFuture);
@@ -46,7 +46,9 @@ public sealed record WeekResult(
     IReadOnlyList<WeekAppRow> Apps,
     IReadOnlyList<long> WeekTotals,
     long PrevWeekSeconds,
-    DateOnly? FirstTracked)
+    DateOnly? FirstTracked,
+    IReadOnlyDictionary<string, long>? DeviceTotals = null,
+    long OnBothSeconds = 0)
 {
     /// <summary>
     /// This week's PC uptime minus <see cref="PrevWeekSeconds"/> (negative when down); null when the previous week has no

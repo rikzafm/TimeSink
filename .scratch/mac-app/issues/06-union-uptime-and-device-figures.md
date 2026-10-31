@@ -1,6 +1,6 @@
 # Union uptime and per-device figures in the query results
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 1)
 Blocked by: 02, 05
 

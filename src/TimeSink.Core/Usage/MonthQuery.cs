@@ -41,7 +41,8 @@ public static class MonthQuery
         var segs = window.Segments(DayStart(prevFirst, zone), to: DayStart(first.AddMonths(1), zone));
 
         // PC uptime per local day: the headline numbers; per-app seconds below feed the day detail and the top apps.
-        var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc, gamesOnly);
+        var uptimeBreakdown = UsageUptime.PerDayBreakdown(segs, zone, nowUtc, onSinceUtc, gamesOnly, window.LocalDeviceId);
+        var uptime = uptimeBreakdown.ToDictionary(kv => kv.Key, kv => kv.Value.UnionSeconds);
 
         // group -> seconds, per day of this month and of the comparison window.
         var perDay = UsageDays.PerDayGroup(segs, zone);
@@ -66,11 +67,14 @@ public static class MonthQuery
             var date = first.AddDays(d);
             var amounts = UsageRank.Rank(days[d].Select(kv => new MonthAppAmount(kv.Key, UsageRank.NameOf(apps, kv.Key), kv.Value)),
                 apps, a => a.AppId, a => a.Seconds);
-            var seconds = uptime.GetValueOrDefault(date);
+            var bd = uptimeBreakdown.GetValueOrDefault(date);
+            var seconds = bd?.UnionSeconds ?? 0;
+            var devSecs = bd?.DeviceSeconds;
+            var onBoth = bd?.OnBothSeconds ?? 0;
             foreach (var a in amounts) monthTotals[a.AppId] = monthTotals.GetValueOrDefault(a.AppId) + a.Seconds;
             total += seconds;
             if (seconds > 0 && (best is null || seconds > best.Seconds)) best = new BestDay(date, seconds);
-            monthDays.Add(new MonthDay(date, seconds, HeatScale.Level(seconds), date > today, date == today, amounts));
+            monthDays.Add(new MonthDay(date, seconds, HeatScale.Level(seconds), date > today, date == today, amounts, devSecs, onBoth));
         }
 
         var top = UsageRank.Rank(monthTotals, apps, kv => kv.Key, kv => kv.Value)
@@ -89,10 +93,23 @@ public static class MonthQuery
 
         // The daily average counts only the elapsed days from the Tracking start on (decision 147, replacing 78).
         var averageDays = Enumerable.Range(0, counted).Count(d => start.Counts(first.AddDays(d)));
+        var monthDeviceTotals = new Dictionary<string, long>();
+        long monthOnBoth = 0;
+        foreach (var md in monthDays)
+        {
+            if (md.DeviceSeconds != null)
+            {
+                foreach (var (dev, s) in md.DeviceSeconds)
+                    monthDeviceTotals[dev] = monthDeviceTotals.GetValueOrDefault(dev) + s;
+            }
+            monthOnBoth += md.OnBothSeconds;
+        }
+
         var selected = isCurrent ? today : counted == 0 ? first : first.AddDays(dim - 1);
         return new MonthResult(year, month, first, dim, counted, isCurrent, weekStart, nowUtc, monthDays, weeks,
             total, prevTotal, total - prevTotal, Change.Between(total, prevTotal),
-            averageDays > 0 ? total / (double)averageDays : 0, best, top, selected, start.FirstDay);
+            averageDays > 0 ? total / (double)averageDays : 0, best, top, selected, start.FirstDay,
+            monthDeviceTotals.Count > 0 ? monthDeviceTotals : null, monthOnBoth);
     }
 
     private static long DayStart(DateOnly date, TimeZoneInfo zone) => LocalDays.StartOf(date, zone);

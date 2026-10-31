@@ -13,12 +13,13 @@ public sealed class UsageContext
     private readonly Lazy<long?> _signInUtc;
     private readonly Lazy<WeekStart> _weekStart;
 
-    public UsageContext(DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running, Func<long?> signInUtc, Func<WeekStart> weekStart, bool gamesOnly = false, string? dbPath = null, DeviceScope deviceScope = DeviceScope.This)
+    public UsageContext(DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running, Func<long?> signInUtc, Func<WeekStart> weekStart, bool gamesOnly = false, string? dbPath = null, DeviceScope deviceScope = DeviceScope.This, string? localDeviceId = null)
     {
         DbPath = dbPath;
         Now = now;
         GamesOnly = gamesOnly;
         DeviceScope = deviceScope;
+        LocalDeviceId = localDeviceId;
         Zone = zone;
         Running = running;
         _signInUtc = new Lazy<long?>(signInUtc, LazyThreadSafetyMode.None);
@@ -35,6 +36,9 @@ public sealed class UsageContext
 
     /// <summary>The scope filter: This device only, or All synced devices.</summary>
     public DeviceScope DeviceScope { get; }
+
+    /// <summary>The local device ID, or null when unknown/not set.</summary>
+    public string? LocalDeviceId { get; }
 
     public TimeZoneInfo Zone { get; }
 
@@ -62,16 +66,18 @@ public sealed class UsageSnapshotLoader
     private readonly Func<WeekStart> _weekStart;
     private readonly Func<bool> _gamesOnly;
     private readonly Func<DeviceScope> _deviceScope;
+    private readonly Func<string?> _localDeviceId;
     private readonly string? _dbPath;
     private int _seq;
     private volatile bool _started;
 
     public UsageSnapshotLoader(Func<DateTimeOffset> clock, TimeZoneInfo zone, Func<IReadOnlyCollection<long>?> running,
-        Func<long?> signInUtc, Func<WeekStart> weekStart, Func<bool>? gamesOnly = null, string? dbPath = null, Func<DeviceScope>? deviceScope = null)
+        Func<long?> signInUtc, Func<WeekStart> weekStart, Func<bool>? gamesOnly = null, string? dbPath = null, Func<DeviceScope>? deviceScope = null, Func<string?>? localDeviceId = null)
     {
         _dbPath = dbPath;
         _gamesOnly = gamesOnly ?? (() => false);
         _deviceScope = deviceScope ?? (() => dbPath != null ? AppSettings.ForFile(dbPath).Get(Setting.DeviceScope) : DeviceScope.This);
+        _localDeviceId = localDeviceId ?? (() => dbPath != null ? AppSettings.ForFile(dbPath).Get(Setting.DeviceId) : null);
         _clock = clock;
         _zone = zone;
         _running = running;
@@ -80,9 +86,9 @@ public sealed class UsageSnapshotLoader
     }
 
     /// <summary>A loader on the real clock and local zone that reads the week start from the settings table on demand.</summary>
-    public static UsageSnapshotLoader ForDb(string dbPath, Func<IReadOnlyCollection<long>?> running, Func<long?> signInUtc, Func<bool>? gamesOnly = null, Func<DeviceScope>? deviceScope = null) =>
+    public static UsageSnapshotLoader ForDb(string dbPath, Func<IReadOnlyCollection<long>?> running, Func<long?> signInUtc, Func<bool>? gamesOnly = null, Func<DeviceScope>? deviceScope = null, Func<string?>? localDeviceId = null) =>
         new(() => DateTimeOffset.UtcNow, TimeZoneInfo.Local, running, signInUtc,
-            () => AppSettings.ForFile(dbPath).Get(Setting.WeekStartsOn), gamesOnly, dbPath, deviceScope);
+            () => AppSettings.ForFile(dbPath).Get(Setting.WeekStartsOn), gamesOnly, dbPath, deviceScope, localDeviceId);
 
     /// <summary>The instant the next refresh will be asked at, on this loader's clock.</summary>
     public DateTimeOffset Now => _clock();
@@ -107,7 +113,7 @@ public sealed class UsageSnapshotLoader
     {
         if (!_started) return false;
         var seq = Interlocked.Increment(ref _seq);
-        var context = new UsageContext(_clock(), _zone, _running(), _signInUtc, _weekStart, _gamesOnly(), _dbPath, _deviceScope());
+        var context = new UsageContext(_clock(), _zone, _running(), _signInUtc, _weekStart, _gamesOnly(), _dbPath, _deviceScope(), _localDeviceId());
         T result;
         try { result = await Task.Run(() => query(context)); }
         catch (Exception ex) when (ex is SqliteException or IOException) { return false; } // no DB yet

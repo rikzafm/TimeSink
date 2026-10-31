@@ -32,7 +32,8 @@ public static class WeekQuery
 
         var apps = window.Apps;
         var segs = window.Segments(LocalDays.StartOf(lookStart, zone));
-        var uptime = UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc, gamesOnly);
+        var uptimeBreakdown = UsageUptime.PerDayBreakdown(segs, zone, nowUtc, onSinceUtc, gamesOnly, window.LocalDeviceId);
+        var uptime = uptimeBreakdown.ToDictionary(kv => kv.Key, kv => kv.Value.UnionSeconds);
 
         // App seconds per local day (all apps, for the streak) and per (app group, day); the columns show PC uptime.
         var perDay = new Dictionary<DateOnly, long>();
@@ -47,7 +48,11 @@ public static class WeekQuery
         var days = Enumerable.Range(0, 7).Select(i =>
         {
             var d = shownWeek.AddDays(i);
-            return new WeekDay(d, uptime.GetValueOrDefault(d), d == today, d > today);
+            var bd = uptimeBreakdown.GetValueOrDefault(d);
+            var secs = bd?.UnionSeconds ?? 0;
+            var devSecs = bd?.DeviceSeconds;
+            var onBoth = bd?.OnBothSeconds ?? 0;
+            return new WeekDay(d, secs, d == today, d > today, devSecs, onBoth);
         }).ToList();
 
         var heat = new List<HeatCell>(GridWeeks * 7);
@@ -85,8 +90,21 @@ public static class WeekQuery
         }
         rows = UsageRank.Rank(rows, apps, r => r.AppId, r => r.Seconds);
 
+        var weekDeviceTotals = new Dictionary<string, long>();
+        long weekOnBoth = 0;
+        foreach (var d in days)
+        {
+            if (d.DeviceSeconds != null)
+            {
+                foreach (var (dev, s) in d.DeviceSeconds)
+                    weekDeviceTotals[dev] = weekDeviceTotals.GetValueOrDefault(dev) + s;
+            }
+            weekOnBoth += d.OnBothSeconds;
+        }
+
         var firstTracked = TrackingStart.Of(apps, zone).FirstDay;
-        return new WeekResult(today, shownWeek, nowUtc, days.Sum(d => d.Seconds), days, heat, streak, rows, weekTotals, prevWeek, firstTracked);
+        return new WeekResult(today, shownWeek, nowUtc, days.Sum(d => d.Seconds), days, heat, streak, rows, weekTotals, prevWeek, firstTracked,
+            weekDeviceTotals.Count > 0 ? weekDeviceTotals : null, weekOnBoth);
     }
 
     /// <summary>The day behind spark point <paramref name="i"/> of <paramref name="count"/>: the points run oldest first and end on <paramref name="today"/>.</summary>

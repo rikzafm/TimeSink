@@ -34,4 +34,5 @@ public sealed record AppDetailResult(
     IReadOnlyList<AppDetailDay> Days,
     bool Background = false,
     IReadOnlyDictionary<DateOnly, long>? DaySeconds = null,
-    IReadOnlyList<AppDetailOpen>? Opens = null);
+    IReadOnlyList<AppDetailOpen>? Opens = null,
+    IReadOnlyDictionary<string, long>? DeviceSeconds = null);

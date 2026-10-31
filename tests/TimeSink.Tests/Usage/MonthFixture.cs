@@ -85,6 +85,16 @@ public sealed class MonthFixture : IDisposable
     public void Exec(string sql)
     {
         using var c = Open();
+        if (sql.Contains("INSERT INTO apps", StringComparison.OrdinalIgnoreCase) && !sql.Contains("device_id", StringComparison.OrdinalIgnoreCase))
+        {
+            using var devCmd = c.CreateCommand();
+            devCmd.CommandText = "SELECT device_id FROM devices WHERE is_local = 1";
+            var devId = devCmd.ExecuteScalar() as string ?? "dev-local";
+            sql = sql.Replace("INSERT INTO apps(", "INSERT INTO apps(device_id, ", StringComparison.OrdinalIgnoreCase);
+            sql = sql.Replace("INSERT INTO apps (", "INSERT INTO apps (device_id, ", StringComparison.OrdinalIgnoreCase);
+            sql = sql.Replace("VALUES(", $"VALUES('{devId}', ", StringComparison.OrdinalIgnoreCase);
+            sql = sql.Replace("VALUES (", $"VALUES ('{devId}', ", StringComparison.OrdinalIgnoreCase);
+        }
         using var cmd = c.CreateCommand();
         cmd.CommandText = sql;
         cmd.ExecuteNonQuery();

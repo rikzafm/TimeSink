@@ -51,8 +51,43 @@ public static class TodayQuery
             for (var h = 0; h < Hours; h++) typical[h] += sums[h];
             typicalDays++;
         }
-        var hours = Enumerable.Range(0, Hours)
-            .Select(h => new HourBucket(h, todayHours[h], typicalDays == 0 ? 0 : typical[h] / typicalDays)).ToList();
+
+        var hourlyDeviceSeconds = new Dictionary<string, long>[Hours];
+        var hourlyDeviceApps = new Dictionary<string, HashSet<long>>[Hours];
+        for (var h = 0; h < Hours; h++)
+        {
+            hourlyDeviceSeconds[h] = [];
+            hourlyDeviceApps[h] = [];
+        }
+
+        foreach (var s in segs)
+        {
+            var a = Math.Max(s.Start, d0);
+            var b = Math.Min(s.End, d1);
+            if (b <= a) continue;
+            var dev = string.IsNullOrEmpty(s.DeviceId) ? (apps.TryGetValue(s.AppId, out var ga) ? ga.DeviceId : "") : s.DeviceId;
+            foreach (var p in UsageDays.HourPieces(a, b, zone))
+            {
+                var h = p.Hour;
+                if (h < 0 || h >= Hours) continue;
+                hourlyDeviceSeconds[h][dev] = hourlyDeviceSeconds[h].GetValueOrDefault(dev) + (p.End - p.Start);
+                if (!hourlyDeviceApps[h].TryGetValue(dev, out var appSet))
+                    hourlyDeviceApps[h][dev] = appSet = [];
+                appSet.Add(s.AppId);
+            }
+        }
+
+        var hours = Enumerable.Range(0, Hours).Select(h =>
+        {
+            var byDev = new Dictionary<string, DeviceHour>();
+            foreach (var dev in hourlyDeviceSeconds[h].Keys.Union(hourlyDeviceApps[h].Keys))
+            {
+                var devSecs = hourlyDeviceSeconds[h].GetValueOrDefault(dev);
+                var distinctApps = hourlyDeviceApps[h].TryGetValue(dev, out var set) ? set.Count : 0;
+                byDev[dev] = new DeviceHour(devSecs, distinctApps);
+            }
+            return new HourBucket(h, todayHours[h], typicalDays == 0 ? 0 : typical[h] / typicalDays, byDev.Count > 0 ? byDev : null);
+        }).ToList();
 
         // Rows.
         var rows = new List<TodayAppRow>();
@@ -115,14 +150,28 @@ public static class TodayQuery
 
         // PC uptime: shown from the sign-in time when known, but compared like-for-like (first activity) with yesterday.
         var dayEnd = isToday ? nowUtc : d1;
-        var uptime = UsageUptime.Seconds(segs, d0, dayEnd, isToday, onSinceUtc, gamesOnly);
+        var breakdown = UsageUptime.Breakdown(segs, d0, dayEnd, isToday, onSinceUtc, gamesOnly, window.LocalDeviceId);
+        var uptime = breakdown.UnionSeconds;
+        var onBoth = breakdown.OnBothSeconds;
+
+        var devUptimes = new Dictionary<string, DeviceUptime>();
+        foreach (var (devId, devSecs) in breakdown.DeviceSeconds)
+        {
+            var devSegs = segs.Where(s => (string.IsNullOrEmpty(s.DeviceId) ? (apps.TryGetValue(s.AppId, out var ga) ? ga.DeviceId : "") : s.DeviceId) == devId).ToList();
+            var lastActive = devSegs.Count > 0 ? devSegs.Max(s => s.End) : (long?)null;
+            var isLive = isToday && (devSegs.Any(s => s.Open) || (string.Equals(devId, window.LocalDeviceId, StringComparison.OrdinalIgnoreCase) && onSinceUtc != null));
+            devUptimes[devId] = new DeviceUptime(devId, devSecs, lastActive, isLive);
+        }
+
         // The previous day counts in full, so a day still in progress reads negative until it catches up.
-        var uptimeVs = UsageUptime.Seconds(segs, d0, dayEnd, isToday, null, gamesOnly) - UsageUptime.Seconds(segs, y0, d0, false, null, gamesOnly);
+        var vsYesterdayBreakdown = UsageUptime.Breakdown(segs, d0, dayEnd, isToday, null, gamesOnly, window.LocalDeviceId);
+        var yesterdayBreakdown = UsageUptime.Breakdown(segs, y0, d0, false, null, gamesOnly, window.LocalDeviceId);
+        var uptimeVs = vsYesterdayBreakdown.UnionSeconds - yesterdayBreakdown.UnionSeconds;
 
         var openSegs = isToday ? segs.Where(s => s.Open).ToList() : [];
         return new TodayResult(date, d0, d1, nowUtc, total,
             openSegs.Select(s => s.Group).Distinct().Count(), openSegs.Count,
             hours, typicalDays > 0, UsageUptime.SleepBands(segs, d0, Math.Min(nowUtc, d1)), first, longest, total - yesterdayByNow, rows,
-            uptime, uptimeVs, zone, start.FirstDay, gamesOnly);
+            uptime, uptimeVs, zone, start.FirstDay, gamesOnly, devUptimes.Count > 0 ? devUptimes : null, onBoth);
     }
 }

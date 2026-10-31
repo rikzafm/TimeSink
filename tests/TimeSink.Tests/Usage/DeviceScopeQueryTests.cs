@@ -155,3 +155,4 @@ public sealed class DeviceScopeQueryTests : IDisposable
         });
     }
 }
+

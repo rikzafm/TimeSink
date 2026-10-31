@@ -40,7 +40,7 @@ public static class YearQuery
         // The window runs from two months before the year to now. Month totals are PC uptime; the per-app shares only feed
         // each month's top apps.
         var segs = window.Segments(LocalDays.StartOf(firstMonth.First, zone));
-        var rollup = new MonthRollup(segs, zone, nowUtc, onSinceUtc, gamesOnly);
+        var rollup = new MonthRollup(segs, zone, nowUtc, onSinceUtc, gamesOnly, window.LocalDeviceId);
         long Secs(MonthKey m) => rollup.Uptime(m);
 
         // Current month projection: seconds / days elapsed since tracking (or month) began * days in month.
@@ -88,10 +88,24 @@ public static class YearQuery
                 ? UsageRank.Rank(shares, apps, kv => kv.Key, kv => kv.Value)
                     .Select(kv => new YearAppShare(kv.Key, UsageRank.NameOf(apps, kv.Key), kv.Value)).ToList()
                 : new List<YearAppShare>();
-            months.Add(new YearMonth(m, kind, secs, proj, delta, prev, top));
+            var devSecs = kind is YearMonthKind.Tracked or YearMonthKind.Current ? rollup.DeviceUptime(month) : null;
+            var onBoth = kind is YearMonthKind.Tracked or YearMonthKind.Current ? rollup.OnBoth(month) : 0;
+            months.Add(new YearMonth(m, kind, secs, proj, delta, prev, top, devSecs is { Count: > 0 } ? devSecs : null, onBoth));
         }
 
         var total = months.Sum(m => m.Seconds);
+        var yearDeviceTotals = new Dictionary<string, long>();
+        long yearOnBoth = 0;
+        foreach (var ym in months)
+        {
+            if (ym.DeviceSeconds != null)
+            {
+                foreach (var (dev, s) in ym.DeviceSeconds)
+                    yearDeviceTotals[dev] = yearDeviceTotals.GetValueOrDefault(dev) + s;
+            }
+            yearOnBoth += ym.OnBothSeconds;
+        }
+
         var fullMonths = months.Where(m => m.Kind == YearMonthKind.Tracked && new MonthKey(year, m.Month) != partialFirst).ToList();
         long? average = fullMonths.Count == 0 ? null : (long)Math.Round(fullMonths.Average(m => (double)m.Seconds));
 
@@ -103,6 +117,6 @@ public static class YearQuery
             : null;
 
         return new YearResult(year, nowUtc, first, months, total, average, best?.Month, best?.Seconds ?? 0, pace,
-            hasPace ? recent.Count : 0);
+            hasPace ? recent.Count : 0, yearDeviceTotals.Count > 0 ? yearDeviceTotals : null, yearOnBoth);
     }
 }

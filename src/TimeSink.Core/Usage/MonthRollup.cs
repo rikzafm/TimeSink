@@ -10,8 +10,10 @@ internal sealed class MonthRollup
 {
     private readonly Dictionary<MonthKey, Dictionary<long, long>> _groups = [];
     private readonly Lazy<Dictionary<MonthKey, long>> _uptime;
+    private readonly Lazy<Dictionary<MonthKey, Dictionary<string, long>>> _deviceUptime;
+    private readonly Lazy<Dictionary<MonthKey, long>> _onBoth;
 
-    public MonthRollup(List<UsageSeg> segs, TimeZoneInfo zone, long nowUtc, long? onSinceUtc, bool gamesOnly)
+    public MonthRollup(List<UsageSeg> segs, TimeZoneInfo zone, long nowUtc, long? onSinceUtc, bool gamesOnly, string? localDeviceId = null)
     {
         foreach (var slice in UsageDays.Slices(segs, zone))
         {
@@ -19,13 +21,41 @@ internal sealed class MonthRollup
             if (!_groups.TryGetValue(key, out var groups)) _groups[key] = groups = [];
             groups[slice.Seg.Group] = groups.GetValueOrDefault(slice.Seg.Group) + (slice.End - slice.Start);
         }
+
+        var breakdownLazy = new Lazy<Dictionary<DateOnly, DeviceUptimeBreakdown>>(() =>
+            UsageUptime.PerDayBreakdown(segs, zone, nowUtc, onSinceUtc, gamesOnly, localDeviceId));
+
         _uptime = new Lazy<Dictionary<MonthKey, long>>(() =>
         {
             var byMonth = new Dictionary<MonthKey, long>();
-            foreach (var (day, secs) in UsageUptime.PerDay(segs, zone, nowUtc, onSinceUtc, gamesOnly))
+            foreach (var (day, bd) in breakdownLazy.Value)
             {
                 var key = MonthKey.Of(day);
-                byMonth[key] = byMonth.GetValueOrDefault(key) + secs;
+                byMonth[key] = byMonth.GetValueOrDefault(key) + bd.UnionSeconds;
+            }
+            return byMonth;
+        });
+
+        _deviceUptime = new Lazy<Dictionary<MonthKey, Dictionary<string, long>>>(() =>
+        {
+            var byMonth = new Dictionary<MonthKey, Dictionary<string, long>>();
+            foreach (var (day, bd) in breakdownLazy.Value)
+            {
+                var key = MonthKey.Of(day);
+                if (!byMonth.TryGetValue(key, out var devDict)) byMonth[key] = devDict = [];
+                foreach (var (dev, s) in bd.DeviceSeconds)
+                    devDict[dev] = devDict.GetValueOrDefault(dev) + s;
+            }
+            return byMonth;
+        });
+
+        _onBoth = new Lazy<Dictionary<MonthKey, long>>(() =>
+        {
+            var byMonth = new Dictionary<MonthKey, long>();
+            foreach (var (day, bd) in breakdownLazy.Value)
+            {
+                var key = MonthKey.Of(day);
+                byMonth[key] = byMonth.GetValueOrDefault(key) + bd.OnBothSeconds;
             }
             return byMonth;
         });
@@ -40,4 +70,11 @@ internal sealed class MonthRollup
 
     /// <summary>PC uptime in the month.</summary>
     public long Uptime(MonthKey month) => _uptime.Value.GetValueOrDefault(month);
+
+    /// <summary>Per-device uptime in the month.</summary>
+    public IReadOnlyDictionary<string, long> DeviceUptime(MonthKey month) =>
+        _deviceUptime.Value.TryGetValue(month, out var d) ? d : new Dictionary<string, long>();
+
+    /// <summary>Overlap ("on both") seconds in the month.</summary>
+    public long OnBoth(MonthKey month) => _onBoth.Value.GetValueOrDefault(month);
 }

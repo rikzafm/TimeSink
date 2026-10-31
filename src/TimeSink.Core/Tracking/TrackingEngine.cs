@@ -210,9 +210,9 @@ public sealed class TrackingEngine
             return string.Equals(p.FullPath, app.ExePath, StringComparison.OrdinalIgnoreCase)
                    || (app.PackageFamily is not null && string.Equals(p.PackageFamily, app.PackageFamily, StringComparison.OrdinalIgnoreCase));
         // Unreadable process (elevated/protected): fall back to the image name when it is unambiguous.
-        var file = Path.GetFileName(app.ExePath);
+        var file = Path.GetFileName(app.ExePath.Replace('\\', '/'));
         return string.Equals(p.Name, file, StringComparison.OrdinalIgnoreCase)
-               && _apps.Count(a => string.Equals(Path.GetFileName(a.ExePath), file, StringComparison.OrdinalIgnoreCase)) == 1;
+               && _apps.Count(a => string.Equals(Path.GetFileName(a.ExePath.Replace('\\', '/')), file, StringComparison.OrdinalIgnoreCase)) == 1;
     }
 
     private void Accumulate(Open o, long to)

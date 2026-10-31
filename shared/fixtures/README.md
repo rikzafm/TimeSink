@@ -17,7 +17,7 @@ This directory contains shared cross-platform test fixtures formatted in JSON. B
 | `accumulator-rebuild.json` | Deterministic multi-day scenario verifying incremental `daily_usage` equals a full `RebuildAll()`. |
 | `backup-and-restore.json` | Backup create/replace round trip, idempotent double-merge, and rejection of newer schema versions. |
 | `sync-import.json` | *(To be added in Ticket 08)* Snapshot import idempotency. |
-| `device-overlap.json` | *(To be added in Ticket 06)* Multi-device union uptime with overlap counted once. |
+| `device-overlap.json` | Multi-device union uptime with overlap counted once across all query results. |
 
 ---
 
@@ -83,3 +83,4 @@ Use `FixtureLoader.Load<T>("fixture-name.json")` from `tests/TimeSink.Tests/Trac
 
 ### In Swift (`TimeSinkCoreTests`)
 Use `Bundle.module.url(forResource:withExtension:)` or read from the repository's `shared/fixtures/` path. Decode using `JSONDecoder`, instantiate `TrackingEngine` with protocol fakes, execute the event sequence, and verify the resulting records.
+

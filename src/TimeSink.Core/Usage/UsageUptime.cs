@@ -1,29 +1,157 @@
 namespace TimeSink.Core.Usage;
 
+/// <summary>An active uptime interval in UTC seconds.</summary>
+public readonly record struct UptimeInterval(long StartUtc, long EndUtc);
+
+/// <summary>Breakdown of uptime across devices and overlap.</summary>
+public sealed record DeviceUptimeBreakdown(
+    long UnionSeconds,
+    IReadOnlyDictionary<string, long> DeviceSeconds,
+    long OnBothSeconds,
+    IReadOnlyDictionary<string, List<UptimeInterval>> DeviceIntervals,
+    List<UptimeInterval> UnionIntervals);
+
 /// <summary>
-/// PC uptime as the usage queries see it (decision 125): nothing records the PC being on except tracked sessions, so a
+/// PC uptime as the usage queries see it (decision 125, 168): nothing records the PC being on except tracked sessions, so a
 /// finished day runs from its first tracked session to its last, a live day to now, and sleep bands are subtracted.
+/// Across multiple devices, uptime intervals are unioned so an hour both devices were on counts once.
 /// </summary>
 internal static class UsageUptime
 {
     /// <summary>
-    /// Seconds the PC was on within [<paramref name="from"/>, <paramref name="to"/>), sleep excluded. The day starts at its
-    /// first tracked session or <paramref name="onSince"/> (e.g. sign-in), whichever is earlier; a live day runs to
-    /// <paramref name="to"/>, a finished one to the last tracked session end (nothing else records the PC being on).
+    /// Seconds the PC was on within [<paramref name="from"/>, <paramref name="to"/>), sleep excluded. Overlap across
+    /// multiple devices is counted once.
     /// </summary>
-    public static long Seconds(List<UsageSeg> segs, long from, long to, bool live, long? onSince, bool gamesOnly = false)
+    public static long Seconds(List<UsageSeg> segs, long from, long to, bool live, long? onSince, bool gamesOnly = false, string? localDeviceId = null) =>
+        Breakdown(segs, from, to, live, onSince, gamesOnly, localDeviceId).UnionSeconds;
+
+    /// <summary>
+    /// Computes the uptime intervals for a single device within [<paramref name="from"/>, <paramref name="to"/>), sleep excluded.
+    /// </summary>
+    public static List<UptimeInterval> Intervals(List<UsageSeg> segs, long from, long to, bool live, long? onSince, bool gamesOnly = false)
     {
-        if (gamesOnly) return OpenSeconds(segs, from, to);
+        if (gamesOnly)
+        {
+            var raw = new List<UptimeInterval>();
+            foreach (var s in segs.Where(s => s.End > from && s.Start < to))
+            {
+                var st = Math.Max(s.Start, from);
+                var en = Math.Min(s.End, to);
+                if (en > st) raw.Add(new UptimeInterval(st, en));
+            }
+            return Union(raw);
+        }
+
         var inRange = segs.Where(s => s.End > from && s.Start < to).ToList();
-        // Per day, not per Windows session: after a mid-day restart the sign-in is later than the day's first activity.
         long start;
         if (inRange.Count > 0) start = Math.Max(from, Math.Min(onSince ?? long.MaxValue, inRange.Min(s => s.Start)));
         else if (onSince is { } on) start = Math.Max(from, on);
-        else return 0;
+        else return [];
+
         var end = live ? to : inRange.Count > 0 ? Math.Min(to, inRange.Max(s => s.End)) : start;
-        if (end <= start) return 0;
-        var asleep = SleepBands(segs, start, end).Sum(b => Math.Max(0, Math.Min(b.EndUtc, end) - Math.Max(b.StartUtc, start)));
-        return Math.Max(0, end - start - asleep);
+        if (end <= start) return [];
+
+        var bands = SleepBands(segs, start, end);
+        var intervals = new List<UptimeInterval>();
+        var cursor = start;
+        foreach (var b in bands.OrderBy(b => b.StartUtc))
+        {
+            var bStart = Math.Max(start, b.StartUtc);
+            var bEnd = Math.Min(end, b.EndUtc);
+            if (bEnd <= bStart) continue;
+
+            if (bStart > cursor)
+            {
+                intervals.Add(new UptimeInterval(cursor, bStart));
+            }
+            cursor = Math.Max(cursor, bEnd);
+        }
+
+        if (cursor < end)
+        {
+            intervals.Add(new UptimeInterval(cursor, end));
+        }
+        return intervals;
+    }
+
+    /// <summary>
+    /// Unions overlapping or adjacent intervals, sorted by start time.
+    /// </summary>
+    public static List<UptimeInterval> Union(IEnumerable<UptimeInterval> intervals)
+    {
+        var sorted = intervals.Where(i => i.EndUtc > i.StartUtc).OrderBy(i => i.StartUtc).ThenBy(i => i.EndUtc).ToList();
+        if (sorted.Count == 0) return [];
+
+        var merged = new List<UptimeInterval>();
+        var current = sorted[0];
+
+        for (var i = 1; i < sorted.Count; i++)
+        {
+            var next = sorted[i];
+            if (next.StartUtc <= current.EndUtc)
+            {
+                current = new UptimeInterval(current.StartUtc, Math.Max(current.EndUtc, next.EndUtc));
+            }
+            else
+            {
+                merged.Add(current);
+                current = next;
+            }
+        }
+        merged.Add(current);
+        return merged;
+    }
+
+    /// <summary>
+    /// Computes union uptime, per-device uptime, and overlap ("on both") seconds within [<paramref name="from"/>, <paramref name="to"/>).
+    /// </summary>
+    public static DeviceUptimeBreakdown Breakdown(List<UsageSeg> segs, long from, long to, bool live, long? onSince, bool gamesOnly = false, string? localDeviceId = null)
+    {
+        if (segs.Count == 0)
+        {
+            if (live && onSince is { } on && !gamesOnly)
+            {
+                var intervals = Intervals(segs, from, to, live, onSince, gamesOnly);
+                var secs = intervals.Sum(i => i.EndUtc - i.StartUtc);
+                var dev = localDeviceId ?? "";
+                return new DeviceUptimeBreakdown(secs, new Dictionary<string, long> { [dev] = secs }, 0,
+                    new Dictionary<string, List<UptimeInterval>> { [dev] = intervals }, intervals);
+            }
+            return new DeviceUptimeBreakdown(0, new Dictionary<string, long>(), 0,
+                new Dictionary<string, List<UptimeInterval>>(), []);
+        }
+
+        var groups = segs.GroupBy(s => s.DeviceId ?? "").ToList();
+        if (groups.Count <= 1)
+        {
+            var dev = groups[0].Key;
+            var intervals = Intervals(groups[0].ToList(), from, to, live, onSince, gamesOnly);
+            var secs = intervals.Sum(i => i.EndUtc - i.StartUtc);
+            return new DeviceUptimeBreakdown(secs, new Dictionary<string, long> { [dev] = secs }, 0,
+                new Dictionary<string, List<UptimeInterval>> { [dev] = intervals }, intervals);
+        }
+
+        var devIntervals = new Dictionary<string, List<UptimeInterval>>();
+        var devSeconds = new Dictionary<string, long>();
+        foreach (var g in groups)
+        {
+            var dev = g.Key;
+            var isLocal = string.IsNullOrEmpty(localDeviceId)
+                ? (g == groups[0])
+                : string.Equals(dev, localDeviceId, StringComparison.OrdinalIgnoreCase);
+            var devOnSince = isLocal ? onSince : null;
+            var devLive = live && (isLocal || g.Any(s => s.Open));
+            var intervals = Intervals(g.ToList(), from, to, devLive, devOnSince, gamesOnly);
+            devIntervals[dev] = intervals;
+            devSeconds[dev] = intervals.Sum(i => i.EndUtc - i.StartUtc);
+        }
+
+        var unionIntervals = Union(devIntervals.Values.SelectMany(x => x));
+        var unionSecs = unionIntervals.Sum(i => i.EndUtc - i.StartUtc);
+        var sumDevSecs = devSeconds.Values.Sum();
+        var onBoth = Math.Max(0, sumDevSecs - unionSecs);
+
+        return new DeviceUptimeBreakdown(unionSecs, devSeconds, onBoth, devIntervals, unionIntervals);
     }
 
     /// <summary>
@@ -65,10 +193,10 @@ internal static class UsageUptime
     }
 
     /// <summary>
-    /// Uptime seconds per local day from <paramref name="segs"/>. Today (the live day) runs from
+    /// Uptime seconds and per-device breakdown per local day from <paramref name="segs"/>. Today (the live day) runs from
     /// <paramref name="onSinceUtc"/> (sign-in) when known; every other day is judged from its sessions alone.
     /// </summary>
-    public static Dictionary<DateOnly, long> PerDay(List<UsageSeg> segs, TimeZoneInfo zone, long nowUtc, long? onSinceUtc = null, bool gamesOnly = false)
+    public static Dictionary<DateOnly, DeviceUptimeBreakdown> PerDayBreakdown(List<UsageSeg> segs, TimeZoneInfo zone, long nowUtc, long? onSinceUtc = null, bool gamesOnly = false, string? localDeviceId = null)
     {
         var today = LocalDays.DateOf(nowUtc, zone);
         var byDay = new Dictionary<DateOnly, List<UsageSeg>>();
@@ -80,14 +208,21 @@ internal static class UsageUptime
         }
         if (onSinceUtc is not null && !gamesOnly && !byDay.ContainsKey(today)) byDay[today] = [];
 
-        var result = new Dictionary<DateOnly, long>(byDay.Count);
+        var result = new Dictionary<DateOnly, DeviceUptimeBreakdown>(byDay.Count);
         foreach (var (day, list) in byDay)
         {
             var live = day == today;
             var from = LocalDays.StartOf(day, zone);
             var to = live ? nowUtc : LocalDays.StartOf(day.AddDays(1), zone);
-            result[day] = Seconds(list, from, to, live, live ? onSinceUtc : null, gamesOnly);
+            result[day] = Breakdown(list, from, to, live, live ? onSinceUtc : null, gamesOnly, localDeviceId);
         }
         return result;
     }
+
+    /// <summary>
+    /// Uptime seconds per local day from <paramref name="segs"/>, unioned across devices.
+    /// </summary>
+    public static Dictionary<DateOnly, long> PerDay(List<UsageSeg> segs, TimeZoneInfo zone, long nowUtc, long? onSinceUtc = null, bool gamesOnly = false, string? localDeviceId = null) =>
+        PerDayBreakdown(segs, zone, nowUtc, onSinceUtc, gamesOnly, localDeviceId)
+            .ToDictionary(kv => kv.Key, kv => kv.Value.UnionSeconds);
 }
