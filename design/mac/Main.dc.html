@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TimeSink Today</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+</style>
+</helmet>
+<div style="width:440px;height:700px;box-sizing:border-box;background:#0a0c08;font-family:-apple-system,'SF Pro Text','Helvetica Neue',sans-serif;color:#eef2e6;font-variant-numeric:tabular-nums;position:relative;overflow:hidden">
+  <div style="height:28px;display:flex;align-items:center;justify-content:flex-end;padding-right:64px;background:#161912;border-bottom:1px solid #232a1d">
+    <div style="display:flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:5px;background:#2b3125;font-size:12px;font-weight:500">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" fill="none" stroke="#c6f26b" stroke-width="1.6"></circle><path d="M6 3.5V6l1.8 1" fill="none" stroke="#c6f26b" stroke-width="1.4" stroke-linecap="round"></path></svg>
+      <span>6h 12m</span>
+    </div>
+  </div>
+  <div style="position:absolute;top:30px;right:92px;width:14px;height:14px;background:#11140f;border-left:1px solid #2b3125;border-top:1px solid #2b3125;transform:rotate(45deg)"></div>
+  <div style="position:absolute;top:37px;left:20px;width:400px;height:640px;box-sizing:border-box;background:#11140f;border:1px solid #2b3125;border-radius:12px;display:flex;flex-direction:column;overflow:hidden">
+    <div style="height:44px;flex:none;display:flex;align-items:center;gap:2px;padding:0 12px 0 16px">
+      <div style="flex:1;display:flex;align-items:center;gap:9px"><span style="width:9px;height:9px;border-radius:5px;background:#c6f26b"></span><span style="font-size:17px;font-weight:700">TimeSink</span></div>
+      <div style="display:flex;gap:2px;padding:2px;border:1px solid #2b3125;border-radius:8px;font-size:11px;margin-right:6px"><button style="padding:3px 8px;border-radius:6px;background:#2b3125;font-weight:600">This Mac</button><button style="padding:3px 8px;color:#9aa391">All devices</button></div>
+            <button aria-label="Games only" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:#cfd6c4"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5.5" width="14" height="7.5" rx="3.5"></rect><path d="M6 7.5v3.5M4.25 9.25h3.5"></path><circle cx="11.5" cy="8.5" r=".6"></circle><circle cx="13" cy="10" r=".6"></circle></svg></button>
+      <button aria-label="Settings" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:#cfd6c4"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"></path></svg></button>
+    </div>
+    <div style="flex:none;display:flex;border-bottom:1px solid #232a1d;font-size:15px">
+      <button style="flex:1;height:40px;box-sizing:border-box;font-weight:600;color:#c6f26b;border-bottom:2px solid #c6f26b">Today</button>
+      <button style="flex:1;height:40px;color:#9aa391">Week</button>
+      <button style="flex:1;height:40px;color:#9aa391">Month</button>
+      <button style="flex:1;height:40px;color:#9aa391">Year</button>
+      <button style="flex:1;height:40px;color:#9aa391">All</button>
+    </div>
+    <div style="flex:1;min-height:0;padding:10px 16px 0;display:flex;flex-direction:column;gap:8px;overflow:hidden">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;font-size:11px;color:#9aa391"><button aria-label="Previous day" style="width:16px;height:16px;display:flex;align-items:center;justify-content:center;color:#cfd6c4"><svg width="6" height="9" viewBox="0 0 7 10" aria-hidden="true"><path d="M6 1L1 5l5 4z" fill="currentColor"></path></svg></button><span>Sunday, 1 Nov&nbsp;<br></span><button aria-label="Next day (today)" style="width:16px;height:16px;display:flex;align-items:center;justify-content:center;color:#4a5547"><svg width="6" height="9" viewBox="0 0 7 10" aria-hidden="true"><path d="M1 1l5 4-5 4z" fill="currentColor"></path></svg></button></div>
+          <div style="font-size:34px;font-weight:700;letter-spacing:-0.8px;line-height:40px;color:#c6f26b">6h 12m<span style="font-size:14px;font-weight:500;color:#9aa391;letter-spacing:0"> 47s</span></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;height:24px;padding:0 10px;border:1px solid #2b3125;border-radius:12px;background:#141910;font-size:11px;font-weight:600;margin-bottom:6px"><span style="width:7px;height:7px;border-radius:4px;background:#c6f26b;box-shadow:0 0 0 3px #2d3d1c"></span>3 running</div>
+      </div>
+      <div style="flex:none;position:relative;height:78px">
+        <div style="position:absolute;left:{{nowX}}px;top:0;width:1px;height:62px;background:#c6f26b"></div>
+        <div style="position:absolute;left:{{nowTag}}px;top:0;height:16px;padding:0 6px;border-radius:4px;background:#c6f26b;color:#11140f;font-size:10px;font-weight:700;line-height:16px">3:42 pm</div>
+        <div style="position:absolute;left:0;right:0;bottom:16px;height:46px;display:flex;align-items:flex-end;gap:3px">
+          <sc-for list="{{bars}}" as="b" hint-placeholder-count="24">
+            <div style="flex:1;height:{{b.h}}px;background:{{b.bg}};border:{{b.bd}};border-radius:2px;box-sizing:border-box"></div>
+          </sc-for>
+        </div>
+        <div style="position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;font-size:10px;color:#9aa391"><span>12 am</span><span>6 am</span><span>12 pm</span><span>6 pm</span><span>12 am</span></div>
+      </div>
+      <div style="flex:none;display:flex;gap:14px;font-size:10px;color:#9aa391">
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:#c6f26b"></span>Apps open</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;border-top:2px dotted #9aa391"></span>Typical day</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:repeating-linear-gradient(135deg,#9aa391 0 1.5px,transparent 1.5px 3px)"></span>Mac asleep · paused</span>
+      </div>
+      <div style="flex:none;display:flex;gap:8px">
+        <div style="flex:1;border:1px solid #2b3125;border-radius:10px;padding:7px 10px"><div style="font-size:9px;letter-spacing:0.6px;color:#9aa391">FIRST APP</div><div style="font-size:14px;font-weight:700;margin-top:2px">8:04 am</div></div>
+        <div style="flex:1;border:1px solid #2b3125;border-radius:10px;padding:7px 10px"><div style="font-size:9px;letter-spacing:0.6px;color:#9aa391">LONGEST</div><div style="font-size:14px;font-weight:700;margin-top:2px">3h 41m · Xc…</div></div>
+        <div style="flex:1;border:1px solid #2b3125;border-radius:10px;padding:7px 10px"><div style="font-size:9px;letter-spacing:0.6px;color:#9aa391">VS YESTERDAY</div><div style="font-size:14px;font-weight:700;margin-top:2px;color:#c6f26b">+24m by now</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;overflow:hidden">
+        <div style="height:50px;flex:none;display:flex;align-items:center;gap:12px">
+          <div style="width:30px;height:30px;box-sizing:border-box;border-radius:8px;background:#141910;border:1px solid #232a1d;color:#8fd3ff;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center">C</div>
+          <div style="flex:1"><div style="display:flex;justify-content:space-between"><span style="font-size:13px;font-weight:700">Chrome</span><span style="font-size:13px;font-weight:700">2h 08m</span></div>
+            <div style="font-size:10px;color:#c6f26b">Running · 22m session</div>
+            <div style="position:relative;height:4px;border-radius:2px;background:#1b2116;margin-top:4px"><div style="position:absolute;left:33%;width:8%;top:0;height:4px;border-radius:2px;background:#8fd3ff"></div><div style="position:absolute;left:48%;width:20%;top:0;height:4px;border-radius:2px;background:#8fd3ff"></div><div style="position:absolute;left:76%;width:8%;top:0;height:4px;border-radius:2px;background:#8fd3ff"></div></div></div>
+        </div>
+        <div style="flex:none;border-radius:10px;background:#161b11;padding:0 8px 10px">
+          <div style="height:50px;display:flex;align-items:center;gap:12px">
+            <div style="width:30px;height:30px;box-sizing:border-box;border-radius:8px;background:#141910;border:1px solid #232a1d;color:#ffb86b;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center">X</div>
+            <div style="flex:1"><div style="display:flex;justify-content:space-between"><span style="font-size:13px;font-weight:700">Xcode</span><span style="font-size:13px;font-weight:700">3h 41m</span></div>
+              <div style="font-size:10px;color:#c6f26b">Running · 1h 12m session</div>
+              <div style="position:relative;height:4px;border-radius:2px;background:#1b2116;margin-top:4px"><div style="position:absolute;left:34%;width:15%;top:0;height:4px;border-radius:2px;background:#ffb86b"></div><div style="position:absolute;left:55%;width:10%;top:0;height:4px;border-radius:2px;background:#ffb86b"></div></div></div>
+          </div>
+          <div style="display:flex;gap:14px;align-items:center;padding:4px 4px 0">
+            <div style="position:relative;width:150px;height:150px;flex:none">
+              <div style="position:absolute;left:0;top:0;width:150px;height:150px;border-radius:75px;background:{{dial.outer}}"></div>
+              <div style="position:absolute;left:11px;top:11px;width:128px;height:128px;border-radius:64px;background:#161b11"></div>
+              <div style="position:absolute;left:17px;top:17px;width:116px;height:116px;border-radius:58px;background:{{dial.total}}"></div>
+              <div style="position:absolute;left:28px;top:28px;width:94px;height:94px;border-radius:47px;background:#161b11"></div>
+              <div style="position:absolute;left:0;top:0;width:150px;height:150px;transform:rotate({{dial.avgDeg}}deg)"><div style="position:absolute;left:74px;top:12px;width:2px;height:22px;background:#eef2e6"></div></div>
+              <div style="position:absolute;left:0;top:0;width:150px;height:150px;transform:rotate({{dial.nowDeg}}deg)"><div style="position:absolute;left:69px;top:0;width:12px;height:12px;border-radius:6px;background:#c6f26b;border:2px solid #161b11;box-sizing:border-box"></div></div>
+              <div style="position:absolute;left:0;top:50px;width:150px;text-align:center"><div style="font-size:20px;font-weight:700;color:#c6f26b">-12%</div><div style="font-size:9px;color:#9aa391;margin-top:1px">vs 7-day avg</div></div>
+              <span style="position:absolute;left:68px;top:-14px;font-size:9px;color:#9aa391">12 am</span>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:10px">
+              <div><div style="font-size:9px;letter-spacing:0.6px;color:#9aa391">SESSIONS</div><div style="font-size:16px;font-weight:700">2</div></div>
+              <div><div style="font-size:9px;letter-spacing:0.6px;color:#9aa391">LONGEST</div><div style="font-size:16px;font-weight:700">3h 41m</div></div>
+              <div><div style="font-size:9px;letter-spacing:0.6px;color:#9aa391">7-DAY AVG</div><div style="font-size:16px;font-weight:700">4h 10m</div></div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;padding:8px 4px 0;font-size:10px">
+            <span style="padding:3px 8px;border:1px solid #ffb86b;border-radius:10px;color:#ffb86b">8:04 am → 11:45 am · 3h 41m</span>
+            <span style="padding:3px 8px;border:1px solid #2b3125;border-radius:10px;color:#cfd6c4">1:10 pm → now</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="height:46px;flex:none;border-top:1px solid #232a1d;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:11px">
+      <button style="font-size:12px;font-weight:600;color:#c6f26b">+ Add app</button>
+      <span style="color:#9aa391">Updated just now</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":440,"height":700}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const n = [0,0,0,0,0,0,0,1,2,3,3,2,3,4,4,3,0,0,0,0,0,0,0,0];
+    const typ = [0,0,0,0,0,0,0,1,2,3,3,3,3,3,4,4,4,3,3,3,2,2,1,0];
+    const bars = n.map((v, i) => {
+      if (i === 15) return { h: v * 11, bg: '#c6f26b', bd: '0' };
+      if (i === 12) return { h: 11 * 3, bg: 'repeating-linear-gradient(135deg,#46691f 0 2px,#161b11 2px 4px)', bd: '0' };
+      if (i < 15) return { h: Math.max(v * 11, 2), bg: v > 3 ? '#75a826' : v > 2 ? '#46691f' : v > 0 ? '#2d3d1c' : '#1b2116', bd: '0' };
+      return { h: Math.max(typ[i] * 11, 2), bg: 'transparent', bd: '1px dotted #46514a' };
+    });
+    const track = '#232a1d';
+    const conic = (segs, color) => {
+      let pos = 0; const parts = [];
+      segs.forEach(([s, e]) => {
+        if (s > pos) parts.push(track + ' ' + pos * 360 + 'deg ' + s * 360 + 'deg');
+        parts.push(color + ' ' + s * 360 + 'deg ' + e * 360 + 'deg');
+        pos = e;
+      });
+      if (pos < 1) parts.push(track + ' ' + pos * 360 + 'deg 360deg');
+      return 'conic-gradient(' + parts.join(',') + ')';
+    };
+    const dial = {
+      outer: conic([[0.336, 0.490], [0.549, 0.654]], '#ffb86b'),
+      total: conic([[0, 0.154]], '#5a4a30'),
+      avgDeg: 0.174 * 360,
+      nowDeg: 0.654 * 360
+    };
+    return { bars, dial, nowX: 0.654 * 368, nowTag: 0.654 * 368 - 24 };
+  }
+}
+</script>
+</body>
+</html>

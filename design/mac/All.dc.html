@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TimeSink All</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+</style>
+</helmet>
+<div style="width:440px;height:700px;box-sizing:border-box;background:#0a0c08;font-family:-apple-system,'SF Pro Text','Helvetica Neue',sans-serif;color:#eef2e6;font-variant-numeric:tabular-nums;position:relative;overflow:hidden">
+  <div style="height:28px;display:flex;align-items:center;justify-content:flex-end;padding-right:64px;background:#161912;border-bottom:1px solid #232a1d">
+    <div style="display:flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:5px;background:#2b3125;font-size:12px;font-weight:500">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" fill="none" stroke="#c6f26b" stroke-width="1.6"></circle><path d="M6 3.5V6l1.8 1" fill="none" stroke="#c6f26b" stroke-width="1.4" stroke-linecap="round"></path></svg>
+      <span>6h 12m</span>
+    </div>
+  </div>
+  <div style="position:absolute;top:30px;right:92px;width:14px;height:14px;background:#11140f;border-left:1px solid #2b3125;border-top:1px solid #2b3125;transform:rotate(45deg)"></div>
+  <div style="position:absolute;top:37px;left:20px;width:400px;height:640px;box-sizing:border-box;background:#11140f;border:1px solid #2b3125;border-radius:12px;display:flex;flex-direction:column;overflow:hidden">
+    <div style="height:48px;flex:none;display:flex;align-items:center;gap:6px;padding:0 14px 0 16px">
+      <div style="flex:1;display:flex;align-items:center;gap:9px"><span style="width:9px;height:9px;border-radius:5px;background:#c6f26b"></span><span style="font-size:17px;font-weight:700">TimeSink</span></div>
+      <div style="display:flex;gap:2px;padding:2px;border:1px solid #2b3125;border-radius:8px;font-size:11px;margin-right:6px"><button style="padding:3px 8px;color:#9aa391">This Mac</button><button style="padding:3px 8px;border-radius:6px;background:#2b3125;font-weight:600">All devices</button></div>
+      <button aria-label="Games only" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;color:#cfd6c4"><svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5.5" width="14" height="7.5" rx="3.5"></rect><path d="M6 7.5v3.5M4.25 9.25h3.5"></path><circle cx="11.5" cy="8.5" r=".6"></circle><circle cx="13" cy="10" r=".6"></circle></svg></button>
+      <button aria-label="Settings" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;color:#cfd6c4"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="2.6"></circle><path d="M10 2v2.200M10 15.800V18M2 10h2.200M15.800 10H18M4.300 4.300l1.600 1.600M14.100 14.100l1.600 1.600M4.300 15.700l1.600-1.600M14.100 5.900l1.600-1.600"></path></svg></button>
+    </div>
+    <div style="flex:none;display:flex;border-bottom:1px solid #232a1d;font-size:15px">
+      <button style="flex:1;height:40px;color:#9aa391">Today</button>
+      <button style="flex:1;height:40px;color:#9aa391">Week</button>
+      <button style="flex:1;height:40px;color:#9aa391">Month</button>
+      <button style="flex:1;height:40px;color:#9aa391">Year</button>
+      <button style="flex:1;height:40px;box-sizing:border-box;font-weight:600;color:#c6f26b;border-bottom:2px solid #c6f26b">All</button>
+    </div>
+    <div style="flex:1;min-height:0;padding:12px 16px 0;display:flex;flex-direction:column;gap:6px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1;font-size:11px;color:#9aa391">Lifetime · every app, one table</div>
+                <button aria-label="Table options" style="width:32px;height:30px;box-sizing:border-box;border:1px solid #2b3125;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#cfd6c4"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><rect x="1.500" y="2.500" width="4" height="4" rx="1"></rect><rect x="1.500" y="9.500" width="4" height="4" rx="1"></rect><path d="M8 4.500h6.500M8 11.500h6.500"></path></svg></button>
+      </div>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between">
+        <div style="font-size:46px;font-weight:700;letter-spacing:-1px;line-height:52px;color:#c6f26b">1,204<span style="font-size:28px"> h</span></div>
+        <div style="text-align:right;font-size:11px;color:#9aa391;line-height:17px;padding-bottom:4px"><div><b style="color:#eef2e6">12</b> tracked · <b style="color:#eef2e6">1</b> retired</div><div>sorted by <b style="color:#eef2e6">hours ↓</b></div></div>
+      </div>
+      <div style="flex:1;min-height:0;border:1px solid #2b3125;border-radius:12px;background:#141910;display:flex;flex-direction:column;overflow:hidden;margin-top:4px">
+        <div style="flex:none;height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid #232a1d;font-size:11px;font-weight:700;letter-spacing:1px"><span style="color:#9aa391">APP</span><span style="color:#c6f26b">HOURS ↓</span></div>
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden">
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+            <div style="flex:none;height:56px;box-sizing:border-box;display:flex;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid #232a1d;background:{{r.bg}}">
+              <div style="width:36px;height:36px;box-sizing:border-box;border-radius:10px;background:#11140f;border:1px solid #232a1d;color:{{r.c}};font-weight:700;font-size:17px;display:flex;align-items:center;justify-content:center;flex:none">{{r.l}}</div>
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:700"><span>{{r.name}}</span>
+                  <sc-for list="{{r.devs}}" as="v" hint-placeholder-count="2"><span style="width:6px;height:6px;border-radius:{{v.br}};background:{{v.c}}"></span></sc-for>
+                </div>
+                <sc-if value="{{isIcons}}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;gap:14px;margin-top:3px;font-size:11px;color:#cfd6c4">
+                    <span style="display:flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9aa391" stroke-width="1.2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4.800"></circle><path d="M6 3.500V6l1.800 1.200"></path></svg>{{r.avg}}</span>
+                    <span style="display:flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9aa391" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6a4 4 0 1 0 1.300-2.900M2 1.800V4h2.200"></path></svg>{{r.last}}</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{isLabels}}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;gap:16px;margin-top:3px">
+                    <div><div style="font-size:8px;letter-spacing:0.8px;color:#9aa391">AVG SESSION</div><div style="font-size:11px;color:#cfd6c4">{{r.avg}}</div></div>
+                    <div><div style="font-size:8px;letter-spacing:0.8px;color:#9aa391">LAST OPENED</div><div style="font-size:11px;color:#cfd6c4">{{r.last}}</div></div>
+                  </div>
+                </sc-if>
+              </div>
+              <div style="font-size:22px;font-weight:700;color:#c6f26b">{{r.h}}<span style="font-size:13px;font-weight:500;color:#9aa391"> h</span></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="flex:none;height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-top:1px solid #2b3125;font-size:14px;font-weight:700"><span>Total uptime</span><span style="color:#c6f26b">1,204 h</span></div>
+      </div>
+    </div>
+    <div style="height:42px;flex:none;border-top:1px solid #232a1d;display:flex;align-items:center;padding:0 16px">
+      <button style="font-size:12px;font-weight:600;color:#c6f26b">+ Add app</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"rowStyle":{"editor":"enum","default":"icons","options":["icons","labels"],"section":"Rows"},"$preview":{"width":440,"height":700}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const style = this.props.rowStyle ?? 'icons';
+    const d = (ns) => ns.map((n) => ({ c: n === 'Mac' ? '#c6f26b' : '#5fa8ff', br: n === 'Mac' ? '3px' : '1px' }));
+    const src = [
+      { l: 'X', c: '#ffb86b', name: 'Xcode', h: '400', avg: '2h 12m', last: 'Just now', devs: ['Mac'], sel: true },
+      { l: 'C', c: '#ffe08a', name: 'Chrome', h: '283', avg: '1h 24m', last: 'Just now', devs: ['Mac', 'PC'] },
+      { l: 'V', c: '#d3a6ff', name: 'VS Code', h: '202', avg: '1h 27m', last: '2 h ago', devs: ['Mac', 'PC'] },
+      { l: 'F', c: '#8fd3ff', name: 'Figma', h: '96', avg: '1h 21m', last: 'Yesterday', devs: ['Mac'] },
+      { l: 'S', c: '#ff9fb4', name: 'Spotify', h: '82', avg: '26m', last: 'Just now', devs: ['Mac', 'PC'] },
+      { l: 'D', c: '#c6f26b', name: 'Discord', h: '51', avg: '35m', last: '3 d ago', devs: ['PC'] }
+    ];
+    const rows = src.map((r) => ({ ...r, bg: r.sel ? '#1b2116' : 'transparent', devs: d(r.devs) }));
+    return { rows, isIcons: style === 'icons', isLabels: style === 'labels' };
+  }
+}
+</script>
+</body>
+</html>

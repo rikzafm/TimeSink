@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TimeSink Merge into app</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit}
+</style>
+</helmet>
+<div style="width:440px;height:700px;box-sizing:border-box;background:#0a0c08;font-family:-apple-system,'SF Pro Text','Helvetica Neue',sans-serif;color:#eef2e6;font-variant-numeric:tabular-nums;position:relative;overflow:hidden">
+  <div style="height:28px;display:flex;align-items:center;justify-content:flex-end;padding-right:64px;background:#161912;border-bottom:1px solid #232a1d">
+    <div style="display:flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:5px;background:#2b3125;font-size:12px;font-weight:500">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" fill="none" stroke="#c6f26b" stroke-width="1.6"></circle><path d="M6 3.5V6l1.8 1" fill="none" stroke="#c6f26b" stroke-width="1.4" stroke-linecap="round"></path></svg>
+      <span>6h 12m</span>
+    </div>
+  </div>
+  <div style="position:absolute;top:30px;right:92px;width:14px;height:14px;background:#11140f;border-left:1px solid #2b3125;border-top:1px solid #2b3125;transform:rotate(45deg)"></div>
+  <div style="position:absolute;top:37px;left:20px;width:400px;height:640px;box-sizing:border-box;background:#11140f;border:1px solid #2b3125;border-radius:12px;display:flex;flex-direction:column;overflow:hidden">
+    <div style="height:50px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px">
+      <button aria-label="Back" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5"></path></svg></button>
+      <div style="flex:1;font-size:16px;font-weight:700">Merge into “Chrome”</div>
+    </div>
+    <div style="flex:none;margin:0 16px;height:32px;display:flex;gap:16px;border-bottom:1px solid #232a1d;font-size:13px">
+      <button style="height:32px;box-sizing:border-box;color:#9aa391;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:4px;background:#c6f26b"></span>This Mac</button>
+      <button style="height:32px;box-sizing:border-box;font-weight:600;border-bottom:2px solid #c6f26b;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:2px;background:#5fa8ff"></span>Desktop PC<span style="font-size:10px;font-weight:700;background:#c6f26b;color:#11140f;border-radius:8px;padding:0 6px">1</span></button>
+      <button style="height:32px;box-sizing:border-box;color:#9aa391;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:2px;background:#5fa8ff"></span>Work laptop</button>
+    </div>
+    <div style="flex:1;min-height:0;padding:12px 16px 0;display:flex;flex-direction:column;gap:10px;overflow:hidden">
+      <div style="font-size:12px;color:#cfd6c4;line-height:17px">Tick the apps to count under this one. Their time is added together in every view. Untick a merged app to unmerge it.</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div style="flex:1;height:34px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 12px;border:1px solid #2b3125;border-radius:10px;background:#181d13">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#9aa391" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>
+          <input aria-label="Search tracked apps" placeholder="Search apps on Desktop PC" style="flex:1;background:none;border:0;outline:0;color:#eef2e6;font-size:12px">
+        </div>
+        <div style="display:flex;gap:2px;padding:2px;border:1px solid #2b3125;border-radius:8px;font-size:11px"><button style="padding:4px 8px;border-radius:6px;background:#2b3125;font-weight:600">Tracked</button><button style="padding:4px 8px;color:#9aa391">Untracked</button><button style="padding:4px 8px;color:#9aa391">All</button></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <sc-for list="{{apps}}" as="a" hint-placeholder-count="5">
+          <div style="height:50px;flex:none;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:0 10px;border:1px solid {{a.bd}};border-radius:10px;background:#141910">
+            <div style="width:20px;height:20px;border-radius:5px;flex:none;box-sizing:border-box;border:1.5px solid {{a.cb}};background:{{a.cf}};color:#11140f;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">{{a.tick}}</div>
+            <div style="width:30px;height:30px;box-sizing:border-box;border-radius:8px;background:#11140f;border:1px solid #232a1d;color:{{a.c}};font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;flex:none">{{a.l}}</div>
+            <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700">{{a.name}}</div><div style="font-size:10px;color:#9aa391;margin-top:1px">{{a.sub}}</div></div>
+            <span style="font-size:12px;color:#cfd6c4">{{a.time}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="border:1px solid #c6f26b;border-radius:10px;background:#141910;padding:10px 12px;font-size:12px;line-height:17px">Chrome (124 h) + chrome.exe (159 h) = <b>283 h</b> under “Chrome”.</div>
+      <div style="font-size:10px;color:#9aa391;line-height:15px">Ticked untracked apps start being tracked now and count under Chrome. Ticks on other devices stay: <b style="color:#cfd6c4">This Mac 0 · Work laptop 0</b>.</div>
+    </div>
+    <div style="height:50px;flex:none;border-top:1px solid #232a1d;display:flex;align-items:center;justify-content:space-between;padding:0 16px">
+      <button style="height:30px;padding:0 14px;border:1px solid #2b3125;border-radius:8px;font-size:12px;font-weight:600">Cancel</button>
+      <button style="height:30px;padding:0 14px;border-radius:8px;background:#c6f26b;color:#11140f;font-size:12px;font-weight:700">Merge 1 into Chrome</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":440,"height":700}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const on = { tick: '✓', cb: '#c6f26b', cf: '#c6f26b', bd: '#c6f26b' };
+    const off = { tick: '', cb: '#46691f', cf: 'transparent', bd: '#232a1d' };
+    const apps = [
+      { l: 'C', c: '#ffe08a', name: 'chrome.exe', sub: 'Google Chrome · tracked', time: '159 h', ...on },
+      { l: 'V', c: '#d3a6ff', name: 'Code.exe', sub: 'Visual Studio Code · tracked', time: '112 h', ...off },
+      { l: 'S', c: '#ff9fb4', name: 'Spotify.exe', sub: 'Spotify · tracked', time: '48 h', ...off },
+      { l: 'D', c: '#8fd3ff', name: 'Discord.exe', sub: 'Discord · tracked', time: '51 h', ...off },
+      { l: 'S', c: '#c6f26b', name: 'steam.exe', sub: 'Valve · tracked · Background', time: '210 h', ...off }
+    ];
+    return { apps };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TimeSink Settings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+</style>
+</helmet>
+<div style="width:440px;height:700px;box-sizing:border-box;background:#0a0c08;font-family:-apple-system,'SF Pro Text','Helvetica Neue',sans-serif;color:#eef2e6;font-variant-numeric:tabular-nums;position:relative;overflow:hidden">
+  <div style="height:28px;display:flex;align-items:center;justify-content:flex-end;padding-right:64px;background:#161912;border-bottom:1px solid #232a1d">
+    <div style="display:flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:5px;background:#2b3125;font-size:12px;font-weight:500">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" fill="none" stroke="#c6f26b" stroke-width="1.6"></circle><path d="M6 3.5V6l1.8 1" fill="none" stroke="#c6f26b" stroke-width="1.4" stroke-linecap="round"></path></svg>
+      <span>6h 12m</span>
+    </div>
+  </div>
+  <div style="position:absolute;top:30px;right:92px;width:14px;height:14px;background:#11140f;border-left:1px solid #2b3125;border-top:1px solid #2b3125;transform:rotate(45deg)"></div>
+  <div style="position:absolute;top:37px;left:20px;width:400px;height:640px;box-sizing:border-box;background:#11140f;border:1px solid #2b3125;border-radius:12px;display:flex;flex-direction:column;overflow:hidden">
+    <div style="height:44px;flex:none;display:flex;align-items:center;gap:6px;padding:0 10px;border-bottom:1px solid #232a1d">
+      <button style="display:flex;align-items:center;gap:4px;height:28px;padding:0 8px;border-radius:6px;font-size:13px;color:#c6f26b"><span style="font-size:16px">‹</span>Back</button>
+      <div style="flex:1;text-align:center;font-size:14px;font-weight:600;margin-right:56px">Settings</div>
+    </div>
+    <div style="flex:1;min-height:0;padding:10px 14px 0;overflow:hidden;display:flex;flex-direction:column;gap:14px">
+      <sc-for list="{{sections}}" as="s" hint-placeholder-count="4">
+        <div style="flex:none">
+          <div style="font-size:10px;letter-spacing:0.6px;text-transform:uppercase;color:#9aa391;margin:0 4px 6px">{{s.title}}</div>
+          <div style="border:1px solid #232a1d;border-radius:10px;background:#141910;overflow:hidden">
+            <sc-for list="{{s.rows}}" as="r" hint-placeholder-count="3">
+              <div style="min-height:44px;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:6px 12px;border-top:{{r.bt}}">
+                <div style="flex:1;min-width:0"><div style="font-size:13px">{{r.label}}</div><div style="font-size:11px;color:#9aa391;margin-top:1px">{{r.desc}}</div></div>
+                <sc-if value="{{r.isSwitch}}" hint-placeholder-val="{{ false }}">
+                  <div style="width:34px;height:20px;border-radius:10px;background:{{r.track}};position:relative;flex:none"><div style="position:absolute;top:2px;left:{{r.knob}}px;width:16px;height:16px;border-radius:8px;background:#eef2e6"></div></div>
+                </sc-if>
+                <sc-if value="{{r.isValue}}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:12px;color:#cfd6c4;flex:none">{{r.value}} <span style="color:#9aa391">›</span></div>
+                </sc-if>
+                <sc-if value="{{r.isDanger}}" hint-placeholder-val="{{ false }}">
+                  <button style="font-size:12px;font-weight:600;color:#ff8a7a;flex:none">{{r.value}}</button>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":440,"height":700}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const sw = (label, desc, on) => ({ label, desc, isSwitch: true, track: on ? '#75a826' : '#2b3125', knob: on ? 16 : 2 });
+    const val = (label, desc, value) => ({ label, desc, isValue: true, value });
+    const danger = (label, desc, value) => ({ label, desc, isDanger: true, value });
+    const raw = [
+      { title: 'General', rows: [sw('Open at login', 'Starts quietly in the menu bar', true), val('Week starts on', '', 'Monday')] },
+      { title: 'Tracking', rows: [sw('Pause while the Mac sleeps', '', true), sw('Keep counting when locked', '', true), val('Ignore short sessions', 'Shorter than this are dropped', '15 s')] },
+      { title: 'Appearance', rows: [val('Theme', 'Follows macOS when set to System', 'System'), val('Accent', '', 'Lime'), sw('Show time in the menu bar', 'Today’s total next to the icon', true)] },
+      { title: 'Devices and sync', rows: [val('Sync with other devices', 'OneDrive · TimeSink folder', 'On'), val('This Mac is called', 'Shown on combined reports', 'MacBook Air')] },
+      { title: 'Backup and data', rows: [val('Automatic backup', 'Keeps the last 7 plus one per month', 'Daily'), val('Back up now', 'Last backup: 1 day ago', 'Run'), danger('Delete all history', 'Apps and settings are kept', 'Delete…')] }
+    ];
+    const sections = raw.map((s) => ({ title: s.title, rows: s.rows.map((r, i) => ({ isSwitch: false, isValue: false, isDanger: false, ...r, bt: i === 0 ? '0' : '1px solid #232a1d' })) }));
+    return { sections };
+  }
+}
+</script>
+</body>
+</html>

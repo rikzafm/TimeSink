@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TimeSink Per-app settings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+</style>
+</helmet>
+<div style="width:440px;height:700px;box-sizing:border-box;background:#0a0c08;font-family:-apple-system,'SF Pro Text','Helvetica Neue',sans-serif;color:#eef2e6;font-variant-numeric:tabular-nums;position:relative;overflow:hidden">
+  <div style="height:28px;display:flex;align-items:center;justify-content:flex-end;padding-right:64px;background:#161912;border-bottom:1px solid #232a1d">
+    <div style="display:flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:5px;background:#2b3125;font-size:12px;font-weight:500">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" fill="none" stroke="#c6f26b" stroke-width="1.6"></circle><path d="M6 3.5V6l1.8 1" fill="none" stroke="#c6f26b" stroke-width="1.4" stroke-linecap="round"></path></svg>
+      <span>6h 12m</span>
+    </div>
+  </div>
+  <div style="position:absolute;top:30px;right:92px;width:14px;height:14px;background:#11140f;border-left:1px solid #2b3125;border-top:1px solid #2b3125;transform:rotate(45deg)"></div>
+  <div style="position:absolute;top:37px;left:20px;width:400px;height:640px;box-sizing:border-box;background:#11140f;border:1px solid #2b3125;border-radius:12px;display:flex;flex-direction:column;overflow:hidden">
+    <div style="height:50px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px">
+      <button aria-label="Back to Tracked" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5"></path></svg></button>
+      <div style="flex:1;font-size:17px;font-weight:700">App settings</div>
+      <span style="font-size:10px;color:#9aa391">Changes save as you make them</span>
+    </div>
+    <div style="flex:1;min-height:0;padding:4px 14px 0;display:flex;flex-direction:column;gap:14px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:12px;padding:6px 4px 0">
+        <div style="width:48px;height:48px;box-sizing:border-box;border-radius:12px;background:#141910;border:1px solid #232a1d;color:#ffe08a;font-weight:700;font-size:22px;display:flex;align-items:center;justify-content:center;flex:none">C</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:inline-block;padding:3px 8px;border:1px solid #c6f26b;border-radius:6px;font-size:18px;font-weight:700">Chrome</div>
+          <div style="font-size:11px;color:#9aa391;margin-top:4px">283 h tracked · since Mar 2026</div>
+        </div>
+      </div>
+      <div style="border:1px solid #232a1d;border-radius:10px;background:#141910;overflow:hidden">
+        <div style="min-height:46px;display:flex;align-items:center;gap:10px;padding:6px 12px">
+          <div style="flex:1"><div style="font-size:13px">Game type</div><div style="font-size:11px;color:#9aa391;margin-top:1px">Used by Year › Wrapped</div></div>
+          <div style="display:flex;gap:2px;padding:2px;background:#0e110b;border:1px solid #232a1d;border-radius:7px;font-size:11px"><button style="padding:3px 9px;border-radius:5px;background:#2b3125;font-weight:600">Other</button><button style="padding:3px 9px;color:#9aa391">Game</button><button style="padding:3px 9px;color:#9aa391">Gacha</button></div>
+        </div>
+        <div style="min-height:46px;display:flex;align-items:center;gap:10px;padding:6px 12px;border-top:1px solid #232a1d">
+          <div style="flex:1"><div style="font-size:13px">Background</div><div style="font-size:11px;color:#9aa391;margin-top:1px">Runs all day. Still counted, but ranked after your other apps</div></div>
+          <div style="width:34px;height:20px;border-radius:10px;background:#2b3125;position:relative;flex:none"><div style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:8px;background:#eef2e6"></div></div>
+        </div>
+        <div style="min-height:46px;display:flex;align-items:center;gap:10px;padding:6px 12px;border-top:1px solid #232a1d">
+          <div style="flex:1"><div style="font-size:13px">Icon</div><div style="font-size:11px;color:#9aa391;margin-top:1px">3 icons found for this app</div></div>
+          <button style="font-size:12px;color:#c6f26b;font-weight:600">Change</button>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:0 4px 6px"><span style="font-size:10px;letter-spacing:0.6px;text-transform:uppercase;color:#9aa391">Merged apps</span><button style="font-size:11px;color:#c6f26b;font-weight:600">Merge…</button></div>
+        <div style="border:1px solid #232a1d;border-radius:10px;background:#141910;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 12px">
+            <span style="width:7px;height:7px;border-radius:3px;background:#c6f26b;flex:none"></span>
+            <div style="flex:1"><div style="font-size:12px;font-weight:600">Google Chrome</div><div style="font-size:10px;color:#9aa391">Mac · com.google.Chrome · main app</div></div>
+            <span style="font-size:12px;color:#cfd6c4">124 h</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid #232a1d">
+            <span style="width:7px;height:7px;border-radius:1px;background:#5fa8ff;flex:none"></span>
+            <div style="flex:1"><div style="font-size:12px;font-weight:600">chrome.exe</div><div style="font-size:10px;color:#9aa391">PC · Desktop PC · merged</div></div>
+            <span style="font-size:12px;color:#cfd6c4">159 h</span>
+            <button aria-label="Unmerge" style="width:22px;height:22px;border-radius:5px;color:#9aa391;font-size:12px">✕</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid #232a1d">
+            <span style="width:7px;height:7px;border-radius:3px;background:#c6f26b;flex:none"></span>
+            <div style="flex:1"><div style="font-size:12px;font-weight:600">Chrome Beta</div><div style="font-size:10px;color:#9aa391">Mac · com.google.Chrome.beta · merged</div></div>
+            <span style="font-size:12px;color:#cfd6c4">0 h</span>
+            <button aria-label="Unmerge" style="width:22px;height:22px;border-radius:5px;color:#9aa391;font-size:12px">✕</button>
+          </div>
+        </div>
+        <div style="font-size:10px;color:#9aa391;margin:6px 4px 0;line-height:15px">Merged time is added together in every view. Sessions keep their own device.</div>
+      </div>
+      <div>
+        <div style="font-size:10px;letter-spacing:0.6px;text-transform:uppercase;color:#9aa391;margin:0 4px 6px">About</div>
+        <div style="border:1px solid #232a1d;border-radius:10px;background:#141910;padding:4px 12px;font-size:11px">
+          <div style="display:flex;justify-content:space-between;padding:6px 0"><span style="color:#9aa391">Path</span><span style="color:#cfd6c4">/Applications/Google Chrome.app</span></div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #232a1d"><span style="color:#9aa391">First tracked</span><span style="color:#cfd6c4">14 Mar 2026</span></div>
+        </div>
+      </div>
+    </div>
+    <div style="flex:none;border-top:1px solid #232a1d;padding:10px 14px;display:flex;gap:10px">
+      <button style="flex:1;height:32px;border-radius:8px;border:1px solid #4a2a26;color:#ff8a7a;font-size:12px;font-weight:600">Stop tracking</button>
+      <button style="flex:1;height:32px;border-radius:8px;border:1px solid #4a2a26;color:#ff8a7a;font-size:12px;font-weight:600">Clear history…</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":440,"height":700}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

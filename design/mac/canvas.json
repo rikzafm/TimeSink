@@ -1,0 +1,180 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Add.dc.html": {
+      "h": 700,
+      "title": "Add app · Running",
+      "w": 440,
+      "x": 0,
+      "y": 2460
+    },
+    "AddApps.dc.html": {
+      "h": 700,
+      "title": "Add app · Installed",
+      "w": 440,
+      "x": 520,
+      "y": 2460
+    },
+    "AddChoose.dc.html": {
+      "h": 700,
+      "title": "Add app · Browse",
+      "w": 440,
+      "x": 0,
+      "y": 3280
+    },
+    "AddTracked.dc.html": {
+      "h": 700,
+      "title": "Add app · Tracked (double-click a row)",
+      "w": 440,
+      "x": 1040,
+      "y": 2460
+    },
+    "All.dc.html": {
+      "h": 700,
+      "title": "All",
+      "w": 440,
+      "x": 520,
+      "y": 1640
+    },
+    "AppDetail.dc.html": {
+      "h": 700,
+      "title": "App detail (open from All)",
+      "w": 440,
+      "x": 1040,
+      "y": 1640
+    },
+    "AppSettings.dc.html": {
+      "h": 700,
+      "title": "Per-app settings (opened from Tracked)",
+      "w": 440,
+      "x": 1560,
+      "y": 2460
+    },
+    "Main.dc.html": {
+      "h": 700,
+      "title": "Today · this Mac",
+      "w": 440,
+      "x": 0,
+      "y": 0
+    },
+    "Merge.dc.html": {
+      "h": 700,
+      "title": "Merge into app",
+      "w": 440,
+      "x": 1560,
+      "y": 1640
+    },
+    "Month.dc.html": {
+      "h": 700,
+      "title": "Month",
+      "w": 440,
+      "x": 1560,
+      "y": 0
+    },
+    "Settings.dc.html": {
+      "h": 700,
+      "title": "Settings",
+      "w": 440,
+      "x": 520,
+      "y": 3280
+    },
+    "Sync.dc.html": {
+      "h": 700,
+      "title": "Devices and sync",
+      "w": 440,
+      "x": 1040,
+      "y": 3280
+    },
+    "TodayAll.dc.html": {
+      "h": 700,
+      "title": "Today · all devices",
+      "w": 440,
+      "x": 520,
+      "y": 0
+    },
+    "Week.dc.html": {
+      "h": 700,
+      "title": "Week",
+      "w": 440,
+      "x": 1040,
+      "y": 0
+    },
+    "YearMatrix.dc.html": {
+      "h": 700,
+      "title": "Year · Matrix",
+      "w": 440,
+      "x": 0,
+      "y": 1640
+    },
+    "YearPace.dc.html": {
+      "h": 700,
+      "title": "Year · Pace",
+      "w": 440,
+      "x": 0,
+      "y": 820
+    },
+    "YearWrapped.dc.html": {
+      "h": 700,
+      "title": "Year · Wrapped 1 Total",
+      "w": 440,
+      "x": 520,
+      "y": 820
+    },
+    "YearWrappedApps.dc.html": {
+      "h": 700,
+      "title": "Year · Wrapped 2 Top apps",
+      "w": 440,
+      "x": 1040,
+      "y": 820
+    },
+    "YearWrappedHabits.dc.html": {
+      "h": 700,
+      "title": "Year · Wrapped 5 Habits",
+      "w": 440,
+      "x": 1560,
+      "y": 820
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-11-01T12:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "t1": {
+      "kind": "title1",
+      "maxW": 2000,
+      "text": "TimeSink for Mac: menu bar popover",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "TodayAll.dc.html",
+    "Week.dc.html",
+    "Month.dc.html",
+    "YearPace.dc.html",
+    "YearWrapped.dc.html",
+    "YearWrappedApps.dc.html",
+    "YearWrappedHabits.dc.html",
+    "YearMatrix.dc.html",
+    "All.dc.html",
+    "AppDetail.dc.html",
+    "Merge.dc.html",
+    "Add.dc.html",
+    "AddApps.dc.html",
+    "AddTracked.dc.html",
+    "AppSettings.dc.html",
+    "AddChoose.dc.html",
+    "Settings.dc.html",
+    "Sync.dc.html"
+  ],
+  "pages": [],
+  "title": "TimeSink for Mac"
+}
