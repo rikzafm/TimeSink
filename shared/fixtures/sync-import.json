@@ -1,0 +1,128 @@
+{
+  "name": "sync-import",
+  "description": "Snapshot sync export, import idempotence, session expansion, error handling, and device constraints",
+  "timeZoneId": "UTC",
+  "baseTimeUtc": "2026-11-01T12:00:00Z",
+  "cases": [
+    {
+      "name": "write-then-read",
+      "description": "Local device writes a snapshot, remote device reads and imports it into its database",
+      "remoteDeviceId": "dev-mac-001",
+      "remoteDeviceName": "MacBook Air",
+      "remotePlatform": "macos",
+      "apps": [
+        {
+          "name": "Xcode",
+          "bundleId": "com.apple.dt.Xcode",
+          "exePath": "/Applications/Xcode.app",
+          "category": "Development"
+        },
+        {
+          "name": "Safari",
+          "bundleId": "com.apple.Safari",
+          "exePath": "/Applications/Safari.app",
+          "category": "Browser"
+        }
+      ],
+      "sessions": [
+        {
+          "bundleId": "com.apple.dt.Xcode",
+          "startUtc": 1761984000,
+          "endUtc": 1761987600,
+          "lastSeenUtc": 1761987600
+        },
+        {
+          "bundleId": "com.apple.Safari",
+          "startUtc": 1761988000,
+          "endUtc": 1761989800,
+          "lastSeenUtc": 1761989800
+        }
+      ],
+      "expectedAppsAdded": 2,
+      "expectedSessionsAdded": 2
+    },
+    {
+      "name": "import-twice-idempotent",
+      "description": "Importing the exact same snapshot twice changes nothing on the second import",
+      "firstImport": {
+        "expectedAppsAdded": 2,
+        "expectedSessionsAdded": 2,
+        "expectedSessionsUpdated": 0,
+        "expectedSessionsSkipped": 0
+      },
+      "secondImport": {
+        "expectedAppsAdded": 0,
+        "expectedSessionsAdded": 0,
+        "expectedSessionsUpdated": 0,
+        "expectedSessionsSkipped": 2
+      }
+    },
+    {
+      "name": "open-session-closed-then-expanded",
+      "description": "Open session in snapshot is closed at last_seen_utc, then expands when later snapshot arrives",
+      "remoteDeviceId": "dev-mac-001",
+      "appName": "VS Code",
+      "bundleId": "com.microsoft.VSCode",
+      "exePath": "/Applications/Visual Studio Code.app",
+      "initialSession": {
+        "startUtc": 1761990000,
+        "endUtc": null,
+        "lastSeenUtc": 1761991000
+      },
+      "continuationSession": {
+        "startUtc": 1761990000,
+        "endUtc": 1761993600,
+        "lastSeenUtc": 1761993600
+      },
+      "expectedInitialEndUtc": 1761991000,
+      "expectedUpdatedEndUtc": 1761993600
+    },
+    {
+      "name": "bad-hash-ignored",
+      "description": "A snapshot whose manifest hash does not match snapshot.db is rejected as BadHash",
+      "expectedStatus": "BadHash"
+    },
+    {
+      "name": "placeholder-file-pending",
+      "description": "A cloud placeholder file is not imported and reports Pending status",
+      "expectedStatus": "Pending"
+    },
+    {
+      "name": "conflict-copy-ignored",
+      "description": "Cloud conflict copy filename is identified and ignored",
+      "conflictFileNames": [
+        "dev-mac-001 (1).tssync",
+        "dev-mac-001 - Copy.tssync",
+        "dev-mac-001-conflict-20261101.tssync"
+      ],
+      "expectedStatus": "ConflictCopy"
+    },
+    {
+      "name": "third-device-ignored",
+      "description": "When 2 active devices exist, a snapshot from a 3rd device is rejected",
+      "existingLocalDeviceId": "dev-win-001",
+      "existingRemoteDeviceId": "dev-mac-001",
+      "thirdDeviceId": "dev-linux-001",
+      "expectedStatus": "ThirdDeviceIgnored"
+    },
+    {
+      "name": "clock-skew",
+      "description": "Sessions with skewed clocks are imported by session startUtc rather than file timestamp",
+      "remoteDeviceId": "dev-mac-001",
+      "skewedSessions": [
+        {
+          "bundleId": "com.apple.Safari",
+          "startUtc": 1761900000,
+          "endUtc": 1761901800,
+          "lastSeenUtc": 1761901800
+        },
+        {
+          "bundleId": "com.apple.Safari",
+          "startUtc": 1762070000,
+          "endUtc": 1762073600,
+          "lastSeenUtc": 1762073600
+        }
+      ]
+    }
+  ]
+}

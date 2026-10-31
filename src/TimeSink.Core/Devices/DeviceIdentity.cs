@@ -8,39 +8,65 @@ namespace TimeSink.Core.Devices;
 /// </summary>
 public static class DeviceIdentity
 {
-    public static DeviceRecord GetLocalDevice(Db db)
+    public static DeviceRecord GetLocalDevice(Db db) => GetLocalDevice(db.Connection);
+
+    public static DeviceRecord GetLocalDevice(System.Data.Common.DbConnection connection)
     {
-        var id = db.GetSetting("device.id");
+        string? id;
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT value FROM settings WHERE key = 'device.id';";
+            id = cmd.ExecuteScalar() as string;
+        }
+
         if (string.IsNullOrWhiteSpace(id))
         {
             id = Guid.NewGuid().ToString();
-            db.SetSetting("device.id", id);
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "INSERT INTO settings (key, value) VALUES ('device.id', $id) ON CONFLICT(key) DO UPDATE SET value = $id;";
+            var p = cmd.CreateParameter();
+            p.ParameterName = "$id";
+            p.Value = id;
+            cmd.Parameters.Add(p);
+            cmd.ExecuteNonQuery();
         }
 
-        var name = db.GetSetting("device.name");
+        string? name;
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT value FROM settings WHERE key = 'device.name';";
+            name = cmd.ExecuteScalar() as string;
+        }
+
         if (string.IsNullOrWhiteSpace(name))
         {
             try { name = Environment.MachineName; } catch { name = "Unknown Device"; }
             if (string.IsNullOrWhiteSpace(name)) name = "Unknown Device";
-            db.SetSetting("device.name", name);
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "INSERT INTO settings (key, value) VALUES ('device.name', $n) ON CONFLICT(key) DO UPDATE SET value = $n;";
+            var p = cmd.CreateParameter();
+            p.ParameterName = "$n";
+            p.Value = name;
+            cmd.Parameters.Add(p);
+            cmd.ExecuteNonQuery();
         }
 
         var platform = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows" : "macos";
         var nowUtc = DateTimeOffset.UtcNow;
 
-        using var cmd = db.Connection.CreateCommand();
-        cmd.CommandText = """
+        using var insCmd = connection.CreateCommand();
+        insCmd.CommandText = """
             INSERT INTO devices (device_id, name, platform, is_local, first_seen_utc, state)
             VALUES ($id, $name, $platform, 1, $now, 'active')
             ON CONFLICT(device_id) DO UPDATE SET is_local = 1, state = 'active'
             RETURNING first_seen_utc, last_import_utc, last_file_utc, state;
             """;
-        cmd.Parameters.AddWithValue("$id", id);
-        cmd.Parameters.AddWithValue("$name", name);
-        cmd.Parameters.AddWithValue("$platform", platform);
-        cmd.Parameters.AddWithValue("$now", nowUtc.ToString("O"));
+        var p1 = insCmd.CreateParameter(); p1.ParameterName = "$id"; p1.Value = id; insCmd.Parameters.Add(p1);
+        var p2 = insCmd.CreateParameter(); p2.ParameterName = "$name"; p2.Value = name; insCmd.Parameters.Add(p2);
+        var p3 = insCmd.CreateParameter(); p3.ParameterName = "$platform"; p3.Value = platform; insCmd.Parameters.Add(p3);
+        var p4 = insCmd.CreateParameter(); p4.ParameterName = "$now"; p4.Value = nowUtc.ToString("O"); insCmd.Parameters.Add(p4);
 
-        using var r = cmd.ExecuteReader();
+        using var r = insCmd.ExecuteReader();
         r.Read();
         var firstSeen = DateTimeOffset.Parse(r.GetString(0));
         DateTimeOffset? lastImport = r.IsDBNull(1) ? null : DateTimeOffset.Parse(r.GetString(1));

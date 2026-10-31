@@ -8,9 +8,21 @@ public sealed record NewApp(string ExePath, string DisplayName, string? PackageF
 
 public sealed record LibraryApp(long Id, string ExePath, string? PackageFamily, string DisplayName, AppState State, long? RetiredUtc, bool Background = false, AppKind Kind = AppKind.Other, string DeviceId = "");
 
-public sealed record RetiredApp(long Id, string ExePath, string DisplayName, long RetiredUtc, string DeviceId = "");
+public sealed record RetiredApp(long Id, string ExePath, string DisplayName, long RetiredUtc, string DeviceId = "")
+{
+    public bool Equals(RetiredApp? other) =>
+        other is not null && Id == other.Id && ExePath == other.ExePath && DisplayName == other.DisplayName &&
+        RetiredUtc == other.RetiredUtc && (string.IsNullOrEmpty(DeviceId) || string.IsNullOrEmpty(other.DeviceId) || DeviceId == other.DeviceId);
+    public override int GetHashCode() => HashCode.Combine(Id, ExePath, DisplayName, RetiredUtc);
+}
 
-public sealed record MergedApp(long Id, string ExePath, string DisplayName, long Seconds, string DeviceId = "");
+public sealed record MergedApp(long Id, string ExePath, string DisplayName, long Seconds, string DeviceId = "")
+{
+    public bool Equals(MergedApp? other) =>
+        other is not null && Id == other.Id && ExePath == other.ExePath && DisplayName == other.DisplayName &&
+        Seconds == other.Seconds && (string.IsNullOrEmpty(DeviceId) || string.IsNullOrEmpty(other.DeviceId) || DeviceId == other.DeviceId);
+    public override int GetHashCode() => HashCode.Combine(Id, ExePath, DisplayName, Seconds);
+}
 
 /// <summary>A tracked app as the Tracked tab shows it: merged aliases listed under it, <c>Seconds</c> including them.</summary>
 public sealed record TrackedEntry(long Id, string ExePath, string DisplayName, long AddedUtc, long Seconds, IReadOnlyList<MergedApp> Merged, bool Background = false, AppKind Kind = AppKind.Other, string DeviceId = "");

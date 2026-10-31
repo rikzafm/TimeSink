@@ -170,4 +170,192 @@ public sealed class SharedFixtureTests
             rig.Fingerprint(live).Should().Be(before);
         }
     }
+
+    [Theory]
+    [InlineData("sync-import.json", "write-then-read")]
+    [InlineData("sync-import.json", "import-twice-idempotent")]
+    [InlineData("sync-import.json", "open-session-closed-then-expanded")]
+    [InlineData("sync-import.json", "bad-hash-ignored")]
+    [InlineData("sync-import.json", "placeholder-file-pending")]
+    [InlineData("sync-import.json", "conflict-copy-ignored")]
+    [InlineData("sync-import.json", "third-device-ignored")]
+    [InlineData("sync-import.json", "clock-skew")]
+    public void Sync_import_fixtures_pass(string filename, string caseName)
+    {
+        var doc = FixtureLoader.Load<SyncImportDocument>(filename);
+        var c = doc.Cases.Single(x => x.Name == caseName);
+
+        using var rig = new Backup.BackupTestRig();
+        var now = DateTimeOffset.Parse(doc.BaseTimeUtc);
+        var syncFolder = rig.P("sync");
+
+        if (caseName == "write-then-read")
+        {
+            var srcDb = rig.NewDb("src.db");
+            rig.Exec(srcDb, "PRAGMA foreign_keys = OFF; " +
+                            $"INSERT OR REPLACE INTO settings (key, value) VALUES ('device.id', '{c.RemoteDeviceId}'), ('device.name', '{c.RemoteDeviceName}'); " +
+                            $"UPDATE devices SET device_id = '{c.RemoteDeviceId}', name = '{c.RemoteDeviceName}', platform = '{c.RemotePlatform}' WHERE is_local = 1; " +
+                            "PRAGMA foreign_keys = ON;");
+
+            foreach (var app in c.Apps!)
+            {
+                rig.Exec(srcDb, "INSERT INTO apps (display_name, exe_path, bundle_id, device_id, category, state, added_utc) " +
+                                $"VALUES ('{app.Name}', '{app.ExePath}', '{app.BundleId}', '{c.RemoteDeviceId}', '{app.Category}', 'tracked', 1761980000);");
+            }
+            foreach (var s in c.Sessions!)
+            {
+                rig.Exec(srcDb, "INSERT INTO sessions (app_id, start_utc, end_utc, last_seen_utc, end_reason) " +
+                                $"SELECT id, {s.StartUtc}, {s.EndUtc}, {s.LastSeenUtc}, 'exit' FROM apps WHERE bundle_id = '{s.BundleId}';");
+            }
+
+            var file = TimeSink.Core.Sync.SyncWriter.Write(srcDb, syncFolder, now);
+
+            var dstDb = rig.NewDb("dst.db");
+            rig.Exec(dstDb, "PRAGMA foreign_keys = OFF; " +
+                            "INSERT OR REPLACE INTO settings (key, value) VALUES ('device.id', 'dev-win-001'), ('device.name', 'Windows PC'); " +
+                            "UPDATE devices SET device_id = 'dev-win-001', name = 'Windows PC', platform = 'windows' WHERE is_local = 1; " +
+                            "PRAGMA foreign_keys = ON;");
+
+            var result = TimeSink.Core.Sync.SyncReader.Import(file, dstDb, TimeZoneInfo.Utc);
+            result.Status.Should().Be(TimeSink.Core.Sync.SyncStatus.Success);
+            result.AppsAdded.Should().Be(c.ExpectedAppsAdded!.Value);
+            result.SessionsAdded.Should().Be(c.ExpectedSessionsAdded!.Value);
+        }
+        else if (caseName == "import-twice-idempotent")
+        {
+            var srcDb = rig.NewDb("src.db", (@"/Applications/Safari.app", 1761984000, 1761987600), (@"/Applications/Xcode.app", 1761988000, 1761989800));
+            rig.Exec(srcDb, "PRAGMA foreign_keys = OFF; " +
+                            "INSERT OR REPLACE INTO settings (key, value) VALUES ('device.id', 'dev-mac-001'), ('device.name', 'MacBook Air'); " +
+                            "UPDATE devices SET device_id = 'dev-mac-001', name = 'MacBook Air', platform = 'macos' WHERE is_local = 1; " +
+                            "UPDATE apps SET device_id = 'dev-mac-001'; " +
+                            "PRAGMA foreign_keys = ON;");
+
+            var file = TimeSink.Core.Sync.SyncWriter.Write(srcDb, syncFolder, now);
+
+            var dstDb = rig.NewDb("dst.db");
+            rig.Exec(dstDb, "PRAGMA foreign_keys = OFF; " +
+                            "INSERT OR REPLACE INTO settings (key, value) VALUES ('device.id', 'dev-win-001'), ('device.name', 'Windows PC'); " +
+                            "UPDATE devices SET device_id = 'dev-win-001', name = 'Windows PC', platform = 'windows' WHERE is_local = 1; " +
+                            "PRAGMA foreign_keys = ON;");
+
+            var res1 = TimeSink.Core.Sync.SyncReader.Import(file, dstDb, TimeZoneInfo.Utc);
+            res1.Status.Should().Be(TimeSink.Core.Sync.SyncStatus.Success);
+            res1.AppsAdded.Should().Be(2);
+            res1.SessionsAdded.Should().Be(2);
+
+            var fingerprintAfterFirst = rig.Fingerprint(dstDb);
+
+            var res2 = TimeSink.Core.Sync.SyncReader.Import(file, dstDb, TimeZoneInfo.Utc);
+            res2.Status.Should().Be(TimeSink.Core.Sync.SyncStatus.Success);
+            res2.AppsAdded.Should().Be(0);
+            res2.SessionsAdded.Should().Be(0);
+            res2.SessionsSkipped.Should().Be(2);
+
+            rig.Fingerprint(dstDb).Should().Be(fingerprintAfterFirst);
+        }
+        else if (caseName == "open-session-closed-then-expanded")
+        {
+            var srcDb = rig.NewDb("src.db");
+            rig.Exec(srcDb, "PRAGMA foreign_keys = OFF; " +
+                            "INSERT OR REPLACE INTO settings (key, value) VALUES ('device.id', 'dev-mac-001'), ('device.name', 'MacBook Air'); " +
+                            "UPDATE devices SET device_id = 'dev-mac-001', name = 'MacBook Air', platform = 'macos' WHERE is_local = 1; " +
+                            "INSERT INTO apps (exe_path, bundle_id, device_id, display_name, category, state, added_utc) " +
+                            "VALUES ('/Applications/VSCode.app', 'com.microsoft.VSCode', 'dev-mac-001', 'VS Code', 'Development', 'tracked', 1761980000); " +
+                            "INSERT INTO sessions (app_id, start_utc, end_utc, last_seen_utc, end_reason) " +
+                            "VALUES ((SELECT id FROM apps WHERE device_id = 'dev-mac-001'), 1761990000, NULL, 1761991000, NULL); " +
+                            "PRAGMA foreign_keys = ON;");
+
+            var snap1 = TimeSink.Core.Sync.SyncWriter.Write(srcDb, syncFolder, now);
+
+            var dstDb = rig.NewDb("dst.db");
+            rig.Exec(dstDb, "PRAGMA foreign_keys = OFF; " +
+                            "INSERT OR REPLACE INTO settings (key, value) VALUES ('device.id', 'dev-win-001'), ('device.name', 'Windows PC'); " +
+                            "UPDATE devices SET device_id = 'dev-win-001', name = 'Windows PC', platform = 'windows' WHERE is_local = 1; " +
+                            "PRAGMA foreign_keys = ON;");
+
+            var res1 = TimeSink.Core.Sync.SyncReader.Import(snap1, dstDb, TimeZoneInfo.Utc);
+            res1.Status.Should().Be(TimeSink.Core.Sync.SyncStatus.Success);
+            rig.Scalar<long>(dstDb, "SELECT end_utc FROM sessions WHERE start_utc = 1761990000").Should().Be(1761991000);
+
+            // Update source
+            rig.Exec(srcDb, "UPDATE sessions SET end_utc = 1761993600, last_seen_utc = 1761993600, end_reason = 'exit' WHERE start_utc = 1761990000");
+            var snap2 = TimeSink.Core.Sync.SyncWriter.Write(srcDb, syncFolder, now.AddHours(1));
+
+            var res2 = TimeSink.Core.Sync.SyncReader.Import(snap2, dstDb, TimeZoneInfo.Utc);
+            res2.Status.Should().Be(TimeSink.Core.Sync.SyncStatus.Success);
+            res2.SessionsUpdated.Should().Be(1);
+            rig.Scalar<long>(dstDb, "SELECT end_utc FROM sessions WHERE start_utc = 1761990000").Should().Be(1761993600);
+        }
+        else if (caseName == "bad-hash-ignored")
+        {
+            var badFile = rig.P("bad.tssync");
+            File.WriteAllBytes(badFile, [0x50, 0x4B, 0x03, 0x04]); // Truncated zip
+            var dstDb = rig.NewDb("dst.db");
+            var res = TimeSink.Core.Sync.SyncReader.Import(badFile, dstDb, TimeZoneInfo.Utc);
+            res.Status.Should().Be(TimeSink.Core.Sync.SyncStatus.BadHash);
+        }
+        else if (caseName == "placeholder-file-pending")
+        {
+            var placeholderFile = rig.P("dev-mac-001.tssync");
+            File.WriteAllBytes(placeholderFile, []);
+            var dstDb = rig.NewDb("dst.db");
+            var res = TimeSink.Core.Sync.SyncReader.Import(placeholderFile, dstDb, TimeZoneInfo.Utc);
+            res.Status.Should().Be(TimeSink.Core.Sync.SyncStatus.Pending);
+        }
+        else if (caseName == "conflict-copy-ignored")
+        {
+            var dstDb = rig.NewDb("dst.db");
+            foreach (var name in c.ConflictFileNames!)
+            {
+                var file = rig.P(name);
+                File.WriteAllText(file, "test");
+                var res = TimeSink.Core.Sync.SyncReader.Import(file, dstDb, TimeZoneInfo.Utc);
+                res.Status.Should().Be(TimeSink.Core.Sync.SyncStatus.ConflictCopy);
+            }
+        }
+        else if (caseName == "third-device-ignored")
+        {
+            var dstDb = rig.NewDb("dst.db");
+            rig.Exec(dstDb, "PRAGMA foreign_keys = OFF; " +
+                            "INSERT OR REPLACE INTO settings (key, value) VALUES ('device.id', 'dev-win-001'), ('device.name', 'Desktop PC'); " +
+                            "UPDATE devices SET device_id = 'dev-win-001', name = 'Desktop PC', platform = 'windows' WHERE is_local = 1; " +
+                            "INSERT INTO devices (device_id, name, platform, is_local, first_seen_utc, state) VALUES ('dev-mac-001', 'MacBook Air', 'macos', 0, '2026-11-01T00:00:00Z', 'active'); " +
+                            "PRAGMA foreign_keys = ON;");
+
+            var thirdDb = rig.NewDb("third.db", (@"/usr/bin/top", 1761984000, 1761987600));
+            rig.Exec(thirdDb, "PRAGMA foreign_keys = OFF; " +
+                              "INSERT OR REPLACE INTO settings (key, value) VALUES ('device.id', 'dev-linux-001'), ('device.name', 'Linux'); " +
+                              "UPDATE devices SET device_id = 'dev-linux-001', name = 'Linux', platform = 'macos' WHERE is_local = 1; " +
+                              "UPDATE apps SET device_id = 'dev-linux-001'; " +
+                              "PRAGMA foreign_keys = ON;");
+
+            var file = TimeSink.Core.Sync.SyncWriter.Write(thirdDb, syncFolder, now);
+            var res = TimeSink.Core.Sync.SyncReader.Import(file, dstDb, TimeZoneInfo.Utc);
+            res.Status.Should().Be(TimeSink.Core.Sync.SyncStatus.ThirdDeviceIgnored);
+        }
+        else if (caseName == "clock-skew")
+        {
+            var srcDb = rig.NewDb("src.db", (@"/Applications/Safari.app", 1761900000, 1761901800), (@"/Applications/Safari.app", 1762070000, 1762073600));
+            rig.Exec(srcDb, "PRAGMA foreign_keys = OFF; " +
+                            "INSERT OR REPLACE INTO settings (key, value) VALUES ('device.id', 'dev-mac-001'), ('device.name', 'MacBook Air'); " +
+                            "UPDATE devices SET device_id = 'dev-mac-001', name = 'MacBook Air', platform = 'macos' WHERE is_local = 1; " +
+                            "UPDATE apps SET device_id = 'dev-mac-001'; " +
+                            "PRAGMA foreign_keys = ON;");
+
+            var file = TimeSink.Core.Sync.SyncWriter.Write(srcDb, syncFolder, now);
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddDays(-10));
+
+            var dstDb = rig.NewDb("dst.db");
+            rig.Exec(dstDb, "PRAGMA foreign_keys = OFF; " +
+                            "INSERT OR REPLACE INTO settings (key, value) VALUES ('device.id', 'dev-win-001'), ('device.name', 'Windows PC'); " +
+                            "UPDATE devices SET device_id = 'dev-win-001', name = 'Windows PC', platform = 'windows' WHERE is_local = 1; " +
+                            "PRAGMA foreign_keys = ON;");
+
+            var res = TimeSink.Core.Sync.SyncReader.Import(file, dstDb, TimeZoneInfo.Utc);
+            res.Status.Should().Be(TimeSink.Core.Sync.SyncStatus.Success);
+            res.SessionsAdded.Should().Be(2);
+            rig.Scalar<long>(dstDb, "SELECT MIN(start_utc) FROM sessions WHERE app_id IN (SELECT id FROM apps WHERE device_id = 'dev-mac-001')").Should().Be(1761900000);
+            rig.Scalar<long>(dstDb, "SELECT MAX(start_utc) FROM sessions WHERE app_id IN (SELECT id FROM apps WHERE device_id = 'dev-mac-001')").Should().Be(1762070000);
+        }
+    }
 }

@@ -38,7 +38,7 @@ public sealed class SteamLibraryTests : IDisposable
 
         games.Select(g => g.Name).Should().BeEquivalentTo("Hades", "Deep Rock");
         Path.GetFileName(games.Single(g => g.Name == "Hades").ExePath).Should().Be("Hades.exe");
-        Path.GetFileName(games.Single(g => g.Name == "Deep Rock").ExePath).Should().Be("FSD.exe");
+        Path.GetFileName(games.Single(g => g.Name == "Deep Rock").ExePath.Replace('\\', '/')).Should().Be("FSD.exe");
     }
 
     [Fact]

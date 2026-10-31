@@ -272,3 +272,45 @@ public sealed class BackupMergeResultDto
     public int SessionsAdded { get; set; }
     public int SessionsSkipped { get; set; }
 }
+
+public sealed class SyncImportDocument
+{
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string TimeZoneId { get; set; } = "UTC";
+    public string BaseTimeUtc { get; set; } = "";
+    public List<SyncImportCase> Cases { get; set; } = new();
+}
+
+public sealed class SyncImportCase
+{
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string? RemoteDeviceId { get; set; }
+    public string? RemoteDeviceName { get; set; }
+    public string? RemotePlatform { get; set; }
+    public List<SyncImportAppDto>? Apps { get; set; }
+    public List<SyncImportSessionDto>? Sessions { get; set; }
+    public int? ExpectedAppsAdded { get; set; }
+    public int? ExpectedSessionsAdded { get; set; }
+    public string? ExpectedStatus { get; set; }
+    public List<string>? ConflictFileNames { get; set; }
+}
+
+public sealed class SyncImportAppDto
+{
+    public string Name { get; set; } = "";
+    public string? BundleId { get; set; }
+    public string ExePath { get; set; } = "";
+    public string? Category { get; set; }
+}
+
+public sealed class SyncImportSessionDto
+{
+    public string? BundleId { get; set; }
+    public string? ExePath { get; set; }
+    public long StartUtc { get; set; }
+    public long? EndUtc { get; set; }
+    public long LastSeenUtc { get; set; }
+}
+

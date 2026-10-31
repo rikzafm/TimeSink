@@ -41,7 +41,7 @@ public static class IconChoices
     /// <summary>An image file the user picked (PNG, JPG or ICO), centre-cropped to a square; null when it cannot be read.</summary>
     public static IconChoice? FromFile(string path, IIconExtractor extractor, int size)
     {
-        try { return IconRule.Extract(extractor, "", null, path, size) is { Length: > 0 } png ? new IconChoice(IconChoiceKind.File, Path.GetFileName(path), png) : null; }
+        try { return IconRule.Extract(extractor, "", null, path, size) is { Length: > 0 } png ? new IconChoice(IconChoiceKind.File, Path.GetFileName(path.Replace('\\', '/')), png) : null; }
         catch (IOException) { return null; }
     }
 }

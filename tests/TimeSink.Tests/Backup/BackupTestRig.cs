@@ -25,7 +25,7 @@ public sealed class BackupTestRig : IDisposable
         using (var db = Db.Open(path))
         {
             foreach (var exe in sessions.Select(s => s.Exe).Distinct(StringComparer.OrdinalIgnoreCase))
-                db.InsertApp(exe, System.IO.Path.GetFileNameWithoutExtension(exe), 1_700_000_000);
+                db.InsertApp(exe, System.IO.Path.GetFileNameWithoutExtension(exe.Replace('\\', '/')), 1_700_000_000);
         }
         using var c = Open(path);
         foreach (var (exe, start, end) in sessions)

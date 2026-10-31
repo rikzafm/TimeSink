@@ -280,7 +280,8 @@ public sealed class AppCatalogue
             var winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
             bool IsWindowsProc(string p) => (!string.IsNullOrEmpty(winDir) && p.StartsWith(winDir, StringComparison.OrdinalIgnoreCase))
                 || p.StartsWith("c:\\windows", StringComparison.OrdinalIgnoreCase)
-                || p.StartsWith("c:/windows", StringComparison.OrdinalIgnoreCase);
+                || p.StartsWith("c:/windows", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(p, "explorer.exe", StringComparison.OrdinalIgnoreCase);
             foreach (var r in state.Retired.Where(a => !IsWindowsProc(a.ExePath)))
                 list.Add(new MergeCandidate("s" + r.Id, CandidateKind.Retired, r.DisplayName, r.ExePath, r.Id, 0, null, null, r.DeviceId));
             var icons = _icons.Stored(list.Select(c => c.AppId));
