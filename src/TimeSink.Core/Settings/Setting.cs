@@ -1,4 +1,5 @@
 using System.Globalization;
+using TimeSink.Core.Devices;
 using TimeSink.Core.Icons;
 using TimeSink.Core.Theming;
 using TimeSink.Core.Usage;
@@ -110,6 +111,12 @@ public static class Setting
     public static readonly Setting<long> BackupLastUtc = Count("backup.lastUtc");
     public static readonly Setting<string?> BackupFolder = Text("backup.folder");
 
+    public static readonly Setting<bool> SyncEnabled = Switch("sync.enabled", false);
+    public static readonly Setting<string?> SyncFolder = Text("sync.folder");
+    public static readonly Setting<DeviceScope> DeviceScope = Name("ui.deviceScope", Devices.DeviceScope.This);
+    public static readonly Setting<string?> DeviceId = Text("device.id");
+    public static readonly Setting<string?> DeviceName = Text("device.name");
+
     public static readonly Setting<string?> AlertsSent = Text("alerts.sent");
     public static readonly Setting<string?> AlertsWeeklyLast = Text("alerts.weeklyLast");
 
@@ -125,5 +132,6 @@ public static class Setting
         Startup, WeekStartsOn, PauseOnSleep, CountWhenLocked, MinSessionSeconds, SuggestApps, SteamAutoTrack,
         Theme, Accent, Compact, AppIcon, GoalAlerts, WeeklySummary, BackupMode,
         LastTab, LastYearView, AllLayout, InstantOpen, GamesOnly, BackupLastUtc, BackupFolder, AlertsSent, AlertsWeeklyLast, SteamIconsRepaired,
+        SyncEnabled, SyncFolder, DeviceScope, DeviceId, DeviceName,
     ];
 }
