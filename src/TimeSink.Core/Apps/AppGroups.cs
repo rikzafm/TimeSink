@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Devices;
 
 namespace TimeSink.Core.Apps;
 
@@ -14,7 +15,7 @@ internal static class AppStates
 
 /// <summary>An app as the readers of <c>apps</c> see it. <c>Group</c> is the Main app id its time counts under (a Main app is its own group).</summary>
 internal sealed record GroupedApp(long Id, long Group, string Name, long AddedUtc, bool Background = false, AppKind Kind = AppKind.Other,
-    AppState State = AppState.Tracked, long RetiredUtc = 0, string ExePath = "")
+    AppState State = AppState.Tracked, long RetiredUtc = 0, string ExePath = "", string DeviceId = "")
 {
     public bool Retired => State == AppState.Retired;
 }
@@ -58,19 +59,39 @@ internal sealed class AppGroups
     }
 
     /// <param name="gamesOnly">Keeps only the apps whose group is a Game or Gacha game (the group's Main app decides; the Games filter).</param>
-    public static AppGroups Load(SqliteConnection c, bool includeRetired = false, bool gamesOnly = false)
+    /// <param name="deviceScope">Keeps only the apps of the local device in This scope.</param>
+    public static AppGroups Load(SqliteConnection c, bool includeRetired = false, bool gamesOnly = false, DeviceScope deviceScope = DeviceScope.This)
     {
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name, added_utc, is_background, exe_path, kind, state, retired_utc FROM apps"
+        cmd.CommandText = "SELECT id, COALESCE(canonical_id, id), display_name, added_utc, is_background, exe_path, kind, state, retired_utc, device_id FROM apps"
             + (includeRetired ? "" : " WHERE state = 'tracked'");
         using var r = cmd.ExecuteReader();
         var rows = new List<GroupedApp>();
         while (r.Read()) rows.Add(new GroupedApp(r.GetInt64(0), r.GetInt64(1), r.GetString(2), r.GetInt64(3), r.GetInt64(4) != 0,
             AppKinds.Resolve(r.IsDBNull(6) ? null : r.GetInt64(6), r.GetString(5), r.GetString(2)),
-            AppStates.Parse(r.GetString(7)), r.IsDBNull(8) ? 0 : r.GetInt64(8), r.GetString(5)));
+            AppStates.Parse(r.GetString(7)), r.IsDBNull(8) ? 0 : r.GetInt64(8), r.GetString(5),
+            r.IsDBNull(9) ? "" : r.GetString(9)));
         var groups = From(rows);
+        if (deviceScope == DeviceScope.This)
+        {
+            var localDevId = GetLocalDeviceId(c);
+            if (!string.IsNullOrEmpty(localDevId))
+            {
+                groups = groups.OnlyDevice(localDevId);
+            }
+        }
         return gamesOnly ? groups.OnlyGames() : groups;
     }
+
+    private static string? GetLocalDeviceId(SqliteConnection c)
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT COALESCE((SELECT value FROM settings WHERE key = 'device.id'), (SELECT device_id FROM devices WHERE is_local = 1))";
+        try { return cmd.ExecuteScalar() as string; } catch { return null; }
+    }
+
+    internal AppGroups OnlyDevice(string deviceId) =>
+        new(_apps.Where(p => string.IsNullOrEmpty(p.Value.DeviceId) || p.Value.DeviceId == deviceId).ToDictionary(p => p.Key, p => p.Value));
 
     /// <summary>The groups whose Main app is a Game or Gacha game; a Merged app follows its Main app.</summary>
     internal AppGroups OnlyGames() =>

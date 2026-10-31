@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using TimeSink.Core.Apps;
+using TimeSink.Core.Devices;
 
 namespace TimeSink.Core.Usage;
 
@@ -12,8 +13,8 @@ internal readonly record struct RawSession(long AppId, long StartUtc, long? EndU
 /// </summary>
 internal interface IUsageSource
 {
-    /// <summary>The apps by group (retired ones too when asked); with <paramref name="gamesOnly"/> only the Game and Gacha groups.</summary>
-    AppGroups Apps(bool includeRetired, bool gamesOnly);
+    /// <summary>The apps by group (retired ones too when asked); with <paramref name="gamesOnly"/> only the Game and Gacha groups; filtered by <paramref name="deviceScope"/>.</summary>
+    AppGroups Apps(bool includeRetired, bool gamesOnly, DeviceScope deviceScope = DeviceScope.This);
 
     /// <summary>
     /// The sessions that started at or before <paramref name="nowUtc"/> (and before <paramref name="to"/> when given) and
@@ -25,7 +26,8 @@ internal interface IUsageSource
 /// <summary>The SQLite adapter of <see cref="IUsageSource"/>. The caller owns the connection.</summary>
 internal sealed class SqliteUsageSource(SqliteConnection connection) : IUsageSource
 {
-    public AppGroups Apps(bool includeRetired, bool gamesOnly) => AppGroups.Load(connection, includeRetired, gamesOnly);
+    public AppGroups Apps(bool includeRetired, bool gamesOnly, DeviceScope deviceScope = DeviceScope.This) =>
+        AppGroups.Load(connection, includeRetired, gamesOnly, deviceScope);
 
     public IEnumerable<RawSession> Sessions(long from, long nowUtc, long? to)
     {
@@ -77,10 +79,10 @@ internal sealed class UsageWindow(IUsageSource source, UsageContext context)
     }
 
     /// <summary>The tracked apps (retired ones are left out of every segment).</summary>
-    public AppGroups Apps => _apps ??= source.Apps(false, Context.GamesOnly);
+    public AppGroups Apps => _apps ??= source.Apps(false, Context.GamesOnly, Context.DeviceScope);
 
     /// <summary>The tracked and the retired apps, for the All tab and the app detail page.</summary>
-    public AppGroups AllApps => _allApps ??= source.Apps(true, Context.GamesOnly);
+    public AppGroups AllApps => _allApps ??= source.Apps(true, Context.GamesOnly, Context.DeviceScope);
 
     /// <summary>
     /// The segments that overlap or follow <paramref name="from"/> up to now (and start before <paramref name="to"/> when

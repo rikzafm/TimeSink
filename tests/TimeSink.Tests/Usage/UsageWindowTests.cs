@@ -1,4 +1,5 @@
 using TimeSink.Core.Apps;
+using TimeSink.Core.Devices;
 using TimeSink.Core.Usage;
 
 namespace TimeSink.Tests.Usage;
@@ -29,9 +30,10 @@ internal sealed class InMemoryUsageSource : IUsageSource
         return this;
     }
 
-    public AppGroups Apps(bool includeRetired, bool gamesOnly)
+    public AppGroups Apps(bool includeRetired, bool gamesOnly, DeviceScope deviceScope = DeviceScope.This)
     {
-        var groups = AppGroups.From(includeRetired ? _apps : _apps.Where(a => !a.Retired));
+        var filtered = _apps.Where(a => (includeRetired || !a.Retired) && (deviceScope == DeviceScope.All || string.IsNullOrEmpty(a.DeviceId)));
+        var groups = AppGroups.From(filtered);
         return gamesOnly ? groups.OnlyGames() : groups;
     }
 

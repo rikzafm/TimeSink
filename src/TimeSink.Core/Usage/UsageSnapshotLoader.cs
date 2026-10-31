@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Devices;
 using TimeSink.Core.Settings;
 
 namespace TimeSink.Core.Usage;
@@ -12,11 +13,12 @@ public sealed class UsageContext
     private readonly Lazy<long?> _signInUtc;
     private readonly Lazy<WeekStart> _weekStart;
 
-    public UsageContext(DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running, Func<long?> signInUtc, Func<WeekStart> weekStart, bool gamesOnly = false, string? dbPath = null)
+    public UsageContext(DateTimeOffset now, TimeZoneInfo zone, IReadOnlyCollection<long>? running, Func<long?> signInUtc, Func<WeekStart> weekStart, bool gamesOnly = false, string? dbPath = null, DeviceScope deviceScope = DeviceScope.This)
     {
         DbPath = dbPath;
         Now = now;
         GamesOnly = gamesOnly;
+        DeviceScope = deviceScope;
         Zone = zone;
         Running = running;
         _signInUtc = new Lazy<long?>(signInUtc, LazyThreadSafetyMode.None);
@@ -30,6 +32,10 @@ public sealed class UsageContext
 
     /// <summary>True while the Games filter is on: queries then see only Game and Gacha apps.</summary>
     public bool GamesOnly { get; }
+
+    /// <summary>The scope filter: This device only, or All synced devices.</summary>
+    public DeviceScope DeviceScope { get; }
+
     public TimeZoneInfo Zone { get; }
 
     /// <summary>The apps running right now, or null before the Agent has said (queries then trust the database).</summary>
@@ -55,15 +61,17 @@ public sealed class UsageSnapshotLoader
     private readonly Func<long?> _signInUtc;
     private readonly Func<WeekStart> _weekStart;
     private readonly Func<bool> _gamesOnly;
+    private readonly Func<DeviceScope> _deviceScope;
     private readonly string? _dbPath;
     private int _seq;
     private volatile bool _started;
 
     public UsageSnapshotLoader(Func<DateTimeOffset> clock, TimeZoneInfo zone, Func<IReadOnlyCollection<long>?> running,
-        Func<long?> signInUtc, Func<WeekStart> weekStart, Func<bool>? gamesOnly = null, string? dbPath = null)
+        Func<long?> signInUtc, Func<WeekStart> weekStart, Func<bool>? gamesOnly = null, string? dbPath = null, Func<DeviceScope>? deviceScope = null)
     {
         _dbPath = dbPath;
         _gamesOnly = gamesOnly ?? (() => false);
+        _deviceScope = deviceScope ?? (() => dbPath != null ? AppSettings.ForFile(dbPath).Get(Setting.DeviceScope) : DeviceScope.This);
         _clock = clock;
         _zone = zone;
         _running = running;
@@ -72,9 +80,9 @@ public sealed class UsageSnapshotLoader
     }
 
     /// <summary>A loader on the real clock and local zone that reads the week start from the settings table on demand.</summary>
-    public static UsageSnapshotLoader ForDb(string dbPath, Func<IReadOnlyCollection<long>?> running, Func<long?> signInUtc, Func<bool>? gamesOnly = null) =>
+    public static UsageSnapshotLoader ForDb(string dbPath, Func<IReadOnlyCollection<long>?> running, Func<long?> signInUtc, Func<bool>? gamesOnly = null, Func<DeviceScope>? deviceScope = null) =>
         new(() => DateTimeOffset.UtcNow, TimeZoneInfo.Local, running, signInUtc,
-            () => AppSettings.ForFile(dbPath).Get(Setting.WeekStartsOn), gamesOnly, dbPath);
+            () => AppSettings.ForFile(dbPath).Get(Setting.WeekStartsOn), gamesOnly, dbPath, deviceScope);
 
     /// <summary>The instant the next refresh will be asked at, on this loader's clock.</summary>
     public DateTimeOffset Now => _clock();
@@ -99,7 +107,7 @@ public sealed class UsageSnapshotLoader
     {
         if (!_started) return false;
         var seq = Interlocked.Increment(ref _seq);
-        var context = new UsageContext(_clock(), _zone, _running(), _signInUtc, _weekStart, _gamesOnly(), _dbPath);
+        var context = new UsageContext(_clock(), _zone, _running(), _signInUtc, _weekStart, _gamesOnly(), _dbPath, _deviceScope());
         T result;
         try { result = await Task.Run(() => query(context)); }
         catch (Exception ex) when (ex is SqliteException or IOException) { return false; } // no DB yet
