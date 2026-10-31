@@ -9,7 +9,7 @@ public enum CandidateKind { Tracked, Merged, Retired, Installed }
 /// tracked or merged app. <see cref="Png"/> is the stored icon (or one the caller already knew for an installed app).
 /// </summary>
 public sealed record MergeCandidate(string Key, CandidateKind Kind, string Name, string ExePath, long AppId, long Seconds,
-    InstalledApp? Installed, byte[]? Png)
+    InstalledApp? Installed, byte[]? Png, string DeviceId = "")
 {
     /// <summary>Tracked or merged: the apps the tracked filter lists. Retired and installed ones are "untracked".</summary>
     public bool IsTracked => Kind is CandidateKind.Tracked or CandidateKind.Merged;
@@ -37,19 +37,21 @@ public sealed class MergePlan
     private readonly HashSet<string> _ticked = new(StringComparer.Ordinal);
 
     internal MergePlan(AppCatalogue catalogue, string dbPath, AppIconSource icons, long mainId, string mainName,
-        IReadOnlyList<MergeCandidate> candidates)
+        IReadOnlyList<MergeCandidate> candidates, string mainDeviceId = "")
     {
         _catalogue = catalogue;
         _dbPath = dbPath;
         _icons = icons;
         MainId = mainId;
         MainName = mainName;
+        MainDeviceId = mainDeviceId;
         Candidates = candidates;
         foreach (var c in candidates.Where(c => c.Kind == CandidateKind.Merged)) _ticked.Add(c.Key);
     }
 
     public long MainId { get; }
     public string MainName { get; }
+    public string MainDeviceId { get; }
 
     /// <summary>Every Candidate, sorted by name.</summary>
     public IReadOnlyList<MergeCandidate> Candidates { get; }
@@ -57,19 +59,37 @@ public sealed class MergePlan
     /// <summary>Which Candidates the list shows; a new plan starts on <see cref="MergeFilter.Tracked"/>.</summary>
     public MergeFilter Filter { get; set; } = MergeFilter.Tracked;
 
+    /// <summary>Optional filter by device_id (null or empty shows all devices).</summary>
+    public string? DeviceFilter { get; set; }
+
     /// <summary>What the search box holds; blank shows every Candidate of the <see cref="Filter"/>.</summary>
     public string Query { get; set; } = "";
 
-    /// <summary>How many Candidates a filter lists, whatever the <see cref="Query"/> is.</summary>
-    public int CountOf(MergeFilter filter) => Candidates.Count(c => Matches(filter, c));
+    /// <summary>All distinct devices represented in the candidate list and main app.</summary>
+    public IReadOnlyList<string> Devices =>
+        Candidates.Select(c => c.DeviceId).Append(MainDeviceId).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d).ToList();
+
+    /// <summary>Candidates on another device whose name matches MainName (for the "Suggested" banner).</summary>
+    public IReadOnlyList<MergeCandidate> SuggestedMatches =>
+        Candidates.Where(c => c.Kind != CandidateKind.Merged
+            && !string.IsNullOrEmpty(c.DeviceId)
+            && !string.Equals(c.DeviceId, MainDeviceId, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(c.Name.Trim(), MainName.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+
+    /// <summary>How many ticked Candidates belong to this device.</summary>
+    public int TickedCountForDevice(string deviceId) =>
+        Candidates.Count(c => string.Equals(c.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase) && IsTicked(c.Key));
+
+    /// <summary>How many Candidates a filter lists, whatever the <see cref="Query"/> is (respecting <see cref="DeviceFilter"/>).</summary>
+    public int CountOf(MergeFilter filter) => Candidates.Count(c => Matches(filter, c) && MatchesDevice(c));
 
     /// <summary>
-    /// The Candidates of the <see cref="Filter"/> that match the <see cref="Query"/>: in name order when it is blank,
+    /// The Candidates of the <see cref="Filter"/> and <see cref="DeviceFilter"/> that match the <see cref="Query"/>: in name order when it is blank,
     /// otherwise best match first, by name or (for an installed app) its Byline, as on the other Add app tabs.
     /// </summary>
     public IReadOnlyList<MergeCandidate> Shown()
     {
-        var inFilter = Candidates.Where(c => Matches(Filter, c)).ToList();
+        var inFilter = Candidates.Where(c => Matches(Filter, c) && MatchesDevice(c)).ToList();
         if (string.IsNullOrWhiteSpace(Query)) return inFilter;
         return inFilter
             .Select(c => (Candidate: c, Score: FuzzySearch.Score(Query, c.Name, c.Installed?.Byline)))
@@ -77,6 +97,9 @@ public sealed class MergePlan
             .OrderByDescending(x => x.Score) // stable: equal scores stay in name order
             .Select(x => x.Candidate).ToList();
     }
+
+    private bool MatchesDevice(MergeCandidate c) =>
+        string.IsNullOrEmpty(DeviceFilter) || string.Equals(c.DeviceId, DeviceFilter, StringComparison.OrdinalIgnoreCase);
 
     private static bool Matches(MergeFilter filter, MergeCandidate c) =>
         filter == MergeFilter.All || (filter == MergeFilter.Tracked) == c.IsTracked;

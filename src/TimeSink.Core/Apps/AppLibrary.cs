@@ -1,18 +1,19 @@
 using System.Security.Cryptography;
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Devices;
 
 namespace TimeSink.Core.Apps;
 
 public sealed record NewApp(string ExePath, string DisplayName, string? PackageFamily);
 
-public sealed record LibraryApp(long Id, string ExePath, string? PackageFamily, string DisplayName, AppState State, long? RetiredUtc, bool Background = false, AppKind Kind = AppKind.Other);
+public sealed record LibraryApp(long Id, string ExePath, string? PackageFamily, string DisplayName, AppState State, long? RetiredUtc, bool Background = false, AppKind Kind = AppKind.Other, string DeviceId = "");
 
-public sealed record RetiredApp(long Id, string ExePath, string DisplayName, long RetiredUtc);
+public sealed record RetiredApp(long Id, string ExePath, string DisplayName, long RetiredUtc, string DeviceId = "");
 
-public sealed record MergedApp(long Id, string ExePath, string DisplayName, long Seconds);
+public sealed record MergedApp(long Id, string ExePath, string DisplayName, long Seconds, string DeviceId = "");
 
 /// <summary>A tracked app as the Tracked tab shows it: merged aliases listed under it, <c>Seconds</c> including them.</summary>
-public sealed record TrackedEntry(long Id, string ExePath, string DisplayName, long AddedUtc, long Seconds, IReadOnlyList<MergedApp> Merged, bool Background = false, AppKind Kind = AppKind.Other);
+public sealed record TrackedEntry(long Id, string ExePath, string DisplayName, long AddedUtc, long Seconds, IReadOnlyList<MergedApp> Merged, bool Background = false, AppKind Kind = AppKind.Other, string DeviceId = "");
 
 public sealed record MergedAlias(string ExePath, string? PackageFamily, long CanonicalId);
 
@@ -51,7 +52,7 @@ public sealed class AppLibrary : IDisposable
         AddResult result;
 
         // a merged alias is the app it counts under: tracked with it, restored with it
-        using (var find = Cmd("SELECT COALESCE(canonical_id, id), COALESCE((SELECT k.state FROM apps k WHERE k.id = apps.canonical_id), state) FROM apps WHERE exe_path = $p", tx))
+        using (var find = Cmd("SELECT COALESCE(canonical_id, id), COALESCE((SELECT k.state FROM apps k WHERE k.id = apps.canonical_id), state) FROM apps WHERE exe_path = $p AND (device_id = COALESCE((SELECT value FROM settings WHERE key = 'device.id'), (SELECT device_id FROM devices WHERE is_local = 1)) OR (SELECT COUNT(*) FROM devices) = 0)", tx))
         {
             find.Parameters.AddWithValue("$p", app.ExePath);
             using var r = find.ExecuteReader();
@@ -110,21 +111,21 @@ public sealed class AppLibrary : IDisposable
     }
 
     /// <summary>Tracked apps with their merged aliases and lifetime seconds (aliases counted under the app that keeps the name), by name.</summary>
-    public IReadOnlyList<TrackedEntry> Tracked()
+    public IReadOnlyList<TrackedEntry> Tracked(DeviceScope scope = DeviceScope.All)
     {
         var seconds = new Dictionary<long, long>();
         using (var cmd = Cmd("SELECT app_id, SUM(seconds) FROM daily_usage GROUP BY app_id"))
         using (var r = cmd.ExecuteReader())
             while (r.Read()) seconds[r.GetInt64(0)] = r.GetInt64(1);
 
-        var groups = AppGroups.Load(_c);
+        var groups = AppGroups.Load(_c, deviceScope: scope);
         return groups.Values.Where(a => a.Group == a.Id)
             .Select(a =>
             {
                 var merged = groups.Members(a.Id).Where(m => m.Id != a.Id)
-                    .Select(m => new MergedApp(m.Id, m.ExePath, m.Name, seconds.GetValueOrDefault(m.Id)))
+                    .Select(m => new MergedApp(m.Id, m.ExePath, m.Name, seconds.GetValueOrDefault(m.Id), m.DeviceId))
                     .OrderBy(m => m.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToList();
-                return new TrackedEntry(a.Id, a.ExePath, a.Name, a.AddedUtc, seconds.GetValueOrDefault(a.Id) + merged.Sum(m => m.Seconds), merged, a.Background, a.Kind);
+                return new TrackedEntry(a.Id, a.ExePath, a.Name, a.AddedUtc, seconds.GetValueOrDefault(a.Id) + merged.Sum(m => m.Seconds), merged, a.Background, a.Kind, a.DeviceId);
             })
             .OrderBy(a => a.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
@@ -266,12 +267,13 @@ public sealed class AppLibrary : IDisposable
     public IReadOnlyList<LibraryApp> Library()
     {
         var list = new List<LibraryApp>();
-        using var cmd = Cmd("SELECT id, exe_path, package_family, display_name, state, retired_utc, is_background, kind FROM apps WHERE canonical_id IS NULL ORDER BY display_name COLLATE NOCASE");
+        using var cmd = Cmd("SELECT id, exe_path, package_family, display_name, state, retired_utc, is_background, kind, COALESCE(device_id, '') FROM apps WHERE canonical_id IS NULL ORDER BY display_name COLLATE NOCASE");
         using var r = cmd.ExecuteReader();
         while (r.Read())
             list.Add(new LibraryApp(r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2), r.GetString(3), AppStates.Parse(r.GetString(4)),
                 r.IsDBNull(5) ? null : r.GetInt64(5), r.GetInt64(6) != 0,
-                AppKinds.Resolve(r.IsDBNull(7) ? null : r.GetInt64(7), r.GetString(1), r.GetString(3))));
+                AppKinds.Resolve(r.IsDBNull(7) ? null : r.GetInt64(7), r.GetString(1), r.GetString(3)),
+                r.GetString(8)));
         return list;
     }
 
@@ -304,7 +306,7 @@ public sealed class AppLibrary : IDisposable
     public IReadOnlyList<RetiredApp> Retired() =>
         Library().Where(a => a.State == AppState.Retired)
             .OrderByDescending(a => a.RetiredUtc)
-            .Select(a => new RetiredApp(a.Id, a.ExePath, a.DisplayName, a.RetiredUtc ?? 0)).ToList();
+            .Select(a => new RetiredApp(a.Id, a.ExePath, a.DisplayName, a.RetiredUtc ?? 0, a.DeviceId)).ToList();
 
     /// <summary>Adds a path to the ignore list ("Not this one"); repeating it is harmless.</summary>
     public void Ignore(string exePath, long nowUtc)

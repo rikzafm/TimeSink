@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Devices;
 
 namespace TimeSink.Core.Apps;
 
@@ -268,17 +269,20 @@ public sealed class AppCatalogue
         try
         {
             using var lib = AppLibrary.Open(_dbPath);
-            var tracked = lib.Tracked();
+            var tracked = lib.Tracked(DeviceScope.All);
             if (tracked.FirstOrDefault(a => a.Id == mainId) is not { } found) return null;
             main = found;
             foreach (var a in tracked.Where(a => a.Id != mainId))
-                list.Add(new MergeCandidate("t" + a.Id, CandidateKind.Tracked, a.DisplayName, a.ExePath, a.Id, a.Seconds, null, null));
+                list.Add(new MergeCandidate("t" + a.Id, CandidateKind.Tracked, a.DisplayName, a.ExePath, a.Id, a.Seconds, null, null, a.DeviceId));
             foreach (var m in main.Merged)
-                list.Add(new MergeCandidate("m" + m.Id, CandidateKind.Merged, m.DisplayName, m.ExePath, m.Id, m.Seconds, null, null));
+                list.Add(new MergeCandidate("m" + m.Id, CandidateKind.Merged, m.DisplayName, m.ExePath, m.Id, m.Seconds, null, null, m.DeviceId));
             state = ReadLibrary(lib);
-            var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows) + Path.DirectorySeparatorChar;
-            foreach (var r in state.Retired.Where(a => !a.ExePath.StartsWith(windows, StringComparison.OrdinalIgnoreCase)))
-                list.Add(new MergeCandidate("s" + r.Id, CandidateKind.Retired, r.DisplayName, r.ExePath, r.Id, 0, null, null));
+            var winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            bool IsWindowsProc(string p) => (!string.IsNullOrEmpty(winDir) && p.StartsWith(winDir, StringComparison.OrdinalIgnoreCase))
+                || p.StartsWith("c:\\windows", StringComparison.OrdinalIgnoreCase)
+                || p.StartsWith("c:/windows", StringComparison.OrdinalIgnoreCase);
+            foreach (var r in state.Retired.Where(a => !IsWindowsProc(a.ExePath)))
+                list.Add(new MergeCandidate("s" + r.Id, CandidateKind.Retired, r.DisplayName, r.ExePath, r.Id, 0, null, null, r.DeviceId));
             var icons = _icons.Stored(list.Select(c => c.AppId));
             for (var i = 0; i < list.Count; i++) list[i] = list[i] with { Png = icons.GetValueOrDefault(list[i].AppId) };
         }
@@ -289,10 +293,10 @@ public sealed class AppCatalogue
             if (state.StateOf(i.ExePath, i.PackageFamily) is not null) continue; // already tracked, stopped or merged
             var key = "i" + i.ExePath.ToLowerInvariant();
             var png = _icons.ForPath(i.ExePath, i.Aumid, i.IconFile, iconPx, cachedOnly: true, out _);
-            list.Add(new MergeCandidate(key, CandidateKind.Installed, i.Name, i.ExePath, 0, 0, i, png));
+            list.Add(new MergeCandidate(key, CandidateKind.Installed, i.Name, i.ExePath, 0, 0, i, png, main.DeviceId));
         }
         var sorted = list.OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
-        return new MergePlan(this, _dbPath, _icons, main.Id, main.DisplayName, sorted);
+        return new MergePlan(this, _dbPath, _icons, main.Id, main.DisplayName, sorted, main.DeviceId);
     }
 
     /// <summary>
