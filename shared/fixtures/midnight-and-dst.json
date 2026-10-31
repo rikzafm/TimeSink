@@ -1,0 +1,83 @@
+{
+  "name": "midnight-and-dst",
+  "description": "Sessions crossing local midnight and timezone transitions with DST spring-forward and fall-back",
+  "timeZoneId": "UTC",
+  "baseTimeUtc": "2026-03-10T12:00:00Z",
+  "settings": {
+    "minSessionSeconds": 15,
+    "pauseOnSleep": true,
+    "countWhenLocked": true
+  },
+  "apps": [
+    {
+      "id": 1,
+      "name": "Notepad",
+      "path": "c:\\windows\\notepad.exe",
+      "bundleId": "com.microsoft.Notepad",
+      "addedUtc": 0
+    }
+  ],
+  "cases": [
+    {
+      "name": "midnight-split-utc",
+      "description": "A session crossing UTC midnight splits into two local days",
+      "timeZoneId": "UTC",
+      "events": [
+        { "type": "proc_start", "pid": 1, "appId": 1, "procStartOffset": 43190, "offset": 43190 },
+        { "type": "tick_range", "from": 43190, "to": 43210, "step": 5 },
+        { "type": "proc_exit", "pid": 1, "offset": 43215 },
+        { "type": "tick", "offset": 43215 }
+      ],
+      "expectedDailyUsage": {
+        "2026-03-10": 10,
+        "2026-03-11": 15
+      }
+    },
+    {
+      "name": "midnight-split-dst-america-new-york",
+      "description": "Midnight split uses the local time zone across a DST change (2026-03-08 to 2026-03-09)",
+      "timeZoneId": "America/New_York",
+      "baseTimeUtc": "2026-03-09T03:59:40Z",
+      "events": [
+        { "type": "proc_start", "pid": 1, "appId": 1, "procStartOffset": 0, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 30, "step": 5 },
+        { "type": "proc_exit", "pid": 1, "offset": 35 },
+        { "type": "tick", "offset": 35 }
+      ],
+      "expectedDailyUsage": {
+        "2026-03-08": 20,
+        "2026-03-09": 15
+      }
+    },
+    {
+      "name": "dst-spring-forward-23h-day",
+      "description": "Session running across the 2:00 AM spring-forward jump (02:00 EST -> 03:00 EDT) in America/New_York",
+      "timeZoneId": "America/New_York",
+      "baseTimeUtc": "2026-03-08T06:59:40Z",
+      "events": [
+        { "type": "proc_start", "pid": 1, "appId": 1, "procStartOffset": 0, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 30, "step": 5 },
+        { "type": "proc_exit", "pid": 1, "offset": 35 },
+        { "type": "tick", "offset": 35 }
+      ],
+      "expectedDailyUsage": {
+        "2026-03-08": 35
+      }
+    },
+    {
+      "name": "dst-fall-back-25h-day",
+      "description": "Session running across the 2:00 AM fall-back transition (02:00 EDT -> 01:00 EST) in America/New_York",
+      "timeZoneId": "America/New_York",
+      "baseTimeUtc": "2026-11-01T05:59:40Z",
+      "events": [
+        { "type": "proc_start", "pid": 1, "appId": 1, "procStartOffset": 0, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 30, "step": 5 },
+        { "type": "proc_exit", "pid": 1, "offset": 35 },
+        { "type": "tick", "offset": 35 }
+      ],
+      "expectedDailyUsage": {
+        "2026-11-01": 35
+      }
+    }
+  ]
+}

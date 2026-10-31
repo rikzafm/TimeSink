@@ -1,0 +1,70 @@
+{
+  "name": "lock-and-unlock",
+  "description": "Lock and unlock events with count-when-locked enabled and disabled",
+  "timeZoneId": "UTC",
+  "baseTimeUtc": "2026-03-10T12:00:00Z",
+  "settings": {
+    "minSessionSeconds": 15,
+    "pauseOnSleep": true,
+    "countWhenLocked": true
+  },
+  "apps": [
+    {
+      "id": 1,
+      "name": "Notepad",
+      "path": "c:\\windows\\notepad.exe",
+      "bundleId": "com.microsoft.Notepad",
+      "addedUtc": 0
+    }
+  ],
+  "cases": [
+    {
+      "name": "lock-splits-when-not-counting-locked",
+      "description": "Lock closes and unlock reopens when countWhenLocked is false",
+      "settings": {
+        "countWhenLocked": false
+      },
+      "events": [
+        { "type": "proc_start", "pid": 1, "appId": 1, "procStartOffset": -100000, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 40, "step": 5 },
+        { "type": "lock", "offset": 42 },
+        { "type": "tick_range", "from": 45, "to": 95, "step": 5 },
+        { "type": "clock_set", "offset": 100 },
+        { "type": "unlock", "offset": 100 }
+      ],
+      "expectedSessions": [
+        {
+          "appId": 1,
+          "startUtc": 1773144000,
+          "endReason": "sleep"
+        },
+        {
+          "appId": 1,
+          "startUtc": 1773144100,
+          "endUtc": null
+        }
+      ]
+    },
+    {
+      "name": "lock-ignored-when-counting-locked",
+      "description": "Lock is ignored when countWhenLocked is true",
+      "settings": {
+        "countWhenLocked": true
+      },
+      "events": [
+        { "type": "proc_start", "pid": 1, "appId": 1, "procStartOffset": -100000, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 40, "step": 5 },
+        { "type": "lock", "offset": 42 },
+        { "type": "tick_range", "from": 45, "to": 80, "step": 5 },
+        { "type": "unlock", "offset": 82 }
+      ],
+      "expectedSessions": [
+        {
+          "appId": 1,
+          "startUtc": 1773144000,
+          "endUtc": null
+        }
+      ]
+    }
+  ]
+}

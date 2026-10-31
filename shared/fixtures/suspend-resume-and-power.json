@@ -1,0 +1,116 @@
+{
+  "name": "suspend-resume-and-power",
+  "description": "System power events: suspend, resume, tick gaps (missed sleep), shutdown, and pause-on-sleep setting",
+  "timeZoneId": "UTC",
+  "baseTimeUtc": "2026-03-10T12:00:00Z",
+  "settings": {
+    "minSessionSeconds": 15,
+    "pauseOnSleep": true,
+    "countWhenLocked": true
+  },
+  "apps": [
+    {
+      "id": 1,
+      "name": "Notepad",
+      "path": "c:\\windows\\notepad.exe",
+      "bundleId": "com.microsoft.Notepad",
+      "addedUtc": 0
+    }
+  ],
+  "cases": [
+    {
+      "name": "suspend-and-resume",
+      "description": "Suspend closes at suspend time and resume opens a new session",
+      "events": [
+        { "type": "proc_start", "pid": 1, "appId": 1, "procStartOffset": -100000, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 40, "step": 5 },
+        { "type": "suspend", "offset": 42 },
+        { "type": "clock_set", "offset": 300 },
+        { "type": "resume", "offset": 300 },
+        { "type": "tick_range", "from": 300, "to": 340, "step": 5 }
+      ],
+      "expectedSessions": [
+        {
+          "appId": 1,
+          "startUtc": 1773144000,
+          "endUtc": 1773144042,
+          "endReason": "sleep"
+        },
+        {
+          "appId": 1,
+          "startUtc": 1773144300,
+          "endUtc": null
+        }
+      ],
+      "expectedDailyUsage": {
+        "2026-03-10": 72
+      }
+    },
+    {
+      "name": "tick-gap-fallback",
+      "description": "A tick gap over 20 seconds without a suspend event behaves like a missed sleep",
+      "events": [
+        { "type": "proc_start", "pid": 1, "appId": 1, "procStartOffset": -100000, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 40, "step": 5 },
+        { "type": "tick", "offset": 300 }
+      ],
+      "expectedSessions": [
+        {
+          "appId": 1,
+          "startUtc": 1773144000,
+          "endUtc": 1773144040,
+          "endReason": "sleep"
+        },
+        {
+          "appId": 1,
+          "startUtc": 1773144300,
+          "endUtc": null
+        }
+      ],
+      "expectedDailyUsage": {
+        "2026-03-10": 40
+      }
+    },
+    {
+      "name": "pause-on-sleep-disabled",
+      "description": "When pauseOnSleep is false, sleep does not split the session",
+      "settings": {
+        "pauseOnSleep": false
+      },
+      "events": [
+        { "type": "proc_start", "pid": 1, "appId": 1, "procStartOffset": -100000, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 40, "step": 5 },
+        { "type": "suspend", "offset": 42 },
+        { "type": "resume", "offset": 300 },
+        { "type": "tick", "offset": 300 }
+      ],
+      "expectedSessions": [
+        {
+          "appId": 1,
+          "startUtc": 1773144000,
+          "endUtc": null
+        }
+      ]
+    },
+    {
+      "name": "shutdown-event",
+      "description": "Shutdown closes open sessions with shutdown reason",
+      "events": [
+        { "type": "proc_start", "pid": 1, "appId": 1, "procStartOffset": -100000, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 40, "step": 5 },
+        { "type": "shutdown", "offset": 44 }
+      ],
+      "expectedSessions": [
+        {
+          "appId": 1,
+          "startUtc": 1773144000,
+          "endUtc": 1773144044,
+          "endReason": "shutdown"
+        }
+      ],
+      "expectedDailyUsage": {
+        "2026-03-10": 44
+      }
+    }
+  ]
+}

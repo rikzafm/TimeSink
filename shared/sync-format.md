@@ -174,3 +174,4 @@ SQLite cannot alter inline `UNIQUE` constraints (`exe_path COLLATE NOCASE UNIQUE
 4. Recreate dependent foreign keys and indexes.
 
 Before running migration `M004`, an automatic backup `pre-migrate-<timestamp>.timesink` is written to the backup folder.
+

@@ -1,0 +1,101 @@
+{
+  "name": "crash-recovery",
+  "description": "Crash recovery rules: continuation with fresh heartbeat vs closure at last-seen on stale heartbeat, pid reuse, or short session removal",
+  "timeZoneId": "UTC",
+  "baseTimeUtc": "2026-03-10T12:00:00Z",
+  "settings": {
+    "minSessionSeconds": 15,
+    "pauseOnSleep": true,
+    "countWhenLocked": true
+  },
+  "apps": [
+    {
+      "id": 1,
+      "name": "Notepad",
+      "path": "c:\\windows\\notepad.exe",
+      "bundleId": "com.microsoft.Notepad",
+      "addedUtc": 0
+    }
+  ],
+  "cases": [
+    {
+      "name": "recovery-continues-fresh-heartbeat",
+      "description": "Continues an open session when process is still running and heartbeat is within 120s",
+      "events": [
+        { "type": "proc_start", "pid": 7, "appId": 1, "procStartOffset": -50, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 35, "step": 5 },
+        { "type": "crash_and_restart", "offset": 150 },
+        { "type": "recover_crash", "offset": 150 },
+        { "type": "tick_range", "from": 150, "to": 180, "step": 5 },
+        { "type": "proc_exit", "pid": 7, "offset": 185 },
+        { "type": "tick", "offset": 185 }
+      ],
+      "expectedSessions": [
+        {
+          "appId": 1,
+          "startUtc": 1773144000,
+          "endUtc": 1773144185,
+          "endReason": "exit"
+        }
+      ],
+      "expectedDailyUsage": {
+        "2026-03-10": 185
+      }
+    },
+    {
+      "name": "recovery-closes-stale-heartbeat",
+      "description": "Closes session at last_seen with reason crash when heartbeat is stale (>120s)",
+      "events": [
+        { "type": "proc_start", "pid": 7, "appId": 1, "procStartOffset": -50, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 35, "step": 5 },
+        { "type": "crash_and_restart", "offset": 151 },
+        { "type": "recover_crash", "offset": 151 }
+      ],
+      "expectedSessions": [
+        {
+          "appId": 1,
+          "endUtc": 1773144030,
+          "endReason": "crash"
+        }
+      ],
+      "expectedDailyUsage": {
+        "2026-03-10": 30
+      }
+    },
+    {
+      "name": "recovery-closes-on-pid-reuse",
+      "description": "Closes session at last_seen when process creation time differs (PID was reused)",
+      "events": [
+        { "type": "proc_start", "pid": 7, "appId": 1, "procStartOffset": -50, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 35, "step": 5 },
+        { "type": "crash_and_restart", "offset": 60 },
+        { "type": "proc_exit", "pid": 7, "offset": 60 },
+        { "type": "proc_start", "pid": 7, "appId": 1, "procStartOffset": 40, "offset": 60 },
+        { "type": "recover_crash", "offset": 60 }
+      ],
+      "expectedSessions": [
+        {
+          "appId": 1,
+          "endUtc": 1773144030,
+          "endReason": "crash"
+        }
+      ]
+    },
+    {
+      "name": "recovery-removes-short-session",
+      "description": "Removes recovered session and subtracts daily usage if shorter than minSessionSeconds",
+      "settings": {
+        "minSessionSeconds": 30
+      },
+      "events": [
+        { "type": "proc_start", "pid": 7, "appId": 1, "procStartOffset": 10, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 30, "step": 5 },
+        { "type": "crash_and_restart", "offset": 60 },
+        { "type": "proc_exit", "pid": 7, "offset": 60 },
+        { "type": "recover_crash", "offset": 60 }
+      ],
+      "expectedSessions": [],
+      "expectedDailyUsage": {}
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "name": "backup-and-restore",
+  "description": "Backup create/replace round trip, idempotent merge twice, and rejection of newer schema versions",
+  "timeZoneId": "UTC",
+  "baseTimeUtc": "2026-10-23T12:00:00Z",
+  "cases": [
+    {
+      "name": "replace-restore-round-trip",
+      "description": "Replace restore restores all apps, sessions, and rebuilds daily usage exactly",
+      "liveApps": [
+        { "exePath": "c:\\a\\one.exe", "category": "Games" },
+        { "exePath": "c:\\a\\two.exe", "category": "Other" }
+      ],
+      "liveSessions": [
+        { "exePath": "c:\\a\\one.exe", "startUtc": 1700000000, "endUtc": 1700003600 },
+        { "exePath": "c:\\a\\two.exe", "startUtc": 1700010000, "endUtc": 1700010600 }
+      ],
+      "expectedAppsCount": 2,
+      "expectedSessionsCount": 2,
+      "expectedTotalDailySeconds": 4200
+    },
+    {
+      "name": "merge-twice-is-idempotent",
+      "description": "Merging the same backup twice adds nothing the second time",
+      "liveApps": [
+        { "exePath": "c:\\a\\one.exe" },
+        { "exePath": "c:\\a\\two.exe" }
+      ],
+      "liveSessions": [
+        { "exePath": "c:\\a\\one.exe", "startUtc": 1700000000, "endUtc": 1700003600 },
+        { "exePath": "c:\\a\\two.exe", "startUtc": 1700010000, "endUtc": 1700010600 }
+      ],
+      "incomingApps": [
+        { "exePath": "c:\\a\\one.exe" },
+        { "exePath": "C:\\A\\Two.exe" },
+        { "exePath": "c:\\b\\new.exe" }
+      ],
+      "incomingSessions": [
+        { "exePath": "c:\\a\\one.exe", "startUtc": 1700000000, "endUtc": 1700003600 },
+        { "exePath": "C:\\A\\Two.exe", "startUtc": 1700020000, "endUtc": 1700020300 },
+        { "exePath": "c:\\b\\new.exe", "startUtc": 1700030000, "endUtc": 1700030100 }
+      ],
+      "firstMergeResult": {
+        "appsAdded": 1,
+        "sessionsAdded": 2,
+        "sessionsSkipped": 1
+      },
+      "secondMergeResult": {
+        "appsAdded": 0,
+        "sessionsAdded": 0,
+        "sessionsSkipped": 3
+      },
+      "expectedFinalTotalDailySeconds": 4600
+    },
+    {
+      "name": "newer-schema-refused",
+      "description": "Backup with a schemaVersion greater than supported is rejected without modifying target database",
+      "incomingSchemaVersion": 999,
+      "expectedError": "schema 999"
+    }
+  ]
+}

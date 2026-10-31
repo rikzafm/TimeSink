@@ -36,7 +36,8 @@ public sealed class Rig : IDisposable
     public string DbPath { get; }
     public Db Db { get; }
     public SqliteSessionStore Store { get; }
-    public FakeClock Clock { get; } = new() { UtcNow = Base };
+    public DateTimeOffset BaseTime { get; }
+    public FakeClock Clock { get; }
     public FakeProcesses Procs { get; } = new();
     public FakePower Power { get; } = new();
     public TrackingSettings Settings { get; } = new() { MinSessionSeconds = 15 };
@@ -45,8 +46,10 @@ public sealed class Rig : IDisposable
     public UsageAccumulator Usage { get; }
     public long NotepadId { get; }
 
-    public Rig(TimeZoneInfo? zone = null, long addedUtc = 0)
+    public Rig(TimeZoneInfo? zone = null, long addedUtc = 0, DateTimeOffset? baseTime = null)
     {
+        BaseTime = baseTime ?? Base;
+        Clock = new FakeClock { UtcNow = BaseTime };
         Zone = zone ?? TimeZoneInfo.Utc;
         Directory.CreateDirectory(_dir);
         DbPath = Path.Combine(_dir, "t.db");
@@ -64,12 +67,13 @@ public sealed class Rig : IDisposable
         return Engine;
     }
 
+    public DateTimeOffset AtTime(int seconds) => BaseTime.AddSeconds(seconds);
     public static DateTimeOffset At(int seconds) => Base.AddSeconds(seconds);
 
     public ProcInfo Notepad(int pid, int startSeconds = -100000) =>
-        new(pid, "notepad.exe", NotepadPath, At(startSeconds));
+        new(pid, "notepad.exe", NotepadPath, AtTime(startSeconds));
 
-    public void Tick(int seconds) { Clock.UtcNow = At(seconds); Engine.OnTick(At(seconds)); }
+    public void Tick(int seconds) { Clock.UtcNow = AtTime(seconds); Engine.OnTick(AtTime(seconds)); }
 
     /// <summary>Tick every 5 s from..to inclusive.</summary>
     public void TickEvery5(int from, int to) { for (var s = from; s <= to; s += 5) Tick(s); }

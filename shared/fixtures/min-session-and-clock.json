@@ -1,0 +1,89 @@
+{
+  "name": "min-session-and-clock",
+  "description": "Rules for minimum session threshold filtering, usage subtraction, and backwards clock protection",
+  "timeZoneId": "UTC",
+  "baseTimeUtc": "2026-03-10T12:00:00Z",
+  "settings": {
+    "minSessionSeconds": 15,
+    "pauseOnSleep": true,
+    "countWhenLocked": true
+  },
+  "apps": [
+    {
+      "id": 1,
+      "name": "Notepad",
+      "path": "c:\\windows\\notepad.exe",
+      "bundleId": "com.microsoft.Notepad",
+      "addedUtc": 0
+    }
+  ],
+  "cases": [
+    {
+      "name": "short-session-removed-and-subtracted",
+      "description": "Sessions shorter than minSessionSeconds are deleted and their accumulated usage is subtracted",
+      "settings": {
+        "minSessionSeconds": 30
+      },
+      "events": [
+        { "type": "proc_start", "pid": 1, "appId": 1, "procStartOffset": 10, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 30, "step": 5 },
+        { "type": "proc_exit", "pid": 1, "offset": 35 },
+        { "type": "tick", "offset": 35 }
+      ],
+      "expectedSessions": [],
+      "expectedDailyUsage": {}
+    },
+    {
+      "name": "exact-minimum-session-kept",
+      "description": "A session with duration exactly equal to minSessionSeconds is retained",
+      "settings": {
+        "minSessionSeconds": 15
+      },
+      "events": [
+        { "type": "proc_start", "pid": 1, "appId": 1, "procStartOffset": 10, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 20, "step": 5 },
+        { "type": "proc_exit", "pid": 1, "offset": 25 },
+        { "type": "tick", "offset": 25 }
+      ],
+      "expectedSessions": [
+        {
+          "appId": 1,
+          "startUtc": 1773144010,
+          "endUtc": 1773144025,
+          "endReason": "exit"
+        }
+      ],
+      "expectedDailyUsage": {
+        "2026-03-10": 15
+      }
+    },
+    {
+      "name": "clock-moving-backwards-safe",
+      "description": "Clock moving backwards never produces negative durations or backwards sessions",
+      "events": [
+        { "type": "proc_start", "pid": 1, "appId": 1, "procStartOffset": -100000, "offset": 0 },
+        { "type": "tick_range", "from": 0, "to": 40, "step": 5 },
+        { "type": "clock_set", "offset": 20 },
+        { "type": "tick", "offset": 20 },
+        { "type": "tick_range", "from": 25, "to": 45, "step": 5 },
+        { "type": "proc_exit", "pid": 1, "offset": 50 },
+        { "type": "tick", "offset": 50 }
+      ],
+      "expectedSessions": [
+        {
+          "appId": 1,
+          "startUtc": 1773144000,
+          "endUtc": 1773144040
+        },
+        {
+          "appId": 1,
+          "startUtc": 1773144020,
+          "endUtc": 1773144050
+        }
+      ],
+      "expectedDailyUsage": {
+        "2026-03-10": 70
+      }
+    }
+  ]
+}
