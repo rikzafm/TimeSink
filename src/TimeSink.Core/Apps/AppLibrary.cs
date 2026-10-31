@@ -75,7 +75,7 @@ public sealed class AppLibrary : IDisposable
             else
             {
                 r.Close();
-                using var ins = Cmd("INSERT INTO apps (exe_path, package_family, display_name, added_utc) VALUES ($p,$f,$n,$t) RETURNING id", tx);
+                using var ins = Cmd("INSERT INTO apps (exe_path, package_family, display_name, added_utc, device_id) VALUES ($p,$f,$n,$t, COALESCE((SELECT value FROM settings WHERE key = 'device.id'), (SELECT device_id FROM devices WHERE is_local = 1))) RETURNING id", tx);
                 ins.Parameters.AddWithValue("$p", app.ExePath);
                 ins.Parameters.AddWithValue("$f", (object?)app.PackageFamily ?? DBNull.Value);
                 ins.Parameters.AddWithValue("$n", app.DisplayName);

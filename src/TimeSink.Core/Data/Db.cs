@@ -43,13 +43,18 @@ public sealed class Db : IDisposable
 
     public string JournalMode => (string)Scalar("PRAGMA journal_mode")!;
 
-    public long InsertApp(string exePath, string displayName, long addedUtc)
+    public long InsertApp(string exePath, string displayName, long addedUtc, string? deviceId = null)
     {
         using var cmd = _connection.CreateCommand();
-        cmd.CommandText = "INSERT INTO apps (exe_path, display_name, added_utc) VALUES ($p, $n, $t) RETURNING id";
+        cmd.CommandText = """
+            INSERT INTO apps (exe_path, display_name, added_utc, device_id)
+            VALUES ($p, $n, $t, COALESCE($d, (SELECT value FROM settings WHERE key = 'device.id'), (SELECT device_id FROM devices WHERE is_local = 1)))
+            RETURNING id
+            """;
         cmd.Parameters.AddWithValue("$p", exePath);
         cmd.Parameters.AddWithValue("$n", displayName);
         cmd.Parameters.AddWithValue("$t", addedUtc);
+        cmd.Parameters.AddWithValue("$d", (object?)deviceId ?? DBNull.Value);
         return (long)cmd.ExecuteScalar()!;
     }
 

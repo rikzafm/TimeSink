@@ -110,8 +110,8 @@ public static class RestoreService
                     else
                     {
                         using var ins = c.CreateCommand();
-                        ins.CommandText = "INSERT INTO main.apps (exe_path, package_family, display_name, category, state, added_utc, retired_utc) " +
-                                          "VALUES ($p, $f, $n, $c, $s, $a, $r) RETURNING id";
+                        ins.CommandText = "INSERT INTO main.apps (exe_path, package_family, display_name, category, state, added_utc, retired_utc, device_id) " +
+                                          "VALUES ($p, $f, $n, $c, $s, $a, $r, COALESCE((SELECT value FROM main.settings WHERE key = 'device.id'), (SELECT device_id FROM main.devices WHERE is_local = 1))) RETURNING id";
                         ins.Parameters.AddWithValue("$p", a[2]);
                         ins.Parameters.AddWithValue("$f", a[3] ?? DBNull.Value);
                         ins.Parameters.AddWithValue("$n", a[4]);
