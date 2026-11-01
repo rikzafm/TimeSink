@@ -142,6 +142,11 @@ public struct MonthResult: Sendable, Equatable {
         self.deviceTotals = deviceTotals
         self.onBothSeconds = onBothSeconds
     }
+
+    public var canPrev: Bool {
+        guard let first = firstTracked else { return false }
+        return PeriodNavigator(unit: .month, first: first, today: firstDay).canPrev(anchor: firstDay)
+    }
 }
 
 public enum MonthQuery {

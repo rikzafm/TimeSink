@@ -2,13 +2,17 @@ import SwiftUI
 import TimeSinkCore
 
 /// The Today strip: 24 hour bars, a now flag, and the typical day ghosted ahead of now.
+/// Interactive: hovering previews that hour's time and top apps; clicking selects the hour and displays its detail panel.
 public struct HourlyChartView: View {
     @ObservedObject var state: AppState
     public let result: TodayResult
+    @Binding public var selectedHour: Int?
+    @State private var hoveredHour: Int? = nil
 
-    public init(state: AppState, result: TodayResult) {
+    public init(state: AppState, result: TodayResult, selectedHour: Binding<Int?>? = nil) {
         self.state = state
         self.result = result
+        self._selectedHour = selectedHour ?? .constant(nil)
     }
 
     private let barsHeight: CGFloat = 46
@@ -40,6 +44,15 @@ public struct HourlyChartView: View {
         return f > 0.75 ? Tokens.ramp[3] : f > 0.5 ? Tokens.ramp[2] : Tokens.ramp[1]
     }
 
+    private func tooltipText(_ hour: Int) -> String {
+        let d = BarDetail.forHour(result: result, hour: hour)
+        var lines = ["\(Formatters.hourRange(hour)) · " + (d.appSeconds > 0 ? Formatters.paddedHM(d.appSeconds) : "no activity")]
+        for a in d.apps.prefix(3) {
+            lines.append("\(a.name) \(Formatters.paddedHM(a.seconds))")
+        }
+        return lines.joined(separator: "\n")
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack(alignment: .topLeading) {
@@ -52,16 +65,52 @@ public struct HourlyChartView: View {
             }
             .frame(height: 78)
 
+            if let h = selectedHour {
+                detailPanel(h)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             legend
+        }
+        .onExitCommand {
+            withAnimation(.easeInOut(duration: 0.18)) { selectedHour = nil }
         }
     }
 
     private var bars: some View {
         HStack(alignment: .bottom, spacing: 3) {
             ForEach(result.hours, id: \.hour) { bucket in
-                barView(bucket)
+                let isHovered = hoveredHour == bucket.hour
+                let isSelected = selectedHour == bucket.hour
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        selectedHour = (selectedHour == bucket.hour ? nil : bucket.hour)
+                    }
+                }) {
+                    ZStack(alignment: .bottom) {
+                        if isHovered {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(ThemeColors.textMuted.opacity(0.18))
+                                .frame(height: barsHeight)
+                        }
+                        barView(bucket)
+                            .frame(maxWidth: .infinity, alignment: .bottom)
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 2)
+                                .strokeBorder(ThemeColors.accent, lineWidth: 1.5)
+                                .frame(height: barsHeight)
+                        }
+                    }
                     .frame(maxWidth: .infinity)
                     .frame(height: barsHeight, alignment: .bottom)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(tooltipText(bucket.hour))
+                .onHover { isH in
+                    if isH { hoveredHour = bucket.hour }
+                    else if hoveredHour == bucket.hour { hoveredHour = nil }
+                }
             }
         }
     }
@@ -118,6 +167,111 @@ public struct HourlyChartView: View {
                 .fixedSize()
                 .offset(x: min(x - 24, geo.size.width - 52))
         }
+    }
+
+    private func detailPanel(_ hour: Int) -> some View {
+        let d = BarDetail.forHour(result: result, hour: hour)
+        return VStack(alignment: .leading, spacing: 10) {
+            // Header
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Formatters.hourRange(hour))
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(ThemeColors.textPrimary)
+                    Text(d.appSeconds > 0
+                         ? "\(Formatters.paddedHM(d.appSeconds)) app time · \(d.sessions.count) session\(d.sessions.count == 1 ? "" : "s")"
+                         : "No activity this hour")
+                        .font(.system(size: 10))
+                        .foregroundColor(ThemeColors.textMuted)
+                }
+                Spacer()
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.18)) { selectedHour = nil }
+                }) {
+                    Text("✕")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(ThemeColors.textMuted)
+                        .padding(4)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Apps with share progress bars
+            if !d.apps.isEmpty {
+                VStack(spacing: 7) {
+                    ForEach(d.apps, id: \.appId) { app in
+                        let sharePct = d.appSeconds > 0 ? Int((Double(app.seconds) / Double(d.appSeconds) * 100).rounded()) : 0
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text(app.name)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(ThemeColors.textPrimary)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text("\(Formatters.paddedHM(app.seconds)) · \(sharePct)%")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(ThemeColors.textMuted)
+                            }
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 3).fill(ThemeColors.barBackground)
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(Tokens.appColor(app.name))
+                                        .frame(width: max(4, geo.size.width * CGFloat(app.seconds) / CGFloat(max(1, d.appSeconds))))
+                                }
+                            }
+                            .frame(height: 6)
+                        }
+                    }
+                }
+            }
+
+            // Sessions
+            if !d.sessions.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Sessions")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(ThemeColors.textMuted)
+                        .padding(.top, 2)
+                    ForEach(Array(d.sessions.enumerated()), id: \.offset) { _, s in
+                        HStack {
+                            Text(s.appName)
+                                .font(.system(size: 11))
+                                .foregroundColor(ThemeColors.textPrimary)
+                                .lineLimit(1)
+                            Spacer()
+                            Text("\(Formatters.clock12(s.startUtc)) – \(Formatters.clock12(s.endUtc))")
+                                .font(.system(size: 10))
+                                .foregroundColor(ThemeColors.textMuted)
+                            Text(Formatters.paddedHM(s.seconds))
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(ThemeColors.textPrimary)
+                                .frame(width: 54, alignment: .trailing)
+                        }
+                    }
+                }
+            }
+
+            // Comparison (Typical for this hour)
+            if result.hasTypical {
+                Divider().overlay(ThemeColors.borderSubtle).padding(.vertical, 2)
+                let delta = d.appSeconds - Int64(d.typicalAppSeconds.rounded())
+                let sign = delta >= 0 ? "+" : "-"
+                HStack {
+                    Text("Typical for this hour")
+                        .font(.system(size: 11))
+                        .foregroundColor(ThemeColors.textMuted)
+                    Spacer()
+                    Text("\(Formatters.paddedHM(Int64(d.typicalAppSeconds.rounded()))) · \(sign)\(Formatters.paddedHM(abs(delta)))")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(delta >= 0 ? ThemeColors.accent : ThemeColors.warning)
+                }
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(ThemeColors.surfaceActive))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ThemeColors.accent, lineWidth: 1))
     }
 
     private func swatch(_ color: Color) -> some View {

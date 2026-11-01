@@ -50,6 +50,20 @@ public extension Formatters {
         "\(grouped((seconds + 1800) / 3600)) h"
     }
 
+    /// Formats hours with one decimal place under 10 ("1.5"), or whole hours without decimal ("14", "10", "2").
+    static func decimalHours(_ seconds: Int64) -> String {
+        let h = Double(max(0, seconds)) / 3600.0
+        if h < 9.95 {
+            let rounded = (h * 10).rounded() / 10
+            if rounded.truncatingRemainder(dividingBy: 1) == 0 {
+                return "\(Int(rounded))"
+            } else {
+                return String(format: "%.1f", rounded)
+            }
+        }
+        return "\(Int(round(h)))"
+    }
+
     static func grouped(_ value: Int64) -> String {
         let f = NumberFormatter()
         f.numberStyle = .decimal
@@ -99,6 +113,69 @@ public extension Formatters {
         let list: [String] = short ? df.shortMonthSymbols : df.monthSymbols
         return list[max(0, min(11, month - 1))]
     }
+
+    static func hour12(_ hour: Int) -> String {
+        let h = (hour % 24 + 24) % 24
+        let mod = h % 12
+        let num = mod == 0 ? 12 : mod
+        let ampm = h < 12 ? "am" : "pm"
+        return "\(num) \(ampm)"
+    }
+
+    static func hourRange(_ hour: Int) -> String {
+        let h1 = hour12(hour)
+        let h2 = hour12(hour + 1)
+        return "\(h1) – \(h2)"
+    }
+}
+
+public struct FlowLayout: Layout {
+    public var spacing: CGFloat
+    public var lineSpacing: CGFloat
+
+    public init(spacing: CGFloat = 6, lineSpacing: CGFloat = 6) {
+        self.spacing = spacing
+        self.lineSpacing = lineSpacing
+    }
+
+    public func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxW = proposal.width ?? .infinity
+        var currentX: CGFloat = 0
+        var currentY: CGFloat = 0
+        var lineHeight: CGFloat = 0
+        var maxWidth: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentX + size.width > maxW, currentX > 0 {
+                currentX = 0
+                currentY += lineHeight + lineSpacing
+                lineHeight = 0
+            }
+            lineHeight = max(lineHeight, size.height)
+            currentX += size.width + spacing
+            maxWidth = max(maxWidth, currentX - spacing)
+        }
+        return CGSize(width: maxWidth, height: currentY + lineHeight)
+    }
+
+    public func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var currentX = bounds.minX
+        var currentY = bounds.minY
+        var lineHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentX + size.width > bounds.maxX, currentX > bounds.minX {
+                currentX = bounds.minX
+                currentY += lineHeight + lineSpacing
+                lineHeight = 0
+            }
+            subview.place(at: CGPoint(x: currentX, y: currentY), proposal: ProposedViewSize(size))
+            lineHeight = max(lineHeight, size.height)
+            currentX += size.width + spacing
+        }
+    }
 }
 
 // MARK: - Icons (the boards' SVG paths)
@@ -109,8 +186,9 @@ public enum TSIcon {
 
     var box: CGFloat {
         switch self {
-        case .gamepad, .eye, .eyeSlash, .layers: return 18
-        case .gearLarge, .lashes: return 20
+        case .gamepad, .gear, .gearLarge: return 24
+        case .eye, .eyeSlash, .layers: return 18
+        case .lashes: return 20
         case .close: return 14
         case .upload: return 28
         case .clock, .history: return 12
@@ -139,17 +217,10 @@ public enum TSIcon {
         }
         switch self {
         case .gamepad:
-            p.addRoundedRect(in: CGRect(x: 2, y: 5.5, width: 14, height: 7.5), cornerSize: CGSize(width: 3.5, height: 3.5))
-            line(pt(6, 7.5), pt(6, 11)); line(pt(4.25, 9.25), pt(7.75, 9.25))
-            dot(11.5, 8.5, 0.6); dot(13, 10, 0.6)
-        case .gear:
-            dot(8, 8, 2.2)
-            line(pt(8, 1.5), pt(8, 3.5)); line(pt(8, 12.5), pt(8, 14.5)); line(pt(1.5, 8), pt(3.5, 8)); line(pt(12.5, 8), pt(14.5, 8))
-            line(pt(3.4, 3.4), pt(4.8, 4.8)); line(pt(11.2, 11.2), pt(12.6, 12.6)); line(pt(3.4, 12.6), pt(4.8, 11.2)); line(pt(11.2, 4.8), pt(12.6, 3.4))
-        case .gearLarge:
-            dot(10, 10, 2.6)
-            line(pt(10, 2), pt(10, 4.2)); line(pt(10, 15.8), pt(10, 18)); line(pt(2, 10), pt(4.2, 10)); line(pt(15.8, 10), pt(18, 10))
-            line(pt(4.3, 4.3), pt(5.9, 5.9)); line(pt(14.1, 14.1), pt(15.7, 15.7)); line(pt(4.3, 15.7), pt(5.9, 14.1)); line(pt(14.1, 5.9), pt(15.7, 4.3))
+            p = SVGPath.parse("M6 11h4M8 9v4M15 12h.01M18 10h.01M17.3 5H6.7a4 4 0 0 0-3.9 3.2l-1.5 7A3 3 0 0 0 4.2 19c.9 0 1.6-.5 2.1-1.2l1.1-1.8h9.2l1.1 1.8c.5.7 1.2 1.2 2.1 1.2a3 3 0 0 0 2.9-3.8l-1.5-7A4 4 0 0 0 17.3 5z")
+        case .gear, .gearLarge:
+            p = SVGPath.parse("M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z")
+            dot(12, 12, 3)
         case .eye:
             eyeOutline()
         case .eyeSlash:
@@ -315,11 +386,11 @@ public struct AppTile: View {
 
     public var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: radius).fill(fill)
-            RoundedRectangle(cornerRadius: radius).strokeBorder(border, lineWidth: 1)
             if let png, let img = NSImage(data: png) {
-                Image(nsImage: img).resizable().padding(size * 0.12)
+                Image(nsImage: img).resizable().scaledToFit()
             } else {
+                RoundedRectangle(cornerRadius: radius).fill(fill)
+                RoundedRectangle(cornerRadius: radius).strokeBorder(border, lineWidth: 1)
                 Text(String(name.prefix(1)).uppercased())
                     .font(.system(size: fontSize, weight: .bold))
                     .foregroundColor(Tokens.appColor(name))
@@ -415,6 +486,157 @@ public struct OverlapBar: View {
             ZStack {
                 if mac <= pc { pcBar; macBar } else { macBar; pcBar }
             }
+        }
+    }
+}
+
+/// Ranked app list shown under the Month and Year Pace cards.
+struct RankedAppList: View {
+    @ObservedObject var state: AppState
+    let rows: [(appId: Int64, name: String, seconds: Int64)]
+
+    var body: some View {
+        let top = max(1, rows.first?.seconds ?? 1)
+        VStack(spacing: 0) {
+            ForEach(rows, id: \.appId) { row in
+                Button(action: { state.openAppDetail(appId: row.appId) }) {
+                    HStack(spacing: 10) {
+                        AppTile(name: row.name, png: state.iconCache.getCachedIcon(forAppId: row.appId))
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(row.name)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(ThemeColors.textPrimary)
+                                .lineLimit(1)
+                            GeometryReader { geo in
+                                Capsule().fill(ThemeColors.barBackground)
+                                    .overlay(alignment: .leading) {
+                                        Capsule()
+                                            .fill(Tokens.appColor(row.name))
+                                            .frame(width: geo.size.width * CGFloat(row.seconds) / CGFloat(top))
+                                    }
+                            }
+                            .frame(height: 4)
+                        }
+                        Text(Formatters.paddedHM(row.seconds))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(ThemeColors.textPrimary)
+                            .frame(width: 62, alignment: .trailing)
+                    }
+                    .padding(.horizontal, 6)
+                    .frame(height: 46)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+/// Minimal SVG path-data parser (M L H V C A Z, absolute and relative) so icons can share the Windows glyph data.
+enum SVGPath {
+    static func parse(_ d: String) -> Path {
+        var nums: [CGFloat] = []
+        var tokens: [(Character, [CGFloat])] = []
+        var cmd: Character = "M"
+        var buf = ""
+        func flush() {
+            guard !buf.isEmpty else { return }
+            if let v = Double(buf) { nums.append(CGFloat(v)) }
+            buf = ""
+        }
+        func close() { flush(); tokens.append((cmd, nums)); nums = [] }
+        for ch in d {
+            if ch.isLetter {
+                if cmd != "M" || !nums.isEmpty || !tokens.isEmpty { close() }
+                cmd = ch
+            } else if ch == "-" {
+                if !buf.isEmpty && buf.last != "e" { flush() }
+                buf.append(ch)
+            } else if ch == "." {
+                if buf.contains(".") { flush() }
+                buf.append(ch)
+            } else if ch == " " || ch == "," {
+                flush()
+            } else {
+                buf.append(ch)
+            }
+        }
+        close()
+
+        var p = Path()
+        var cur = CGPoint.zero
+        var start = CGPoint.zero
+        for (c, n) in tokens {
+            let rel = c.isLowercase
+            let arity: Int
+            switch c.uppercased() {
+            case "M", "L": arity = 2
+            case "H", "V": arity = 1
+            case "C": arity = 6
+            case "A": arity = 7
+            default: arity = 0
+            }
+            if arity == 0 { if c.uppercased() == "Z" { p.closeSubpath(); cur = start }; continue }
+            var i = 0
+            var first = true
+            while i + arity <= n.count {
+                let a = Array(n[i..<i + arity])
+                i += arity
+                let ox = rel ? cur.x : 0, oy = rel ? cur.y : 0
+                switch c.uppercased() {
+                case "M":
+                    cur = CGPoint(x: a[0] + ox, y: a[1] + oy)
+                    if first { p.move(to: cur); start = cur } else { p.addLine(to: cur) }
+                case "L":
+                    cur = CGPoint(x: a[0] + ox, y: a[1] + oy); p.addLine(to: cur)
+                case "H":
+                    cur = CGPoint(x: a[0] + ox, y: cur.y); p.addLine(to: cur)
+                case "V":
+                    cur = CGPoint(x: cur.x, y: a[0] + oy); p.addLine(to: cur)
+                case "C":
+                    let end = CGPoint(x: a[4] + ox, y: a[5] + oy)
+                    p.addCurve(to: end, control1: CGPoint(x: a[0] + ox, y: a[1] + oy), control2: CGPoint(x: a[2] + ox, y: a[3] + oy))
+                    cur = end
+                default:
+                    let end = CGPoint(x: a[5] + ox, y: a[6] + oy)
+                    arc(&p, from: cur, rx: a[0], ry: a[1], large: a[3] != 0, sweep: a[4] != 0, to: end)
+                    cur = end
+                }
+                first = false
+            }
+        }
+        return p
+    }
+
+    private static func arc(_ p: inout Path, from a: CGPoint, rx rxIn: CGFloat, ry ryIn: CGFloat, large: Bool, sweep: Bool, to b: CGPoint) {
+        var rx = abs(rxIn), ry = abs(ryIn)
+        guard rx > 0, ry > 0, a != b else { p.addLine(to: b); return }
+        let dx = (a.x - b.x) / 2, dy = (a.y - b.y) / 2
+        let lam = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry)
+        if lam > 1 { rx *= sqrt(lam); ry *= sqrt(lam) }
+        let sign: CGFloat = large == sweep ? -1 : 1
+        let num = rx * rx * ry * ry - rx * rx * dy * dy - ry * ry * dx * dx
+        let den = rx * rx * dy * dy + ry * ry * dx * dx
+        let co = sign * sqrt(max(0, num / den))
+        let cxp = co * rx * dy / ry, cyp = -co * ry * dx / rx
+        let c = CGPoint(x: cxp + (a.x + b.x) / 2, y: cyp + (a.y + b.y) / 2)
+        let t1 = atan2((dy - cyp) / ry, (dx - cxp) / rx)
+        var dt = atan2((-dy - cyp) / ry, (-dx - cxp) / rx) - t1
+        if sweep && dt < 0 { dt += 2 * .pi }
+        if !sweep && dt > 0 { dt -= 2 * .pi }
+        let segs = max(1, Int(ceil(abs(dt) / (.pi / 2))))
+        let step = dt / CGFloat(segs)
+        let k = 4.0 / 3.0 * tan(step / 4)
+        var t = t1
+        for _ in 0..<segs {
+            let c1 = CGPoint(x: cos(t), y: sin(t)), c2 = CGPoint(x: cos(t + step), y: sin(t + step))
+            func m(_ q: CGPoint) -> CGPoint { CGPoint(x: c.x + rx * q.x, y: c.y + ry * q.y) }
+            p.addCurve(
+                to: m(c2),
+                control1: m(CGPoint(x: c1.x - k * c1.y, y: c1.y + k * c1.x)),
+                control2: m(CGPoint(x: c2.x + k * c2.y, y: c2.y - k * c2.x))
+            )
+            t += step
         }
     }
 }

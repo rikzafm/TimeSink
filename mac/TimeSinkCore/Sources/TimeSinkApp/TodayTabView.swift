@@ -4,7 +4,8 @@ import TimeSinkCore
 public struct TodayTabView: View {
     @ObservedObject var state: AppState
     @State private var expandedAppId: Int64?
-    @State private var userChose = false
+    @State private var selectedHour: Int? = nil
+    @State private var activeSessions: [Int64: Int] = [:]
 
     public init(state: AppState) {
         self.state = state
@@ -23,7 +24,7 @@ public struct TodayTabView: View {
                 if let result = state.todayResult {
                     headline(result)
                     if state.showsDeviceSplit { deviceRow(result) }
-                    HourlyChartView(state: state, result: result)
+                    HourlyChartView(state: state, result: result, selectedHour: $selectedHour)
                     if !state.showsDeviceSplit { tiles(result) }
                     VStack(spacing: 0) {
                         ForEach(result.rows, id: \.appId) { row in
@@ -43,16 +44,14 @@ public struct TodayTabView: View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 10) {
-                    PeriodArrow(left: true, enabled: true, iconSize: 8) {
-                        state.daysBack += 1
-                        state.refresh()
+                    PeriodArrow(left: true, enabled: result.canPrev, iconSize: 8) {
+                        state.previousDay()
                     }
                     Text(formattedDateString)
                         .font(.system(size: 11))
                         .foregroundColor(ThemeColors.textMuted)
                     PeriodArrow(left: false, enabled: state.daysBack > 0, iconSize: 8) {
-                        state.daysBack -= 1
-                        state.refresh()
+                        state.nextDay()
                     }
                 }
 
@@ -110,9 +109,37 @@ public struct TodayTabView: View {
             longest = "\(Formatters.paddedHM(l.seconds)) · \(l.appName)"
         }
         return HStack(spacing: 8) {
-            tile("FIRST APP", result.firstApp.map { Formatters.clock12($0.startUtc) } ?? "—", ThemeColors.textPrimary)
-            tile("LONGEST", longest, ThemeColors.textPrimary)
-            tile("VS YESTERDAY", "\(delta >= 0 ? "+" : "-")\(Formatters.paddedHM(abs(delta))) by now", delta >= 0 ? ThemeColors.accent : ThemeColors.warning)
+            Button(action: {
+                if let first = result.firstApp {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        expandedAppId = first.appId
+                    }
+                }
+            }) {
+                tile("FIRST APP", result.firstApp.map { Formatters.clock12($0.startUtc) } ?? "—", ThemeColors.textPrimary)
+            }
+            .buttonStyle(.plain)
+
+            Button(action: {
+                if let l = result.longestSession {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        expandedAppId = l.appId
+                    }
+                }
+            }) {
+                tile("LONGEST", longest, ThemeColors.textPrimary)
+            }
+            .buttonStyle(.plain)
+
+            Button(action: {
+                if result.canPrev {
+                    state.previousDay()
+                }
+            }) {
+                tile("VS YESTERDAY", "\(delta >= 0 ? "+" : "-")\(Formatters.paddedHM(abs(delta))) by now", delta >= 0 ? ThemeColors.accent : ThemeColors.warning)
+            }
+            .buttonStyle(.plain)
+            .disabled(!result.canPrev)
         }
     }
 
@@ -143,19 +170,22 @@ public struct TodayTabView: View {
     }
 
     private func isExpanded(_ row: TodayAppRow, result: TodayResult) -> Bool {
-        if userChose { return expandedAppId == row.appId }
-        let first = state.showsDeviceSplit ? result.rows.first : (result.rows.first { $0.isRunning && $0.appId != result.rows.first?.appId } ?? result.rows.first)
-        return first?.appId == row.appId
+        expandedAppId == row.appId
     }
 
     @ViewBuilder
     private func appRow(_ row: TodayAppRow, result: TodayResult) -> some View {
         let expanded = isExpanded(row, result: result)
+        let activeIdx = activeSessions[row.appId]
+        let rowActiveBinding = Binding<Int?>(
+            get: { activeSessions[row.appId] },
+            set: { activeSessions[row.appId] = $0 }
+        )
+
         VStack(spacing: 0) {
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.18)) {
                     expandedAppId = expanded ? nil : row.appId
-                    userChose = true
                 }
             }) {
                 HStack(spacing: 12) {
@@ -173,7 +203,7 @@ public struct TodayTabView: View {
                             .font(.system(size: 10))
                             .foregroundColor(row.isRunning ? ThemeColors.accent : ThemeColors.textMuted)
 
-                        timelines(row, result: result, expanded: expanded).padding(.top, 4)
+                        timelines(row, result: result, expanded: expanded, activeSession: activeIdx).padding(.top, 4)
                     }
                 }
                 .frame(height: 50)
@@ -188,7 +218,8 @@ public struct TodayTabView: View {
                     dayEndUtc: result.dayEndUtc,
                     nowUtc: result.nowUtc,
                     isAllScope: state.showsDeviceSplit,
-                    localDeviceId: state.localDeviceId
+                    localDeviceId: state.localDeviceId,
+                    activeSessionIndex: rowActiveBinding
                 )
                 .padding(.bottom, 10)
             }
@@ -198,29 +229,40 @@ public struct TodayTabView: View {
     }
 
     @ViewBuilder
-    private func timelines(_ row: TodayAppRow, result: TodayResult, expanded: Bool) -> some View {
+    private func timelines(_ row: TodayAppRow, result: TodayResult, expanded: Bool, activeSession: Int?) -> some View {
+        let shown = RowDetails.shownSessions(row)
         if state.showsDeviceSplit {
             if expanded {
                 VStack(spacing: 2) {
-                    strip(row.sessions.filter { state.isLocalDevice($0.deviceId) }, result: result, color: ThemeColors.deviceA, height: 3)
-                    strip(row.sessions.filter { !state.isLocalDevice($0.deviceId) }, result: result, color: ThemeColors.deviceB, height: 3)
+                    strip(row.sessions.filter { state.isLocalDevice($0.deviceId) }, allShown: shown, result: result, color: ThemeColors.deviceA, height: 3, activeSession: activeSession)
+                    strip(row.sessions.filter { !state.isLocalDevice($0.deviceId) }, allShown: shown, result: result, color: ThemeColors.deviceB, height: 3, activeSession: activeSession)
                 }
             }
         } else {
-            strip(row.sessions, result: result, color: Tokens.appColor(row.name), height: 4)
+            strip(row.sessions, allShown: shown, result: result, color: Tokens.appColor(row.name), height: 4, activeSession: activeSession)
         }
     }
 
-    private func strip(_ sessions: [TodaySession], result: TodayResult, color: Color, height: CGFloat) -> some View {
+    private func strip(
+        _ sessions: [TodaySession],
+        allShown: [TodaySession],
+        result: TodayResult,
+        color: Color,
+        height: CGFloat,
+        activeSession: Int?
+    ) -> some View {
         GeometryReader { geo in
             let day = CGFloat(max(1, result.dayEndUtc - result.dayStartUtc))
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 2).fill(ThemeColors.barBackground)
                 ForEach(Array(sessions.enumerated()), id: \.offset) { _, s in
+                    let shownIdx = allShown.firstIndex(of: s)
+                    let isDim = activeSession != nil && shownIdx != activeSession
                     RoundedRectangle(cornerRadius: 2)
                         .fill(color)
                         .frame(width: max(3, geo.size.width * CGFloat(s.seconds) / day))
                         .offset(x: geo.size.width * CGFloat(max(0, s.startUtc - result.dayStartUtc)) / day)
+                        .opacity(isDim ? 0.35 : 1.0)
                 }
             }
         }

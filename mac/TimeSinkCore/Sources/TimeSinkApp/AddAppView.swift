@@ -16,6 +16,7 @@ private struct RunningApp: Identifiable {
     var id: String { path }
     let name: String
     let path: String
+    let bundleId: String?
     let launched: Date?
     let icon: NSImage?
 }
@@ -54,6 +55,8 @@ public struct AddAppView: View {
     @State private var runningApps: [RunningApp] = []
     @State private var installedApps: [InstalledAppItem] = []
     @State private var trackedApps: [TrackedAppItem] = []
+    @State private var trackedExePaths: Set<String> = []
+    @State private var trackedBundleIds: Set<String> = []
     @State private var retiredApps: [RetiredApp] = []
 
     @State private var editingAppId: Int64?
@@ -179,7 +182,7 @@ public struct AddAppView: View {
 
     private func iconButton(_ icon: TSIcon, width: CGFloat = 38, border: Color = ThemeColors.border, color: Color = ThemeColors.textDim, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            IconView(icon, size: 18, color: color)
+            IconView(icon, size: 18, weight: icon == .gamepad ? 1.9 : 1.4, color: color)
                 .frame(width: width, height: 32)
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(border, lineWidth: 1))
                 .contentShape(Rectangle())
@@ -188,7 +191,7 @@ public struct AddAppView: View {
         .help(help)
     }
 
-    private func trackButton(action: @escaping () -> Void) -> some View {
+    private func trackButton(help: String = "Track", action: @escaping () -> Void) -> some View {
         Button(action: action) {
             IconView(.lashes, size: 20, weight: 1.6, color: ThemeColors.background)
                 .frame(width: 40, height: 32)
@@ -196,7 +199,7 @@ public struct AddAppView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Track")
+        .help(help)
     }
 
     private func trackedButtons(_ app: TrackedAppItem, width: CGFloat, eyeLime: Bool) -> some View {
@@ -227,7 +230,27 @@ public struct AddAppView: View {
     // MARK: - Running
 
     private func trackedItem(path: String) -> TrackedAppItem? {
-        trackedApps.first { $0.exePath == path }
+        let norm = (path as NSString).standardizingPath.lowercased()
+        return trackedApps.first {
+            $0.exePath == path ||
+            ($0.exePath as NSString).standardizingPath.lowercased() == norm
+        }
+    }
+
+    private func isTracked(_ app: RunningApp) -> Bool {
+        if trackedItem(path: app.path) != nil { return true }
+        let norm = (app.path as NSString).standardizingPath.lowercased()
+        if trackedExePaths.contains(norm) { return true }
+        if let bundleId = app.bundleId?.lowercased(), !bundleId.isEmpty, trackedBundleIds.contains(bundleId) {
+            return true
+        }
+        return false
+    }
+
+    private var untrackedRunningApps: [RunningApp] {
+        runningApps.filter { app in
+            !hiddenThisSession.contains(app.path) && !isTracked(app)
+        }
     }
 
     private var runningTab: some View {
@@ -237,9 +260,9 @@ public struct AddAppView: View {
                     .font(.system(size: 12))
                     .foregroundColor(ThemeColors.textMuted)
 
-                ForEach(runningApps.filter { !hiddenThisSession.contains($0.path) }) { app in
+                ForEach(untrackedRunningApps) { app in
                     HStack(spacing: 12) {
-                        tile(app.name, png: nil).overlay(iconOverlay(app.icon, size: 38))
+                        runningTile(app)
                         VStack(alignment: .leading, spacing: 0) {
                             Text(app.name)
                                 .font(.system(size: 14, weight: .bold))
@@ -250,16 +273,19 @@ public struct AddAppView: View {
                                 .foregroundColor(ThemeColors.textMuted)
                         }
                         Spacer(minLength: 4)
-                        if let item = trackedItem(path: app.path) {
-                            iconButton(.eye, border: ThemeColors.accent, color: ThemeColors.accent, help: "Tracking · click to stop") { stop(item.id) }
-                        } else {
-                            iconButton(.eyeSlash, color: ThemeColors.textMuted, help: "Not this one") {
-                                hiddenThisSession.insert(app.path)
-                            }
-                            trackButton { track(path: app.path, name: app.name) }
+                        iconButton(.eyeSlash, color: ThemeColors.textMuted, help: "Not this one") {
+                            hiddenThisSession.insert(app.path)
                         }
+                        trackButton { track(path: app.path, name: app.name) }
                     }
                     .frame(height: 44)
+                }
+
+                if untrackedRunningApps.isEmpty {
+                    Text(runningApps.isEmpty ? "No open apps detected." : "All open apps are already tracked.")
+                        .font(.system(size: 12))
+                        .foregroundColor(ThemeColors.textMuted)
+                        .padding(.vertical, 4)
                 }
 
                 dontSeeIt
@@ -270,13 +296,11 @@ public struct AddAppView: View {
     }
 
     @ViewBuilder
-    private func iconOverlay(_ image: NSImage?, size: CGFloat) -> some View {
-        if let image {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10).fill(ThemeColors.surface)
-                RoundedRectangle(cornerRadius: 10).strokeBorder(ThemeColors.borderSubtle, lineWidth: 1)
-                Image(nsImage: image).resizable().padding(size * 0.12)
-            }
+    private func runningTile(_ app: RunningApp) -> some View {
+        if let image = app.icon {
+            Image(nsImage: image).resizable().scaledToFit().frame(width: 38, height: 38)
+        } else {
+            tile(app.name, png: nil)
         }
     }
 
@@ -348,8 +372,12 @@ public struct AddAppView: View {
     }
 
     private func installedRow(_ app: InstalledAppItem) -> some View {
+        let isSiri = app.name == "Siri" || app.bundleId == "com.apple.siri.launcher"
         let tracked = trackedItem(path: app.executablePath)
-        let retired = retiredApps.first { $0.exePath == app.executablePath }
+            ?? (isSiri ? trackedApps.first { $0.displayName == "Siri" || $0.exePath.contains("Siri") } : nil)
+        let retired = retiredApps.first {
+            $0.exePath == app.executablePath || (isSiri && ($0.name == "Siri" || $0.exePath.contains("Siri")))
+        }
         return HStack(spacing: 12) {
             tile(app.name, png: state.iconCache.iconData(forFilePath: app.bundleUrl.path), size: 36, radius: 9, font: 16)
             VStack(alignment: .leading, spacing: 0) {
@@ -365,19 +393,11 @@ public struct AddAppView: View {
             Spacer(minLength: 4)
             if let tracked {
                 trackedButtons(tracked, width: 36, eyeLime: true)
-            } else if retired != nil {
-                Button(action: { track(path: app.executablePath, name: app.name) }) {
-                    Text("Restore")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(ThemeColors.textDim)
-                        .padding(.horizontal, 12)
-                        .frame(height: 30)
-                        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(ThemeColors.border, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
             } else {
-                trackButton { track(path: app.executablePath, name: app.name) }
-                    .padding(.trailing, 10)
+                trackButton(help: retired != nil ? "Restore" : "Track") {
+                    track(path: retired?.exePath ?? app.executablePath, name: app.name)
+                }
+                .padding(.trailing, 10)
             }
         }
         .frame(height: 54)
@@ -524,6 +544,21 @@ public struct AddAppView: View {
     private func reloadAll() {
         trackedApps = (try? library.getTrackedApps(deviceId: state.localDeviceId)) ?? []
 
+        var allTracked: Set<String> = Set(trackedApps.map { ($0.exePath as NSString).standardizingPath.lowercased() })
+        var allBundleIds = Set<String>()
+        if let stmt = try? state.db.prepare("SELECT exe_path, bundle_id FROM apps WHERE state = 'tracked';") {
+            while (try? stmt.step()) == true {
+                if let p = stmt.columnText(at: 0) {
+                    allTracked.insert((p as NSString).standardizingPath.lowercased())
+                }
+                if let b = stmt.columnText(at: 1), !b.isEmpty {
+                    allBundleIds.insert(b.lowercased())
+                }
+            }
+        }
+        trackedExePaths = allTracked
+        trackedBundleIds = allBundleIds
+
         var retired: [RetiredApp] = []
         if let stmt = try? state.db.prepare("SELECT id, display_name, exe_path FROM apps WHERE state = 'retired' AND canonical_id IS NULL;") {
             while (try? stmt.step()) == true {
@@ -536,7 +571,13 @@ public struct AddAppView: View {
             .filter { $0.activationPolicy == .regular && $0.bundleIdentifier != Bundle.main.bundleIdentifier }
             .compactMap { app in
                 guard let path = app.executableURL?.path else { return nil }
-                return RunningApp(name: app.localizedName ?? (path as NSString).lastPathComponent, path: path, launched: app.launchDate, icon: app.icon)
+                return RunningApp(
+                    name: app.localizedName ?? (path as NSString).lastPathComponent,
+                    path: path,
+                    bundleId: app.bundleIdentifier,
+                    launched: app.launchDate,
+                    icon: app.icon
+                )
             }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 

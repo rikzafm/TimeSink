@@ -123,6 +123,28 @@ public final class MacAppLibrary: @unchecked Sendable {
         _ = try stmt.step()
     }
 
+    public func getActiveSeconds(appId: Int64) throws -> Int64 {
+        let stmt = try db.prepare("""
+            SELECT start_utc, COALESCE(end_utc, last_seen_utc)
+            FROM sessions
+            WHERE app_id = ?1 OR app_id IN (SELECT id FROM apps WHERE canonical_id = ?1)
+            ORDER BY start_utc ASC;
+            """)
+        try stmt.bind(int64: appId, at: 1)
+        var intervals: [(start: Int64, end: Int64)] = []
+        while try stmt.step() {
+            let start = stmt.columnInt64(at: 0)
+            let end = stmt.columnInt64(at: 1)
+            if end <= start { continue }
+            if let last = intervals.last, start <= last.end {
+                intervals[intervals.count - 1].end = max(last.end, end)
+            } else {
+                intervals.append((start: start, end: end))
+            }
+        }
+        return intervals.reduce(0) { $0 + ($1.end - $1.start) }
+    }
+
     public func getTrackedApps(deviceId: String? = nil) throws -> [TrackedAppItem] {
         var sql = """
             SELECT a.id, a.canonical_id, a.exe_path, a.display_name, a.category, a.state,
@@ -151,7 +173,7 @@ public final class MacAppLibrary: @unchecked Sendable {
             let kind = AppKind(rawValue: stmt.columnInt64(at: 8)) ?? .other
             let dev = stmt.columnText(at: 9) ?? ""
             let merged = Int(stmt.columnInt64(at: 10))
-            let sec = stmt.columnInt64(at: 11)
+            let sec = merged > 0 ? ((try? getActiveSeconds(appId: id)) ?? stmt.columnInt64(at: 11)) : stmt.columnInt64(at: 11)
 
             items.append(TrackedAppItem(
                 id: id,
@@ -269,7 +291,16 @@ public final class MacAppLibrary: @unchecked Sendable {
                 if seenPaths.contains(path) { continue }
                 seenPaths.insert(path)
 
+                // Skip internal Campo (Siri AI) companion app in /System/Applications to avoid duplicate Siri
+                if url.lastPathComponent == "Siri AI.app" {
+                    continue
+                }
+
                 let bundle = Bundle(url: url)
+                if bundle?.bundleIdentifier == "com.apple.campo" {
+                    continue
+                }
+
                 let name = bundle?.localizedInfoDictionary?["CFBundleDisplayName"] as? String
                     ?? bundle?.infoDictionary?["CFBundleName"] as? String
                     ?? url.deletingPathExtension().lastPathComponent

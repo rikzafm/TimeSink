@@ -321,9 +321,12 @@ public struct AppSettingsSheet: View {
                 deviceId = stmt.columnText(at: 5) ?? ""
             }
             mergedChildren = try lib.getMergedChildren(mainId: appId)
-            let usage = try state.db.prepare("SELECT COALESCE(SUM(seconds), 0) FROM daily_usage WHERE app_id = ?1 OR app_id IN (SELECT id FROM apps WHERE canonical_id = ?1);")
-            try usage.bind(int64: appId, at: 1)
-            if try usage.step() { totalSeconds = usage.columnInt64(at: 0) }
+            totalSeconds = (try? lib.getActiveSeconds(appId: appId)) ?? 0
+            if totalSeconds == 0 {
+                let usage = try state.db.prepare("SELECT COALESCE(SUM(seconds), 0) FROM daily_usage WHERE app_id = ?1 OR app_id IN (SELECT id FROM apps WHERE canonical_id = ?1);")
+                try usage.bind(int64: appId, at: 1)
+                if try usage.step() { totalSeconds = usage.columnInt64(at: 0) }
+            }
             loaded = true
         } catch {
             NSLog("Failed to load app settings: \(error)")

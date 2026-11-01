@@ -134,15 +134,6 @@ public struct SettingsView: View {
                             desc: "",
                             value: "Lime"
                         )
-                        settingsRule
-                        settingSwitchRow(
-                            label: "Show time in the menu bar",
-                            desc: "Today’s total next to the icon",
-                            isOn: Binding(
-                                get: { state.showMenuBarTime },
-                                set: { state.setShowMenuBarTime($0) }
-                            )
-                        )
                     }
 
                     // DEVICES AND SYNC

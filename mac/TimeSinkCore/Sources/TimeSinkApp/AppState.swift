@@ -65,7 +65,6 @@ public final class AppState: ObservableObject {
     @Published public var lastSyncUtc: Int64 = 0
     @Published public var lastBackupUtc: Int64 = 0
     @Published public var openAtLogin: Bool = false
-    @Published public var showMenuBarTime: Bool = true
     @Published public var weekStart: String = "Monday"
     @Published public var pauseWhileSleep: Bool = true
     @Published public var countWhenLocked: Bool = true
@@ -186,19 +185,84 @@ public final class AppState: ObservableObject {
                     let df = DateFormatter()
                     df.dateFormat = "yyyy-MM-dd"
                     let forDay = df.string(from: targetDate)
-                    todayResult = try TodayQuery.run(ctx, forDay: forDay)
+                    let res = try TodayQuery.run(ctx, forDay: forDay)
+                    if res.firstTrackedDay == nil {
+                        daysBack = 0
+                        todayResult = try TodayQuery.run(ctx)
+                    } else if let first = res.firstTrackedDay, res.date < first {
+                        if let firstDate = df.date(from: first) {
+                            let todayStart = cal.startOfDay(for: Date())
+                            let firstStart = cal.startOfDay(for: firstDate)
+                            daysBack = max(0, cal.dateComponents([.day], from: firstStart, to: todayStart).day ?? 0)
+                            let clampedTarget = cal.date(byAdding: .day, value: -daysBack, to: Date()) ?? Date()
+                            todayResult = try TodayQuery.run(ctx, forDay: df.string(from: clampedTarget))
+                        } else {
+                            todayResult = res
+                        }
+                    } else {
+                        todayResult = res
+                    }
                 } else {
                     todayResult = try TodayQuery.run(ctx)
                 }
             case .week:
-                weekResult = try WeekQuery.run(ctx, weeksBack: weeksBack)
+                let res = try WeekQuery.run(ctx, weeksBack: weeksBack)
+                if res.firstTrackedDay == nil && weeksBack > 0 {
+                    weeksBack = 0
+                    weekResult = try WeekQuery.run(ctx, weeksBack: 0)
+                } else if let first = res.firstTrackedDay, weeksBack > 0 {
+                    let ws = WeekStart.parse(weekStart)
+                    let earliestWeekStart = WeekStarts.containing(day: first, weekStart: ws)
+                    if res.shownWeekStart < earliestWeekStart {
+                        let df = DateFormatter()
+                        df.dateFormat = "yyyy-MM-dd"
+                        if let eDate = df.date(from: earliestWeekStart), let tDate = df.date(from: res.today) {
+                            var cal = Calendar(identifier: .gregorian)
+                            cal.timeZone = TimeZone(secondsFromGMT: 0)!
+                            let diffDays = cal.dateComponents([.day], from: eDate, to: tDate).day ?? 0
+                            weeksBack = max(0, diffDays / 7)
+                            weekResult = try WeekQuery.run(ctx, weeksBack: weeksBack)
+                        } else {
+                            weekResult = res
+                        }
+                    } else {
+                        weekResult = res
+                    }
+                } else {
+                    weekResult = res
+                }
             case .month:
                 let cal = Calendar.current
                 let now = Date()
                 let targetDate = cal.date(byAdding: .month, value: -monthsBack, to: now) ?? now
                 let y = cal.component(.year, from: targetDate)
                 let m = cal.component(.month, from: targetDate)
-                monthResult = try MonthQuery.run(ctx, year: y, month: m)
+                let res = try MonthQuery.run(ctx, year: y, month: m)
+                if res.firstTracked == nil && monthsBack > 0 {
+                    monthsBack = 0
+                    let cy = cal.component(.year, from: now)
+                    let cm = cal.component(.month, from: now)
+                    monthResult = try MonthQuery.run(ctx, year: cy, month: cm)
+                } else if let first = res.firstTracked, monthsBack > 0 {
+                    let earliestPrefix = String(first.prefix(7))
+                    let currentPrefix = String(format: "%04d-%02d", res.year, res.month)
+                    if currentPrefix < earliestPrefix {
+                        let firstYear = Int(first.prefix(4)) ?? y
+                        let firstMonth = Int(first.dropFirst(5).prefix(2)) ?? m
+                        let nowYear = cal.component(.year, from: now)
+                        let nowMonth = cal.component(.month, from: now)
+                        let maxMonths = max(0, (nowYear - firstYear) * 12 + (nowMonth - firstMonth))
+                        monthsBack = maxMonths
+                        let clampedDate = cal.date(byAdding: .month, value: -monthsBack, to: now) ?? now
+                        let cy = cal.component(.year, from: clampedDate)
+                        let cm = cal.component(.month, from: clampedDate)
+                        monthResult = try MonthQuery.run(ctx, year: cy, month: cm)
+                    } else {
+                        monthResult = res
+                    }
+                } else {
+                    monthResult = res
+                }
             case .year:
                 let cal = Calendar.current
                 let currentYear = cal.component(.year, from: Date()) - yearOffset
@@ -238,6 +302,76 @@ public final class AppState: ObservableObject {
         refresh()
     }
 
+    // MARK: - Navigation
+
+    public var canTodayGoPrev: Bool {
+        todayResult?.canPrev == true
+    }
+
+    public func previousDay() {
+        guard canTodayGoPrev else { return }
+        daysBack += 1
+        refresh()
+    }
+
+    public func nextDay() {
+        guard daysBack > 0 else { return }
+        daysBack -= 1
+        refresh()
+    }
+
+    public var canWeekGoPrev: Bool {
+        weekResult?.canPrev(weekStart: WeekStart.parse(weekStart)) == true
+    }
+
+    public func previousWeek() {
+        guard canWeekGoPrev else { return }
+        weeksBack += 1
+        refresh()
+    }
+
+    public func nextWeek() {
+        guard weeksBack > 0 else { return }
+        weeksBack -= 1
+        refresh()
+    }
+
+    public var canMonthGoPrev: Bool {
+        monthResult?.canPrev == true
+    }
+
+    public func previousMonth() {
+        guard canMonthGoPrev else { return }
+        monthsBack += 1
+        refresh()
+    }
+
+    public func nextMonth() {
+        guard monthsBack > 0 else { return }
+        monthsBack -= 1
+        refresh()
+    }
+
+    public func openDayInToday(dateString: String) {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        if let date = df.date(from: dateString) {
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = .current
+            let today = cal.startOfDay(for: Date())
+            let target = cal.startOfDay(for: date)
+            let diff = max(0, cal.dateComponents([.day], from: target, to: today).day ?? 0)
+            self.daysBack = diff
+            self.selectedTab = .today
+            self.refresh()
+        }
+    }
+
+    public func loadDayDetail(day: String) -> DayDetail? {
+        let ctx = makeUsageContext()
+        return try? DayDetailQuery.run(ctx, day: day)
+    }
+
     // MARK: - Device and Sync Management
 
     public func loadSettings() {
@@ -250,7 +384,6 @@ public final class AppState: ObservableObject {
             self.lastSyncUtc = max(lastExp, lastImp)
             self.lastBackupUtc = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'backup.last_utc';")) ?? 0
             self.openAtLogin = LoginItemManager.shared.isEnabled
-            self.showMenuBarTime = (try db.scalarText("SELECT value FROM settings WHERE key = 'ui.showMenuBarTime';")) != "false"
             let pauseVal = (try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.pauseOnSleep)';"))
                 ?? (try? db.scalarText("SELECT value FROM settings WHERE key = 'tracking.pauseWhileSleep';"))
             self.pauseWhileSleep = pauseVal?.lowercased() != "false"
@@ -295,11 +428,6 @@ public final class AppState: ObservableObject {
     public func setOpenAtLogin(_ enabled: Bool) {
         self.openAtLogin = enabled
         try? LoginItemManager.shared.setEnabled(enabled)
-    }
-
-    public func setShowMenuBarTime(_ show: Bool) {
-        self.showMenuBarTime = show
-        try? db.exec("INSERT INTO settings (key, value) VALUES ('ui.showMenuBarTime', '\(show ? "true" : "false")') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
     }
 
     public var pauseOnSleep: Bool {

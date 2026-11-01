@@ -35,7 +35,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             syncHost.onSyncCompleted = { [weak self] in
                 Task { @MainActor [weak self] in
                     self?.appState?.handleSyncCompleted()
-                    self?.updateMenuTotal()
                 }
             }
             syncHost.start()
@@ -66,7 +65,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             popover.contentViewController = NSHostingController(rootView: PopoverRootView(state: appState))
 
             statusBarController = StatusBarController(popover: popover)
-            statusBarController.showsTime = appState.showMenuBarTime
 
             // Heartbeat timer every 15s
             timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
@@ -89,23 +87,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private func tick() {
         let now = Date()
         try? engine.onTick(now)
-        statusBarController.showsTime = appState.showMenuBarTime
-        updateMenuTotal()
         appState?.refresh()
-    }
-
-    private func updateMenuTotal() {
-        guard let db else { return }
-        do {
-            let now = Date()
-            let todayStr = LocalDays.dayString(for: Int64(now.timeIntervalSince1970), timeZone: .current)
-            let stmt = try db.prepare("SELECT COALESCE(SUM(seconds), 0) FROM daily_usage WHERE day = ?;")
-            try stmt.bind(text: todayStr, at: 1)
-            if try stmt.step() {
-                let seconds = stmt.columnInt64(at: 0)
-                statusBarController.updateTodayTotal(seconds: seconds)
-            }
-        } catch {}
     }
 
     public static func databasePath() -> String {

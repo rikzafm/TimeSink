@@ -4,6 +4,9 @@ import TimeSinkCore
 public struct MonthTabView: View {
     @ObservedObject var state: AppState
     @State private var selectedDate: String?
+    @State private var hoveredDayDate: String?
+    @State private var hoveredAppId: Int64?
+    @State private var pinnedAppId: Int64?
 
     public init(state: AppState) {
         self.state = state
@@ -29,7 +32,10 @@ public struct MonthTabView: View {
                         )
                     }
                     calendar(result)
+                    legend
                     dayCard(result)
+                    RankedAppList(state: state, rows: result.topApps.map { ($0.appId, $0.name, $0.seconds) })
+                        .padding(.bottom, 8)
                 } else {
                     ProgressView().frame(maxWidth: .infinity, minHeight: 200)
                 }
@@ -41,18 +47,20 @@ public struct MonthTabView: View {
 
     private func navigator(_ result: MonthResult) -> some View {
         HStack(spacing: 30) {
-            PeriodArrow(left: true, enabled: true, box: 22, iconSize: 10) {
-                state.monthsBack += 1
+            PeriodArrow(left: true, enabled: result.canPrev, box: 22, iconSize: 10) {
                 selectedDate = nil
-                state.refresh()
+                hoveredAppId = nil
+                pinnedAppId = nil
+                state.previousMonth()
             }
             Text("\(Formatters.monthName(result.month)) \(String(result.year))")
                 .font(.system(size: 17, weight: .bold))
                 .foregroundColor(ThemeColors.textPrimary)
             PeriodArrow(left: false, enabled: state.monthsBack > 0, box: 22, iconSize: 10) {
-                state.monthsBack -= 1
                 selectedDate = nil
-                state.refresh()
+                hoveredAppId = nil
+                pinnedAppId = nil
+                state.nextMonth()
             }
         }
         .frame(maxWidth: .infinity)
@@ -125,9 +133,9 @@ public struct MonthTabView: View {
                     }
                     Text(week.totalSeconds > 0 ? "\((week.totalSeconds + 1800) / 3600)h" : "")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(ThemeColors.textDim)
-                        .frame(width: 40, height: 40, alignment: .bottomLeading)
-                        .padding(.bottom, 8)
+                        .foregroundColor(ThemeColors.textPrimary)
+                        .frame(width: 40, height: 40, alignment: .leading)
+                        .help(week.totalSeconds > 0 ? "Week total: \(Formatters.paddedHM(week.totalSeconds))" : "")
                 }
             }
         }
@@ -142,33 +150,92 @@ public struct MonthTabView: View {
 
     @ViewBuilder
     private func cell(_ day: MonthDay?, result: MonthResult) -> some View {
-        if let day, !day.isFuture {
+        if let day {
+            let dayNum = "\(Int(day.date.suffix(2)) ?? 0)"
             let selected = (selectedDate ?? result.defaultSelected) == day.date
-            let fg = day.heat == 0 ? ThemeColors.textMuted : day.heat >= 3 ? ThemeColors.background : ThemeColors.textPrimary
-            Button(action: { selectedDate = day.date }) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("\(Int(day.date.suffix(2)) ?? 0)")
-                        .font(.system(size: 10))
-                        .opacity(0.85)
-                    Spacer(minLength: 0)
-                    Text(day.seconds > 0 ? "\((day.seconds + 1800) / 3600)h" : "")
-                        .font(.system(size: 11, weight: .semibold))
+            let isHovered = hoveredDayDate == day.date
+            let tooltip = "\(Formatters.dayText(day.date, format: "EEEE, d MMMM yyyy"))\n\(day.seconds > 0 ? Formatters.paddedHM(day.seconds) : (day.isFuture ? "Future day" : "No tracked activity"))"
+
+            if day.isFuture {
+                Text(dayNum)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(ThemeColors.textMuted)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 5)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .frame(height: 40)
+                    .dashedCard(color: ThemeColors.borderSubtle, radius: 6)
+                    .help(tooltip)
+            } else {
+                let fg = day.heat >= 3 ? ThemeColors.background : ThemeColors.textPrimary
+                Button(action: {
+                    selectedDate = day.date
+                    hoveredAppId = nil
+                    pinnedAppId = nil
+                }) {
+                    ZStack(alignment: .bottom) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(dayNum)
+                                .font(.system(size: 11, weight: .bold))
+                            Spacer(minLength: 0)
+                            if day.seconds > 0 {
+                                Text("\((day.seconds + 1800) / 3600)h")
+                                    .font(.system(size: 11))
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                            }
+                        }
+                        .foregroundColor(fg)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(height: 40)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(day.heat == 0 ? (isHovered ? ThemeColors.surfaceRaised : ThemeColors.surfaceRaised.opacity(0.4)) : Tokens.heat(day.heat))
+                        )
+
+                        // Today underline indicator
+                        if day.isToday {
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(day.heat >= 3 ? ThemeColors.background : ThemeColors.accent)
+                                .frame(height: 3)
+                                .padding(.horizontal, 4)
+                                .padding(.bottom, 2)
+                        }
+
+                        // Selection outline
+                        if selected {
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(Color.white, lineWidth: 2)
+                        } else if isHovered {
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(ThemeColors.borderSubtle, lineWidth: 1)
+                        }
+                    }
+                    .frame(height: 40)
+                    .contentShape(Rectangle())
                 }
-                .foregroundColor(fg)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: 40)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Tokens.heat(day.heat)))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(selected ? ThemeColors.accent : .clear, lineWidth: 1))
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .help(tooltip)
+                .onHover { isH in
+                    hoveredDayDate = isH ? day.date : (hoveredDayDate == day.date ? nil : hoveredDayDate)
+                }
             }
-            .buttonStyle(.plain)
         } else {
             Color.clear
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .dashedCard(color: ThemeColors.borderSubtle, radius: 6)
+        }
+    }
+
+    private var legend: some View {
+        HStack(spacing: 4) {
+            Spacer()
+            Text("Less").font(.system(size: 10)).foregroundColor(ThemeColors.textMuted)
+            ForEach(0..<5, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 2).fill(Tokens.heat(i)).frame(width: 10, height: 10)
+            }
+            Text("More").font(.system(size: 10)).foregroundColor(ThemeColors.textMuted)
         }
     }
 
@@ -176,37 +243,91 @@ public struct MonthTabView: View {
     private func dayCard(_ result: MonthResult) -> some View {
         let date = selectedDate ?? result.defaultSelected
         if let day = result.days.first(where: { $0.date == date }) {
+            let total = max(1, day.apps.reduce(0) { $0 + $1.seconds })
+            let activeFocusId = hoveredAppId ?? pinnedAppId
+            let shownApps = Array(day.apps.prefix(8))
+
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text(Formatters.dayText(day.date, format: "EEE, MMM d"))
+                    Text(Formatters.dayText(day.date, format: "EEEE, MMM d"))
                     Spacer()
                     Text(Formatters.paddedHM(day.seconds))
                 }
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(ThemeColors.textPrimary)
 
+                // Interactive Stacked Bar
                 GeometryReader { geo in
-                    let total = max(1, day.apps.reduce(0) { $0 + $1.seconds })
-                    let shown = Array(day.apps.prefix(6))
-                    let room = geo.size.width - CGFloat(max(0, shown.count - 1)) * 2
-                    HStack(spacing: 2) {
-                        ForEach(shown, id: \.appId) { app in
-                            Rectangle()
-                                .fill(Tokens.appColor(app.name))
-                                .frame(width: room * CGFloat(app.seconds) / CGFloat(total))
+                    let gap: CGFloat = 2
+                    let count = shownApps.count
+                    let totalGaps = CGFloat(max(0, count - 1)) * gap
+                    let usableWidth = max(0, geo.size.width - totalGaps)
+
+                    HStack(spacing: gap) {
+                        ForEach(shownApps, id: \.appId) { app in
+                            let sharePct = total > 0 ? Int((Double(app.seconds) / Double(total) * 100).rounded()) : 0
+                            let isFocused = activeFocusId == app.appId
+                            let hasFocus = activeFocusId != nil
+                            let segWidth = max(3, usableWidth * CGFloat(app.seconds) / CGFloat(total))
+                            let barHeight: CGFloat = isFocused ? 12 : 8
+                            let opacity: Double = (hasFocus && !isFocused) ? 0.35 : 1.0
+
+                            Button(action: {
+                                if pinnedAppId == app.appId {
+                                    pinnedAppId = nil
+                                } else {
+                                    pinnedAppId = app.appId
+                                }
+                            }) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Tokens.appColor(app.name))
+                                    .opacity(opacity)
+                                    .frame(width: segWidth, height: barHeight)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .help("\(app.name): \(Formatters.paddedHM(app.seconds)) (\(sharePct)%)")
+                            .onHover { isH in
+                                hoveredAppId = isH ? app.appId : (hoveredAppId == app.appId ? nil : hoveredAppId)
+                            }
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 }
-                .frame(height: 8)
-                .background(ThemeColors.barBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .frame(height: 14)
                 .padding(.top, 8)
                 .padding(.bottom, 6)
 
-                Text(day.apps.first.map { "Mostly \($0.name) · \(Formatters.paddedHM($0.seconds))" } ?? "No apps tracked")
-                    .font(.system(size: 11))
-                    .foregroundColor(ThemeColors.textMuted)
+                // Subtitle note
+                HStack(spacing: 4) {
+                    if let focusApp = day.apps.first(where: { $0.appId == activeFocusId }) {
+                        let sharePct = total > 0 ? Int((Double(focusApp.seconds) / Double(total) * 100).rounded()) : 0
+                        Circle()
+                            .fill(Tokens.appColor(focusApp.name))
+                            .frame(width: 7, height: 7)
+                        Text("\(focusApp.name) · \(Formatters.paddedHM(focusApp.seconds)) (\(sharePct)%)")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(ThemeColors.textPrimary)
+                        if pinnedAppId == focusApp.appId {
+                            Text("(pinned)")
+                                .font(.system(size: 10))
+                                .foregroundColor(ThemeColors.accent)
+                        }
+                    } else if day.apps.isEmpty {
+                        Text("No apps tracked")
+                            .font(.system(size: 11))
+                            .foregroundColor(ThemeColors.textMuted)
+                    } else if let leader = day.apps.first, Double(leader.seconds) / Double(total) >= 0.5 {
+                        Text("Mostly \(leader.name) · \(Formatters.paddedHM(leader.seconds))")
+                            .font(.system(size: 11))
+                            .foregroundColor(ThemeColors.textMuted)
+                    } else {
+                        Text("\(day.apps.count) apps tracked")
+                            .font(.system(size: 11))
+                            .foregroundColor(ThemeColors.textMuted)
+                    }
+                    Spacer()
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)

@@ -141,8 +141,22 @@ public enum AppDetailQuery {
         var total: Int64 = 0
         var longest: Int64 = 0
 
-        for seg in segs {
-            longest = max(longest, seg.end - seg.start)
+        let sortedSegs = segs.sorted { $0.start < $1.start }
+        var curStart: Int64 = 0
+        var curEnd: Int64 = 0
+        for s in sortedSegs {
+            if s.start <= curEnd {
+                curEnd = max(curEnd, s.end)
+            } else {
+                if curEnd > curStart {
+                    longest = max(longest, curEnd - curStart)
+                }
+                curStart = s.start
+                curEnd = s.end
+            }
+        }
+        if curEnd > curStart {
+            longest = max(longest, curEnd - curStart)
         }
 
         for slice in UsageDays.slices(segs, zone: zone) {
@@ -212,11 +226,11 @@ public enum AppDetailQuery {
         }
 
         var deviceSeconds: [String: Int64] = [:]
-        for s in segs {
-            let dev = s.deviceId.isEmpty ? (apps[s.appId]?.deviceId ?? "") : s.deviceId
-            if !dev.isEmpty {
-                deviceSeconds[dev, default: 0] += (s.end - s.start)
-            }
+        let byDev = Dictionary(grouping: segs) { s in
+            s.deviceId.isEmpty ? (apps[s.appId]?.deviceId ?? "") : s.deviceId
+        }
+        for (dev, devSegs) in byDev where !dev.isEmpty {
+            deviceSeconds[dev] = UsageUptime.openSeconds(segs: devSegs, from: 0, to: Int64.max)
         }
 
         var cal = Calendar(identifier: .gregorian)

@@ -4,6 +4,7 @@ import TimeSinkCore
 public struct YearTabView: View {
     @ObservedObject var state: AppState
     @State private var selectedMonth: Int?
+    @State private var hoveredMonth: Int?
     @State private var selectedRow: Int64?
 
     public init(state: AppState) {
@@ -14,14 +15,7 @@ public struct YearTabView: View {
 
     public var body: some View {
         VStack(spacing: isWrapped ? 10 : 12) {
-            Segmented(
-                options: YearSubView.allCases.map { ($0, $0.rawValue) },
-                selection: $state.yearSubView,
-                hPad: 14,
-                radius: isWrapped ? 8 : 7,
-                fill: isWrapped ? .clear : Tokens.segmentBg,
-                border: isWrapped ? ThemeColors.border : ThemeColors.borderSubtle
-            )
+            yearSubViewSwitcher
 
             switch state.yearSubView {
             case .pace:
@@ -36,31 +30,82 @@ public struct YearTabView: View {
         .padding(.top, isWrapped ? 10 : 12)
     }
 
+    private var yearSubViewSwitcher: some View {
+        HStack(spacing: 4) {
+            ForEach(YearSubView.allCases, id: \.self) { sub in
+                let selected = state.yearSubView == sub
+                Button(action: { state.yearSubView = sub }) {
+                    Text(sub.rawValue)
+                        .font(.system(size: 11, weight: selected ? .semibold : .medium))
+                        .foregroundColor(selected ? ThemeColors.background : ThemeColors.textDim)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(selected ? ThemeColors.accent : Color.clear)
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+    }
+
     // MARK: - Pace
 
     private func h(_ seconds: Int64) -> String { Formatters.hours(seconds) }
 
+    private func monthValueLabel(_ m: YearMonth) -> String {
+        switch m.kind {
+        case .beforeTracking:
+            return ""
+        case .future:
+            return "~\(Formatters.decimalHours(m.projectedSeconds))"
+        case .current:
+            return Formatters.decimalHours(m.seconds)
+        case .tracked:
+            return m.seconds > 0 ? Formatters.decimalHours(m.seconds) : ""
+        }
+    }
+
     @ViewBuilder
     private var paceView: some View {
         if let result = state.yearResult {
-            let scope = state.deviceScope == .all ? "uptime, all devices (overlap once)" : "uptime, this Mac"
+            let activeMonth = selectedMonth ?? result.months.first(where: { $0.kind == .current })?.month ?? result.bestMonth ?? 1
+            let scope: String = {
+                if state.deviceScope == .all {
+                    return "uptime, all devices (overlap once)"
+                }
+                if let totals = result.deviceTotals, !totals.isEmpty {
+                    let hasLocal = totals.keys.contains { state.isLocalDevice($0) && (totals[$0] ?? 0) > 0 }
+                    let hasRemote = totals.keys.contains { !state.isLocalDevice($0) && (totals[$0] ?? 0) > 0 }
+                    if !hasLocal && hasRemote {
+                        return "PC uptime"
+                    }
+                    if hasLocal && !hasRemote {
+                        return "Mac uptime"
+                    }
+                }
+                return "PC uptime"
+            }()
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 0) {
                         Text("\(String(result.year)) so far · \(scope)")
                             .font(.system(size: 11))
                             .foregroundColor(ThemeColors.textMuted)
-                        Text(h(result.totalSeconds))
+                        Text(Formatters.paddedHM(result.totalSeconds))
                             .font(.system(size: 30, weight: .semibold))
                             .tracking(-0.5)
-                            .foregroundColor(ThemeColors.textPrimary)
+                            .foregroundColor(ThemeColors.accent)
                             .frame(height: 36)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 0) {
-                        if let avg = result.averageMonthSeconds { Text("Avg \(h(avg)) / month").frame(height: 16) }
+                        if let avg = result.averageMonthSeconds { Text("Avg \(Formatters.decimalHours(avg)) h / month").frame(height: 16) }
                         if let best = result.bestMonth {
-                            Text("Best \(Formatters.monthName(best, short: true)) \(h(result.bestMonthSeconds))").frame(height: 16)
+                            Text("Best \(Formatters.monthName(best, short: true)) \(Formatters.decimalHours(result.bestMonthSeconds)) h").frame(height: 16)
                         }
                     }
                     .font(.system(size: 11))
@@ -72,128 +117,322 @@ public struct YearTabView: View {
                     DeviceLegend(mac: "Mac \(h(t.mac))", pc: "PC \(h(t.pc))", both: "\(h(result.onBothSeconds)) on both")
                 }
 
-                paceChart(result)
-
                 if let pace = result.paceYearSeconds {
-                    (Text("On pace for ") + Text(h(pace)).bold() + Text(" by December, based on your last \(result.recentMonthCount == 1 ? "month" : "\(result.recentMonthCount) months")"))
+                    let paceHours = "\(Formatters.decimalHours(pace)) h"
+                    let bannerText: String = {
+                        if result.recentMonthCount > 1 {
+                            return "On pace for \(paceHours) by December, based on your last \(result.recentMonthCount) months"
+                        } else {
+                            return "On pace for \(paceHours) by December, based on this month so far"
+                        }
+                    }()
+                    Text(bannerText)
                         .font(.system(size: 12))
+                        .foregroundColor(ThemeColors.textPrimary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
-                        .foregroundColor(ThemeColors.textPrimary)
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 9)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .card(border: ThemeColors.accent)
+                        .card(fill: ThemeColors.surface, border: ThemeColors.borderSubtle, radius: 10)
                 }
 
-                monthCard(result)
+                paceChart(result)
+
+                monthCard(result, activeMonth: activeMonth)
             }
         }
     }
 
     private func paceChart(_ result: YearResult) -> some View {
         let height: CGFloat = 160
-        let top = max(3600, result.months.map { max($0.seconds, $0.projectedSeconds) }.max() ?? 3600)
-        let k = (height - 6) / CGFloat(top)
-        let bestOrCurrent = result.months.first { $0.kind == .current }?.month
+        let top = max(3600, max(result.months.map { max($0.seconds, $0.projectedSeconds) }.max() ?? 3600, result.averageMonthSeconds ?? 0))
+        let plotHeight: CGFloat = 126
+        let k = plotHeight / CGFloat(top)
+        let activeMonth = selectedMonth ?? result.months.first(where: { $0.kind == .current })?.month ?? result.bestMonth ?? 1
+        let currentMonth = result.months.first(where: { $0.kind == .current })?.month
 
         return VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .bottom) {
-                if let avg = result.averageMonthSeconds {
-                    Rectangle()
-                        .stroke(ThemeColors.textMuted.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                        .frame(height: 0.5)
-                        .offset(y: -CGFloat(avg) * k)
+                // Dashed monthly average reference line
+                if let avg = result.averageMonthSeconds, avg > 0 {
+                    let avgY = CGFloat(avg) * k
+                    GeometryReader { geo in
+                        let lineY = geo.size.height - avgY
+                        Path { path in
+                            path.move(to: CGPoint(x: 0, y: lineY))
+                            path.addLine(to: CGPoint(x: geo.size.width, y: lineY))
+                        }
+                        .stroke(ThemeColors.textMuted.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    }
                 }
-                HStack(alignment: .bottom, spacing: 6) {
+
+                // 12 monthly columns
+                HStack(alignment: .bottom, spacing: 4) {
                     ForEach(result.months, id: \.month) { m in
+                        let isSelected = m.month == activeMonth
+                        let isHovered = hoveredMonth == m.month
+                        let isCur = m.month == currentMonth
+                        let valText = monthValueLabel(m)
+
+                        let tooltipText: String = {
+                            let name = Formatters.monthName(m.month)
+                            switch m.kind {
+                            case .beforeTracking:
+                                return "\(name) \(result.year)\nBefore tracking began"
+                            case .future:
+                                return "\(name) \(result.year) (Projected)\n~\(Formatters.decimalHours(m.projectedSeconds)) h"
+                            case .current:
+                                return "\(name) \(result.year) (Current)\n\(Formatters.decimalHours(m.seconds)) h tracked · ~\(Formatters.decimalHours(m.projectedSeconds)) h projected"
+                            case .tracked:
+                                return "\(name) \(result.year)\n\(Formatters.decimalHours(m.seconds)) h tracked"
+                            }
+                        }()
+
                         Button(action: { selectedMonth = m.month }) {
-                            paceColumn(m, k: k).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom).contentShape(Rectangle())
+                            ZStack(alignment: .bottom) {
+                                // Background highlight for selected / hovered
+                                if isSelected {
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(ThemeColors.surfaceRaised)
+                                        .frame(height: height)
+                                } else if isHovered {
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(ThemeColors.surfaceRaised.opacity(0.5))
+                                        .frame(height: height)
+                                }
+
+                                VStack(spacing: 2) {
+                                    // Top value label
+                                    Text(valText)
+                                        .font(.system(size: 9.5, weight: isSelected ? .bold : .medium))
+                                        .foregroundColor(isCur ? ThemeColors.accent : ThemeColors.textMuted)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.65)
+                                        .frame(height: 14)
+
+                                    // Bar representation
+                                    paceColumn(m, k: k)
+                                        .frame(maxWidth: .infinity, maxHeight: plotHeight, alignment: .bottom)
+                                }
+                                .padding(.horizontal, 1)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: height, alignment: .bottom)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .help(tooltipText)
+                        .onHover { isH in
+                            hoveredMonth = isH ? m.month : (hoveredMonth == m.month ? nil : hoveredMonth)
+                        }
                     }
                 }
             }
             .frame(height: height)
 
-            HStack(spacing: 6) {
+            // Baseline
+            Rectangle()
+                .fill(ThemeColors.borderSubtle)
+                .frame(height: 1)
+
+            // Month labels row below bars
+            HStack(spacing: 4) {
                 ForEach(result.months, id: \.month) { m in
-                    let cur = m.month == bestOrCurrent
-                    Text(String(Formatters.monthName(m.month).prefix(1)))
-                        .font(.system(size: 10, weight: cur ? .semibold : .regular))
-                        .foregroundColor(cur ? ThemeColors.accent : ThemeColors.textMuted)
-                        .frame(maxWidth: .infinity)
+                    let isSelected = m.month == activeMonth
+                    Button(action: { selectedMonth = m.month }) {
+                        Text(Formatters.monthName(m.month, short: true))
+                            .font(.system(size: 10, weight: isSelected ? .bold : .regular))
+                            .foregroundColor(isSelected ? ThemeColors.textPrimary : ThemeColors.textMuted)
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(Formatters.monthName(m.month))
                 }
             }
-            .padding(.top, 6)
+            .padding(.top, 4)
 
+            // Legend
             HStack(spacing: 12) {
-                HStack(spacing: 4) { DeviceMarker(isLocal: true, size: 7); Text("Mac") }
-                HStack(spacing: 4) { DeviceMarker(isLocal: false, size: 7); Text("PC") }
+                if state.showsDeviceSplit {
+                    HStack(spacing: 4) { DeviceMarker(isLocal: true, size: 7); Text("Mac") }
+                    HStack(spacing: 4) { DeviceMarker(isLocal: false, size: 7); Text("PC") }
+                } else {
+                    HStack(spacing: 4) {
+                        RoundedRectangle(cornerRadius: 1.5).fill(Tokens.ramp[3]).frame(width: 8, height: 7)
+                        Text("Tracked")
+                    }
+                }
                 HStack(spacing: 4) {
-                    Hatch(color: Tokens.ramp[1], line: 2, gap: 2)
-                        .frame(width: 10, height: 7)
-                        .dashedCard(color: Tokens.ramp[3], radius: 0)
+                    ZStack {
+                        Hatch(color: Tokens.ramp[3], line: 1.5, gap: 2)
+                        RoundedRectangle(cornerRadius: 1)
+                            .strokeBorder(Tokens.ramp[3], style: StrokeStyle(lineWidth: 1, dash: [2, 1]))
+                    }
+                    .frame(width: 10, height: 7)
                     Text("Projected")
                 }
                 HStack(spacing: 4) {
                     Rectangle().stroke(ThemeColors.textMuted, style: StrokeStyle(lineWidth: 1, dash: [3, 2])).frame(width: 12, height: 0.5)
                     Text("Monthly avg")
                 }
+
+                Spacer()
+
+                Text("Tap a month")
+                    .foregroundColor(ThemeColors.textMuted)
             }
             .font(.system(size: 10))
-            .foregroundColor(ThemeColors.textDim)
-            .padding(.top, 10)
+            .foregroundColor(ThemeColors.textMuted)
+            .padding(.top, 8)
         }
-        .padding(.top, 10)
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
-        .card()
     }
 
     @ViewBuilder
     private func paceColumn(_ m: YearMonth, k: CGFloat) -> some View {
-        let parts = state.deviceSplit(m.deviceSeconds)
-        let mac = CGFloat(state.showsDeviceSplit ? parts.mac : m.seconds) * k
-        let pc = CGFloat(state.showsDeviceSplit ? parts.pc : 0) * k
         switch m.kind {
         case .beforeTracking:
-            Rectangle().stroke(ThemeColors.border, style: StrokeStyle(lineWidth: 2, dash: [2, 2])).frame(height: 1)
+            Rectangle()
+                .stroke(ThemeColors.textMuted.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [1, 2]))
+                .frame(height: 1)
         case .future:
-            RoundedRectangle(cornerRadius: 3)
-                .fill(.clear)
-                .dashedCard(color: ThemeColors.border, radius: 3)
-                .frame(height: CGFloat(m.projectedSeconds) * k)
-        case .tracked, .current:
-            VStack(spacing: 0) {
-                if m.kind == .current, m.projectedSeconds > m.seconds {
-                    Hatch(color: Tokens.ramp[1], line: 3, gap: 3)
-                        .frame(height: CGFloat(m.projectedSeconds - m.seconds) * k)
-                        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 3, topTrailingRadius: 3))
-                        .dashedCard(color: Tokens.ramp[3], radius: 3)
+            let projH = CGFloat(m.projectedSeconds) * k
+            if projH > 0.5 {
+                ZStack(alignment: .bottom) {
+                    Hatch(color: Tokens.ramp[3], line: 1.5, gap: 3)
+                        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 2, topTrailingRadius: 2))
+                    OpenDashedBorder(color: Tokens.ramp[3], radius: 2)
                 }
+                .frame(height: projH)
+            }
+        case .tracked:
+            if state.showsDeviceSplit {
+                let parts = state.deviceSplit(m.deviceSeconds)
+                let mac = CGFloat(parts.mac) * k
+                let pc = CGFloat(parts.pc) * k
                 OverlapBar(mac: mac, pc: pc, macColor: ThemeColors.deviceA, pcColor: ThemeColors.deviceB)
                     .frame(height: max(mac, pc))
+            } else {
+                let barH = CGFloat(m.seconds) * k
+                if barH > 0.5 {
+                    UnevenRoundedRectangle(topLeadingRadius: 2, topTrailingRadius: 2)
+                        .fill(Tokens.ramp[3])
+                        .frame(height: barH)
+                }
+            }
+        case .current:
+            let actH = CGFloat(m.seconds) * k
+            let extraH = CGFloat(max(0, m.projectedSeconds - m.seconds)) * k
+            VStack(spacing: 0) {
+                if extraH > 0.5 {
+                    ZStack(alignment: .bottom) {
+                        Hatch(color: Tokens.ramp[3], line: 1.5, gap: 3)
+                            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 2, topTrailingRadius: 2))
+                        OpenDashedBorder(color: Tokens.ramp[3], radius: 2)
+                    }
+                    .frame(height: extraH)
+                }
+                if state.showsDeviceSplit {
+                    let parts = state.deviceSplit(m.deviceSeconds)
+                    let mac = CGFloat(parts.mac) * k
+                    let pc = CGFloat(parts.pc) * k
+                    OverlapBar(mac: mac, pc: pc, macColor: ThemeColors.deviceA, pcColor: ThemeColors.deviceB)
+                        .frame(height: max(mac, pc))
+                } else if actH > 0.5 {
+                    Rectangle()
+                        .fill(ThemeColors.accent)
+                        .frame(height: actH)
+                }
             }
         }
     }
 
     @ViewBuilder
-    private func monthCard(_ result: YearResult) -> some View {
-        if let month = result.months.first(where: { $0.month == (selectedMonth ?? result.bestMonth) }), month.seconds > 0 {
-            let isBest = month.month == result.bestMonth
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(Formatters.monthName(month.month)).foregroundColor(ThemeColors.textPrimary)
-                    Spacer()
-                    Text(isBest ? "\(h(month.seconds)) · your best month" : h(month.seconds)).foregroundColor(ThemeColors.accent)
-                }
-                .font(.system(size: 12, weight: .semibold))
+    private func monthCard(_ result: YearResult, activeMonth: Int) -> some View {
+        if let month = result.months.first(where: { $0.month == activeMonth }) {
+            let isFuture = month.kind == .future
+            let isBefore = month.kind == .beforeTracking
 
-                Text(monthLine(month))
+            let title = Formatters.monthName(month.month) + (isFuture ? " (projected)" : "")
+            let valText: String = {
+                if isBefore { return "—" }
+                if isFuture { return "~\(Formatters.decimalHours(month.projectedSeconds)) h" }
+                return "\(Formatters.decimalHours(month.seconds)) h"
+            }()
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(title)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(ThemeColors.textPrimary)
+                    Spacer()
+                    Text(valText)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(ThemeColors.accent)
+                }
+
+                Text(monthLine(month, year: result.year, bestMonth: result.bestMonth))
                     .font(.system(size: 11))
                     .foregroundColor(ThemeColors.textMuted)
                     .lineLimit(1)
+
+                if !month.topApps.isEmpty {
+                    let maxSecs = CGFloat(max(1, month.topApps.first?.seconds ?? 1))
+                    VStack(spacing: 6) {
+                        ForEach(month.topApps.prefix(4), id: \.appId) { app in
+                            Button(action: { state.openAppDetail(appId: app.appId) }) {
+                                HStack(spacing: 8) {
+                                    if let img = state.iconCache.getCachedIcon(forAppId: app.appId),
+                                       let nsImage = NSImage(data: img) {
+                                        Image(nsImage: nsImage)
+                                            .resizable()
+                                            .frame(width: 16, height: 16)
+                                            .cornerRadius(3)
+                                    } else {
+                                        RoundedRectangle(cornerRadius: 2)
+                                            .fill(Tokens.appColor(app.name))
+                                            .frame(width: 10, height: 10)
+                                            .padding(3)
+                                    }
+
+                                    Text(app.name)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(ThemeColors.textPrimary)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                        .frame(width: 86, alignment: .leading)
+
+                                    GeometryReader { geo in
+                                        ZStack(alignment: .leading) {
+                                            RoundedRectangle(cornerRadius: 2.5)
+                                                .fill(ThemeColors.border)
+                                                .frame(height: 5)
+                                            RoundedRectangle(cornerRadius: 2.5)
+                                                .fill(Tokens.appColor(app.name))
+                                                .frame(width: max(2, geo.size.width * CGFloat(app.seconds) / maxSecs), height: 5)
+                                        }
+                                        .frame(maxHeight: .infinity, alignment: .center)
+                                    }
+                                    .frame(height: 12)
+
+                                    Text("\(Formatters.decimalHours(app.seconds)) h")
+                                        .font(.system(size: 11.5, weight: .regular))
+                                        .foregroundColor(ThemeColors.textPrimary)
+                                        .frame(width: 48, alignment: .trailing)
+                                }
+                                .frame(height: 22)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.top, 4)
+                } else if month.kind == .tracked || month.kind == .current {
+                    Text("No app time recorded")
+                        .font(.system(size: 11))
+                        .foregroundColor(ThemeColors.textMuted)
+                        .padding(.top, 2)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -201,14 +440,36 @@ public struct YearTabView: View {
         }
     }
 
-    private func monthLine(_ m: YearMonth) -> String {
-        var parts: [String] = []
-        if let prev = m.previousSeconds, prev > 0 {
-            let pct = Int((Double(m.seconds - prev) / Double(prev) * 100).rounded())
-            parts.append("\(pct >= 0 ? "+" : "")\(pct)% vs \(Formatters.monthName(m.month == 1 ? 12 : m.month - 1))")
+    private func monthLine(_ m: YearMonth, year: Int, bestMonth: Int?) -> String {
+        switch m.kind {
+        case .beforeTracking:
+            return "Before tracking began"
+        case .future:
+            return "Projected from your recent months"
+        case .current:
+            let tracked = "\(Formatters.decimalHours(m.seconds)) h"
+            let projected = "\(Formatters.decimalHours(m.projectedSeconds)) h"
+            if let prev = m.previousSeconds, prev > 0 {
+                let pct = Int((Double(m.projectedSeconds - prev) / Double(prev) * 100).rounded())
+                let sign = pct >= 0 ? "+" : ""
+                let prevName = Formatters.monthName(m.month == 1 ? 12 : m.month - 1, short: true)
+                return "\(tracked) so far · on pace for \(projected), \(sign)\(pct)% vs \(prevName)"
+            } else {
+                return "\(tracked) so far · on pace for \(projected)"
+            }
+        case .tracked:
+            var parts: [String] = []
+            if let prev = m.previousSeconds, prev > 0 {
+                let pct = Int((Double(m.seconds - prev) / Double(prev) * 100).rounded())
+                let sign = pct >= 0 ? "+" : ""
+                let prevName = Formatters.monthName(m.month == 1 ? 12 : m.month - 1, short: true)
+                parts.append("\(sign)\(pct)% vs \(prevName)")
+            }
+            if m.month == bestMonth {
+                parts.append("your best month")
+            }
+            return parts.isEmpty ? "No apps tracked" : parts.joined(separator: " · ")
         }
-        parts += m.topApps.prefix(3).map { "\($0.name) \(h($0.seconds))" }
-        return parts.joined(separator: " · ")
     }
 
     // MARK: - Wrapped
@@ -637,5 +898,27 @@ public struct WrappedCardView: View {
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(ThemeColors.border, lineWidth: 1))
+    }
+}
+
+private struct OpenDashedBorder: View {
+    let color: Color
+    let radius: CGFloat
+
+    var body: some View {
+        Canvas { ctx, size in
+            var path = Path()
+            path.move(to: CGPoint(x: 0, y: size.height))
+            path.addLine(to: CGPoint(x: 0, y: radius))
+            if radius > 0 {
+                path.addQuadCurve(to: CGPoint(x: radius, y: 0), control: CGPoint(x: 0, y: 0))
+            }
+            path.addLine(to: CGPoint(x: size.width - radius, y: 0))
+            if radius > 0 {
+                path.addQuadCurve(to: CGPoint(x: size.width, y: radius), control: CGPoint(x: size.width, y: 0))
+            }
+            path.addLine(to: CGPoint(x: size.width, y: size.height))
+            ctx.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+        }
     }
 }

@@ -125,5 +125,56 @@ final class MacAppLibraryTests: XCTestCase {
         XCTAssertEqual(countSessionsAfter, 0)
         XCTAssertEqual(countUsageAfter, 0)
     }
+
+    func testMergedAppOverlappingSessionsDeduplication() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+        let devId = try db.scalarText("SELECT device_id FROM devices LIMIT 1;") ?? "mac-1"
+
+        let lib = MacAppLibrary(db: db)
+        let main = try lib.trackApp(
+            exePath: "/Applications/Deskflow.app/Contents/MacOS/Deskflow",
+            displayName: "Deskflow",
+            deviceId: devId
+        )
+        let core = try lib.trackApp(
+            exePath: "/Applications/Deskflow.app/Contents/MacOS/deskflow-core",
+            displayName: "Deskflow",
+            deviceId: devId
+        )
+        try lib.merge(mainId: main, candidateIds: [core])
+
+        // Main runs 1000...2000 (1000s), Core runs 1500...2500 (1000s) -> Overlap 500s, total union 1500s
+        try db.exec("""
+            INSERT INTO sessions (id, app_id, start_utc, end_utc, last_seen_utc, end_reason)
+            VALUES (1, \(main), 1000, 2000, 2000, 'exit');
+            INSERT INTO sessions (id, app_id, start_utc, end_utc, last_seen_utc, end_reason)
+            VALUES (2, \(core), 1500, 2500, 2500, 'exit');
+            """)
+
+        let activeSec = try lib.getActiveSeconds(appId: main)
+        XCTAssertEqual(activeSec, 1500)
+
+        let tracked = try lib.getTrackedApps()
+        XCTAssertEqual(tracked.first?.id, main)
+        XCTAssertEqual(tracked.first?.totalSeconds, 1500)
+
+        // Verify UsageDays.slices unions overlapping intervals for the same group
+        let segs = [
+            UsageSeg(group: main, appId: main, start: 1000, end: 2000, open: false, sleep: false),
+            UsageSeg(group: main, appId: core, start: 1500, end: 2500, open: false, sleep: false)
+        ]
+        let slices = UsageDays.slices(segs, zone: TimeZone(secondsFromGMT: 0)!)
+        XCTAssertEqual(slices.count, 1)
+        XCTAssertEqual(slices[0].start, 1000)
+        XCTAssertEqual(slices[0].end, 2500)
+
+        // Verify TodayQuery reports union seconds
+        let ctx = UsageContext(now: Date(timeIntervalSince1970: 3000), zone: TimeZone(secondsFromGMT: 0)!, db: db)
+        let today = try TodayQuery.run(ctx, forDay: "1970-01-01")
+        XCTAssertEqual(today.rows.first?.appId, main)
+        XCTAssertEqual(today.rows.first?.seconds, 1500)
+        XCTAssertEqual(today.totalSeconds, 1500)
+    }
 }
 

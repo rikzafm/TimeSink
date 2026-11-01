@@ -33,7 +33,7 @@ public struct HeaderView: View {
             .padding(.trailing, 6)
 
             Button(action: { state.toggleGamesOnly() }) {
-                IconView(.gamepad, size: isAll ? 20 : 18, weight: isAll ? 1.4 : 1.5, color: state.gamesOnly ? ThemeColors.accent : ThemeColors.textDim)
+                IconView(.gamepad, size: 20, weight: 1.8, color: state.gamesOnly ? ThemeColors.accent : ThemeColors.textDim)
                     .frame(width: isAll ? 30 : 28, height: isAll ? 30 : 28)
                     .contentShape(Rectangle())
             }
@@ -44,7 +44,7 @@ public struct HeaderView: View {
                 state.showingDevicesSync = false
                 state.showingSettings = true
             }) {
-                IconView(isAll ? .gearLarge : .gear, size: isAll ? 20 : 16, weight: 1.5, color: ThemeColors.textDim)
+                IconView(.gear, size: 20, weight: 1.8, color: ThemeColors.textDim)
                     .frame(width: isAll ? 30 : 28, height: isAll ? 30 : 28)
                     .contentShape(Rectangle())
             }

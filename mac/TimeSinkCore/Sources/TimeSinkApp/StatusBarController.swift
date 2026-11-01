@@ -7,10 +7,6 @@ public final class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
     private let popover: NSPopover
     private var eventMonitor: Any?
-    private var lastText = ""
-    public var showsTime = true {
-        didSet { applyTitle() }
-    }
 
     public init(popover: NSPopover) {
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -21,17 +17,8 @@ public final class StatusBarController: NSObject {
             button.target = self
             button.action = #selector(togglePopover)
             button.image = Self.clockImage()
-            button.imagePosition = .imageLeading
+            button.imagePosition = .imageOnly
         }
-    }
-
-    public func updateTitle(_ text: String) {
-        lastText = text
-        applyTitle()
-    }
-
-    private func applyTitle() {
-        statusItem.button?.title = showsTime ? lastText : ""
     }
 
     /// The board's lime clock glyph.
@@ -53,13 +40,6 @@ public final class StatusBarController: NSObject {
         }
         img.isTemplate = false
         return img
-    }
-
-    public func updateTodayTotal(seconds: Int64) {
-        let hours = seconds / 3600
-        let minutes = (seconds % 3600) / 60
-        let text = hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
-        updateTitle(text)
     }
 
     @objc private func togglePopover() {
