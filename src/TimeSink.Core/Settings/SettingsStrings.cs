@@ -57,9 +57,32 @@ public static class SettingsStrings
     public const string IconSubtitle = "setIconSubtitle";
     public const string IconApply = "setIconApply";
     public const string IconReset = "setIconReset";
+    public const string DevicesSyncButton = "setDevicesSyncButton";
+    public const string DevicesSyncTitle = "setDevicesSyncTitle";
+    public const string SyncFolderTitle = "setSyncFolderTitle";
+    public const string SyncFolderDesc = "setSyncFolderDesc";
+    public const string SyncChange = "setSyncChange";
+    public const string SyncNow = "setSyncNow";
+    public const string Syncing = "setSyncing";
+    public const string Synced = "setSynced";
+    public const string UpToDate = "setUpToDate";
+    public const string Pending = "setPending";
+    public const string OnlyTwoSupported = "setOnlyTwoSupported";
+    public const string NoOtherFound = "setNoOtherFound";
+    public const string NoOtherFoundHint = "setNoOtherFoundHint";
+    public const string ForgetDevice = "setForgetDevice";
+    public const string DeleteDeviceHistory = "setDeleteDeviceHistory";
+    public const string DeleteDeviceHistoryConfirm = "setDeleteDeviceHistoryConfirm";
+    public const string RenameDevice = "setRenameDevice";
+    public const string SyncFootnote = "setSyncFootnote";
+    public const string MergeHintBoth = "setMergeHintBoth";
+    public const string MergeHintDesc = "setMergeHintDesc";
+    public const string MergeButton = "setMergeButton";
+    public const string LastSync = "setLastSync";
 
     public static readonly IReadOnlyList<string> All =
     [
         BackingUp, BackupDone, BackupFailedShort, BackupFailed, BackUp, RestoreTitle, RestoreFilter, RestoreCannot, RestoreDetail, RestoreUpgrade, RestoreBody, Cancel, Merge, Replace, Ok, Replacing, Merging, Restoring, Replaced, SafetyCopy, Merged, RestoreFailed, ReplaceFinished, MergeFinished, ExportTitle, ExportBody, Json, Csv, ExportFolderTitle, ExportSavedTwo, ExportJsonTitle, ExportJsonFilter, ExportSaved, ExportFailed, ExportResultTitle, DeleteTitle, DeleteBody, DeleteEverything, DeleteDone, DeleteFailed, ChooseFile, ExportButton, DeleteButton, OpenButton, UninstallButton, UninstallTitle, UninstallBody, UninstallConfirm, UninstallMissing, OpenFailed, IconTitle, IconSubtitle, IconApply, IconReset,
+        DevicesSyncButton, DevicesSyncTitle, SyncFolderTitle, SyncFolderDesc, SyncChange, SyncNow, Syncing, Synced, UpToDate, Pending, OnlyTwoSupported, NoOtherFound, NoOtherFoundHint, ForgetDevice, DeleteDeviceHistory, DeleteDeviceHistoryConfirm, RenameDevice, SyncFootnote, MergeHintBoth, MergeHintDesc, MergeButton, LastSync,
     ];
 }

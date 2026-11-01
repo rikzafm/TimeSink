@@ -1,6 +1,6 @@
 # Settings: Devices and sync
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 3)
 Blocked by: 09
 Design: design/mac/Settings.dc.html, design/mac/Sync.dc.html (both still have the older sub-screen header; use the Windows back-chevron header)

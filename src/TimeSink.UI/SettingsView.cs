@@ -180,13 +180,21 @@ public sealed partial class SettingsView : Grid
         return true;
     }
 
+    public bool TryCloseSubView()
+    {
+        if (TryClosePicker()) return true;
+        if (TryCloseDevicesSync()) return true;
+        return false;
+    }
+
     private FrameworkElement BuildButton(SettingRow row)
     {
-        var b = new Button { Content = Str(row.Id switch { "backupNow" => SettingsStrings.BackUp, "restore" => SettingsStrings.ChooseFile, "export" => SettingsStrings.ExportButton, "installFolder" => SettingsStrings.OpenButton, "uninstall" => SettingsStrings.UninstallButton, _ => SettingsStrings.DeleteButton }) };
+        var b = new Button { Content = Str(row.Id switch { "devicesSync" => SettingsStrings.DevicesSyncButton, "backupNow" => SettingsStrings.BackUp, "restore" => SettingsStrings.ChooseFile, "export" => SettingsStrings.ExportButton, "installFolder" => SettingsStrings.OpenButton, "uninstall" => SettingsStrings.UninstallButton, _ => SettingsStrings.DeleteButton }) };
         b.SetResourceReference(StyleProperty, "LinkButton");
         if (row.Danger) b.SetResourceReference(Control.ForegroundProperty, "Brush.Danger");
         switch (row.Id)
         {
+            case "devicesSync": b.Click += (_, _) => OpenDevicesSync(); break;
             case "backupNow": b.Click += (_, _) => BackUpNow(b); break;
             case "restore": b.Click += (_, _) => ChooseRestoreFile(); break;
             case "export": b.Click += (_, _) => ChooseExport(); break;
@@ -229,6 +237,16 @@ public sealed partial class SettingsView : Grid
             var path = _dbPath;
             Task.Run(() => TrackingSummary.Read(path).Describe())
                 .ContinueWith(t => ts.Text = t.Result, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+        if (_info.TryGetValue("deviceName", out var dn))
+        {
+            var name = AppSettings.ForFile(_dbPath).Get(Setting.DeviceName);
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                var devInfo = DeviceInfoService.Load(_dbPath);
+                name = devInfo.FirstOrDefault(kv => kv.Value.IsLocal).Value.Name;
+            }
+            dn.Text = !string.IsNullOrWhiteSpace(name) ? name : Environment.MachineName;
         }
     }
 }

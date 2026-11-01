@@ -23,9 +23,9 @@ public sealed record SettingRow(
 public static class SettingsCatalogue
 {
     public const string General = "General", Tracking = "Tracking", Appearance = "Appearance",
-        Notifications = "Notifications", BackupAndData = "Backup and data", About = "About";
+        DevicesAndSync = "Devices and sync", Notifications = "Notifications", BackupAndData = "Backup and data", About = "About";
 
-    public static readonly IReadOnlyList<string> Sections = [General, Tracking, Appearance, Notifications, BackupAndData, About];
+    public static readonly IReadOnlyList<string> Sections = [General, Tracking, Appearance, DevicesAndSync, Notifications, BackupAndData, About];
 
     /// <summary>One option per value the setting accepts, labelled by the value itself unless <paramref name="label"/> says otherwise.</summary>
     private static SettingOption[] Options(ISetting setting, Func<string, string>? label = null)
@@ -47,6 +47,9 @@ public static class SettingsCatalogue
         new("accent", Appearance, "Accent", "The highlight colour used across the app.", SettingKind.Segmented, Setting.Accent, Options(Setting.Accent)),
         new("compact", Appearance, "Compact lists", "Tighter rows in app lists.", SettingKind.Switch, Setting.Compact),
         new("appIcon", Appearance, "App icon", "How TimeSink looks in the tray.", SettingKind.Icon, Setting.AppIcon),
+
+        new("devicesSync", DevicesAndSync, "Sync with other devices", "Works with OneDrive, Google Drive or any synced folder.", SettingKind.Button),
+        new("deviceName", DevicesAndSync, "This device is called", "Shown on combined reports.", SettingKind.Info),
 
         new("goalAlerts", Notifications, "Goal and limit alerts", "A notification when a goal or limit is reached.", SettingKind.Switch, Setting.GoalAlerts),
         new("weeklySummary", Notifications, "Weekly summary", "A short recap at the start of each week.", SettingKind.Switch, Setting.WeeklySummary),

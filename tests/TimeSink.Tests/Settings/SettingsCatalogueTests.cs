@@ -7,7 +7,7 @@ public class SettingsCatalogueTests
 {
     [Fact]
     public void Sections_appear_in_the_designed_order()
-        => SettingsCatalogue.Sections.Should().Equal("General", "Tracking", "Appearance", "Notifications", "Backup and data", "About");
+        => SettingsCatalogue.Sections.Should().Equal("General", "Tracking", "Appearance", "Devices and sync", "Notifications", "Backup and data", "About");
 
     [Theory]
     [InlineData("startup.enabled", "true")]

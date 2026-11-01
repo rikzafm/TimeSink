@@ -91,6 +91,47 @@ public static class DeviceIdentity
         cmd.ExecuteNonQuery();
     }
 
+    public static void RenameDevice(Db db, string deviceId, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(newName))
+            throw new ArgumentException("Device name cannot be empty", nameof(newName));
+
+        using var cmd = db.Connection.CreateCommand();
+        cmd.CommandText = "UPDATE devices SET name = $n WHERE device_id = $id";
+        cmd.Parameters.AddWithValue("$n", newName);
+        cmd.Parameters.AddWithValue("$id", deviceId);
+        cmd.ExecuteNonQuery();
+
+        if (db.GetSetting("device.id") == deviceId)
+            db.SetSetting("device.name", newName);
+    }
+
+    public static void ForgetDevice(Db db, string deviceId)
+    {
+        using var cmd = db.Connection.CreateCommand();
+        cmd.CommandText = "UPDATE devices SET state = 'forgotten' WHERE device_id = $id";
+        cmd.Parameters.AddWithValue("$id", deviceId);
+        cmd.ExecuteNonQuery();
+    }
+
+    public static void DeleteDeviceHistory(Db db, string deviceId)
+    {
+        using var tx = db.Connection.BeginTransaction();
+        using (var cmd = db.Connection.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                DELETE FROM sessions WHERE app_id IN (SELECT id FROM apps WHERE device_id = $id);
+                DELETE FROM daily_usage WHERE app_id IN (SELECT id FROM apps WHERE device_id = $id);
+                DELETE FROM apps WHERE device_id = $id;
+                DELETE FROM devices WHERE device_id = $id;
+                """;
+            cmd.Parameters.AddWithValue("$id", deviceId);
+            cmd.ExecuteNonQuery();
+        }
+        tx.Commit();
+    }
+
     /// <summary>
     /// When an incoming snapshot file has the exact same device ID as the local device,
     /// a cloned install has occurred. The local device regenerates its UUID and rebinds its apps.

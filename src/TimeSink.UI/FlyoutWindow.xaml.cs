@@ -221,6 +221,14 @@ public partial class FlyoutWindow : Window
         SetOverlay(_addApp);
     }
 
+    public void OpenAddAppTracked()
+    {
+        if (_settings is not null && ReferenceEquals(Body.Content, _settings))
+            ToggleSettings();
+        ShowAddApp();
+        _addApp?.ShowTracked();
+    }
+
     /// <summary>
     /// Shows or clears a full-flyout screen. The tab body underneath is collapsed while one is up: WPF would otherwise
     /// recompose it on every scroll frame of the overlay (Year > Wrapped's card is expensive to redraw).
@@ -243,7 +251,7 @@ public partial class FlyoutWindow : Window
     {
         if (_settings is not null && ReferenceEquals(Body.Content, _settings))
         {
-            if (_settings.TryClosePicker()) return;
+            if (_settings.TryCloseSubView()) return;
             TabStrip.Visibility = Visibility.Visible;
             GamesButton.Visibility = Visibility.Visible;
             var hasOther = CheckHasOtherDevice(_dbPath) || AppSettings.ForFile(_dbPath).Get(Setting.SyncEnabled);

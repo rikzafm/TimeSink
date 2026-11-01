@@ -31,7 +31,7 @@ public sealed partial class AddAppView
     private MergePlan? _mergePlan;      // the open merge screen's plan (Candidates, ticks, confirm) lives in AppCatalogue; which screen shows is in _nav
     private double _listOffset;            // Tracked list scroll position when Merge… was opened
 
-    private void ShowTracked() => _body.Content = _nav.State.Merge == MergeStage.Ready && _mergePlan is { } plan ? BuildMergeScreen(plan) : BuildTrackedTab();
+    public void ShowTracked() => _body.Content = _nav.State.Merge == MergeStage.Ready && _mergePlan is { } plan ? BuildMergeScreen(plan) : BuildTrackedTab();
 
     private UIElement BuildTrackedTab()
     {

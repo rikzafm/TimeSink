@@ -1,0 +1,768 @@
+using System.IO;
+using System.Threading;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Media;
+using System.Windows.Shapes;
+using Microsoft.Data.Sqlite;
+using Microsoft.Win32;
+using TimeSink.Core.Backup;
+using TimeSink.Core.Data;
+using TimeSink.Core.Devices;
+using TimeSink.Core.Settings;
+using TimeSink.Core.Sync;
+using TimeSink.UI.Controls;
+using TimeSink.UI.Services;
+using static TimeSink.UI.Services.TimeText;
+
+namespace TimeSink.UI;
+
+public sealed partial class SettingsView
+{
+    private UIElement? _devicesSyncOverlay;
+
+    public void OpenDevicesSync()
+    {
+        CloseDevicesSync();
+        var view = BuildDevicesSyncView();
+        _devicesSyncOverlay = view;
+        Panel.SetZIndex(view, 5);
+        Children.Add(view);
+    }
+
+    public bool TryCloseDevicesSync()
+    {
+        if (_devicesSyncOverlay is null) return false;
+        CloseDevicesSync();
+        return true;
+    }
+
+    private void CloseDevicesSync()
+    {
+        if (_devicesSyncOverlay is null) return;
+        Children.Remove(_devicesSyncOverlay);
+        _devicesSyncOverlay = null;
+        RefreshInfo();
+    }
+
+    private UIElement BuildDevicesSyncView()
+    {
+        var root = new Grid();
+        root.SetResourceReference(Panel.BackgroundProperty, "Brush.Surface");
+
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Header
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Body
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Footer
+
+        // 1. Header with back button and title
+        var header = new Grid { Height = 44, Margin = new Thickness(12, 0, 12, 0) };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var backBtn = new Button
+        {
+            Content = "‹ Settings",
+            Height = 28,
+            Padding = new Thickness(6, 0, 8, 0),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        backBtn.SetResourceReference(StyleProperty, "LinkButton");
+        backBtn.SetResourceReference(Control.ForegroundProperty, "Brush.Accent");
+        backBtn.Click += (_, _) => CloseDevicesSync();
+        Grid.SetColumn(backBtn, 0);
+        header.Children.Add(backBtn);
+
+        var title = new TextBlock
+        {
+            Text = Str(SettingsStrings.DevicesSyncTitle),
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 14,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        title.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+        Grid.SetColumn(title, 1);
+        header.Children.Add(title);
+
+        var headerBorder = new Border
+        {
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Child = header,
+        };
+        headerBorder.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
+        Grid.SetRow(headerBorder, 0);
+        root.Children.Add(headerBorder);
+
+        // 2. Body
+        var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false };
+        var stack = new StackPanel { Margin = new Thickness(16, 12, 16, 16) };
+        scroll.Content = stack;
+        Grid.SetRow(scroll, 1);
+        root.Children.Add(scroll);
+
+        // 3. Footer: Last sync and Sync now button
+        var footer = new Grid { Height = 44, Margin = new Thickness(16, 0, 16, 0) };
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var lastSyncText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+        lastSyncText.SetResourceReference(TextBlock.StyleProperty, "Caption");
+        lastSyncText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+        Grid.SetColumn(lastSyncText, 0);
+        footer.Children.Add(lastSyncText);
+
+        var syncNowBtn = new Button
+        {
+            Content = Str(SettingsStrings.SyncNow),
+            Height = 28,
+            Padding = new Thickness(14, 0, 14, 0),
+            FontWeight = FontWeights.SemiBold,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        syncNowBtn.SetResourceReference(Control.BackgroundProperty, "Brush.Accent");
+        syncNowBtn.SetResourceReference(Control.ForegroundProperty, "Brush.OnAccent");
+        syncNowBtn.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
+        Grid.SetColumn(syncNowBtn, 1);
+        footer.Children.Add(syncNowBtn);
+
+        var footerBorder = new Border
+        {
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Child = footer,
+        };
+        footerBorder.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
+        Grid.SetRow(footerBorder, 2);
+        root.Children.Add(footerBorder);
+
+        void Refresh()
+        {
+            stack.Children.Clear();
+
+            var settings = AppSettings.ForFile(_dbPath);
+            var enabled = settings.Get(Setting.SyncEnabled);
+            var folder = settings.Get(Setting.SyncFolder) ?? "";
+            var syncState = settings.Get(Setting.SyncState) ?? "";
+            var lastExport = settings.Get(Setting.SyncLastExportUtc);
+            var lastImport = settings.Get(Setting.SyncLastImportUtc);
+            var lastSyncUtc = Math.Max(lastExport, lastImport);
+            lastSyncText.Text = Str(SettingsStrings.LastSync, TimeAgo(lastSyncUtc));
+
+            // Card 1: Sync folder card
+            var folderCard = new Border
+            {
+                Padding = new Thickness(12),
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 0, 0, 14),
+            };
+            folderCard.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
+            folderCard.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
+            folderCard.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
+
+            var folderStack = new StackPanel();
+
+            var topRow = new Grid();
+            topRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            topRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var folderTexts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            var folderTitle = new TextBlock { Text = Str(SettingsStrings.SyncFolderTitle), FontWeight = FontWeights.SemiBold };
+            folderTitle.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+            var folderDesc = new TextBlock { Text = Str(SettingsStrings.SyncFolderDesc), Margin = new Thickness(0, 2, 0, 0) };
+            folderDesc.SetResourceReference(TextBlock.StyleProperty, "Caption");
+            folderDesc.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+            folderTexts.Children.Add(folderTitle);
+            folderTexts.Children.Add(folderDesc);
+            Grid.SetColumn(folderTexts, 0);
+            topRow.Children.Add(folderTexts);
+
+            var toggle = new ToggleButton { IsChecked = enabled, VerticalAlignment = VerticalAlignment.Center };
+            toggle.SetResourceReference(StyleProperty, "ToggleSwitch");
+            toggle.Click += (_, _) =>
+            {
+                var on = toggle.IsChecked == true;
+                settings.Set(Setting.SyncEnabled, on);
+                if (on && settings.Get(Setting.SyncEnabledUtc) == 0)
+                    settings.Set(Setting.SyncEnabledUtc, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                TriggerSyncNow();
+                Refresh();
+            };
+            Grid.SetColumn(toggle, 1);
+            topRow.Children.Add(toggle);
+            folderStack.Children.Add(topRow);
+
+            // Folder path box
+            var pathBox = new Border
+            {
+                Margin = new Thickness(0, 10, 0, 0),
+                Padding = new Thickness(8, 6, 8, 6),
+                BorderThickness = new Thickness(1),
+            };
+            pathBox.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+            pathBox.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
+            pathBox.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
+
+            var pathGrid = new Grid();
+            pathGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            pathGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            pathGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var folderIcon = new System.Windows.Shapes.Path
+            {
+                Data = Geometry.Parse("M1.5 4.5 A1 1 0 0 1 2.5 3.5 L6 3.5 L7.5 5 L13.5 5 A1 1 0 0 1 14.5 6 L14.5 12.5 A1 1 0 0 1 13.5 13.5 L2.5 13.5 A1 1 0 0 1 1.5 12.5 Z"),
+                StrokeThickness = 1.5,
+                Width = 14,
+                Height = 14,
+                Stretch = Stretch.Uniform,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0),
+            };
+            folderIcon.SetResourceReference(Shape.StrokeProperty, "Brush.TextMuted");
+            Grid.SetColumn(folderIcon, 0);
+            pathGrid.Children.Add(folderIcon);
+
+            var pathText = new TextBlock
+            {
+                Text = !string.IsNullOrWhiteSpace(folder) ? folder : "No sync folder selected",
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            pathText.SetResourceReference(TextBlock.StyleProperty, "Caption");
+            pathText.SetResourceReference(TextBlock.ForegroundProperty, !string.IsNullOrWhiteSpace(folder) ? "Brush.Text" : "Brush.TextMuted");
+            Grid.SetColumn(pathText, 1);
+            pathGrid.Children.Add(pathText);
+
+            var changeBtn = new Button
+            {
+                Content = Str(SettingsStrings.SyncChange),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(8, 0, 0, 0),
+            };
+            changeBtn.SetResourceReference(StyleProperty, "LinkButton");
+            changeBtn.SetResourceReference(Control.ForegroundProperty, "Brush.Accent");
+            changeBtn.Click += (_, _) =>
+            {
+                var dlg = new OpenFolderDialog
+                {
+                    Title = "Choose Sync Folder",
+                    InitialDirectory = Directory.Exists(folder) ? folder : "",
+                };
+                if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.FolderName))
+                {
+                    settings.Set(Setting.SyncFolder, dlg.FolderName);
+                    TriggerSyncNow();
+                    Refresh();
+                }
+            };
+            Grid.SetColumn(changeBtn, 2);
+            pathGrid.Children.Add(changeBtn);
+
+            pathBox.Child = pathGrid;
+            folderStack.Children.Add(pathBox);
+            folderCard.Child = folderStack;
+            stack.Children.Add(folderCard);
+
+            // Card 2: Devices section
+            var devHeader = new TextBlock
+            {
+                Text = "DEVICES",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(4, 0, 0, 6),
+            };
+            devHeader.SetResourceReference(TextBlock.StyleProperty, "Caption");
+            devHeader.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
+            stack.Children.Add(devHeader);
+
+            var devicesCard = new Border
+            {
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 0, 0, 14),
+            };
+            devicesCard.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
+            devicesCard.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
+            devicesCard.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
+
+            var devicesList = new StackPanel();
+            var devices = ReadDevices();
+            var activeRemoteCount = devices.Count(d => !d.IsLocal && d.State == "active");
+
+            for (var i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                var rowBorder = new Border
+                {
+                    Padding = new Thickness(12),
+                    BorderThickness = new Thickness(0, i == 0 ? 0 : 1, 0, 0),
+                };
+                rowBorder.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
+
+                var rowGrid = new Grid();
+                rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                // Badge: PC / Mac
+                var badge = new Border
+                {
+                    Width = 34,
+                    Height = 34,
+                    CornerRadius = new CornerRadius(8),
+                    BorderThickness = new Thickness(1),
+                    Margin = new Thickness(0, 0, 12, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                badge.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+                badge.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
+                var badgeText = new TextBlock
+                {
+                    Text = d.Platform == "macos" ? "Mac" : "PC",
+                    FontWeight = FontWeights.Bold,
+                    FontSize = 12,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                badgeText.SetResourceReference(TextBlock.ForegroundProperty, d.IsLocal ? "Brush.DeviceA" : "Brush.DeviceB");
+                badge.Child = badgeText;
+                Grid.SetColumn(badge, 0);
+                rowGrid.Children.Add(badge);
+
+                // Middle: Device name & details
+                var details = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                var nameText = new TextBlock
+                {
+                    Text = d.Name + (d.IsLocal ? " · this PC" : ""),
+                    FontWeight = FontWeights.SemiBold,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                };
+                nameText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+                details.Children.Add(nameText);
+
+                var line1 = new TextBlock
+                {
+                    Text = (d.Platform == "macos" ? "macOS" : "Windows") + $" · {GetDeviceAppCount(d.DeviceId)} apps",
+                    Margin = new Thickness(0, 2, 0, 0),
+                };
+                line1.SetResourceReference(TextBlock.StyleProperty, "Caption");
+                line1.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+                line1.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+                details.Children.Add(line1);
+
+                string line2String;
+                if (d.IsLocal)
+                {
+                    line2String = lastExport > 0 ? $"Wrote its file {TimeAgo(lastExport)}" : "Ready to write file";
+                }
+                else if (d.State == "forgotten")
+                {
+                    line2String = "Sync paused · forgotten";
+                }
+                else if (d.LastImportUtc.HasValue)
+                {
+                    var hours = GetDeviceHours(d.DeviceId);
+                    line2String = $"Read its file {TimeAgo(d.LastImportUtc.Value.ToUnixTimeSeconds())} · {hours}h";
+                }
+                else if (syncState == "pending")
+                {
+                    line2String = "Waiting for OneDrive to download its file";
+                }
+                else
+                {
+                    line2String = "Waiting for file to download";
+                }
+
+                var line2 = new TextBlock { Text = line2String, Margin = new Thickness(0, 1, 0, 0) };
+                line2.SetResourceReference(TextBlock.StyleProperty, "Caption");
+                line2.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+                line2.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+                details.Children.Add(line2);
+
+                Grid.SetColumn(details, 1);
+                rowGrid.Children.Add(details);
+
+                // Right side: status badge and action menu/buttons
+                var rightStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
+
+                var statusRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+                var statusDot = new Ellipse { Width = 6, Height = 6, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+                var statusLabel = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+                statusLabel.SetResourceReference(TextBlock.StyleProperty, "Caption");
+                statusLabel.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+
+                if (d.State == "forgotten")
+                {
+                    statusDot.SetResourceReference(Shape.FillProperty, "Brush.TextMuted");
+                    statusLabel.Text = Str(SettingsStrings.ForgetDevice);
+                    statusLabel.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+                }
+                else if (d.IsLocal)
+                {
+                    statusDot.SetResourceReference(Shape.FillProperty, "Brush.DeviceA");
+                    statusLabel.Text = Str(SettingsStrings.UpToDate);
+                    statusLabel.SetResourceReference(TextBlock.ForegroundProperty, "Brush.DeviceA");
+                }
+                else if (activeRemoteCount > 1 && i >= 2)
+                {
+                    statusDot.SetResourceReference(Shape.FillProperty, "Brush.Warning");
+                    statusLabel.Text = Str(SettingsStrings.OnlyTwoSupported);
+                    statusLabel.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Warning");
+                }
+                else if (syncState == "no_other_device")
+                {
+                    statusDot.SetResourceReference(Shape.FillProperty, "Brush.Warning");
+                    statusLabel.Text = Str(SettingsStrings.NoOtherFound);
+                    statusLabel.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Warning");
+                }
+                else if (syncState == "pending")
+                {
+                    statusDot.SetResourceReference(Shape.FillProperty, "Brush.Warning");
+                    statusLabel.Text = Str(SettingsStrings.Pending);
+                    statusLabel.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Warning");
+                }
+                else
+                {
+                    statusDot.SetResourceReference(Shape.FillProperty, "Brush.DeviceA");
+                    statusLabel.Text = Str(SettingsStrings.Synced);
+                    statusLabel.SetResourceReference(TextBlock.ForegroundProperty, "Brush.DeviceA");
+                }
+
+                statusRow.Children.Add(statusDot);
+                statusRow.Children.Add(statusLabel);
+                rightStack.Children.Add(statusRow);
+
+                // Actions: Rename, Forget, Delete history
+                var actionsRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 4, 0, 0) };
+
+                var renameBtn = new Button
+                {
+                    Content = "Rename",
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    Margin = new Thickness(6, 0, 0, 0),
+                };
+                renameBtn.SetResourceReference(StyleProperty, "LinkButton");
+                renameBtn.SetResourceReference(Control.ForegroundProperty, "Brush.TextMuted");
+                var currentDev = d;
+                renameBtn.Click += (_, _) => PromptRenameDevice(currentDev, Refresh);
+                actionsRow.Children.Add(renameBtn);
+
+                if (!d.IsLocal)
+                {
+                    if (d.State == "active")
+                    {
+                        var forgetBtn = new Button
+                        {
+                            Content = "Forget",
+                            Cursor = System.Windows.Input.Cursors.Hand,
+                            Margin = new Thickness(6, 0, 0, 0),
+                        };
+                        forgetBtn.SetResourceReference(StyleProperty, "LinkButton");
+                        forgetBtn.SetResourceReference(Control.ForegroundProperty, "Brush.TextMuted");
+                        forgetBtn.Click += (_, _) =>
+                        {
+                            using var db = Db.Open(_dbPath);
+                            DeviceIdentity.ForgetDevice(db, currentDev.DeviceId);
+                            Refresh();
+                        };
+                        actionsRow.Children.Add(forgetBtn);
+                    }
+
+                    var deleteBtn = new Button
+                    {
+                        Content = "Delete history…",
+                        Cursor = System.Windows.Input.Cursors.Hand,
+                        Margin = new Thickness(6, 0, 0, 0),
+                    };
+                    deleteBtn.SetResourceReference(StyleProperty, "LinkButton");
+                    deleteBtn.SetResourceReference(Control.ForegroundProperty, "Brush.Danger");
+                    deleteBtn.Click += (_, _) => PromptDeleteDeviceHistory(currentDev, Refresh);
+                    actionsRow.Children.Add(deleteBtn);
+                }
+
+                rightStack.Children.Add(actionsRow);
+                Grid.SetColumn(rightStack, 2);
+                rowGrid.Children.Add(rightStack);
+
+                rowBorder.Child = rowGrid;
+                devicesList.Children.Add(rowBorder);
+            }
+
+            devicesCard.Child = devicesList;
+            stack.Children.Add(devicesCard);
+
+            // Card 3: Merge hint banner (if non-merged apps with same name exist on multiple devices)
+            var matchingApps = FindMatchingCrossDeviceApps();
+            if (matchingApps.Count > 0)
+            {
+                var mergeBanner = new Border
+                {
+                    Padding = new Thickness(12, 10, 12, 10),
+                    BorderThickness = new Thickness(1),
+                    Margin = new Thickness(0, 0, 0, 14),
+                };
+                mergeBanner.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+                mergeBanner.SetResourceReference(Border.BorderBrushProperty, "Brush.Warning");
+                mergeBanner.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
+
+                var bannerGrid = new Grid();
+                bannerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                bannerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var bannerTexts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                var bannerTitle = new TextBlock
+                {
+                    Text = Str(SettingsStrings.MergeHintBoth, matchingApps.Count),
+                    FontWeight = FontWeights.SemiBold,
+                };
+                bannerTitle.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Warning");
+                var bannerDesc = new TextBlock
+                {
+                    Text = Str(SettingsStrings.MergeHintDesc, string.Join(", ", matchingApps.Take(3))),
+                    Margin = new Thickness(0, 2, 0, 0),
+                };
+                bannerDesc.SetResourceReference(TextBlock.StyleProperty, "Caption");
+                bannerDesc.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+                bannerTexts.Children.Add(bannerTitle);
+                bannerTexts.Children.Add(bannerDesc);
+                Grid.SetColumn(bannerTexts, 0);
+                bannerGrid.Children.Add(bannerTexts);
+
+                var mergeActionBtn = new Button
+                {
+                    Content = Str(SettingsStrings.MergeButton),
+                    Height = 28,
+                    Padding = new Thickness(12, 0, 12, 0),
+                    FontWeight = FontWeights.SemiBold,
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(10, 0, 0, 0),
+                };
+                mergeActionBtn.SetResourceReference(Control.BackgroundProperty, "Brush.Warning");
+                mergeActionBtn.SetResourceReference(Control.ForegroundProperty, "Brush.Surface");
+                mergeActionBtn.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
+                mergeActionBtn.Click += (_, _) =>
+                {
+                    CloseDevicesSync();
+                    (Application.Current.MainWindow as FlyoutWindow)?.OpenAddAppTracked();
+                };
+                Grid.SetColumn(mergeActionBtn, 1);
+                bannerGrid.Children.Add(mergeActionBtn);
+
+                mergeBanner.Child = bannerGrid;
+                stack.Children.Add(mergeBanner);
+            }
+
+            // Footnote
+            var footnote = new TextBlock
+            {
+                Text = Str(SettingsStrings.SyncFootnote),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(2, 0, 2, 8),
+                LineHeight = 16,
+            };
+            footnote.SetResourceReference(TextBlock.StyleProperty, "Caption");
+            footnote.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+            footnote.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+            stack.Children.Add(footnote);
+        }
+
+        syncNowBtn.Click += async (_, _) =>
+        {
+            syncNowBtn.IsEnabled = false;
+            syncNowBtn.Content = Str(SettingsStrings.Syncing);
+            await Task.Run(TriggerSyncNow);
+            syncNowBtn.Content = Str(SettingsStrings.Synced) + " ✓";
+            Refresh();
+            await Task.Delay(1200);
+            syncNowBtn.Content = Str(SettingsStrings.SyncNow);
+            syncNowBtn.IsEnabled = true;
+        };
+
+        Refresh();
+        return root;
+    }
+
+    private void TriggerSyncNow()
+    {
+        try
+        {
+            using var ev = EventWaitHandle.OpenExisting(AgentSignals.SyncNowEventName);
+            ev.Set();
+        }
+        catch { }
+
+        // Also perform direct sync export/import if sync folder is configured
+        try
+        {
+            var settings = AppSettings.ForFile(_dbPath);
+            if (settings.Get(Setting.SyncEnabled))
+            {
+                var folder = settings.Get(Setting.SyncFolder);
+                if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
+                {
+                    SyncWriter.Write(_dbPath, folder, DateTimeOffset.UtcNow);
+                    var files = Directory.GetFiles(folder, "*" + SyncWriter.Extension);
+                    foreach (var file in files)
+                    {
+                        if (SyncReader.IsConflictCopy(file)) continue;
+                        if (SyncReader.IsPlaceholder(file)) continue;
+                        SyncReader.Import(file, _dbPath, TimeZoneInfo.Local);
+                    }
+                }
+            }
+        }
+        catch { }
+    }
+
+    private void PromptRenameDevice(DeviceRecord dev, Action onDone)
+    {
+        var box = new TextBox
+        {
+            Text = dev.Name,
+            Margin = new Thickness(0, 10, 0, 0),
+            Padding = new Thickness(6, 4, 6, 4),
+        };
+        box.SetResourceReference(Control.BackgroundProperty, "Brush.SurfaceAlt");
+        box.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
+        box.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");
+
+        var buttons = ShowDialog(Str(SettingsStrings.RenameDevice), "Enter a new name for this device:",
+            box,
+            (Str(SettingsStrings.Cancel), CloseDialog, false, false),
+            ("Save", () =>
+            {
+                var newName = box.Text.Trim();
+                if (!string.IsNullOrEmpty(newName))
+                {
+                    using var db = Db.Open(_dbPath);
+                    DeviceIdentity.RenameDevice(db, dev.DeviceId, newName);
+                }
+                CloseDialog();
+                onDone();
+            }, true, false));
+
+        box.SelectAll();
+        box.Focus();
+    }
+
+    private void PromptDeleteDeviceHistory(DeviceRecord dev, Action onDone)
+    {
+        var box = new TextBox
+        {
+            Margin = new Thickness(0, 10, 0, 0),
+            Padding = new Thickness(6, 4, 6, 4),
+        };
+        box.SetResourceReference(Control.BackgroundProperty, "Brush.SurfaceAlt");
+        box.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
+        box.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");
+
+        var promptBody = $"This permanently deletes all usage history and tracked apps recorded for “{dev.Name}”.\n\n{Str(SettingsStrings.DeleteDeviceHistoryConfirm)}";
+        var buttons = ShowDialog(Str(SettingsStrings.DeleteDeviceHistory), promptBody,
+            box,
+            (Str(SettingsStrings.Cancel), CloseDialog, false, false),
+            ("Delete", () =>
+            {
+                using var db = Db.Open(_dbPath);
+                DeviceIdentity.DeleteDeviceHistory(db, dev.DeviceId);
+                CloseDialog();
+                onDone();
+            }, false, true));
+
+        var deleteBtn = buttons[1];
+        deleteBtn.IsEnabled = false;
+        box.TextChanged += (_, _) => deleteBtn.IsEnabled = string.Equals(box.Text.Trim(), "DELETE", StringComparison.Ordinal);
+        box.Focus();
+    }
+
+    private IReadOnlyList<DeviceRecord> ReadDevices()
+    {
+        var list = new List<DeviceRecord>();
+        try
+        {
+            using var conn = new SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly");
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT device_id, name, platform, is_local, first_seen_utc, last_import_utc, last_file_utc, state FROM devices ORDER BY is_local DESC, first_seen_utc ASC;";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var id = r.GetString(0);
+                var name = r.GetString(1);
+                var platform = r.GetString(2);
+                var isLocal = r.GetInt64(3) == 1;
+                var firstSeen = DateTimeOffset.Parse(r.GetString(4));
+                DateTimeOffset? lastImport = r.IsDBNull(5) ? null : DateTimeOffset.Parse(r.GetString(5));
+                DateTimeOffset? lastFile = r.IsDBNull(6) ? null : DateTimeOffset.Parse(r.GetString(6));
+                var state = r.GetString(7);
+                list.Add(new DeviceRecord(id, name, platform, isLocal, firstSeen, lastImport, lastFile, state));
+            }
+        }
+        catch { }
+        return list;
+    }
+
+    private int GetDeviceAppCount(string deviceId)
+    {
+        try
+        {
+            using var conn = new SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly");
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM apps WHERE device_id = $id AND canonical_id IS NULL AND state = 'tracked';";
+            cmd.Parameters.AddWithValue("$id", deviceId);
+            return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+        }
+        catch { return 0; }
+    }
+
+    private long GetDeviceHours(string deviceId)
+    {
+        try
+        {
+            using var conn = new SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly");
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COALESCE(SUM(seconds), 0) FROM daily_usage WHERE app_id IN (SELECT id FROM apps WHERE device_id = $id);";
+            cmd.Parameters.AddWithValue("$id", deviceId);
+            var totalSeconds = Convert.ToInt64(cmd.ExecuteScalar() ?? 0L);
+            return totalSeconds / 3600;
+        }
+        catch { return 0; }
+    }
+
+    private List<string> FindMatchingCrossDeviceApps()
+    {
+        var result = new List<string>();
+        try
+        {
+            using var conn = new SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly");
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT display_name FROM apps
+                WHERE canonical_id IS NULL AND state = 'tracked'
+                GROUP BY display_name
+                HAVING COUNT(DISTINCT device_id) > 1;
+                """;
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                result.Add(r.GetString(0));
+            }
+        }
+        catch { }
+        return result;
+    }
+
+    private static string TimeAgo(long utcSeconds)
+    {
+        if (utcSeconds <= 0) return "never";
+        var span = DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeSeconds(utcSeconds);
+        if (span.TotalSeconds < 60) return "just now";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes} min ago";
+        if (span.TotalHours < 24) return $"{(int)span.TotalHours} h ago";
+        return $"{(int)span.TotalDays} d ago";
+    }
+}
