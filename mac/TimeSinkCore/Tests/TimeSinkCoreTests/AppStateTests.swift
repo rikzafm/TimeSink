@@ -265,5 +265,64 @@ final class AppStateTests: XCTestCase {
         XCTAssertNil(month.firstTracked)
         XCTAssertFalse(month.canPrev, "Month chevron should be disabled when there is no tracking data")
     }
+
+    func testSettingKeysConstants() {
+        XCTAssertEqual(SettingKeys.weekStart, "week.start")
+        XCTAssertEqual(SettingKeys.minSessionSeconds, "tracking.minSessionSeconds")
+        XCTAssertEqual(SettingKeys.theme, "ui.theme")
+        XCTAssertEqual(SettingKeys.accent, "ui.accent")
+        XCTAssertEqual(SettingKeys.appIcon, "ui.icon")
+        XCTAssertEqual(SettingKeys.showMenuBarTime, "ui.showMenuBarTime")
+        XCTAssertEqual(SettingKeys.backupMode, "backup.mode")
+        XCTAssertEqual(SettingKeys.backupLastUtc, "backup.last_utc")
+    }
+
+    func testBackupRetentionKeepsNewestSevenAndMonthly() {
+        let now = Date(timeIntervalSince1970: 1793500000) // late 2026
+
+        // Create 10 daily backup names
+        var files: [String] = []
+        for i in 1...10 {
+            files.append(String(format: "daily-202610%02d.timesink", i))
+        }
+        // Non-backup or manual files shouldn't be touched
+        files.append("manual-20261015-120000.timesink")
+        files.append("other.txt")
+
+        let toDelete = BackupRetention.filesToDelete(fileNames: files, now: now)
+        // Out of 10 daily backups, 7 newest are kept (10, 09, 08, 07, 06, 05, 04)
+        // And the newest of October 2026 is 10 (already kept).
+        // Therefore, 01, 02, 03 should be deleted.
+        XCTAssertTrue(toDelete.contains("daily-20261001.timesink"))
+        XCTAssertTrue(toDelete.contains("daily-20261002.timesink"))
+        XCTAssertTrue(toDelete.contains("daily-20261003.timesink"))
+        XCTAssertFalse(toDelete.contains("daily-20261010.timesink"))
+        XCTAssertFalse(toDelete.contains("daily-20261004.timesink"))
+        XCTAssertFalse(toDelete.contains("manual-20261015-120000.timesink"))
+        XCTAssertFalse(toDelete.contains("other.txt"))
+    }
+
+    func testAutoBackupRunIfDue() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("test-autobackup-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: tempDir) }
+
+        // Mode is not set or Off
+        try db.exec("INSERT INTO settings (key, value) VALUES ('backup.mode', 'Off');")
+        let resOff = AutoBackup.runIfDue(db: db, folder: tempDir)
+        XCTAssertNil(resOff)
+
+        // Set mode to Daily, last backup is recent (< 23 hours)
+        let now = Date()
+        let nowSec = Int64(now.timeIntervalSince1970)
+        try db.exec("INSERT INTO settings (key, value) VALUES ('backup.mode', 'Daily') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        try db.exec("INSERT INTO settings (key, value) VALUES ('backup.last_utc', '\(nowSec - 3600)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+
+        let resRecent = AutoBackup.runIfDue(db: db, folder: tempDir, now: now)
+        XCTAssertNil(resRecent)
+    }
 }
 

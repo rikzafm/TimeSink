@@ -65,10 +65,20 @@ public final class AppState: ObservableObject {
     @Published public var lastSyncUtc: Int64 = 0
     @Published public var lastBackupUtc: Int64 = 0
     @Published public var openAtLogin: Bool = false
-    @Published public var weekStart: String = "Monday"
+    @Published public var weekStart: String = "Mon"
     @Published public var pauseWhileSleep: Bool = true
     @Published public var countWhenLocked: Bool = true
     @Published public var minSessionSeconds: Int = 15
+    @Published public var theme: String = "System"
+    @Published public var accent: String = "Lime"
+    @Published public var appIcon: String = IconCatalogue.defaultId
+    @Published public var showMenuBarTime: Bool = false
+    @Published public var backupMode: String = "Daily"
+    @Published public var showingAppIconPicker: Bool = false
+
+    public var onMenuBarTimeChanged: ((Int64, Bool) -> Void)?
+    public var onThemeChanged: (() -> Void)?
+    public var onAppIconChanged: ((String) -> Void)?
 
     // All tab search and sort
     @Published public var allSearchQuery: String = ""
@@ -288,6 +298,15 @@ public final class AppState: ObservableObject {
         } catch {
             NSLog("Error executing query for \(selectedTab): \(error)")
         }
+        onMenuBarTimeChanged?(currentTodaySeconds, showMenuBarTime)
+    }
+
+    public var currentTodaySeconds: Int64 {
+        if let res = todayResult, daysBack == 0 {
+            return res.totalSeconds
+        }
+        let ctx = makeUsageContext()
+        return (try? TodayQuery.run(ctx).totalSeconds) ?? 0
     }
 
     public func openAppDetail(appId: Int64) {
@@ -394,7 +413,77 @@ public final class AppState: ObservableObject {
             if let s = try db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'tracking.minSessionSeconds';"), s > 0 {
                 self.minSessionSeconds = Int(s)
             }
+            if let t = try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.theme)';") {
+                self.theme = t
+            }
+            if let a = try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.accent)';") {
+                self.accent = a
+            }
+            ThemeManager.shared.update(theme: self.theme, accent: self.accent)
+
+            let smbt = (try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.showMenuBarTime)';"))
+            self.showMenuBarTime = smbt?.lowercased() == "true"
+
+            let storedIcon = try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.appIcon)';")
+            self.appIcon = IconCatalogue.resolve(storedIcon)
+
+            if let bm = try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.backupMode)';") {
+                self.backupMode = bm
+            }
         } catch {}
+    }
+
+    public func setAppIcon(_ iconId: String) {
+        let resolved = IconCatalogue.resolve(iconId)
+        self.appIcon = resolved
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.appIcon)', '\(resolved)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        onAppIconChanged?(resolved)
+        objectWillChange.send()
+    }
+
+    public func setWeekStart(_ val: String) {
+        self.weekStart = val
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.weekStart)', '\(val)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        refresh()
+    }
+
+    public func setMinSessionSeconds(_ seconds: Int) {
+        self.minSessionSeconds = seconds
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.minSessionSeconds)', '\(seconds)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+    }
+
+    public func setTheme(_ theme: String) {
+        self.theme = theme
+        ThemeManager.shared.update(theme: theme, accent: accent)
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.theme)', '\(theme)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        onThemeChanged?()
+        objectWillChange.send()
+        refresh()
+    }
+
+    public func setAccent(_ accent: String) {
+        self.accent = accent
+        ThemeManager.shared.update(theme: theme, accent: accent)
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.accent)', '\(accent)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        onThemeChanged?()
+        objectWillChange.send()
+        refresh()
+    }
+
+    public func setShowMenuBarTime(_ show: Bool) {
+        self.showMenuBarTime = show
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.showMenuBarTime)', '\(show ? "true" : "false")') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        onMenuBarTimeChanged?(currentTodaySeconds, show)
+    }
+
+    public func setBackupMode(_ mode: String) {
+        self.backupMode = mode
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.backupMode)', '\(mode)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+    }
+
+    public func checkAutoBackup() {
+        AutoBackup.runIfDue(db: db, folder: defaultBackupFolder)
+        self.lastBackupUtc = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'backup.last_utc';")) ?? 0
     }
 
     public func setSyncEnabled(_ enabled: Bool) {

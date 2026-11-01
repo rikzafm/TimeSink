@@ -21,7 +21,8 @@ let package = Package(
         .target(
             name: "TimeSinkCore",
             dependencies: [],
-            path: "Sources/TimeSinkCore"
+            path: "Sources/TimeSinkCore",
+            resources: [.copy("Resources")]
         ),
         .executableTarget(
             name: "TimeSinkApp",

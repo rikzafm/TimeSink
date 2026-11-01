@@ -7,39 +7,48 @@ public final class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
     private let popover: NSPopover
     private var eventMonitor: Any?
+    private var currentIconId: String
 
-    public init(popover: NSPopover) {
+    public init(popover: NSPopover, initialIconId: String = IconCatalogue.defaultId) {
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.popover = popover
+        self.currentIconId = initialIconId
         super.init()
 
         if let button = statusItem.button {
             button.target = self
             button.action = #selector(togglePopover)
-            button.image = Self.clockImage()
+            button.image = Self.iconImage(for: initialIconId)
             button.imagePosition = .imageOnly
         }
     }
 
-    /// The board's lime clock glyph.
-    private static func clockImage() -> NSImage {
-        let img = NSImage(size: NSSize(width: 12, height: 12), flipped: true) { _ in
-            let lime = NSColor(red: 0.776, green: 0.949, blue: 0.420, alpha: 1)
-            lime.setStroke()
-            let ring = NSBezierPath(ovalIn: NSRect(x: 1.5, y: 1.5, width: 9, height: 9))
-            ring.lineWidth = 1.6
-            ring.stroke()
-            let hand = NSBezierPath()
-            hand.move(to: NSPoint(x: 6, y: 3.5))
-            hand.line(to: NSPoint(x: 6, y: 6))
-            hand.line(to: NSPoint(x: 7.8, y: 7))
-            hand.lineWidth = 1.4
-            hand.lineCapStyle = .round
-            hand.stroke()
-            return true
+    /// The icon image for the menu bar.
+    public static func iconImage(for iconId: String) -> NSImage {
+        let accentColor = NSColor(ThemeColors.accent)
+        if iconId == "clean.clock" {
+            return IconCatalogue.drawClockImage(size: 12, accentColor: accentColor)
         }
-        img.isTemplate = false
-        return img
+        if let img = IconCatalogue.image(for: iconId, size: 16, accentColor: accentColor) {
+            return img
+        }
+        return IconCatalogue.drawClockImage(size: 12, accentColor: accentColor)
+    }
+
+    public func update(todaySeconds: Int64, showTime: Bool, iconId: String? = nil) {
+        guard let button = statusItem.button else { return }
+        if let iconId {
+            self.currentIconId = iconId
+        }
+        button.image = Self.iconImage(for: currentIconId)
+        if showTime && todaySeconds > 0 {
+            button.imagePosition = .imageLeading
+            button.title = " \(Formatters.paddedHM(todaySeconds))"
+            button.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+        } else {
+            button.imagePosition = .imageOnly
+            button.title = ""
+        }
     }
 
     @objc private func togglePopover() {
@@ -66,4 +75,3 @@ public final class StatusBarController: NSObject {
         }
     }
 }
-

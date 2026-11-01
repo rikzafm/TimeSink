@@ -25,6 +25,8 @@ public struct SettingsView: View {
         Group {
             if state.showingDevicesSync {
                 DevicesSyncView(state: state)
+            } else if state.showingAppIconPicker {
+                AppIconPickerView(state: state)
             } else {
                 mainSettingsView
             }
@@ -87,10 +89,14 @@ public struct SettingsView: View {
                             )
                         )
                         settingsRule
-                        settingValueRow(
+                        settingSegmentedRow(
                             label: "Week starts on",
                             desc: "",
-                            value: state.weekStart
+                            options: [("Mon", "Mon"), ("Sun", "Sun"), ("Sat", "Sat")],
+                            selection: Binding(
+                                get: { WeekStart.parse(state.weekStart).rawValue },
+                                set: { state.setWeekStart($0) }
+                            )
                         )
                     }
 
@@ -114,26 +120,86 @@ public struct SettingsView: View {
                             )
                         )
                         settingsRule
-                        settingValueRow(
+                        settingSegmentedRow(
                             label: "Ignore short sessions",
                             desc: "Shorter than this are dropped",
-                            value: "\(state.minSessionSeconds) s"
+                            options: [(5, "5s"), (15, "15s"), (30, "30s")],
+                            selection: Binding(
+                                get: { state.minSessionSeconds },
+                                set: { state.setMinSessionSeconds($0) }
+                            )
                         )
                     }
 
                     // APPEARANCE
                     settingsSection(title: "APPEARANCE") {
-                        settingValueRow(
+                        settingSegmentedRow(
                             label: "Theme",
                             desc: "Follows macOS when set to System",
-                            value: "System"
+                            options: [("System", "System"), ("Dark", "Dark"), ("Light", "Light")],
+                            selection: Binding(
+                                get: { state.theme },
+                                set: { state.setTheme($0) }
+                            )
                         )
                         settingsRule
-                        settingValueRow(
+                        settingSegmentedRow(
                             label: "Accent",
                             desc: "",
-                            value: "Lime"
+                            options: [("Lime", "Lime"), ("Blue", "Blue"), ("Pink", "Pink")],
+                            selection: Binding(
+                                get: { state.accent },
+                                set: { state.setAccent($0) }
+                            )
                         )
+                        settingsRule
+                        settingSwitchRow(
+                            label: "Show time in the menu bar",
+                            desc: "Today’s total next to the icon",
+                            isOn: Binding(
+                                get: { state.showMenuBarTime },
+                                set: { state.setShowMenuBarTime($0) }
+                            )
+                        )
+                        settingsRule
+                        Button(action: {
+                            state.showingAppIconPicker = true
+                        }) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("App icon")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(ThemeColors.textPrimary)
+                                    Text("How TimeSink looks in the menu bar.")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(ThemeColors.textMuted)
+                                }
+                                Spacer()
+                                HStack(spacing: 6) {
+                                    let currentId = state.appIcon
+                                    if let entry = IconCatalogue.find(currentId) {
+                                        if let thumb = IconCatalogue.image(for: currentId, size: 20, accentColor: NSColor(ThemeColors.accent)) {
+                                            Image(nsImage: thumb)
+                                                .resizable()
+                                                .interpolation(.high)
+                                                .aspectRatio(contentMode: .fit)
+                                                .frame(width: 20, height: 20)
+                                                .cornerRadius(4)
+                                        }
+                                        Text(entry.name)
+                                            .font(.system(size: 12))
+                                            .foregroundColor(ThemeColors.textDim)
+                                    }
+                                    Text("›")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(ThemeColors.textMuted)
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     // DEVICES AND SYNC
@@ -207,10 +273,14 @@ public struct SettingsView: View {
 
                     // BACKUP AND DATA
                     settingsSection(title: "BACKUP AND DATA") {
-                        settingValueRow(
+                        settingSegmentedRow(
                             label: "Automatic backup",
                             desc: "Keeps the last 7 plus one per month",
-                            value: "Daily"
+                            options: [("Off", "Off"), ("Daily", "Daily"), ("Weekly", "Weekly")],
+                            selection: Binding(
+                                get: { state.backupMode },
+                                set: { state.setBackupMode($0) }
+                            )
                         )
                         settingsRule
 
@@ -369,6 +439,25 @@ public struct SettingsView: View {
             rowLabels(label, desc)
             Spacer()
             TSSwitch(isOn: isOn)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(minHeight: 44)
+    }
+
+    @ViewBuilder
+    private func settingSegmentedRow<T: Hashable>(label: String, desc: String, options: [(T, String)], selection: Binding<T>) -> some View {
+        HStack(spacing: 10) {
+            rowLabels(label, desc)
+            Spacer()
+            Segmented(
+                options: options,
+                selection: selection,
+                hPad: 8,
+                radius: 7,
+                fill: Tokens.well,
+                border: ThemeColors.borderSubtle
+            )
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
