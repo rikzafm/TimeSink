@@ -72,7 +72,7 @@ public final class SQLiteDatabase: @unchecked Sendable {
         if sqlite3_exec(handle, sql, nil, nil, &errorMsg) != SQLITE_OK {
             let msg = errorMsg != nil ? String(cString: errorMsg!) : String(cString: sqlite3_errmsg(handle))
             sqlite3_free(errorMsg)
-            throw SQLiteError.executionFailed(msg)
+            throw SQLiteError.executionFailed("\(msg) [SQL: \(sql)]")
         }
     }
 

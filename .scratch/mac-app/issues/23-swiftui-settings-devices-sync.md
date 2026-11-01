@@ -1,6 +1,6 @@
 # SwiftUI Settings and Devices and sync
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 6)
 Blocked by: 22, 24
 Design: design/mac/Settings.dc.html, design/mac/Sync.dc.html

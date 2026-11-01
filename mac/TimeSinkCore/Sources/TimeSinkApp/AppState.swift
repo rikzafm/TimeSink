@@ -53,6 +53,20 @@ public final class AppState: ObservableObject {
     @Published public var selectedAppDetailId: Int64?
     @Published public var showingAddApp: Bool = false
     @Published public var showingSettings: Bool = false
+    @Published public var showingDevicesSync: Bool = false
+
+    // Settings & Sync State
+    @Published public var syncEnabled: Bool = false
+    @Published public var syncFolder: String = ""
+    @Published public var syncState: String = ""
+    @Published public var lastSyncUtc: Int64 = 0
+    @Published public var lastBackupUtc: Int64 = 0
+    @Published public var openAtLogin: Bool = false
+    @Published public var showMenuBarTime: Bool = true
+    @Published public var weekStart: String = "Monday"
+    @Published public var pauseWhileSleep: Bool = true
+    @Published public var countWhenLocked: Bool = true
+    @Published public var minSessionSeconds: Int = 15
 
     // All tab search and sort
     @Published public var allSearchQuery: String = ""
@@ -72,6 +86,7 @@ public final class AppState: ObservableObject {
         self.db = db
         self.iconCache = MacIconCache(db: db)
         loadDeviceInfo()
+        loadSettings()
         refresh()
     }
 
@@ -192,4 +207,274 @@ public final class AppState: ObservableObject {
         self.appDetailResult = nil
         refresh()
     }
+
+    // MARK: - Device and Sync Management
+
+    public func loadSettings() {
+        do {
+            self.syncEnabled = (try db.scalarText("SELECT value FROM settings WHERE key = 'sync.enabled';"))?.lowercased() == "true"
+            self.syncFolder = (try db.scalarText("SELECT value FROM settings WHERE key = 'sync.folder';")) ?? ""
+            self.syncState = (try db.scalarText("SELECT value FROM settings WHERE key = 'sync.state';")) ?? ""
+            let lastExp = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'sync.last_export_utc';")) ?? 0
+            let lastImp = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'sync.last_import_utc';")) ?? 0
+            self.lastSyncUtc = max(lastExp, lastImp)
+            self.lastBackupUtc = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'backup.last_utc';")) ?? 0
+            self.openAtLogin = LoginItemManager.shared.isEnabled
+            self.showMenuBarTime = (try db.scalarText("SELECT value FROM settings WHERE key = 'ui.showMenuBarTime';")) != "false"
+            self.pauseWhileSleep = (try db.scalarText("SELECT value FROM settings WHERE key = 'tracking.pauseWhileSleep';")) != "false"
+            self.countWhenLocked = (try db.scalarText("SELECT value FROM settings WHERE key = 'tracking.countWhenLocked';")) != "false"
+            if let s = try db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'tracking.minSessionSeconds';"), s > 0 {
+                self.minSessionSeconds = Int(s)
+            }
+        } catch {}
+    }
+
+    public func setSyncEnabled(_ enabled: Bool) {
+        self.syncEnabled = enabled
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.enabled', '\(enabled ? "true" : "false")') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        if enabled {
+            let now = Int64(Date().timeIntervalSince1970)
+            try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.enabled_utc', '\(now)') ON CONFLICT(key) DO NOTHING;")
+            triggerSyncNow()
+        }
+    }
+
+    public func setSyncFolder(_ folder: String) {
+        self.syncFolder = folder
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.folder', '\(folder)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        if syncEnabled {
+            triggerSyncNow()
+        }
+    }
+
+    public func setOpenAtLogin(_ enabled: Bool) {
+        self.openAtLogin = enabled
+        try? LoginItemManager.shared.setEnabled(enabled)
+    }
+
+    public func setShowMenuBarTime(_ show: Bool) {
+        self.showMenuBarTime = show
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('ui.showMenuBarTime', '\(show ? "true" : "false")') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+    }
+
+    public func setPauseWhileSleep(_ pause: Bool) {
+        self.pauseWhileSleep = pause
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('tracking.pauseWhileSleep', '\(pause ? "true" : "false")') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+    }
+
+    public func setCountWhenLocked(_ count: Bool) {
+        self.countWhenLocked = count
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('tracking.countWhenLocked', '\(count ? "true" : "false")') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+    }
+
+    public func readDevices() -> [DeviceRow] {
+        var list: [DeviceRow] = []
+        do {
+            let stmt = try db.prepare("""
+                SELECT device_id, name, platform, is_local, first_seen_utc, last_import_utc, last_file_utc, state
+                FROM devices
+                ORDER BY is_local DESC, first_seen_utc ASC;
+            """)
+            let iso = ISO8601DateFormatter()
+            iso.formatOptions = [.withInternetDateTime]
+            while try stmt.step() {
+                let id = stmt.columnText(at: 0) ?? ""
+                let name = stmt.columnText(at: 1) ?? ""
+                let platform = stmt.columnText(at: 2) ?? "macos"
+                let isLocal = stmt.columnInt64(at: 3) == 1
+                let firstSeen = stmt.columnText(at: 4) ?? ""
+                let lastImportStr = stmt.columnText(at: 5)
+                let lastFileStr = stmt.columnText(at: 6)
+                let state = stmt.columnText(at: 7) ?? "active"
+
+                var lastImportUtc: Int64? = nil
+                if let s = lastImportStr, let d = iso.date(from: s) {
+                    lastImportUtc = Int64(d.timeIntervalSince1970)
+                }
+                var lastFileUtc: Int64? = nil
+                if let s = lastFileStr, let d = iso.date(from: s) {
+                    lastFileUtc = Int64(d.timeIntervalSince1970)
+                }
+
+                let appCount = Int((try? db.scalarInt("SELECT COUNT(*) FROM apps WHERE device_id = '\(id)' AND canonical_id IS NULL AND state = 'tracked';")) ?? 0)
+                let totalSecs = (try? db.scalarInt("SELECT COALESCE(SUM(seconds), 0) FROM daily_usage WHERE app_id IN (SELECT id FROM apps WHERE device_id = '\(id)');")) ?? 0
+                let hours = totalSecs / 3600
+
+                list.append(DeviceRow(
+                    deviceId: id,
+                    name: name,
+                    platform: platform,
+                    isLocal: isLocal,
+                    firstSeenUtc: firstSeen,
+                    lastImportUtc: lastImportUtc,
+                    lastFileUtc: lastFileUtc,
+                    state: state,
+                    appCount: appCount,
+                    totalHours: hours
+                ))
+            }
+        } catch {}
+        return list
+    }
+
+    public func renameDevice(deviceId: String, newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            let stmt = try db.prepare("UPDATE devices SET name = ? WHERE device_id = ?;")
+            try stmt.bind(text: trimmed, at: 1)
+            try stmt.bind(text: deviceId, at: 2)
+            _ = try stmt.step()
+
+            if deviceId == localDeviceId {
+                self.localDeviceName = trimmed
+                try? db.exec("INSERT INTO settings (key, value) VALUES ('device.name', '\(trimmed)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+            } else if deviceId == remoteDeviceId {
+                self.remoteDeviceName = trimmed
+            }
+            refresh()
+        } catch {}
+    }
+
+    public func forgetDevice(deviceId: String) {
+        do {
+            let stmt = try db.prepare("UPDATE devices SET state = 'forgotten' WHERE device_id = ?;")
+            try stmt.bind(text: deviceId, at: 1)
+            _ = try stmt.step()
+            loadDeviceInfo()
+            refresh()
+        } catch {}
+    }
+
+    public func deleteDeviceHistory(deviceId: String) {
+        do {
+            try db.transaction {
+                try db.exec("DELETE FROM sessions WHERE app_id IN (SELECT id FROM apps WHERE device_id = '\(deviceId)');")
+                try db.exec("DELETE FROM daily_usage WHERE app_id IN (SELECT id FROM apps WHERE device_id = '\(deviceId)');")
+                try db.exec("DELETE FROM icons WHERE app_id IN (SELECT id FROM apps WHERE device_id = '\(deviceId)');")
+                try db.exec("DELETE FROM apps WHERE device_id = '\(deviceId)';")
+                try db.exec("DELETE FROM devices WHERE device_id = '\(deviceId)';")
+            }
+            let acc = UsageAccumulator(store: SQLiteSessionStore(db: db), timeZone: .current)
+            try acc.rebuildAll()
+            loadDeviceInfo()
+            refresh()
+        } catch {}
+    }
+
+    public func findMatchingCrossDeviceApps() -> [String] {
+        var names: [String] = []
+        do {
+            let stmt = try db.prepare("""
+                SELECT display_name FROM apps
+                WHERE canonical_id IS NULL AND state = 'tracked'
+                GROUP BY display_name
+                HAVING COUNT(DISTINCT device_id) > 1;
+            """)
+            while try stmt.step() {
+                if let n = stmt.columnText(at: 0), !n.isEmpty {
+                    names.append(n)
+                }
+            }
+        } catch {}
+        return names
+    }
+
+    public func triggerSyncNow() {
+        guard syncEnabled, !syncFolder.isEmpty, FileManager.default.fileExists(atPath: syncFolder) else { return }
+        do {
+            _ = try SyncWriter.write(db: db, syncFolder: syncFolder)
+            let files = try FileManager.default.contentsOfDirectory(atPath: syncFolder)
+            for f in files where f.hasSuffix(SyncWriter.extension) && !f.hasSuffix(".tmp") {
+                let fullPath = (syncFolder as NSString).appendingPathComponent(f)
+                let base = (f as NSString).deletingPathExtension
+                if base.caseInsensitiveCompare(localDeviceId) == .orderedSame { continue }
+                if SyncReader.isConflictCopy(filePath: fullPath) { continue }
+                if SyncReader.isPlaceholder(filePath: fullPath) { continue }
+                _ = try SyncReader.import(syncFile: fullPath, db: db, timeZone: .current)
+            }
+            loadSettings()
+            loadDeviceInfo()
+            refresh()
+        } catch {
+            NSLog("Manual sync error: \(error)")
+        }
+    }
+
+    // MARK: - Backup and Data Lifecycle
+
+    public var defaultBackupFolder: String {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let folder = appSupport.appendingPathComponent("TimeSink/backups").path
+        try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        return folder
+    }
+
+    public func backupNow() -> (success: Bool, error: String?) {
+        let df = DateFormatter()
+        df.dateFormat = "yyyyMMdd-HHmmss"
+        df.timeZone = TimeZone(secondsFromGMT: 0)
+        let now = Date()
+        let backupFileName = "timesink-backup-\(df.string(from: now)).timesink"
+        let backupPath = (defaultBackupFolder as NSString).appendingPathComponent(backupFileName)
+        do {
+            try BackupService.create(dbPath: db.path, destFile: backupPath, now: now)
+            let nowUnix = Int64(now.timeIntervalSince1970)
+            try? db.exec("INSERT INTO settings (key, value) VALUES ('backup.last_utc', '\(nowUnix)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+            loadSettings()
+            return (true, nil)
+        } catch {
+            return (false, error.localizedDescription)
+        }
+    }
+
+    public func restore(from backupFile: String, replace: Bool) throws -> String {
+        if replace {
+            let result = try BackupService.replace(backupFile: backupFile, dbPath: db.path, safetyFolder: defaultBackupFolder, now: Date(), zone: .current)
+            loadDeviceInfo()
+            loadSettings()
+            refresh()
+            if let sc = result.safetyCopy {
+                return "Replaced database from backup. Safety copy saved to \(URL(fileURLWithPath: sc).lastPathComponent)."
+            }
+            return "Replaced database from backup."
+        } else {
+            let result = try BackupService.merge(backupFile: backupFile, dbPath: db.path, zone: .current)
+            loadDeviceInfo()
+            loadSettings()
+            refresh()
+            return "Merged \(result.sessionsAdded) sessions (\(result.sessionsSkipped) already existed) and \(result.appsAdded) apps."
+        }
+    }
+
+    public func exportCsv(folder: String) throws -> (sessionsCsv: String, dailyCsv: String) {
+        return try DataExport.exportCsv(dbPath: db.path, folder: folder)
+    }
+
+    public func exportJson(file: String) throws {
+        try DataExport.exportJson(dbPath: db.path, file: file)
+    }
+
+    public func deleteAllHistory(confirmation: String) throws {
+        try DataExport.deleteAllHistory(db: db, confirmation: confirmation)
+        let acc = UsageAccumulator(store: SQLiteSessionStore(db: db), timeZone: .current)
+        try acc.rebuildAll()
+        loadDeviceInfo()
+        loadSettings()
+        refresh()
+    }
+}
+
+public struct DeviceRow: Identifiable {
+    public var id: String { deviceId }
+    public let deviceId: String
+    public let name: String
+    public let platform: String
+    public let isLocal: Bool
+    public let firstSeenUtc: String
+    public let lastImportUtc: Int64?
+    public let lastFileUtc: Int64?
+    public let state: String
+    public let appCount: Int
+    public let totalHours: Int64
 }

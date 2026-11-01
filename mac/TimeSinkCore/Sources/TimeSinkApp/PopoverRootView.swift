@@ -10,7 +10,9 @@ public struct PopoverRootView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            if state.showingAddApp {
+            if state.showingSettings {
+                SettingsView(state: state)
+            } else if state.showingAddApp {
                 AddAppView(state: state) {
                     state.showingAddApp = false
                 }
