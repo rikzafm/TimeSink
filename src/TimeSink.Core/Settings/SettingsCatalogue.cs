@@ -50,6 +50,7 @@ public static class SettingsCatalogue
 
         new("devicesSync", DevicesAndSync, "Sync with other devices", "Works with OneDrive, Google Drive or any synced folder.", SettingKind.Button),
         new("deviceName", DevicesAndSync, "This PC is called", "Shown on combined reports", SettingKind.Info),
+        new("shortDeviceNames", DevicesAndSync, "Use short device names", "Show short labels (PC / Mac) on views instead of full device names", SettingKind.Switch, Setting.ShortDeviceNames),
 
         new("goalAlerts", Notifications, "Goal and limit alerts", "A notification when a goal or limit is reached.", SettingKind.Switch, Setting.GoalAlerts),
         new("weeklySummary", Notifications, "Weekly summary", "A short recap at the start of each week.", SettingKind.Switch, Setting.WeeklySummary),

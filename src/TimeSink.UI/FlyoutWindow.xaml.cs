@@ -1,3 +1,8 @@
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Threading;
+using TimeSink.Core.Backup;
+using TimeSink.Core.Sync;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -28,6 +33,9 @@ public partial class FlyoutWindow : Window
     private LiveState Live => _live ??= new LiveState(PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB")));
 
     private readonly ThemeService _themes;
+    private bool _isSyncing;
+    private Storyboard? _syncSpinStoryboard;
+    private readonly DispatcherTimer _footerTimer = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly string _dbPath;
     private readonly Dictionary<ShellTab, UIElement> _bodies = new();
 
@@ -89,10 +97,17 @@ public partial class FlyoutWindow : Window
             b.IsChecked = tab == initialTab;
             b.Checked += (_, _) => Select(tab, persist: true);
         }
+        FooterSyncButton.Click += async (_, _) => await OnFooterSyncClickedAsync();
+        _footerTimer.Tick += (_, _) => UpdateFooterStatus();
+        _footerTimer.Start();
         UpdateFooterStatus();
         Live.Changed += () => Dispatcher.InvokeAsync(UpdateFooterStatus);
         Select(initialTab, persist: false);
-        Closed += (_, _) => _live?.Dispose();
+        Closed += (_, _) =>
+        {
+            _footerTimer.Stop();
+            _live?.Dispose();
+        };
 #if DEBUG
         if (Environment.GetEnvironmentVariable("TS_OPENSETTINGS") == "1") Loaded += (_, _) => ToggleSettings();
         if (Environment.GetEnvironmentVariable("TS_OPENICON") == "1") Loaded += (_, _) => { ToggleSettings(); _settings!.OpenIconPicker(); }; // test aid
@@ -173,23 +188,146 @@ public partial class FlyoutWindow : Window
 
     private static string Str(string key, params object[] args) => TimeText.Str(key, args);
 
+    private void StartSyncAnimation()
+    {
+        if (_syncSpinStoryboard == null)
+        {
+            var anim = new DoubleAnimation
+            {
+                From = 0,
+                To = 360,
+                Duration = TimeSpan.FromSeconds(1),
+                RepeatBehavior = RepeatBehavior.Forever
+            };
+            Storyboard.SetTarget(anim, FooterSyncRotate);
+            Storyboard.SetTargetProperty(anim, new PropertyPath(RotateTransform.AngleProperty));
+            _syncSpinStoryboard = new Storyboard();
+            _syncSpinStoryboard.Children.Add(anim);
+        }
+        _syncSpinStoryboard.Begin();
+    }
+
+    private void StopSyncAnimation()
+    {
+        _syncSpinStoryboard?.Stop();
+        FooterSyncRotate.Angle = 0;
+    }
+
     private void UpdateFooterStatus()
     {
-        var updated = Str(StringKeys.FooterUpdatedJustNow);
-        var syncOn = AppSettings.ForFile(_dbPath).Get(Setting.SyncEnabled);
-        if (syncOn || Live.DeviceScope == TimeSink.Core.Devices.DeviceScope.All)
+        if (_isSyncing)
         {
-            var lastExport = AppSettings.ForFile(_dbPath).Get(Setting.SyncLastExportUtc);
-            var lastImport = AppSettings.ForFile(_dbPath).Get(Setting.SyncLastImportUtc);
-            var lastSyncUtc = Math.Max(lastExport, lastImport);
-            if (lastSyncUtc > 0)
+            FooterSyncText.Text = "Syncing...";
+            FooterSyncButton.SetResourceReference(ForegroundProperty, "Brush.Accent");
+            StartSyncAnimation();
+            return;
+        }
+
+        StopSyncAnimation();
+
+        var settings = AppSettings.ForFile(_dbPath);
+        var syncOn = settings.Get(Setting.SyncEnabled);
+        var syncState = settings.Get(Setting.SyncState) ?? "";
+
+        if (!syncOn)
+        {
+            FooterSyncText.Text = "Sync off";
+            FooterSyncButton.SetResourceReference(ForegroundProperty, "Brush.TextMuted");
+            return;
+        }
+
+        if (syncState.Contains("error", StringComparison.OrdinalIgnoreCase))
+        {
+            FooterSyncText.Text = "Sync error";
+            FooterSyncButton.SetResourceReference(ForegroundProperty, "Brush.Warning");
+            return;
+        }
+
+        var lastExport = settings.Get(Setting.SyncLastExportUtc);
+        var lastImport = settings.Get(Setting.SyncLastImportUtc);
+        var lastSyncUtc = Math.Max(lastExport, lastImport);
+
+        if (lastSyncUtc <= 0)
+        {
+            FooterSyncText.Text = "Never";
+            FooterSyncButton.SetResourceReference(ForegroundProperty, "Brush.TextMuted");
+            return;
+        }
+
+        FooterSyncText.Text = TimeAgo(lastSyncUtc);
+        FooterSyncButton.SetResourceReference(ForegroundProperty, "Brush.TextMuted");
+    }
+
+    private async Task OnFooterSyncClickedAsync()
+    {
+        if (_isSyncing) return;
+
+        var settings = AppSettings.ForFile(_dbPath);
+        var syncOn = settings.Get(Setting.SyncEnabled);
+        var folder = settings.Get(Setting.SyncFolder) ?? "";
+        var syncState = settings.Get(Setting.SyncState) ?? "";
+
+        if (!syncOn || string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder) || syncState.Contains("error", StringComparison.OrdinalIgnoreCase))
+        {
+            // Open Devices & Sync settings
+            if (_settings == null || Overlay.Content != _settings)
             {
-                var ago = TimeAgo(lastSyncUtc);
-                FooterStatusText.Text = $"{updated} · {Str(StringKeys.FooterSynced, ago)}";
-                return;
+                ToggleSettings();
+            }
+            _settings?.OpenDevicesSync();
+            return;
+        }
+
+        _isSyncing = true;
+        UpdateFooterStatus();
+
+        var start = DateTimeOffset.UtcNow;
+        await Task.Run(TriggerDirectSync);
+
+        var elapsed = DateTimeOffset.UtcNow - start;
+        if (elapsed.TotalMilliseconds < 600)
+        {
+            await Task.Delay(600 - (int)elapsed.TotalMilliseconds);
+        }
+
+        _isSyncing = false;
+        UpdateFooterStatus();
+        Live.NotifyDataChanged();
+    }
+
+    private void TriggerDirectSync()
+    {
+        try
+        {
+            using var ev = System.Threading.EventWaitHandle.OpenExisting(AgentSignals.SyncNowEventName);
+            ev.Set();
+        }
+        catch { }
+
+        try
+        {
+            var settings = AppSettings.ForFile(_dbPath);
+            if (settings.Get(Setting.SyncEnabled))
+            {
+                var folder = settings.Get(Setting.SyncFolder);
+                if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
+                {
+                    SyncWriter.Write(_dbPath, folder, DateTimeOffset.UtcNow);
+                    var files = Directory.GetFiles(folder, "*" + SyncWriter.Extension);
+                    foreach (var file in files)
+                    {
+                        if (file.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (SyncReader.IsConflictCopy(file)) continue;
+                        if (SyncReader.IsPlaceholder(file)) continue;
+                        SyncReader.Import(file, _dbPath, TimeZoneInfo.Local);
+                    }
+                }
             }
         }
-        FooterStatusText.Text = updated;
+        catch (Exception ex)
+        {
+            Trace.WriteLine("Direct sync error: " + ex);
+        }
     }
 
     private static string TimeAgo(long utcSeconds)

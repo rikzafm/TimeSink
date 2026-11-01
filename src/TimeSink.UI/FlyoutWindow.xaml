@@ -111,9 +111,24 @@
                 <Grid>
                     <Button x:Name="AddAppButton" Style="{StaticResource LinkButton}" HorizontalAlignment="Left"
                             Foreground="{DynamicResource Brush.Accent}" Content="{DynamicResource Str.AddApp}"/>
-                    <TextBlock x:Name="FooterStatusText" HorizontalAlignment="Right" VerticalAlignment="Center"
-                               FontSize="{DynamicResource Double.FontSize.Small}" FontFamily="{DynamicResource FontFamily.Ui}"
-                               Foreground="{DynamicResource Brush.TextMuted}"/>
+                    <Button x:Name="FooterSyncButton" Style="{StaticResource LinkButton}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Focusable="False" Foreground="{DynamicResource Brush.TextMuted}" Padding="4,2">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Viewbox Width="12" Height="12" Margin="0,0,5,0" RenderTransformOrigin="0.5,0.5">
+                                <Viewbox.RenderTransform>
+                                    <RotateTransform x:Name="FooterSyncRotate" Angle="0"/>
+                                </Viewbox.RenderTransform>
+                                <Canvas Width="24" Height="24">
+                                    <Path x:Name="FooterSyncPath"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                          Data="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3L21.5 8M22 12.5a10 10 0 0 1-18.8 4.2L2.5 16"/>
+                                </Canvas>
+                            </Viewbox>
+                            <TextBlock x:Name="FooterSyncText" VerticalAlignment="Center"
+                                       FontSize="{DynamicResource Double.FontSize.Small}" FontFamily="{DynamicResource FontFamily.Ui}"/>
+                        </StackPanel>
+                    </Button>
                 </Grid>
             </Border>
 

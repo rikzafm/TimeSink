@@ -316,8 +316,8 @@ public sealed class WeekView : UserControl, ILiveView
         var ordered = (deviceTotals ?? new Dictionary<string, long>())
             .OrderByDescending(kv => DeviceInfoService.IsLocal(_deviceInfo, kv.Key, localDeviceId))
             .ToList();
-        var nameA = ordered.Count > 0 ? DeviceInfoService.GetName(_deviceInfo, ordered[0].Key, true) : "Mac";
-        var nameB = ordered.Count > 1 ? DeviceInfoService.GetName(_deviceInfo, ordered[1].Key, false) : "PC";
+        var nameA = ordered.Count > 0 ? DeviceInfoService.GetName(_deviceInfo, ordered[0].Key, true) : "PC";
+        var nameB = ordered.Count > 1 ? DeviceInfoService.GetName(_deviceInfo, ordered[1].Key, false) : "Mac";
         _legendTextA.Text = nameA;
         _legendTextB.Text = nameB;
     }

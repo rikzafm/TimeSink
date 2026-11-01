@@ -196,8 +196,13 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         var localId = _live?.LocalDeviceId;
         var localEntry = devInfo.Values.FirstOrDefault(v => v.IsLocal);
         var remoteEntry = devInfo.Values.FirstOrDefault(v => !v.IsLocal);
-        var devAName = !string.IsNullOrEmpty(localEntry.Name) ? localEntry.Name : "PC";
-        var devBName = !string.IsNullOrEmpty(remoteEntry.Name) ? remoteEntry.Name : "Mac";
+        var devAName = localId != null && devInfo.TryGetValue(localId, out var li) && !string.IsNullOrEmpty(li.Name)
+            ? li.Name
+            : (!string.IsNullOrEmpty(localEntry.Name) ? localEntry.Name : "PC");
+        var remoteDevId = r.DeviceTotals?.Keys.FirstOrDefault(k => k != localId && devInfo.ContainsKey(k));
+        var devBName = remoteDevId != null && devInfo.TryGetValue(remoteDevId, out var ri) && !string.IsNullOrEmpty(ri.Name)
+            ? ri.Name
+            : (!string.IsNullOrEmpty(remoteEntry.Name) ? remoteEntry.Name : "Mac");
         return (isMultiDev, devAName, devBName, devInfo, localId);
     }
 

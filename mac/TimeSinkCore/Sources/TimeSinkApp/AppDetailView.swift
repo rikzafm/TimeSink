@@ -181,10 +181,12 @@ public struct AppDetailView: View {
     private func deviceCard(_ result: AppDetailResult) -> some View {
         let split = state.deviceSplit(result.deviceSeconds)
         return VStack(spacing: 6) {
+            let localName = state.deviceADisplayName()
+            let remoteName = state.deviceBDisplayName()
             HStack {
-                HStack(spacing: 6) { DeviceMarker(isLocal: true, size: 7); Text("Mac \(Formatters.hours(split.mac))") }
+                HStack(spacing: 6) { DeviceMarker(isLocal: true, size: 7); Text("\(localName) \(Formatters.hours(split.mac))") }
                 Spacer()
-                HStack(spacing: 6) { Text("PC \(Formatters.hours(split.pc))"); DeviceMarker(isLocal: false, size: 7) }
+                HStack(spacing: 6) { Text("\(remoteName) \(Formatters.hours(split.pc))"); DeviceMarker(isLocal: false, size: 7) }
             }
             .font(.system(size: 11))
             .foregroundColor(ThemeColors.textDim)

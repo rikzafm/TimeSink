@@ -48,13 +48,36 @@ internal sealed class AppGroups
     public IReadOnlyList<GroupedApp> Members(long group) =>
         _apps.Values.Where(a => a.Group == group).OrderBy(a => a.Id != group).ThenBy(a => a.Id).ToList();
 
-    /// <summary>Builds the groups from rows as read, applying the rule for a Merged app whose Main app is retired or gone.</summary>
+    /// <summary>Builds the groups from rows as read, applying the rule for a Merged app whose Main app is retired or gone,
+    /// and inheriting highest classification specificity (Gacha > Game > Other, Background flag) across merged group members.</summary>
     public static AppGroups From(IEnumerable<GroupedApp> rows)
     {
         var d = new Dictionary<long, GroupedApp>();
         foreach (var a in rows) d[a.Id] = a;
         foreach (var a in d.Values.ToList())
             if (a.Group != a.Id && (!d.TryGetValue(a.Group, out var main) || (main.Retired && !a.Retired))) d[a.Id] = a with { Group = a.Id };
+
+        // Inherit highest classification specificity across merged group members
+        var groups = d.Values.GroupBy(a => a.Group).ToList();
+        foreach (var grp in groups)
+        {
+            var members = grp.ToList();
+            if (members.Count <= 1) continue;
+
+            var effectiveKind = members.Any(m => m.Kind == AppKind.Gacha) ? AppKind.Gacha
+                : members.Any(m => m.Kind == AppKind.Game) ? AppKind.Game
+                : (members.FirstOrDefault(m => m.Id == grp.Key) ?? members[0]).Kind;
+            var effectiveBg = members.Any(m => m.Background);
+
+            foreach (var m in members)
+            {
+                if (m.Kind != effectiveKind || m.Background != effectiveBg)
+                {
+                    d[m.Id] = m with { Kind = effectiveKind, Background = effectiveBg };
+                }
+            }
+        }
+
         return new AppGroups(d);
     }
 

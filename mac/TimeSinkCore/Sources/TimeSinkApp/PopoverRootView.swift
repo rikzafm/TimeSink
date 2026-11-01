@@ -79,35 +79,94 @@ public struct PopoverRootView: View {
             .foregroundColor(ThemeColors.textMuted)
     }
 
-    @ViewBuilder
     private var footerTrailing: some View {
-        switch state.selectedTab {
-        case .today:
-            if state.deviceScope == .all && state.lastSyncUtc > 0 {
-                muted("Updated just now · synced \(Formatters.timeAgo(state.lastSyncUtc))", size: 11)
+        FooterSyncStatusView(state: state)
+    }
+}
+
+struct FooterSyncStatusView: View {
+    @ObservedObject var state: AppState
+    @State private var isSpinning: Bool = false
+
+    var body: some View {
+        Button(action: handleClick) {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 11, weight: .medium))
+                    .rotationEffect(.degrees(isSpinning ? 360 : 0))
+                    .animation(
+                        state.isSyncing
+                            ? Animation.linear(duration: 1.0).repeatForever(autoreverses: false)
+                            : .default,
+                        value: isSpinning
+                    )
+
+                Text(statusText)
+                    .font(.system(size: 11))
+            }
+            .foregroundColor(statusColor)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            if inside {
+                NSCursor.pointingHand.push()
             } else {
-                muted("Updated just now", size: 11)
+                NSCursor.pop()
             }
-        case .week:
-            muted("Last backup · \(Formatters.timeAgo(state.lastBackupUtc))")
-        case .month:
-            Button(action: { state.exportMonthCsv() }) {
-                Text("Export month (CSV)")
-                    .font(.system(size: 12))
-                    .foregroundColor(ThemeColors.textDim)
+        }
+        .onAppear {
+            if state.isSyncing {
+                isSpinning = true
             }
-            .buttonStyle(.plain)
-        case .year:
-            switch state.yearSubView {
-            case .pace:
-                muted("Tap a month")
-            case .wrapped:
-                EmptyView()
-            case .matrix:
-                muted("Tap an app or a month")
+        }
+        .onChange(of: state.isSyncing) { syncing in
+            if syncing {
+                isSpinning = true
+            } else {
+                isSpinning = false
             }
-        case .all:
-            EmptyView()
+        }
+    }
+
+    private var statusText: String {
+        if state.isSyncing {
+            return "Syncing..."
+        }
+        if !state.syncEnabled {
+            return "Sync off"
+        }
+        if state.syncState.lowercased().contains("error") {
+            return "Sync error"
+        }
+        if state.lastSyncUtc <= 0 {
+            return "Never"
+        }
+        return Formatters.timeAgo(state.lastSyncUtc)
+    }
+
+    private var statusColor: Color {
+        if state.isSyncing {
+            return ThemeColors.accent
+        }
+        if !state.syncEnabled {
+            return ThemeColors.textDim
+        }
+        if state.syncState.lowercased().contains("error") {
+            return ThemeColors.warning
+        }
+        return ThemeColors.textMuted
+    }
+
+    private func handleClick() {
+        if state.isSyncing { return }
+        if state.syncEnabled && !state.syncFolder.isEmpty && FileManager.default.fileExists(atPath: state.syncFolder) && !state.syncState.lowercased().contains("error") {
+            state.triggerSyncNow()
+        } else {
+            state.showingSettings = true
+            state.showingDevicesSync = true
         }
     }
 }

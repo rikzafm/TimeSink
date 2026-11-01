@@ -75,7 +75,7 @@ public struct TodayTabView: View {
                         .fill(ThemeColors.accent)
                         .frame(width: 7, height: 7)
                         .background(Circle().fill(ThemeColors.greenLow).frame(width: 13, height: 13))
-                    Text(state.deviceScope == .all ? "\(result.runningCount) running · Mac" : "\(result.runningCount) running")
+                    Text(state.deviceScope == .all ? "\(result.runningCount) running · \(state.deviceADisplayName())" : "\(result.runningCount) running")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(ThemeColors.textPrimary)
                 }
@@ -89,15 +89,17 @@ public struct TodayTabView: View {
 
     private func deviceRow(_ result: TodayResult) -> some View {
         let uptimes = result.deviceUptimes ?? [:]
-        let mac = uptimes.first { state.isLocalDevice($0.key) }?.value
-        let pc = uptimes.first { !state.isLocalDevice($0.key) }?.value
-        var pcText = "PC \(Formatters.paddedHM(pc?.uptimeSeconds ?? 0))"
-        if let pc, !pc.isLive, let last = pc.lastActiveUtc {
-            pcText += " · off \(Formatters.formatClock(utcSeconds: last))"
+        let local = uptimes.first { state.isLocalDevice($0.key) }?.value
+        let remote = uptimes.first { !state.isLocalDevice($0.key) }
+        let localName = state.deviceADisplayName()
+        let remoteName = state.deviceDisplayName(remote?.key)
+        var remoteText = "\(remoteName) \(Formatters.paddedHM(remote?.value.uptimeSeconds ?? 0))"
+        if let pc = remote?.value, !pc.isLive, let last = pc.lastActiveUtc {
+            remoteText += " · off \(Formatters.formatClock(utcSeconds: last))"
         }
         return DeviceLegend(
-            mac: "Mac \(Formatters.paddedHM(mac?.uptimeSeconds ?? 0))",
-            pc: pcText,
+            mac: "\(localName) \(Formatters.paddedHM(local?.uptimeSeconds ?? 0))",
+            pc: remoteText,
             both: "\(Formatters.paddedHM(result.onBothSeconds)) on both"
         )
     }

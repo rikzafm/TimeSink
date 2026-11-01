@@ -212,22 +212,28 @@ public sealed class WrappedCard : FrameworkElement
             var labelY = barY + barH + 5;
             var markerY = labelY + 2.0;
 
+            var textMid = m.OnBothSeconds > 0 ? Text($"{UsageText.Hours(m.OnBothSeconds)} h on both", SmallSize, MutedBrush) : null;
+            var midW = textMid?.Width ?? 0;
+            var midX = Pad + (barW - midW) / 2.0;
+
+            // Compute available width for A and B so they don't collide with mid or each other
+            var maxWA = textMid != null ? Math.Max(20, midX - 6 - (Pad + 12)) : Math.Max(20, barW / 2.0 - 18);
+            var textA = Text($"{m.DeviceAName} {UsageText.Hours(m.DeviceASeconds)} h", SmallSize, MutedBrush, maxWidth: maxWA, maxLines: 1);
+
             // Left: Device A circle marker + text
             var markerA = new Rect(Pad, markerY, 7, 7);
             dc.DrawRoundedRectangle(brushA, null, markerA, 3.5, 3.5);
-            var textA = Text($"{m.DeviceAName} {UsageText.Hours(m.DeviceASeconds)} h", SmallSize, MutedBrush);
             dc.DrawText(textA, new Point(Pad + 12, labelY));
 
             // Middle: on both
-            if (m.OnBothSeconds > 0)
+            if (textMid != null)
             {
-                var textMid = Text($"{UsageText.Hours(m.OnBothSeconds)} h on both", SmallSize, MutedBrush);
-                var midX = Pad + (barW - textMid.Width) / 2.0;
                 dc.DrawText(textMid, new Point(midX, labelY));
             }
 
             // Right: Device B square marker + text
-            var textB = Text($"{m.DeviceBName} {UsageText.Hours(m.DeviceBSeconds)} h", SmallSize, MutedBrush);
+            var maxWB = textMid != null ? Math.Max(20, (Pad + barW) - (midX + midW + 6) - 12) : Math.Max(20, barW / 2.0 - 18);
+            var textB = Text($"{m.DeviceBName} {UsageText.Hours(m.DeviceBSeconds)} h", SmallSize, MutedBrush, maxWidth: maxWB, maxLines: 1);
             var bStartX = Pad + barW - textB.Width;
             var markerB = new Rect(bStartX - 12, markerY, 7, 7);
             dc.DrawRoundedRectangle(brushB, null, markerB, 2, 2);

@@ -21,9 +21,11 @@ public struct WeekTabView: View {
                     headline(result)
                     if state.showsDeviceSplit {
                         let t = state.deviceSplit(result.deviceTotals)
+                        let localName = state.deviceADisplayName()
+                        let remoteName = state.deviceBDisplayName()
                         DeviceLegend(
-                            mac: "Mac \(Formatters.paddedHM(t.mac))",
-                            pc: "PC \(Formatters.paddedHM(t.pc))",
+                            mac: "\(localName) \(Formatters.paddedHM(t.mac))",
+                            pc: "\(remoteName) \(Formatters.paddedHM(t.pc))",
                             both: "\(Formatters.paddedHM(result.onBothSeconds)) on both"
                         )
                     }

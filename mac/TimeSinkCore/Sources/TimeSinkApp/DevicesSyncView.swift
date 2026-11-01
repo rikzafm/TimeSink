@@ -13,6 +13,7 @@ public struct DevicesSyncView: View {
     @State private var showingDeleteSheet: Bool = false
     @State private var deletingDevice: DeviceRow?
     @State private var deleteConfirmText: String = ""
+    @State private var showingMergeSheet: Bool = false
 
     public init(state: AppState) {
         self.state = state
@@ -132,9 +133,7 @@ public struct DevicesSyncView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
 
                             Button(action: {
-                                state.showingDevicesSync = false
-                                state.showingSettings = false
-                                state.showingAddApp = true
+                                showingMergeSheet = true
                             }) {
                                 Text("Merge…")
                                     .font(.system(size: 12, weight: .semibold))
@@ -194,6 +193,9 @@ public struct DevicesSyncView: View {
         }
         .sheet(isPresented: $showingDeleteSheet) {
             deleteSheetView
+        }
+        .sheet(isPresented: $showingMergeSheet) {
+            mergeSheetView
         }
     }
 
@@ -313,8 +315,11 @@ public struct DevicesSyncView: View {
     private func handleSyncNow() {
         isSyncing = true
         syncNowState = "Syncing..."
+        state.triggerSyncNow()
         Task { @MainActor in
-            state.triggerSyncNow()
+            while state.isSyncing {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
             syncNowState = "Synced ✓"
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             syncNowState = "Sync now"
@@ -408,6 +413,41 @@ public struct DevicesSyncView: View {
         }
         .padding(20)
         .frame(width: 340)
+        .background(ThemeColors.surface)
+    }
+    // Merge Cross-Device Apps Sheet
+    private var mergeSheetView: some View {
+        let matchingApps = state.findMatchingCrossDeviceApps()
+        let count = matchingApps.count
+        let appList = listText(matchingApps)
+        return VStack(alignment: .leading, spacing: 14) {
+            Text("Merge Cross-Device Apps")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(ThemeColors.warning)
+
+            Text("Merge \(count) \(count == 1 ? "app" : "apps") (\(appList)) across devices so their time is combined into single tracked apps?\n\nRemote instances will be merged under this Mac’s apps.")
+                .font(.system(size: 12))
+                .foregroundColor(ThemeColors.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    showingMergeSheet = false
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(ThemeColors.textMuted)
+
+                Button("Merge") {
+                    state.mergeMatchingCrossDeviceApps()
+                    showingMergeSheet = false
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(ThemeColors.warning)
+            }
+        }
+        .padding(20)
+        .frame(width: 360)
         .background(ThemeColors.surface)
     }
 }

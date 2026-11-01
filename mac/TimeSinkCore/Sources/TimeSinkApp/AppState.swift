@@ -43,6 +43,8 @@ public final class AppState: ObservableObject {
     @Published public var localDeviceName: String = "Mac"
     @Published public var remoteDeviceId: String?
     @Published public var remoteDeviceName: String? = "PC"
+    @Published public var shortDeviceNames: Bool = true
+    @Published public var deviceDisplayNames: [String: String] = [:]
 
     // Navigation and sub-views
     @Published public var daysBack: Int = 0
@@ -63,6 +65,7 @@ public final class AppState: ObservableObject {
     @Published public var syncFolder: String = ""
     @Published public var syncState: String = ""
     @Published public var lastSyncUtc: Int64 = 0
+    @Published public var isSyncing: Bool = false
     @Published public var lastBackupUtc: Int64 = 0
     @Published public var openAtLogin: Bool = false
     @Published public var weekStart: String = "Mon"
@@ -99,6 +102,18 @@ public final class AppState: ObservableObject {
         self.db = db
         self.syncHost = syncHost
         self.iconCache = MacIconCache(db: db)
+
+        self.syncHost?.onSyncStarted = { [weak self] in
+            DispatchQueue.main.async {
+                self?.isSyncing = true
+            }
+        }
+        self.syncHost?.onSyncCompleted = { [weak self] in
+            DispatchQueue.main.async {
+                self?.handleSyncCompleted()
+                self?.isSyncing = false
+            }
+        }
         loadDeviceInfo()
         loadSettings()
         refresh()
@@ -111,19 +126,26 @@ public final class AppState: ObservableObject {
             self.localDeviceId = devId
             self.localDeviceName = devName
 
-            // Query devices table
-            let stmt = try db.prepare("SELECT device_id, name, is_local FROM devices WHERE state = 'active' ORDER BY is_local DESC;")
+            let sdn = try db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.shortDeviceNames)';")
+            self.shortDeviceNames = sdn?.lowercased() != "false"
+
+            var rawDevices: [(id: String, name: String, platform: String, isLocal: Bool, firstSeen: String)] = []
+            let stmt = try db.prepare("SELECT device_id, name, platform, is_local, first_seen_utc FROM devices WHERE state != 'forgotten' ORDER BY is_local DESC, first_seen_utc ASC, device_id ASC;")
             var remoteFound = false
             while try stmt.step() {
                 let id = stmt.columnText(at: 0)
                 let name = stmt.columnText(at: 1)
-                let isLocal = stmt.columnInt64(at: 2) == 1
+                let platform = stmt.columnText(at: 2)
+                let isLocal = stmt.columnInt64(at: 3) == 1
+                let firstSeen = stmt.columnText(at: 4)
+                rawDevices.append((id: id, name: name, platform: platform, isLocal: isLocal, firstSeen: firstSeen))
                 if !isLocal && !remoteFound {
                     self.remoteDeviceId = id
                     self.remoteDeviceName = name
                     remoteFound = true
                 }
             }
+            self.deviceDisplayNames = AppState.computeDisplayNames(devices: rawDevices, shortNames: shortDeviceNames)
             let totalActive = (try db.scalarInt("SELECT COUNT(*) FROM devices WHERE state = 'active';")) ?? 1
             self.hasMultipleDevices = totalActive > 1
 
@@ -136,6 +158,85 @@ public final class AppState: ObservableObject {
         } catch {
             NSLog("Failed to load device info: \(error)")
         }
+    }
+
+    public static func computeDisplayNames(
+        devices: [(id: String, name: String, platform: String, isLocal: Bool, firstSeen: String)],
+        shortNames: Bool
+    ) -> [String: String] {
+        var result: [String: String] = [:]
+        if !shortNames {
+            for d in devices {
+                let fallback = d.platform.lowercased() == "windows" ? "PC" : "Mac"
+                let trimmed = d.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                result[d.id] = !trimmed.isEmpty ? trimmed : fallback
+            }
+            return result
+        }
+
+        let winDevices = devices.filter { $0.platform.lowercased() == "windows" }
+        let macDevices = devices.filter { $0.platform.lowercased() != "windows" }
+
+        if winDevices.count == 1 && macDevices.count == 1 {
+            result[winDevices[0].id] = "PC"
+            result[macDevices[0].id] = "Mac"
+            return result
+        }
+
+        // Windows devices
+        if winDevices.count == 1 {
+            result[winDevices[0].id] = "PC"
+        } else if winDevices.count > 1 {
+            let sorted = winDevices.sorted {
+                if $0.isLocal != $1.isLocal { return $0.isLocal && !$1.isLocal }
+                if $0.firstSeen != $1.firstSeen { return $0.firstSeen < $1.firstSeen }
+                return $0.id < $1.id
+            }
+            for (idx, dev) in sorted.enumerated() {
+                result[dev.id] = "PC \(idx + 1)"
+            }
+        }
+
+        // Mac devices
+        if macDevices.count == 1 {
+            result[macDevices[0].id] = "Mac"
+        } else if macDevices.count > 1 {
+            let sorted = macDevices.sorted {
+                if $0.isLocal != $1.isLocal { return $0.isLocal && !$1.isLocal }
+                if $0.firstSeen != $1.firstSeen { return $0.firstSeen < $1.firstSeen }
+                return $0.id < $1.id
+            }
+            for (idx, dev) in sorted.enumerated() {
+                result[dev.id] = "Mac \(idx + 1)"
+            }
+        }
+
+        return result
+    }
+
+    public func deviceDisplayName(_ deviceId: String?) -> String {
+        guard let deviceId, !deviceId.isEmpty else {
+            return isLocalDevice(deviceId ?? "") ? "Mac" : "PC"
+        }
+        if let name = deviceDisplayNames[deviceId] {
+            return name
+        }
+        return isLocalDevice(deviceId) ? "Mac" : "PC"
+    }
+
+    public func deviceADisplayName() -> String {
+        deviceDisplayName(localDeviceId)
+    }
+
+    public func deviceBDisplayName() -> String {
+        deviceDisplayName(remoteDeviceId)
+    }
+
+    public func setShortDeviceNames(_ enabled: Bool) {
+        self.shortDeviceNames = enabled
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.shortDeviceNames)', '\(enabled ? "true" : "false")') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        loadDeviceInfo()
+        refresh()
     }
 
     public func setDeviceScope(_ scope: DeviceScope) {
@@ -430,6 +531,8 @@ public final class AppState: ObservableObject {
             self.lastSyncUtc = max(lastExp, lastImp)
             self.lastBackupUtc = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'backup.last_utc';")) ?? 0
             self.openAtLogin = LoginItemManager.shared.isEnabled
+            let sdn = (try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.shortDeviceNames)';"))
+            self.shortDeviceNames = sdn?.lowercased() != "false"
             let pauseVal = (try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.pauseOnSleep)';"))
                 ?? (try? db.scalarText("SELECT value FROM settings WHERE key = 'tracking.pauseWhileSleep';"))
             self.pauseWhileSleep = pauseVal?.lowercased() != "false"
@@ -688,25 +791,98 @@ public final class AppState: ObservableObject {
         return names
     }
 
+    public func mergeMatchingCrossDeviceApps() {
+        let matchingNames = findMatchingCrossDeviceApps()
+        guard !matchingNames.isEmpty else { return }
+
+        do {
+            try db.transaction {
+                for name in matchingNames {
+                    struct AppCandidate {
+                        let id: Int64
+                        let deviceId: String
+                        let addedUtc: Int64
+                    }
+                    var apps: [AppCandidate] = []
+                    let fetch = try db.prepare("""
+                        SELECT id, COALESCE(device_id, ''), added_utc
+                        FROM apps
+                        WHERE display_name = ?1 AND canonical_id IS NULL AND state = 'tracked'
+                        ORDER BY id ASC;
+                    """)
+                    try fetch.bind(text: name, at: 1)
+                    while try fetch.step() {
+                        let id = fetch.columnInt64(at: 0)
+                        let dev = fetch.columnText(at: 1) ?? ""
+                        let added = fetch.columnInt64(at: 2)
+                        apps.append(AppCandidate(id: id, deviceId: dev, addedUtc: added))
+                    }
+
+                    guard apps.count > 1 else { continue }
+
+                    // Pick canonical app: local device if present, else earliest added_utc
+                    let canonicalApp: AppCandidate
+                    if let local = apps.first(where: { isLocalDevice($0.deviceId) }) {
+                        canonicalApp = local
+                    } else {
+                        canonicalApp = apps.min(by: { $0.addedUtc < $1.addedUtc }) ?? apps[0]
+                    }
+
+                    for candidate in apps where candidate.id != canonicalApp.id {
+                        let up = try db.prepare("UPDATE apps SET canonical_id = ?1 WHERE id = ?2 OR canonical_id = ?2;")
+                        try up.bind(int64: canonicalApp.id, at: 1)
+                        try up.bind(int64: candidate.id, at: 2)
+                        _ = try up.step()
+                    }
+                }
+            }
+
+            triggerSyncNow()
+            loadDeviceInfo()
+            refresh()
+            objectWillChange.send()
+        } catch {
+            NSLog("Failed to merge cross-device apps: \(error)")
+        }
+    }
+
+
     public func triggerSyncNow() {
         guard syncEnabled, !syncFolder.isEmpty, FileManager.default.fileExists(atPath: syncFolder) else { return }
-        if let host = syncHost {
-            host.syncNow()
-        } else {
-            do {
-                _ = try SyncWriter.write(db: db, syncFolder: syncFolder)
-                let files = try FileManager.default.contentsOfDirectory(atPath: syncFolder)
-                for f in files where f.hasSuffix(SyncWriter.extension) && !f.hasSuffix(".tmp") {
-                    let fullPath = (syncFolder as NSString).appendingPathComponent(f)
-                    let base = (f as NSString).deletingPathExtension
-                    if base.caseInsensitiveCompare(localDeviceId) == .orderedSame { continue }
-                    if SyncReader.isConflictCopy(filePath: fullPath) { continue }
-                    if SyncReader.isPlaceholder(filePath: fullPath) { continue }
-                    _ = try SyncReader.import(syncFile: fullPath, db: db, timeZone: .current)
+        guard !isSyncing else { return }
+        isSyncing = true
+        let start = Date()
+
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            if let host = self.syncHost {
+                host.syncNow()
+                let elapsed = Date().timeIntervalSince(start)
+                if elapsed < 0.6 {
+                    try? await Task.sleep(nanoseconds: UInt64((0.6 - elapsed) * 1_000_000_000))
                 }
-                handleSyncCompleted()
-            } catch {
-                NSLog("Manual sync error: \(error)")
+                self.isSyncing = false
+            } else {
+                do {
+                    _ = try SyncWriter.write(db: self.db, syncFolder: self.syncFolder)
+                    let files = try FileManager.default.contentsOfDirectory(atPath: self.syncFolder)
+                    for f in files where f.hasSuffix(SyncWriter.extension) && !f.hasSuffix(".tmp") {
+                        let fullPath = (self.syncFolder as NSString).appendingPathComponent(f)
+                        let base = (f as NSString).deletingPathExtension
+                        if base.caseInsensitiveCompare(self.localDeviceId) == .orderedSame { continue }
+                        if SyncReader.isConflictCopy(filePath: fullPath) { continue }
+                        if SyncReader.isPlaceholder(filePath: fullPath) { continue }
+                        _ = try SyncReader.import(syncFile: fullPath, db: self.db, timeZone: .current)
+                    }
+                    self.handleSyncCompleted()
+                } catch {
+                    NSLog("Manual sync error: \(error)")
+                }
+                let elapsed = Date().timeIntervalSince(start)
+                if elapsed < 0.6 {
+                    try? await Task.sleep(nanoseconds: UInt64((0.6 - elapsed) * 1_000_000_000))
+                }
+                self.isSyncing = false
             }
         }
     }

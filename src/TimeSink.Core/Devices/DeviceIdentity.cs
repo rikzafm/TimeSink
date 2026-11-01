@@ -203,4 +203,80 @@ public static class DeviceIdentity
 
         return "";
     }
+
+    /// <summary>
+    /// Merges unmerged tracked apps with matching display names across devices.
+    /// Designates the local device's instance as canonical (or earliest created if none is local),
+    /// merging remote instances under it. Returns the count of subordinate apps merged.
+    /// </summary>
+    public static int MergeMatchingCrossDeviceApps(Db db)
+    {
+        var localDeviceId = db.GetSetting("device.id");
+        if (string.IsNullOrEmpty(localDeviceId))
+        {
+            using var findLocalCmd = db.Connection.CreateCommand();
+            findLocalCmd.CommandText = "SELECT device_id FROM devices WHERE is_local = 1 LIMIT 1;";
+            localDeviceId = findLocalCmd.ExecuteScalar() as string;
+        }
+
+        using var tx = db.Connection.BeginTransaction();
+        var names = new List<string>();
+        using (var cmd = db.Connection.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                SELECT display_name FROM apps
+                WHERE canonical_id IS NULL AND state = 'tracked'
+                GROUP BY display_name
+                HAVING COUNT(DISTINCT device_id) > 1;
+                """;
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                names.Add(r.GetString(0));
+            }
+        }
+
+        var totalMerged = 0;
+        foreach (var name in names)
+        {
+            var apps = new List<(long Id, string? DeviceId, long AddedUtc)>();
+            using (var cmd = db.Connection.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "SELECT id, device_id, added_utc FROM apps WHERE display_name = $n AND canonical_id IS NULL AND state = 'tracked' ORDER BY id ASC;";
+                cmd.Parameters.AddWithValue("$n", name);
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    apps.Add((r.GetInt64(0), r.IsDBNull(1) ? null : r.GetString(1), r.GetInt64(2)));
+                }
+            }
+
+            if (apps.Count <= 1) continue;
+
+            // Prefer local device instance as canonical, else earliest added_utc
+            var canonicalApp = apps.FirstOrDefault(a => !string.IsNullOrEmpty(localDeviceId) && string.Equals(a.DeviceId, localDeviceId, StringComparison.OrdinalIgnoreCase));
+            if (canonicalApp == default)
+            {
+                canonicalApp = apps.OrderBy(a => a.AddedUtc).First();
+            }
+
+            foreach (var app in apps)
+            {
+                if (app.Id == canonicalApp.Id) continue;
+                using var up = db.Connection.CreateCommand();
+                up.Transaction = tx;
+                up.CommandText = "UPDATE apps SET canonical_id = $c WHERE id = $id OR canonical_id = $id;";
+                up.Parameters.AddWithValue("$c", canonicalApp.Id);
+                up.Parameters.AddWithValue("$id", app.Id);
+                up.ExecuteNonQuery();
+                totalMerged++;
+            }
+        }
+
+        tx.Commit();
+        return totalMerged;
+    }
 }
+

@@ -10,8 +10,8 @@ public struct GroupedApp: Sendable, Equatable {
     public var group: Int64
     public let name: String
     public let addedUtc: Int64
-    public let background: Bool
-    public let kind: AppKind
+    public var background: Bool
+    public var kind: AppKind
     public let state: AppState
     public let retiredUtc: Int64
     public let exePath: String
@@ -87,6 +87,32 @@ public final class AppGroups: @unchecked Sendable {
                 }
             }
         }
+        // Inherit highest classification specificity across merged group members
+        let groupIds = Set(dict.values.map { $0.group })
+        for gid in groupIds {
+            let members = dict.values.filter { $0.group == gid }
+            guard members.count > 1 else { continue }
+
+            let effectiveKind: AppKind
+            if members.contains(where: { $0.kind == .gacha }) {
+                effectiveKind = .gacha
+            } else if members.contains(where: { $0.kind == .game }) {
+                effectiveKind = .game
+            } else {
+                effectiveKind = members.first(where: { $0.id == gid })?.kind ?? members[0].kind
+            }
+            let effectiveBg = members.contains(where: { $0.background })
+
+            for m in members {
+                if m.kind != effectiveKind || m.background != effectiveBg {
+                    var updated = m
+                    updated.kind = effectiveKind
+                    updated.background = effectiveBg
+                    dict[m.id] = updated
+                }
+            }
+        }
+
         return AppGroups(apps: dict)
     }
 

@@ -444,4 +444,97 @@ public sealed class SyncWriterReaderTests(ITestOutputHelper output)
         // Acceptance criteria: 100k import must complete in under 15 seconds
         importSw.Elapsed.TotalSeconds.Should().BeLessThan(15.0);
     }
+
+    [Fact]
+    public void Sync_Updates_Existing_App_Category_Kind_Gacha_And_Background()
+    {
+        using var rig = new BackupTestRig();
+        var syncFolder = rig.P("sync");
+        var now = DateTimeOffset.Parse("2026-11-01T12:00:00Z");
+
+        var srcDb = rig.NewDb("source.db", (@"c:\games\gacha.exe", 1761984000, 1761987600));
+        SetDevice(rig, srcDb, "dev-pc-001", "Gaming PC", "windows");
+
+        // Initial snapshot has default kind (Other), background (0), category (Other)
+        var snap1 = SyncWriter.Write(srcDb, syncFolder, now);
+
+        var dstDb = rig.NewDb("dest.db");
+        SetDevice(rig, dstDb, "dev-mac-001", "MacBook Pro", "macos");
+
+        var res1 = SyncReader.Import(snap1, dstDb, TimeZoneInfo.Utc);
+        res1.Status.Should().Be(SyncStatus.Success);
+        res1.AppsAdded.Should().Be(1);
+
+        rig.Scalar<long>(dstDb, "SELECT COALESCE(kind, 0) FROM apps WHERE exe_path = 'c:\\games\\gacha.exe'").Should().Be(0);
+        rig.Scalar<long>(dstDb, "SELECT is_background FROM apps WHERE exe_path = 'c:\\games\\gacha.exe'").Should().Be(0);
+
+        // Update on source: set kind = Gacha (2), is_background = 1, category = 'Games'
+        rig.Exec(srcDb, "UPDATE apps SET kind = 2, is_background = 1, category = 'Games' WHERE exe_path = 'c:\\games\\gacha.exe'");
+        var snap2 = SyncWriter.Write(srcDb, syncFolder, now.AddMinutes(10));
+
+        var res2 = SyncReader.Import(snap2, dstDb, TimeZoneInfo.Utc);
+        res2.Status.Should().Be(SyncStatus.Success);
+
+        // Verify existing app on destination is updated with new classification
+        rig.Scalar<long>(dstDb, "SELECT kind FROM apps WHERE exe_path = 'c:\\games\\gacha.exe'").Should().Be(2);
+        rig.Scalar<long>(dstDb, "SELECT is_background FROM apps WHERE exe_path = 'c:\\games\\gacha.exe'").Should().Be(1);
+        rig.Scalar<string>(dstDb, "SELECT category FROM apps WHERE exe_path = 'c:\\games\\gacha.exe'").Should().Be("Games");
+    }
+
+    [Fact]
+    public void Sync_Propagates_IntraDevice_And_CrossDevice_Merges_And_Unmerges()
+    {
+        using var rig = new BackupTestRig();
+        var syncFolder = rig.P("sync");
+        var now = DateTimeOffset.Parse("2026-11-01T12:00:00Z");
+
+        // Source device has App 1 and App 2
+        var srcDb = rig.NewDb("source.db",
+            (@"c:\apps\app1.exe", 1761984000, 1761987600),
+            (@"c:\apps\app2.exe", 1761988000, 1761991600));
+        SetDevice(rig, srcDb, "dev-pc-001", "PC", "windows");
+
+        // Destination device has App 3 (local)
+        var dstDb = rig.NewDb("dest.db", (@"/Applications/App3.app", 1761980000, 1761983600));
+        SetDevice(rig, dstDb, "dev-mac-001", "Mac", "macos");
+
+        // 1. Initial sync of PC apps to Mac
+        var snap1 = SyncWriter.Write(srcDb, syncFolder, now);
+        SyncReader.Import(snap1, dstDb, TimeZoneInfo.Utc).Status.Should().Be(SyncStatus.Success);
+
+        // 2. Intra-device merge on PC: merge App 2 under App 1
+        var srcApp1Id = rig.Scalar<long>(srcDb, "SELECT id FROM apps WHERE exe_path = 'c:\\apps\\app1.exe'");
+        rig.Exec(srcDb, $"UPDATE apps SET canonical_id = {srcApp1Id} WHERE exe_path = 'c:\\apps\\app2.exe'");
+
+        var snap2 = SyncWriter.Write(srcDb, syncFolder, now.AddMinutes(5));
+        SyncReader.Import(snap2, dstDb, TimeZoneInfo.Utc).Status.Should().Be(SyncStatus.Success);
+
+        var dstApp1Id = rig.Scalar<long>(dstDb, "SELECT id FROM apps WHERE exe_path = 'c:\\apps\\app1.exe'");
+        rig.Scalar<long>(dstDb, "SELECT canonical_id FROM apps WHERE exe_path = 'c:\\apps\\app2.exe'").Should().Be(dstApp1Id);
+
+        // 3. Intra-device unmerge on PC: unmerge App 2
+        rig.Exec(srcDb, "UPDATE apps SET canonical_id = NULL WHERE exe_path = 'c:\\apps\\app2.exe'");
+        var snap3 = SyncWriter.Write(srcDb, syncFolder, now.AddMinutes(10));
+        SyncReader.Import(snap3, dstDb, TimeZoneInfo.Utc).Status.Should().Be(SyncStatus.Success);
+
+        rig.Scalar<long>(dstDb, "SELECT COUNT(*) FROM apps WHERE exe_path = 'c:\\apps\\app2.exe' AND canonical_id IS NULL").Should().Be(1);
+
+        // 4. Cross-device merge: Sync Mac app to PC first so PC knows about Mac app
+        rig.Exec(dstDb, "UPDATE apps SET bundle_id = 'com.example.app3' WHERE exe_path = '/Applications/App3.app'");
+        var macSnap = SyncWriter.Write(dstDb, syncFolder, now.AddMinutes(15));
+        SyncReader.Import(macSnap, srcDb, TimeZoneInfo.Utc).Status.Should().Be(SyncStatus.Success);
+
+        // On PC, merge Mac's App 3 under PC's App 1
+        var macAppOnPcId = rig.Scalar<long>(srcDb, "SELECT id FROM apps WHERE device_id = 'dev-mac-001'");
+        rig.Exec(srcDb, $"UPDATE apps SET canonical_id = {srcApp1Id} WHERE id = {macAppOnPcId}");
+
+        // PC exports snapshot containing cross_device_merges
+        var snap4 = SyncWriter.Write(srcDb, syncFolder, now.AddMinutes(20));
+        SyncReader.Import(snap4, dstDb, TimeZoneInfo.Utc).Status.Should().Be(SyncStatus.Success);
+
+        // On Mac, verify PC App 1 and Mac App 3 are cross-device merged
+        var macApp3Id = rig.Scalar<long>(dstDb, "SELECT id FROM apps WHERE device_id = 'dev-mac-001'");
+        var pcApp1OnMacId = rig.Scalar<long>(dstDb, "SELECT id FROM apps WHERE exe_path = 'c:\\apps\\app1.exe'");
+        rig.Scalar<long>(dstDb, $"SELECT canonical_id FROM apps WHERE id = {macApp3Id}").Should().Be(pcApp1OnMacId);
+    }
 }

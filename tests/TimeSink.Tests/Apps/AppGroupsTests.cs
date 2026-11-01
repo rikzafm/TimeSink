@@ -122,4 +122,21 @@ public sealed class AppGroupsTests : IDisposable
 
         Load(includeRetired).GroupOf(901).Should().Be(901);
     }
+
+    [Fact]
+    public void Merged_group_inherits_gacha_kind_and_background_flag_from_member()
+    {
+        var main = new GroupedApp(1, 1, "Main Game", 0, Background: false, Kind: AppKind.Other);
+        var alias = new GroupedApp(2, 1, "Gacha Edition", 0, Background: true, Kind: AppKind.Gacha);
+
+        var groups = AppGroups.From([main, alias]);
+
+        groups[1].Kind.Should().Be(AppKind.Gacha);
+        groups[1].Background.Should().BeTrue();
+        groups[2].Kind.Should().Be(AppKind.Gacha);
+        groups[2].Background.Should().BeTrue();
+
+        UsageRank.KindOf(groups, 1).Should().Be(AppKind.Gacha);
+        UsageRank.IsBackground(groups, 1).Should().BeTrue();
+    }
 }

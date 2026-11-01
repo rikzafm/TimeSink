@@ -174,8 +174,7 @@ public struct AppSettingsSheet: View {
     }
 
     private func deviceLabel(_ id: String) -> String {
-        if state.isLocalDevice(id) { return "Mac" }
-        return "PC · \(state.remoteDeviceName ?? "PC")"
+        state.deviceDisplayName(id)
     }
 
     private func bundleText(_ path: String) -> String {

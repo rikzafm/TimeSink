@@ -244,6 +244,7 @@ public static partial class SyncReader
                 }
 
                 var newlyInsertedApps = new List<(long SrcId, long DstId, long? CanonicalId)>();
+                var snapshotApps = new List<(long SrcId, long DstId, long? CanonicalId)>();
                 using (var cmd = conn.CreateCommand())
                 {
                     cmd.CommandText = """
@@ -295,6 +296,25 @@ public static partial class SyncReader
                             if (existingId is long id)
                             {
                                 dstId = id;
+                                using var updCmd = conn.CreateCommand();
+                                updCmd.CommandText = """
+                                    UPDATE main.apps SET
+                                        display_name = $n,
+                                        category = $c,
+                                        state = $s,
+                                        retired_utc = $r,
+                                        is_background = $bg,
+                                        kind = $k
+                                    WHERE id = $id;
+                                    """;
+                                updCmd.Parameters.AddWithValue("$n", displayName);
+                                updCmd.Parameters.AddWithValue("$c", category);
+                                updCmd.Parameters.AddWithValue("$s", state);
+                                updCmd.Parameters.AddWithValue("$r", (object?)retiredUtc ?? DBNull.Value);
+                                updCmd.Parameters.AddWithValue("$bg", isBackground);
+                                updCmd.Parameters.AddWithValue("$k", (object?)kind ?? DBNull.Value);
+                                updCmd.Parameters.AddWithValue("$id", dstId);
+                                updCmd.ExecuteNonQuery();
                             }
                             else
                             {
@@ -324,6 +344,8 @@ public static partial class SyncReader
                             }
                         }
 
+                        snapshotApps.Add((srcId, dstId, canonicalId));
+
                         using var mapCmd = conn.CreateCommand();
                         mapCmd.CommandText = "INSERT INTO temp.idmap VALUES ($src, $dst);";
                         mapCmd.Parameters.AddWithValue("$src", srcId);
@@ -332,8 +354,8 @@ public static partial class SyncReader
                     }
                 }
 
-                // 3. Remap canonical links for newly inserted apps
-                foreach (var (_, dstId, srcCanonical) in newlyInsertedApps)
+                // 3. Remap canonical links for all snapshot apps (intra-device merges)
+                foreach (var (_, dstId, srcCanonical) in snapshotApps)
                 {
                     if (srcCanonical is { } sc)
                     {
@@ -346,6 +368,102 @@ public static partial class SyncReader
                         updateCmd.Parameters.AddWithValue("$sc", sc);
                         updateCmd.Parameters.AddWithValue("$dst", dstId);
                         updateCmd.ExecuteNonQuery();
+                    }
+                    else
+                    {
+                        using var unmergeCmd = conn.CreateCommand();
+                        unmergeCmd.CommandText = """
+                            UPDATE main.apps
+                            SET canonical_id = NULL
+                            WHERE id = $dst AND canonical_id IN (SELECT dst_id FROM temp.idmap);
+                            """;
+                        unmergeCmd.Parameters.AddWithValue("$dst", dstId);
+                        unmergeCmd.ExecuteNonQuery();
+                    }
+                }
+
+                // 3b. Sync cross-device merges
+                bool hasCrossMergesTable = false;
+                using (var checkCmd = conn.CreateCommand())
+                {
+                    checkCmd.CommandText = "SELECT COUNT(*) FROM src.sqlite_master WHERE type='table' AND name='cross_device_merges';";
+                    hasCrossMergesTable = Convert.ToInt64(checkCmd.ExecuteScalar()) > 0;
+                }
+
+                if (hasCrossMergesTable)
+                {
+                    long? FindAppInMain(string targetDev, string targetExe, string targetBundle)
+                    {
+                        using var fCmd = conn.CreateCommand();
+                        if (!string.IsNullOrEmpty(targetBundle))
+                        {
+                            fCmd.CommandText = "SELECT id FROM main.apps WHERE device_id = $d AND bundle_id = $b LIMIT 1;";
+                            fCmd.Parameters.AddWithValue("$d", targetDev);
+                            fCmd.Parameters.AddWithValue("$b", targetBundle);
+                        }
+                        else
+                        {
+                            fCmd.CommandText = "SELECT id FROM main.apps WHERE device_id = $d AND exe_path = $p COLLATE NOCASE LIMIT 1;";
+                            fCmd.Parameters.AddWithValue("$d", targetDev);
+                            fCmd.Parameters.AddWithValue("$p", targetExe);
+                        }
+                        return fCmd.ExecuteScalar() as long?;
+                    }
+
+                    var validCrossSubordinates = new HashSet<long>();
+                    using (var readCrossCmd = conn.CreateCommand())
+                    {
+                        readCrossCmd.CommandText = "SELECT source_device_id, source_exe_path, source_bundle_id, target_device_id, target_exe_path, target_bundle_id FROM src.cross_device_merges;";
+                        using var r = readCrossCmd.ExecuteReader();
+                        while (r.Read())
+                        {
+                            var sDev = r.GetString(0);
+                            var sExe = r.GetString(1);
+                            var sBundle = r.GetString(2);
+                            var tDev = r.GetString(3);
+                            var tExe = r.GetString(4);
+                            var tBundle = r.GetString(5);
+
+                            var sId = FindAppInMain(sDev, sExe, sBundle);
+                            var tId = FindAppInMain(tDev, tExe, tBundle);
+                            if (sId.HasValue && tId.HasValue && sId.Value != tId.Value)
+                            {
+                                using var upCross = conn.CreateCommand();
+                                upCross.CommandText = "UPDATE main.apps SET canonical_id = $t WHERE id = $s;";
+                                upCross.Parameters.AddWithValue("$t", tId.Value);
+                                upCross.Parameters.AddWithValue("$s", sId.Value);
+                                upCross.ExecuteNonQuery();
+                                validCrossSubordinates.Add(sId.Value);
+                            }
+                        }
+                    }
+
+                    // If a subordinate app from this snapshot's device was cross-device merged with another device,
+                    // but is NOT in the snapshot's cross_device_merges table anymore, unmerge it.
+                    using (var unmergeCrossCmd = conn.CreateCommand())
+                    {
+                        unmergeCrossCmd.CommandText = """
+                            SELECT a.id FROM main.apps a
+                            JOIN main.apps c ON c.id = a.canonical_id
+                            WHERE a.device_id = $devId AND c.device_id != $devId;
+                            """;
+                        unmergeCrossCmd.Parameters.AddWithValue("$devId", manifest.DeviceId);
+                        var staleIds = new List<long>();
+                        using (var r = unmergeCrossCmd.ExecuteReader())
+                        {
+                            while (r.Read())
+                            {
+                                var id = r.GetInt64(0);
+                                if (!validCrossSubordinates.Contains(id)) staleIds.Add(id);
+                            }
+                        }
+                        foreach (var sid in staleIds)
+                        {
+                            using var clearCmd = conn.CreateCommand();
+                            clearCmd.CommandText = "UPDATE main.apps SET canonical_id = NULL WHERE id = $id;";
+                            clearCmd.Parameters.AddWithValue("$id", sid);
+                            clearCmd.ExecuteNonQuery();
+                        }
                     }
                 }
 

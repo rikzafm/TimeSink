@@ -147,6 +147,15 @@ public static class SyncWriter
                     png BLOB NOT NULL,
                     hash TEXT NOT NULL
                 );
+
+                CREATE TABLE cross_device_merges (
+                    source_device_id TEXT NOT NULL,
+                    source_exe_path TEXT NOT NULL DEFAULT '',
+                    source_bundle_id TEXT NOT NULL DEFAULT '',
+                    target_device_id TEXT NOT NULL,
+                    target_exe_path TEXT NOT NULL DEFAULT '',
+                    target_bundle_id TEXT NOT NULL DEFAULT ''
+                );
                 """;
             cmd.ExecuteNonQuery();
         }
@@ -190,6 +199,18 @@ public static class SyncWriter
                 FROM main.icons i
                 JOIN main.apps a ON a.id = i.app_id
                 WHERE a.device_id = $devId;
+
+                INSERT INTO snap.cross_device_merges (
+                    source_device_id, source_exe_path, source_bundle_id,
+                    target_device_id, target_exe_path, target_bundle_id
+                )
+                SELECT
+                    a.device_id, a.exe_path, COALESCE(a.bundle_id, ''),
+                    c.device_id, c.exe_path, COALESCE(c.bundle_id, '')
+                FROM main.apps a
+                JOIN main.apps c ON c.id = a.canonical_id
+                WHERE (a.device_id = $devId OR c.device_id = $devId)
+                  AND a.device_id != c.device_id;
                 """;
             cmd.Parameters.AddWithValue("$devId", localDeviceId);
             cmd.ExecuteNonQuery();

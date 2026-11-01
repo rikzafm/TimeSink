@@ -22,6 +22,7 @@ public final class SyncHost: @unchecked Sendable {
     private var debounceWorkItem: DispatchWorkItem?
     private var lastLocalWriteUtc: TimeInterval = 0
 
+    public var onSyncStarted: (@Sendable () -> Void)?
     public var onSyncCompleted: (@Sendable () -> Void)?
 
     public init(db: SQLiteDatabase, timeZone: TimeZone = .current) {
@@ -90,6 +91,10 @@ public final class SyncHost: @unchecked Sendable {
         guard isEnabled, let folder = syncFolder, !folder.isEmpty else { return }
         let fm = FileManager.default
         guard fm.fileExists(atPath: folder) else { return }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.onSyncStarted?()
+        }
 
         var exportSucceeded = false
         var importSucceeded = false

@@ -9,6 +9,7 @@ namespace TimeSink.UI.Controls;
 
 public class DeviceSummaryRow : WrapPanel
 {
+    private string? _dbPath;
     private Dictionary<string, (string Name, bool IsLocal)> _deviceInfo = new(StringComparer.OrdinalIgnoreCase);
 
     public DeviceSummaryRow()
@@ -19,6 +20,7 @@ public class DeviceSummaryRow : WrapPanel
 
     public void LoadDeviceInfo(string dbPath)
     {
+        _dbPath = dbPath;
         _deviceInfo = DeviceInfoService.Load(dbPath);
     }
 
@@ -36,6 +38,7 @@ public class DeviceSummaryRow : WrapPanel
         }
 
         Visibility = Visibility.Visible;
+        if (_dbPath != null) _deviceInfo = DeviceInfoService.Load(_dbPath);
         Children.Clear();
 
         // Local device first (Device A, circle), then others (Device B, square)

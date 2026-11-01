@@ -269,6 +269,29 @@ public struct SettingsView: View {
                             .frame(minHeight: 44)
                         }
                         .buttonStyle(.plain)
+
+                        settingsRule
+
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Use short device names")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(ThemeColors.textPrimary)
+                                Text("Show short labels (PC / Mac) on views instead of full device names")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(ThemeColors.textMuted)
+                            }
+                            Spacer()
+                            Toggle("", isOn: Binding(
+                                get: { state.shortDeviceNames },
+                                set: { state.setShortDeviceNames($0) }
+                            ))
+                            .labelsHidden()
+                            .toggleStyle(SwitchToggleStyle(tint: ThemeColors.accent))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 44)
                     }
 
                     // BACKUP AND DATA

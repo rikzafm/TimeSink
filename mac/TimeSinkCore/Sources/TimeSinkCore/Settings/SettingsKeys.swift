@@ -74,5 +74,6 @@ public enum SettingKeys {
     public static let showMenuBarTime = "ui.showMenuBarTime"
     public static let backupMode = "backup.mode"
     public static let backupLastUtc = "backup.last_utc"
+    public static let shortDeviceNames = "devices.shortNames"
     public static let allLayout = "all.layout"
 }

@@ -252,7 +252,7 @@ public sealed partial class SettingsView
                     Title = "Choose Sync Folder",
                     InitialDirectory = Directory.Exists(folder) ? folder : "",
                 };
-                if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.FolderName))
+                if (NativeDialog(() => dlg.ShowDialog(Window.GetWindow(this)) == true) && !string.IsNullOrWhiteSpace(dlg.FolderName))
                 {
                     settings.Set(Setting.SyncFolder, dlg.FolderName);
                     TriggerSyncNow();
@@ -545,8 +545,7 @@ public sealed partial class SettingsView
                 mergeActionBtn.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
                 mergeActionBtn.Click += (_, _) =>
                 {
-                    CloseDevicesSync();
-                    (Application.Current.MainWindow as FlyoutWindow)?.OpenAddAppTracked();
+                    PromptMergeCrossDeviceApps(matchingApps, Refresh);
                 };
                 Grid.SetColumn(mergeActionBtn, 1);
                 bannerGrid.Children.Add(mergeActionBtn);
@@ -615,6 +614,23 @@ public sealed partial class SettingsView
             }
         }
         catch { }
+    }
+
+    private void PromptMergeCrossDeviceApps(IReadOnlyList<string> matchingApps, Action onDone)
+    {
+        var appListStr = string.Join(", ", matchingApps.Take(3)) + (matchingApps.Count > 3 ? $" and {matchingApps.Count - 3} more" : "");
+        var body = $"Merge {matchingApps.Count} {(matchingApps.Count == 1 ? "app" : "apps")} ({appListStr}) across devices so their time is combined into single tracked apps?\n\nRemote instances will be merged under this device’s apps.";
+
+        ShowDialog("Merge cross-device apps", body, null,
+            (Str(SettingsStrings.Cancel), CloseDialog, false, false),
+            ("Merge", () =>
+            {
+                using var db = Db.Open(_dbPath);
+                DeviceIdentity.MergeMatchingCrossDeviceApps(db);
+                CloseDialog();
+                TriggerSyncNow();
+                onDone();
+            }, true, false));
     }
 
     private void PromptRenameDevice(DeviceRecord dev, Action onDone)

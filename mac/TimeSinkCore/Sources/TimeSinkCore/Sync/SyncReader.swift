@@ -200,6 +200,7 @@ public enum SyncReader {
             }
 
             var newlyInsertedApps: [(srcId: Int64, dstId: Int64, canonicalId: Int64?)] = []
+            var allSnapshotApps: [(srcId: Int64, dstId: Int64, canonicalId: Int64?)] = []
 
             for a in srcApps {
                 var dstId: Int64 = 0
@@ -244,7 +245,28 @@ public enum SyncReader {
                     dstId = db.lastInsertRowid
                     appsAdded += 1
                     newlyInsertedApps.append((a.id, dstId, a.canonicalId))
+                } else {
+                    let updStmt = try db.prepare("""
+                        UPDATE main.apps SET
+                            display_name = ?1,
+                            category = ?2,
+                            state = ?3,
+                            retired_utc = ?4,
+                            is_background = ?5,
+                            kind = ?6
+                        WHERE id = ?7;
+                        """)
+                    try updStmt.bind(text: a.displayName, at: 1)
+                    try updStmt.bind(text: a.category, at: 2)
+                    try updStmt.bind(text: a.state, at: 3)
+                    if let r = a.retiredUtc { try updStmt.bind(int64: r, at: 4) }
+                    try updStmt.bind(int64: a.isBackground, at: 5)
+                    if let k = a.kind { try updStmt.bind(int64: k, at: 6) }
+                    try updStmt.bind(int64: dstId, at: 7)
+                    _ = try updStmt.step()
                 }
+
+                allSnapshotApps.append((a.id, dstId, a.canonicalId))
 
                 let mapStmt = try db.prepare("INSERT INTO temp.idmap VALUES (?1, ?2);")
                 try mapStmt.bind(int64: a.id, at: 1)
@@ -252,8 +274,8 @@ public enum SyncReader {
                 _ = try mapStmt.step()
             }
 
-            // Remap canonical links for newly inserted apps
-            for (_, dstId, srcCanonical) in newlyInsertedApps {
+            // Remap canonical links for all snapshot apps (intra-device merges)
+            for (_, dstId, srcCanonical) in allSnapshotApps {
                 if let sc = srcCanonical {
                     let updateStmt = try db.prepare("""
                         UPDATE main.apps
@@ -263,6 +285,74 @@ public enum SyncReader {
                     try updateStmt.bind(int64: sc, at: 1)
                     try updateStmt.bind(int64: dstId, at: 2)
                     _ = try updateStmt.step()
+                } else {
+                    let unmergeStmt = try db.prepare("""
+                        UPDATE main.apps
+                        SET canonical_id = NULL
+                        WHERE id = ?1 AND canonical_id IN (SELECT dst_id FROM temp.idmap);
+                        """)
+                    try unmergeStmt.bind(int64: dstId, at: 1)
+                    _ = try unmergeStmt.step()
+                }
+            }
+
+            // Sync cross-device merges
+            let hasCrossTable = try db.prepare("SELECT COUNT(*) FROM src.sqlite_master WHERE type='table' AND name='cross_device_merges';")
+            if try hasCrossTable.step(), hasCrossTable.columnInt64(at: 0) > 0 {
+                func findAppInMain(dev: String, exe: String, bundle: String) throws -> Int64? {
+                    if !bundle.isEmpty {
+                        let stmt = try db.prepare("SELECT id FROM main.apps WHERE device_id = ?1 AND bundle_id = ?2 LIMIT 1;")
+                        try stmt.bind(text: dev, at: 1)
+                        try stmt.bind(text: bundle, at: 2)
+                        if try stmt.step() { return stmt.columnInt64(at: 0) }
+                    } else {
+                        let stmt = try db.prepare("SELECT id FROM main.apps WHERE device_id = ?1 AND exe_path = ?2 COLLATE NOCASE LIMIT 1;")
+                        try stmt.bind(text: dev, at: 1)
+                        try stmt.bind(text: exe, at: 2)
+                        if try stmt.step() { return stmt.columnInt64(at: 0) }
+                    }
+                    return nil
+                }
+
+                var validSubordinates: Set<Int64> = []
+                let readCross = try db.prepare("SELECT source_device_id, source_exe_path, source_bundle_id, target_device_id, target_exe_path, target_bundle_id FROM src.cross_device_merges;")
+                while try readCross.step() {
+                    let sDev = readCross.columnText(at: 0) ?? ""
+                    let sExe = readCross.columnText(at: 1) ?? ""
+                    let sBundle = readCross.columnText(at: 2) ?? ""
+                    let tDev = readCross.columnText(at: 3) ?? ""
+                    let tExe = readCross.columnText(at: 4) ?? ""
+                    let tBundle = readCross.columnText(at: 5) ?? ""
+
+                    if let sId = try findAppInMain(dev: sDev, exe: sExe, bundle: sBundle),
+                       let tId = try findAppInMain(dev: tDev, exe: tExe, bundle: tBundle),
+                       sId != tId {
+                        let upStmt = try db.prepare("UPDATE main.apps SET canonical_id = ?1 WHERE id = ?2;")
+                        try upStmt.bind(int64: tId, at: 1)
+                        try upStmt.bind(int64: sId, at: 2)
+                        _ = try upStmt.step()
+                        validSubordinates.insert(sId)
+                    }
+                }
+
+                // Unmerge stale cross-device merges from this snapshot device
+                let unmergeCross = try db.prepare("""
+                    SELECT a.id FROM main.apps a
+                    JOIN main.apps c ON c.id = a.canonical_id
+                    WHERE a.device_id = ?1 AND c.device_id != ?1;
+                    """)
+                try unmergeCross.bind(text: manifest.deviceId, at: 1)
+                var staleIds: [Int64] = []
+                while try unmergeCross.step() {
+                    let id = unmergeCross.columnInt64(at: 0)
+                    if !validSubordinates.contains(id) {
+                        staleIds.append(id)
+                    }
+                }
+                for sid in staleIds {
+                    let clearStmt = try db.prepare("UPDATE main.apps SET canonical_id = NULL WHERE id = ?1;")
+                    try clearStmt.bind(int64: sid, at: 1)
+                    _ = try clearStmt.step()
                 }
             }
 

@@ -72,6 +72,7 @@ public sealed class DevicesAndSyncSettingsTests : IDisposable
         var rows = SettingsCatalogue.InSection(SettingsCatalogue.DevicesAndSync).ToList();
         rows.Should().Contain(r => r.Id == "devicesSync" && r.Kind == SettingKind.Button);
         rows.Should().Contain(r => r.Id == "deviceName" && r.Kind == SettingKind.Info);
+        rows.Should().Contain(r => r.Id == "shortDeviceNames" && r.Kind == SettingKind.Switch);
     }
 
     [Fact]
@@ -167,4 +168,20 @@ public sealed class DevicesAndSyncSettingsTests : IDisposable
             cmd.ExecuteScalar().Should().Be(1L);
         }
     }
+    [Fact]
+    public void DeviceIdentity_MergeMatchingCrossDeviceApps_merges_remote_into_local()
+    {
+        using var db = Db.Open(_dbPath);
+
+        var mergedCount = DeviceIdentity.MergeMatchingCrossDeviceApps(db);
+        mergedCount.Should().Be(1);
+
+        using var cmd = db.Connection.CreateCommand();
+        cmd.CommandText = "SELECT canonical_id FROM apps WHERE id = 2";
+        cmd.ExecuteScalar().Should().Be(1L);
+
+        cmd.CommandText = "SELECT canonical_id FROM apps WHERE id = 1";
+        cmd.ExecuteScalar().Should().Be(DBNull.Value);
+    }
 }
+

@@ -120,6 +120,7 @@ public static class Setting
     public static readonly Setting<DeviceScope> DeviceScope = Name("ui.deviceScope", Devices.DeviceScope.This);
     public static readonly Setting<string?> DeviceId = Text("device.id");
     public static readonly Setting<string?> DeviceName = Text("device.name");
+    public static readonly Setting<bool> ShortDeviceNames = Switch("devices.shortNames", true);
 
     public static readonly Setting<string?> AlertsSent = Text("alerts.sent");
     public static readonly Setting<string?> AlertsWeeklyLast = Text("alerts.weeklyLast");
@@ -136,6 +137,6 @@ public static class Setting
         Startup, WeekStartsOn, PauseOnSleep, CountWhenLocked, MinSessionSeconds, SuggestApps, SteamAutoTrack,
         Theme, Accent, Compact, AppIcon, GoalAlerts, WeeklySummary, BackupMode,
         LastTab, LastYearView, AllLayout, InstantOpen, GamesOnly, BackupLastUtc, BackupFolder, AlertsSent, AlertsWeeklyLast, SteamIconsRepaired,
-        SyncEnabled, SyncFolder, SyncState, SyncLastExportUtc, SyncLastImportUtc, SyncEnabledUtc, DeviceScope, DeviceId, DeviceName,
+        SyncEnabled, SyncFolder, SyncState, SyncLastExportUtc, SyncLastImportUtc, SyncEnabledUtc, DeviceScope, DeviceId, DeviceName, ShortDeviceNames,
     ];
 }

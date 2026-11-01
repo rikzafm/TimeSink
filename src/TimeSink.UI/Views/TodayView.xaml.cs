@@ -58,24 +58,9 @@ public partial class TodayView : UserControl, ILiveView
 
     private void LoadDeviceInfo()
     {
-        try
-        {
-            using var c = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly");
-            c.Open();
-            using var cmd = c.CreateCommand();
-            cmd.CommandText = "SELECT device_id, name, platform, is_local FROM devices;";
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
-            {
-                var id = reader.GetString(0);
-                var name = reader.GetString(1);
-                var platform = reader.GetString(2);
-                var isLocal = reader.GetInt64(3) == 1;
-                var shortName = !string.IsNullOrEmpty(name) ? name : (platform == "macos" ? "Mac" : "PC");
-                _deviceInfo[id] = (shortName, isLocal);
-            }
-        }
-        catch { }
+        _deviceInfo.Clear();
+        foreach (var (k, v) in DeviceInfoService.Load(_dbPath))
+            _deviceInfo[k] = v;
     }
 
     private bool IsLocalDevice(string? deviceId)
@@ -198,6 +183,7 @@ public partial class TodayView : UserControl, ILiveView
                 _weekStart = r.WeekStart;
             });
         if (!applied) return;
+        LoadDeviceInfo();
         Redraw();
         _untracked.Reload(); // after real data is on screen; icons are extracted off-thread
     }

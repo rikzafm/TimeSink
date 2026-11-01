@@ -131,7 +131,9 @@ public struct YearTabView: View {
 
                 if state.showsDeviceSplit {
                     let t = state.deviceSplit(result.deviceTotals)
-                    DeviceLegend(mac: "Mac \(h(t.mac))", pc: "PC \(h(t.pc))", both: "\(h(result.onBothSeconds)) on both")
+                    let localName = state.deviceADisplayName()
+                    let remoteName = state.deviceBDisplayName()
+                    DeviceLegend(mac: "\(localName) \(h(t.mac))", pc: "\(remoteName) \(h(t.pc))", both: "\(h(result.onBothSeconds)) on both")
                 }
 
                 if let pace = result.paceYearSeconds {
@@ -748,10 +750,10 @@ public struct WrappedCardView: View {
                 let hasLocal = totals.keys.contains { state.isLocalDevice($0) && (totals[$0] ?? 0) > 0 }
                 let hasRemote = totals.keys.contains { !state.isLocalDevice($0) && (totals[$0] ?? 0) > 0 }
                 if !hasLocal && hasRemote {
-                    return "Your PC was on"
+                    return "Your \(state.deviceBDisplayName()) was on"
                 }
             }
-            return "Your Mac was on"
+            return "Your \(state.deviceADisplayName()) was on"
         }()
 
         var parts: [String] = []
@@ -804,13 +806,22 @@ public struct WrappedCardView: View {
                 .padding(.top, 18)
 
                 HStack {
-                    HStack(spacing: 5) { DeviceMarker(isLocal: true, size: 7); Text("Mac \(Formatters.hours(split.mac))") }
-                    Spacer()
+                    HStack(spacing: 5) {
+                        DeviceMarker(isLocal: true, size: 7)
+                        Text("\(state.deviceADisplayName()) \(Formatters.hours(split.mac))")
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    Spacer(minLength: 4)
                     Text("\(Formatters.hours(result.onBothSeconds)) on both")
-                    Spacer()
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 4)
                     HStack(spacing: 5) {
                         RoundedRectangle(cornerRadius: 2).fill(ThemeColors.deviceB).frame(width: 7, height: 7)
-                        Text("PC \(Formatters.hours(split.pc))")
+                        Text("\(state.deviceBDisplayName()) \(Formatters.hours(split.pc))")
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                 }
                 .font(.system(size: 10))
