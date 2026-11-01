@@ -12,6 +12,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var processProvider: NSWorkspaceProcessProvider!
     private var powerHub: MacPowerEventHub!
     private var iconCache: MacIconCache!
+    private var appState: AppState!
     private var timer: Timer?
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
@@ -27,6 +28,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             processProvider = NSWorkspaceProcessProvider()
             powerHub = MacPowerEventHub()
             iconCache = MacIconCache(db: database)
+            appState = AppState(db: database)
 
             let settings = DbTrackingSettings(db: database)
             let clock = SystemClock()
@@ -50,7 +52,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             popover = NSPopover()
             popover.contentSize = NSSize(width: 400, height: 640)
             popover.behavior = .transient
-            popover.contentViewController = NSHostingController(rootView: PopoverRootView())
+            popover.contentViewController = NSHostingController(rootView: PopoverRootView(state: appState))
 
             statusBarController = StatusBarController(popover: popover)
 
@@ -75,6 +77,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         let now = Date()
         try? engine.onTick(now)
         updateMenuTotal()
+        appState?.refresh()
     }
 
     private func updateMenuTotal() {

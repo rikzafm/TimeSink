@@ -1,6 +1,6 @@
 # SwiftUI tab screens
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 6)
 Blocked by: 19, 20
 Design: design/mac/Main, TodayAll, Week, Month, YearPace, YearWrapped, YearWrappedApps, YearWrappedHabits, YearMatrix, All and AppDetail (each `.dc.html`; see design/mac/README.md)
