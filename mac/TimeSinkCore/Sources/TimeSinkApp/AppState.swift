@@ -20,13 +20,7 @@ public enum YearSubView: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
-public enum AllSortOption: String, CaseIterable, Identifiable {
-    case time = "Hours"
-    case name = "Name"
-    case lastOpened = "Last opened"
-
-    public var id: String { rawValue }
-}
+public typealias AllSortOption = AllColumn
 
 @MainActor
 public final class AppState: ObservableObject {
@@ -80,9 +74,10 @@ public final class AppState: ObservableObject {
     public var onThemeChanged: (() -> Void)?
     public var onAppIconChanged: ((String) -> Void)?
 
-    // All tab search and sort
+    // All tab search, layout and sort
     @Published public var allSearchQuery: String = ""
-    @Published public var allSort: AllSortOption = .time
+    @Published public var allSort: AllSort = .default
+    @Published public var allLayout: String = "labeled"
 
     // Cached query results
     @Published public var todayResult: TodayResult?
@@ -430,7 +425,16 @@ public final class AppState: ObservableObject {
             if let bm = try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.backupMode)';") {
                 self.backupMode = bm
             }
+
+            if let al = try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.allLayout)';"), !al.isEmpty {
+                self.allLayout = al
+            }
         } catch {}
+    }
+
+    public func setAllLayout(_ layout: String) {
+        self.allLayout = layout
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.allLayout)', '\(layout)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
     }
 
     public func setAppIcon(_ iconId: String) {
