@@ -64,6 +64,8 @@ public static class AddAppStrings
     public const string SubInstalled = "addSubInstalled";
     public const string MergeStarts = "addMergeStarts";
     public const string MergeCount = "addMergeCount";
+    public const string SuggestedMatch = "addSuggestedMatch";
+    public const string TickMatch = "addTickMatch";
     public const string SaveChanges = "addSaveChanges";
     public const string Background = "addBackground";
     public const string BackgroundTip = "addBackgroundTip";

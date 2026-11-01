@@ -1,6 +1,6 @@
 # Merge screen with a tab per device
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 3)
 Blocked by: 07, 10
 Design: design/mac/Merge.dc.html, design/mac/AppSettings.dc.html

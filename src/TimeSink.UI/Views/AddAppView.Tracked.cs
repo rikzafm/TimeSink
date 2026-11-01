@@ -68,7 +68,10 @@ public sealed partial class AddAppView
         return root;
     }
 
-    private Border SearchBox(string hintKey, string automationKey, string initial, Action<string> changed)
+    private Border SearchBox(string hintKey, string automationKey, string initial, Action<string> changed) =>
+        SearchBoxWithHint(hintKey, automationKey, initial, changed).Border;
+
+    private (Border Border, Action<string> UpdateHint) SearchBoxWithHint(string hintKey, string automationKey, string initial, Action<string> changed)
     {
         var box = new TextBox { BorderThickness = new Thickness(0), Background = Brushes.Transparent, VerticalContentAlignment = VerticalAlignment.Center, Text = initial };
         System.Windows.Automation.AutomationProperties.SetName(box, TimeText.Str(automationKey));
@@ -76,7 +79,8 @@ public sealed partial class AddAppView
         box.SetResourceReference(System.Windows.Controls.Primitives.TextBoxBase.CaretBrushProperty, "Brush.Text");
         box.SetResourceReference(Control.FontFamilyProperty, "FontFamily.Ui");
         box.SetResourceReference(Control.FontSizeProperty, "Double.FontSize.Body");
-        var hint = Text(hintKey, "Double.FontSize.Body", "Brush.TextMuted");
+        var hint = Text(hintKey.StartsWith("Str.") ? hintKey : null, "Double.FontSize.Body", "Brush.TextMuted");
+        if (!hintKey.StartsWith("Str.")) hint.Text = hintKey;
         hint.IsHitTestVisible = false;
         hint.VerticalAlignment = VerticalAlignment.Center;
         hint.Visibility = initial.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -85,6 +89,11 @@ public sealed partial class AddAppView
             hint.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             changed(box.Text);
         };
+        var updateHint = (Action<string>)(newHint =>
+        {
+            hint.ClearValue(TextBlock.TextProperty);
+            hint.Text = newHint;
+        });
         var magnifier = new System.Windows.Shapes.Path
         {
             Data = Geometry.Parse("M11,4 A7,7 0 1 0 11,18 A7,7 0 1 0 11,4 M20,20 L16.5,16.5"), StrokeThickness = 2, Width = 16, Height = 16,
@@ -104,7 +113,7 @@ public sealed partial class AddAppView
         border.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
         border.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         border.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
-        return border;
+        return (border, updateHint);
     }
 
     private void LoadTracked()
@@ -401,9 +410,10 @@ public sealed partial class AddAppView
     /// <summary>The line under a Candidate's name.</summary>
     private static string SubOf(MergeCandidate c) => c.Kind switch
     {
-        CandidateKind.Tracked or CandidateKind.Merged => UsageText.HoursMinutes(c.Seconds),
+        CandidateKind.Merged => "Merged",
+        CandidateKind.Tracked => "Tracked",
         CandidateKind.Retired => TimeText.Str(AddAppStrings.SubStopped),
-        _ => c.Installed!.Byline ?? TimeText.Str(AddAppStrings.SubInstalled),
+        _ => c.Installed?.Byline ?? TimeText.Str(AddAppStrings.SubInstalled),
     };
 
     /// <summary>A tracked Candidate shows the tile-resolution logo when this process already extracted it.</summary>
@@ -413,6 +423,15 @@ public sealed partial class AddAppView
     {
         var candidates = plan.Candidates;
         _mergeTiles.Clear();
+
+        Action<string> updateSearchHint = _ => { };
+
+        var devInfo = DeviceInfoService.Load(_dbPath);
+        var localDev = devInfo.FirstOrDefault(kv => kv.Value.IsLocal).Key;
+        var devices = plan.Devices;
+        var orderedDevices = devices.OrderByDescending(d => DeviceInfoService.IsLocal(devInfo, d, localDev)).ToList();
+        if (plan.DeviceFilter == null && orderedDevices.Count > 0)
+            plan.DeviceFilter = orderedDevices[0];
 
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -432,22 +451,29 @@ public sealed partial class AddAppView
         head.Children.Add(sub);
         root.Children.Add(head);
 
-        var segments = new StackPanel { Orientation = Orientation.Horizontal };
-        var seg = new Border { Margin = new Thickness(20, 12, 20, 0), Padding = new Thickness(3), BorderThickness = new Thickness(1), Child = segments };
-        seg.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
-        seg.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
-        seg.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
-        Grid.SetRow(seg, 1);
-        root.Children.Add(seg);
-
-        var list = new StackPanel { Margin = new Thickness(16, 12, 16, 8) };
+        var list = new StackPanel { Margin = new Thickness(16, 8, 16, 8) };
         var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = list };
         Grid.SetRow(scroll, 2);
         root.Children.Add(scroll);
 
-        var note = Text(null, "Double.FontSize.Small", "Brush.Warning");
+        // Foot: preview card, note, buttons
+        var previewCard = new Border
+        {
+            Margin = new Thickness(20, 6, 20, 6),
+            Padding = new Thickness(12, 8, 12, 8),
+            BorderThickness = new Thickness(1),
+        };
+        previewCard.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
+        previewCard.SetResourceReference(Border.BorderBrushProperty, "Brush.Accent");
+        previewCard.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
+        var previewText = Text(null, "Double.FontSize.Small", "Brush.Text");
+        previewText.TextWrapping = TextWrapping.Wrap;
+        previewCard.Child = previewText;
+
+        var note = Text(null, "Double.FontSize.Small", "Brush.TextMuted");
         note.Margin = new Thickness(20, 0, 20, 8);
         note.TextWrapping = TextWrapping.Wrap;
+
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(14, 0, 14, 12) };
         var cancel = Button(AddAppStrings.Cancel, BtnKind.Outline, () => { _mergePlan = null; _nav.CancelMerge(); ShowTracked(); ReturnToSettings(); });
         cancel.Margin = new Thickness(0, 0, 8, 0);
@@ -455,8 +481,164 @@ public sealed partial class AddAppView
         buttons.Children.Add(cancel);
         buttons.Children.Add(go);
 
+        var foot = new StackPanel();
+        foot.Children.Add(previewCard);
+        foot.Children.Add(note);
+        foot.Children.Add(buttons);
+        Grid.SetRow(foot, 3);
+        root.Children.Add(foot);
+
+        var topStack = new StackPanel();
+
+        // 1. Device tabs
+        var devTabs = new StackPanel { Orientation = Orientation.Horizontal };
+        var devTabsBar = new Border
+        {
+            Margin = new Thickness(20, 10, 20, 0),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Child = devTabs
+        };
+        devTabsBar.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
+        if (orderedDevices.Count > 1) topStack.Children.Add(devTabsBar);
+
+        // 2. Filter segments (Tracked / Untracked / All)
+        var segments = new StackPanel { Orientation = Orientation.Horizontal };
+        var seg = new Border { Margin = new Thickness(20, 10, 20, 0), Padding = new Thickness(3), BorderThickness = new Thickness(1), Child = segments };
+        seg.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
+        seg.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
+        seg.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
+        topStack.Children.Add(seg);
+
+        // 3. Suggested match banner
+        var suggestedBanner = new Border
+        {
+            Margin = new Thickness(20, 8, 20, 0),
+            Padding = new Thickness(12, 8, 12, 8),
+            BorderThickness = new Thickness(1),
+        };
+        suggestedBanner.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
+        suggestedBanner.SetResourceReference(Border.BorderBrushProperty, "Brush.Accent");
+        suggestedBanner.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
+
+        var bannerGrid = new Grid();
+        bannerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        bannerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var bannerText = Text("Str.AddSuggestedMatch", "Double.FontSize.Small", "Brush.Text");
+        bannerText.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(bannerText, 0);
+        bannerGrid.Children.Add(bannerText);
+
+        var tickMatchBtn = Button(AddAppStrings.TickMatch, BtnKind.Primary, () =>
+        {
+            foreach (var match in plan.SuggestedMatches)
+            {
+                if (!plan.IsTicked(match.Key))
+                    plan.Toggle(match.Key);
+            }
+            Render();
+        });
+        tickMatchBtn.Height = 26;
+        tickMatchBtn.Padding = new Thickness(10, 0, 10, 0);
+        Grid.SetColumn(tickMatchBtn, 1);
+        bannerGrid.Children.Add(tickMatchBtn);
+        suggestedBanner.Child = bannerGrid;
+
+        // 4. Search box
+        var searchBoxRes = SearchBoxWithHint("Str.AddTrackedSearch", AddAppStrings.TrackedSearch, plan.Query, text => { plan.Query = text; Render(); });
+        var search = searchBoxRes.Border;
+        updateSearchHint = searchBoxRes.UpdateHint;
+        search.Margin = new Thickness(20, 8, 20, 0);
+
+        topStack.Children.Add(suggestedBanner);
+        topStack.Children.Add(search);
+
+        Grid.SetRow(topStack, 1);
+        root.Children.Add(topStack);
+
         void Render()
         {
+            // Update device tabs
+            devTabs.Children.Clear();
+            if (orderedDevices.Count > 1)
+            {
+                foreach (var d in orderedDevices)
+                {
+                    var isLocal = DeviceInfoService.IsLocal(devInfo, d, localDev);
+                    var devName = DeviceInfoService.GetName(devInfo, d, isLocal);
+                    var isSelected = string.Equals(plan.DeviceFilter, d, StringComparison.OrdinalIgnoreCase);
+                    var tickedCount = plan.TickedCountForDevice(d);
+
+                    var tabInner = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+                    tabInner.Children.Add(new DeviceMarker
+                    {
+                        IsLocal = isLocal,
+                        Width = 7,
+                        Height = 7,
+                        Margin = new Thickness(0, 0, 6, 0),
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+                    var tabLabel = Text(null, "Double.FontSize.Body", isSelected ? "Brush.Text" : "Brush.TextMuted");
+                    tabLabel.Text = devName;
+                    tabLabel.FontWeight = isSelected ? FontWeights.SemiBold : FontWeights.Normal;
+                    tabLabel.VerticalAlignment = VerticalAlignment.Center;
+                    tabInner.Children.Add(tabLabel);
+
+                    if (tickedCount > 0)
+                    {
+                        var badge = new Border
+                        {
+                            CornerRadius = new CornerRadius(8),
+                            Padding = new Thickness(6, 1, 6, 1),
+                            Margin = new Thickness(6, 0, 0, 0),
+                            Height = 16,
+                            VerticalAlignment = VerticalAlignment.Center
+                        };
+                        badge.SetResourceReference(Border.BackgroundProperty, "Brush.Accent");
+                        var badgeText = new TextBlock
+                        {
+                            Text = tickedCount.ToString(),
+                            FontSize = 10,
+                            FontWeight = FontWeights.Bold,
+                            HorizontalAlignment = HorizontalAlignment.Center,
+                            VerticalAlignment = VerticalAlignment.Center
+                        };
+                        badgeText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.OnAccent");
+                        badgeText.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
+                        badge.Child = badgeText;
+                        tabInner.Children.Add(badge);
+                    }
+
+                    var tabItem = new Border
+                    {
+                        Height = 32,
+                        Padding = new Thickness(0, 0, 0, isSelected ? 4 : 6),
+                        Margin = new Thickness(0, 0, 16, 0),
+                        BorderThickness = new Thickness(0, 0, 0, isSelected ? 2 : 0),
+                        Cursor = Cursors.Hand,
+                        Background = Brushes.Transparent,
+                        Child = tabInner
+                    };
+                    if (isSelected) tabItem.SetResourceReference(Border.BorderBrushProperty, "Brush.Accent");
+                    var targetDev = d;
+                    tabItem.MouseLeftButtonUp += (_, _) =>
+                    {
+                        plan.DeviceFilter = targetDev;
+                        Render();
+                    };
+                    devTabs.Children.Add(tabItem);
+                }
+            }
+
+            // Update search placeholder
+            var activeDeviceName = plan.DeviceFilter != null ? DeviceInfoService.GetName(devInfo, plan.DeviceFilter, DeviceInfoService.IsLocal(devInfo, plan.DeviceFilter, localDev)) : "";
+            updateSearchHint?.Invoke(orderedDevices.Count > 1 && !string.IsNullOrEmpty(activeDeviceName) ? $"Search apps on {activeDeviceName}" : TimeText.Str(AddAppStrings.TrackedSearch));
+
+            // Update suggestions banner
+            var untickedSuggestions = plan.SuggestedMatches.Where(s => !plan.IsTicked(s.Key)).ToList();
+            suggestedBanner.Visibility = untickedSuggestions.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+            // Update filter segments
             segments.Children.Clear();
             foreach (var (filter, key) in new[]
             {
@@ -493,6 +675,7 @@ public sealed partial class AddAppView
                 segments.Children.Add(segment);
             }
 
+            // Update candidate list
             list.Children.Clear();
             _mergeTiles.Clear();
             var q = plan.Query.Trim();
@@ -510,10 +693,36 @@ public sealed partial class AddAppView
                     Render();
                 }));
 
+            // Update preview card and note
+            var tickedCandidates = plan.Candidates.Where(c => plan.IsTicked(c.Key)).ToList();
+            var mainH = Math.Max(0, plan.MainSeconds / 3600);
+            var totalH = Math.Max(0, (plan.MainSeconds + tickedCandidates.Sum(c => c.Seconds)) / 3600);
+
+            if (tickedCandidates.Count == 0)
+            {
+                previewText.Text = $"{plan.MainName} ({mainH} h) under “{plan.MainName}”.";
+            }
+            else if (tickedCandidates.Count <= 2)
+            {
+                var parts = string.Join(" + ", tickedCandidates.Select(c => $"{c.Name} ({Math.Max(0, c.Seconds / 3600)} h)"));
+                previewText.Text = $"{plan.MainName} ({mainH} h) + {parts} = {totalH} h under “{plan.MainName}”.";
+            }
+            else
+            {
+                var tickedH = Math.Max(0, tickedCandidates.Sum(c => c.Seconds) / 3600);
+                previewText.Text = $"{plan.MainName} ({mainH} h) + {tickedCandidates.Count} apps ({tickedH} h) = {totalH} h under “{plan.MainName}”.";
+            }
+
             var (adds, removes, startsTracking) = plan.Summary;
             var changed = plan.Summary.Changed;
-            note.Visibility = startsTracking ? Visibility.Visible : Visibility.Collapsed;
-            note.Text = TimeText.Str(AddAppStrings.MergeStarts, plan.MainName);
+
+            var otherDevs = orderedDevices.Where(d => !string.Equals(d, plan.DeviceFilter, StringComparison.OrdinalIgnoreCase)).ToList();
+            var otherNotes = otherDevs.Count > 0
+                ? " Ticks on other devices stay: " + string.Join(" · ", otherDevs.Select(d => $"{DeviceInfoService.GetName(devInfo, d, DeviceInfoService.IsLocal(devInfo, d, localDev))} {plan.TickedCountForDevice(d)}")) + "."
+                : "";
+            note.Text = $"Ticked untracked apps start being tracked now and count under {plan.MainName}.{otherNotes}";
+
+            // Update buttons
             go.SetResourceReference(Control.BackgroundProperty, changed ? "Brush.Accent" : "Brush.SurfaceAlt");
             go.SetResourceReference(Control.ForegroundProperty, changed ? "Brush.OnAccent" : "Brush.TextMuted");
             go.SetResourceReference(Control.BorderBrushProperty, changed ? "Brush.Accent" : "Brush.Border");
@@ -526,14 +735,6 @@ public sealed partial class AddAppView
         Render();
         LoadMergeIcons(candidates);
 
-        var search = SearchBox("Str.AddTrackedSearch", AddAppStrings.TrackedSearch, plan.Query, text => { plan.Query = text; Render(); });
-        search.Margin = new Thickness(20, 0, 20, 10);
-        var foot = new StackPanel();
-        foot.Children.Add(note);
-        foot.Children.Add(search);
-        foot.Children.Add(buttons);
-        Grid.SetRow(foot, 3);
-        root.Children.Add(foot);
         return root;
     }
 
@@ -562,6 +763,7 @@ public sealed partial class AddAppView
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var tile = AppTile.Candidate(_themes, t.ExePath, t.Name, PngOf(t), TileStyle.CandidateRow);
         tile.Margin = new Thickness(0, 0, 12, 0);
         if (t.Kind == CandidateKind.Installed) _mergeTiles.Register(t.ExePath, tile, t.Name); // icons arrive in the background and fill these
@@ -575,6 +777,14 @@ public sealed partial class AddAppView
         s.TextTrimming = TextTrimming.CharacterEllipsis;
         texts.Children.Add(n);
         texts.Children.Add(s);
+
+        var time = Text(null, "Double.FontSize.Body", "Brush.TextMuted");
+        if (t.Seconds > 0)
+        {
+            time.Text = UsageText.Hours(t.Seconds) + " h";
+            time.VerticalAlignment = VerticalAlignment.Center;
+            time.Margin = new Thickness(8, 0, 12, 0);
+        }
 
         // checkbox: rounded square, ticked with the accent colour
         var box = new Border { Width = 18, Height = 18, BorderThickness = new Thickness(2), VerticalAlignment = VerticalAlignment.Center };
@@ -597,9 +807,11 @@ public sealed partial class AddAppView
             box.SetResourceReference(Border.BorderBrushProperty, "Brush.TextMuted");
         }
         Grid.SetColumn(texts, 1);
-        Grid.SetColumn(box, 2);
+        Grid.SetColumn(time, 2);
+        Grid.SetColumn(box, 3);
         g.Children.Add(tile);
         g.Children.Add(texts);
+        if (t.Seconds > 0) g.Children.Add(time);
         g.Children.Add(box);
         row.Child = g;
         row.MouseLeftButtonUp += (_, _) => toggle();

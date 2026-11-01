@@ -37,7 +37,7 @@ public sealed class MergePlan
     private readonly HashSet<string> _ticked = new(StringComparer.Ordinal);
 
     internal MergePlan(AppCatalogue catalogue, string dbPath, AppIconSource icons, long mainId, string mainName,
-        IReadOnlyList<MergeCandidate> candidates, string mainDeviceId = "")
+        IReadOnlyList<MergeCandidate> candidates, string mainDeviceId = "", long mainSeconds = 0)
     {
         _catalogue = catalogue;
         _dbPath = dbPath;
@@ -45,6 +45,7 @@ public sealed class MergePlan
         MainId = mainId;
         MainName = mainName;
         MainDeviceId = mainDeviceId;
+        MainSeconds = mainSeconds;
         Candidates = candidates;
         foreach (var c in candidates.Where(c => c.Kind == CandidateKind.Merged)) _ticked.Add(c.Key);
     }
@@ -52,6 +53,7 @@ public sealed class MergePlan
     public long MainId { get; }
     public string MainName { get; }
     public string MainDeviceId { get; }
+    public long MainSeconds { get; }
 
     /// <summary>Every Candidate, sorted by name.</summary>
     public IReadOnlyList<MergeCandidate> Candidates { get; }

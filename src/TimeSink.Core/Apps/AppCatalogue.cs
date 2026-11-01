@@ -297,7 +297,7 @@ public sealed class AppCatalogue
             list.Add(new MergeCandidate(key, CandidateKind.Installed, i.Name, i.ExePath, 0, 0, i, png, main.DeviceId));
         }
         var sorted = list.OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
-        return new MergePlan(this, _dbPath, _icons, main.Id, main.DisplayName, sorted, main.DeviceId);
+        return new MergePlan(this, _dbPath, _icons, main.Id, main.DisplayName, sorted, main.DeviceId, main.Seconds);
     }
 
     /// <summary>

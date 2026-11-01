@@ -348,6 +348,8 @@ public sealed partial class AddAppView
             var none = Text("Str.AddSettingsMergedNone", "Double.FontSize.Small", "Brush.TextMuted");
             stack.Children.Add(none);
         }
+        var devInfo = DeviceInfoService.Load(_dbPath);
+        var localDev = devInfo.FirstOrDefault(kv => kv.Value.IsLocal).Key;
         var list = new StackPanel();
         foreach (var m in app.Merged)
         {
@@ -361,10 +363,22 @@ public sealed partial class AddAppView
             tile.Height = 28;
             tile.Margin = new Thickness(0, 0, 10, 0);
             tile.VerticalAlignment = VerticalAlignment.Center;
+            var isLocal = DeviceInfoService.IsLocal(devInfo, m.DeviceId, localDev);
+            var marker = new DeviceMarker
+            {
+                IsLocal = isLocal,
+                Width = 6,
+                Height = 6,
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
             var name = Text(null, "Double.FontSize.Body", "Brush.Text");
             name.Text = m.DisplayName;
             name.TextTrimming = TextTrimming.CharacterEllipsis;
             name.VerticalAlignment = VerticalAlignment.Center;
+            var namePanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            namePanel.Children.Add(marker);
+            namePanel.Children.Add(name);
             var time = Text(null, "Double.FontSize.Small", "Brush.TextMuted");
             time.Text = UsageText.HoursMinutes(m.Seconds);
             time.Margin = new Thickness(10, 0, 4, 0);
@@ -379,11 +393,11 @@ public sealed partial class AddAppView
                 if (_catalogue.ApplyChange(AppChange.Unmerge(id)) != CatalogueOutcome.Done) return;
                 RefreshSettings();
             };
-            Grid.SetColumn(name, 1);
+            Grid.SetColumn(namePanel, 1);
             Grid.SetColumn(time, 2);
             Grid.SetColumn(un, 3);
             row.Children.Add(tile);
-            row.Children.Add(name);
+            row.Children.Add(namePanel);
             row.Children.Add(time);
             row.Children.Add(un);
             var last = m == app.Merged[^1];
@@ -396,6 +410,12 @@ public sealed partial class AddAppView
             var card = Card();
             card.Child = list;
             stack.Children.Add(card);
+
+            var note = Text(null, "Double.FontSize.Small", "Brush.TextMuted");
+            note.Text = "Merged time is added together in every view. Sessions keep their own device.";
+            note.Margin = new Thickness(4, 6, 4, 0);
+            note.TextWrapping = TextWrapping.Wrap;
+            stack.Children.Add(note);
         }
         s.Child = stack;
         return s;
