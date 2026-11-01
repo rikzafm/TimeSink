@@ -8,8 +8,10 @@ A featherweight Windows tray app that records, Steam-style, how long the apps **
 then turns it into Today, Week, Month, Year and All-time views in a flyout above your taskbar.
 
 ![Windows](https://img.shields.io/badge/Windows-11%20%7C%2010%2022H2-0078D4?logo=windows11&logoColor=white)
+![macOS](https://img.shields.io/badge/macOS-14%20%7C%2015-000000?logo=apple&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![Agent](https://img.shields.io/badge/Agent-Native%20AOT-c6f26b?labelColor=11140f)
+![Swift](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
+![Agent](https://img.shields.io/badge/Agent-Native%20AOT%20%7C%20Swift-c6f26b?labelColor=11140f)
 ![UI](https://img.shields.io/badge/UI-WPF-8fd3ff?labelColor=11140f)
 ![Storage](https://img.shields.io/badge/Storage-SQLite-003B57?logo=sqlite&logoColor=white)
 ![Network](https://img.shields.io/badge/Network-none-ff8a7a?labelColor=11140f)
@@ -214,19 +216,41 @@ timesink/
 
 The portable copy still keeps its data in `%LocalAppData%\TimeSink`.
 
+### Option C · macOS (Apple Silicon)
+
+1. Open `mac/TimeSinkCore` and build with Swift 6:
+   ```bash
+   cd mac/TimeSinkCore
+   swift build -c release
+   ```
+2. The executable `TimeSinkApp` runs as a native menu bar accessory (`LSUIElement`).
+3. To launch on a second Mac with ad-hoc signing: right-click `TimeSinkApp` › **Open** to approve macOS Gatekeeper.
+4. Settings includes **Open at login** to run quietly in the menu bar at system startup.
+
+### 🔄 Multi-Device Sync (PC + Mac)
+
+TimeSink can optionally synchronize usage between your Mac and Windows PC:
+1. Open **Settings → Devices and sync**.
+2. Turn **Sync folder** on, and choose a shared cloud storage folder (OneDrive, iCloud Drive, Google Drive, Dropbox, etc.).
+3. Each device exports a self-contained snapshot `<deviceId>.tssync` into the folder and ingests the other machine's snapshots.
+4. In **All devices** scope, headline uptime calculates the true union uptime with overlapping hours counted once (`headline = sum(devices) - onBoth`).
+5. Matching apps across devices (e.g. Chrome on Windows and Chrome on Mac) can be linked with one click in the **Merge** screen.
+6. Devices can be renamed, forgotten (preserving history), or purged with typed `DELETE` confirmation. No sockets, servers, or cloud accounts required.
+
 ### 🗂️ Where your data lives
 
-`%LocalAppData%\TimeSink\`
+- **Windows:** `%LocalAppData%\TimeSink\`
+- **macOS:** `~/Library/Application Support/TimeSink/` (or current working directory in dev mode)
 
 | Item | Path |
 |:--|:--|
 | 🗄️ Database | `timesink.db` (plus `-wal` and `-shm` while running) |
-| 💾 Backups | `backups\` (`.timesink` files, automatic daily by default) |
-| 📝 Log | `logs\agent.log` (1 MB × 3, no window titles or content) |
+| 💾 Backups | `backups/` (`.timesink` files, automatic daily by default) |
+| 📝 Log | `logs/agent.log` (1 MB × 3, no window titles or content) |
 
-### 🚚 Moving to another PC
+### 🚚 Moving to another machine / cross-platform restore
 
-**Settings → Backup now**, copy the `.timesink` file across, then **Settings → Restore** on the new machine.
+**Settings → Backup now**, copy the `.timesink` file across, then **Settings → Restore** on the new machine. Windows `.timesink` backups restore seamlessly on macOS (and vice versa) with options to **Replace** (with automatic safety copy) or **Merge**.
 
 ### 🧹 Uninstall
 
@@ -239,6 +263,8 @@ The portable copy still keeps its data in `%LocalAppData%\TimeSink`.
 
 ## 🛠️ Build from source
 
+### Windows
+
 **Needs:** the .NET 10 SDK and the Visual Studio C++ Build Tools (for Native AOT). Inno Setup 6 is optional and only needed for the installer.
 
 ```powershell
@@ -249,6 +275,17 @@ pwsh installer\Build-Package.ps1 -Test       # ...and verify the zip against scr
 
 Output goes to `artifacts\` (gitignored): `TimeSink-portable-win-x64.zip` and, if `iscc.exe` is found,
 `TimeSink-Setup-<version>.exe`. `installer\Test-Package.ps1 -Smoke` checks any zip without touching your real data.
+
+### macOS
+
+**Needs:** Xcode 16+ / macOS 14+ with Swift 6 toolchain.
+
+```bash
+cd mac/TimeSinkCore
+swift test                                   # run the test suite (50 tests)
+swift build -c release                       # compile TimeSinkApp executable
+```
+
 
 ---
 

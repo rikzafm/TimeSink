@@ -78,3 +78,34 @@ Note decision 44/48: the UI About row shows working set, the budget is private b
 2. Check the three tiles against what you know (last opened day/time and length, average session, times opened) and that the year grid colours follow that app only; hover a day for its time and sessions.
 3. Use the year arrows (disabled at the first tracked year and the current year), Back, and Esc. Switch the theme to Light and repeat.
 4. Double-click an app that is running now: Last opened shows "Running now".
+
+## Two-Machine Integration (Mac + PC sync)
+
+Reference: `.scratch/mac-app/issues/25-two-machine-integration.md` and `shared/sync-format.md`.
+
+| Done | Scenario | Expected | Result | Date |
+|---|---|---|---|---|
+| [ ] | Both devices active simultaneously | Both export `<deviceId>.tssync`. Overlapping intervals count once in headline union uptime. | | |
+| [ ] | One device asleep | Asleep device stops writing; awake device continues tracking and displays previous synced snapshot. | | |
+| [ ] | One device offline for a day | Offline device catches up after reconnecting; no duplicate or missing sessions. | | |
+| [ ] | Clocks a few minutes apart | Start/end times recorded in UTC; union uptime calculations properly merge without negative durations. | | |
+| [ ] | Device renamed in Settings | Snapshot manifest and devices table reflect updated name; other machine updates display name on next sync. | | |
+| [ ] | Device forgotten | Remote device marked 'forgotten'; sync pauses for that device while tracked history is retained. | | |
+| [ ] | OneDrive conflict copy (`<id>-<hostname>.tssync`) | Conflict copy is ignored; primary `<id>.tssync` continues syncing normally. | | |
+| [ ] | Placeholder file (`.com.apple.cloudprovider...`) | Reader detects un-hydrated cloud placeholder and sets state to `pending`. | | |
+| [ ] | Third device snapshot | Ignored by 2-device sync engine; Devices screen shows 'Only two devices are supported yet'. | | |
+| [ ] | Cross-device app merge (e.g. Chrome + Chrome.exe) | Merging links canonical ID; combined hours displayed under canonical name across both machines. | | |
+| [ ] | All-devices figures match | Both apps show identical union uptime and app totals for the same day within one sync interval. | | |
+| [ ] | Windows `.timesink` backup restore on Mac | Inspect, Replace (with safety copy), and Merge restore Windows backup onto Mac with matching numbers. | | |
+
+## Mac App Soak & Budgets (24 h)
+
+Reference: `.scratch/mac-app/issues/26-soak-docs-release.md`.
+Budgets: Mac app memory <= 30 MB working set; CPU near 0% idle (< 0.1% average over 10 min).
+
+| Sample | Date/time | Memory (MB) | Idle CPU % (10 min) | Notes |
+|---|---|---|---|---|
+| Start | | | | |
+| +1 h | | | | |
+| +24 h | | | | |
+
