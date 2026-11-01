@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using TimeSink.Core.Data;
 using TimeSink.Core.Devices;
@@ -329,39 +330,104 @@ public sealed partial class SettingsView : Grid
         };
         btn.SetResourceReference(StyleProperty, "LinkButton");
 
-        void OpenMenu()
+        var menu = new StackPanel { Margin = new Thickness(2) };
+        var frame = new Border
         {
-            var menu = new ContextMenu();
-            menu.SetResourceReference(Control.BackgroundProperty, "Brush.Surface");
-            menu.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");
-            menu.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
+            BorderThickness = new Thickness(1),
+            Child = menu,
+            MinWidth = 100,
+        };
+        frame.SetResourceReference(Border.BackgroundProperty, "Brush.Surface");
+        frame.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
+        frame.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
 
+        var popup = new Popup
+        {
+            PlacementTarget = btn,
+            Placement = PlacementMode.Custom,
+            StaysOpen = false,
+            AllowsTransparency = true,
+            Child = frame,
+        };
+
+        popup.CustomPopupPlacementCallback = (popupSize, targetSize, offset) =>
+        {
+            var point = new Point(targetSize.Width - popupSize.Width, targetSize.Height + 3);
+            return [new CustomPopupPlacement(point, PopupPrimaryAxis.Horizontal)];
+        };
+
+        void PopulateMenu()
+        {
+            menu.Children.Clear();
             var currentVal = SettingsCatalogue.Read(_dbPath, row);
             foreach (var opt in row.OptionList)
             {
-                var item = new MenuItem
-                {
-                    Header = FormatOptionLabel(row, opt.Value),
-                    IsChecked = opt.Value == currentVal,
-                    IsCheckable = true,
-                };
-                item.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
                 var optVal = opt.Value;
-                item.Click += (_, _) =>
+                var isSelected = optVal == currentVal;
+
+                var item = new Border
                 {
+                    Padding = new Thickness(12, 7, 12, 7),
+                    Cursor = Cursors.Hand,
+                    Background = Brushes.Transparent,
+                };
+                item.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
+
+                var label = new TextBlock
+                {
+                    Text = FormatOptionLabel(row, optVal),
+                    FontSize = 12,
+                    FontWeight = isSelected ? FontWeights.SemiBold : FontWeights.Normal,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                label.SetResourceReference(TextBlock.ForegroundProperty, isSelected ? "Brush.Accent" : "Brush.Text");
+                item.Child = label;
+
+                item.MouseEnter += (_, _) => item.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+                item.MouseLeave += (_, _) => item.Background = Brushes.Transparent;
+
+                item.MouseLeftButtonUp += (_, _) =>
+                {
+                    popup.IsOpen = false;
                     Persist(row, optVal);
                     ApplyAppearance(row, optVal);
                     valueText.Text = FormatOptionLabel(row, optVal);
                 };
-                menu.Items.Add(item);
+
+                menu.Children.Add(item);
             }
-            menu.PlacementTarget = btn;
-            menu.Placement = PlacementMode.Bottom;
-            menu.IsOpen = true;
         }
 
-        btn.Click += (_, _) => OpenMenu();
-        return btn;
+        popup.Opened += (_, _) =>
+        {
+            valueText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
+            chevron.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
+            chevron.Text = "▾";
+            chevron.Margin = new Thickness(4, 1, 0, 0);
+        };
+
+        popup.Closed += (_, _) =>
+        {
+            valueText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+            chevron.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+            chevron.Text = "›";
+            chevron.Margin = new Thickness(4, 0, 0, 0);
+        };
+
+        var closedAt = DateTime.MinValue;
+        popup.Closed += (_, _) => closedAt = DateTime.UtcNow;
+
+        btn.Click += (_, _) =>
+        {
+            if (DateTime.UtcNow - closedAt < TimeSpan.FromMilliseconds(200)) return;
+            PopulateMenu();
+            popup.IsOpen = true;
+        };
+
+        var host = new Grid();
+        host.Children.Add(btn);
+        host.Children.Add(popup);
+        return host;
     }
 
     private static string FormatOptionLabel(SettingRow row, string value)
@@ -372,6 +438,7 @@ public sealed partial class SettingsView : Grid
             {
                 "Mon" => "Monday",
                 "Sun" => "Sunday",
+                "Sat" => "Saturday",
                 _ => value
             };
         }

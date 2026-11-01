@@ -152,6 +152,7 @@ public sealed class AllView : UserControl, ILiveView
 
     public async void Refresh()
     {
+        _deviceInfo = DeviceInfoService.Load(_dbPath);
         if (await _loader.Refresh(c => AllQuery.Run(c), r => _result = r)) Redraw();
     }
 

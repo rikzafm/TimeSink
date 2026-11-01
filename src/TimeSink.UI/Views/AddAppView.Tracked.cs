@@ -31,7 +31,13 @@ public sealed partial class AddAppView
     private MergePlan? _mergePlan;      // the open merge screen's plan (Candidates, ticks, confirm) lives in AppCatalogue; which screen shows is in _nav
     private double _listOffset;            // Tracked list scroll position when Merge… was opened
 
-    public void ShowTracked() => _body.Content = _nav.State.Merge == MergeStage.Ready && _mergePlan is { } plan ? BuildMergeScreen(plan) : BuildTrackedTab();
+    public void ShowTracked()
+    {
+        if (_nav.State.Merge == MergeStage.Ready && _mergePlan is { } plan)
+            Content = BuildMergeScreen(plan);
+        else
+            _body.Content = BuildTrackedTab();
+    }
 
     private UIElement BuildTrackedTab()
     {
@@ -393,17 +399,43 @@ public sealed partial class AddAppView
     /// Opens the merge screen for a Main app. The plan (and the first installed-apps scan) is built on a pool thread, so a
     /// loading note shows meanwhile; if the app is gone or the database is busy the Tracked tab shows instead.
     /// </summary>
-    private void OpenMergeScreen(long mainId)
+    private void OpenMergeScreen(long mainId, string? appName = null)
     {
         _mergePlan = null;
         _nav.BeginMergeOpen(mainId);
-        _body.Content = Note("Str.AddInstalledLoading");
+
+        var root = new Grid();
+        root.SetResourceReference(Panel.BackgroundProperty, "Brush.Surface");
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        var head = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(14, 12, 16, 6), VerticalAlignment = VerticalAlignment.Center };
+        var back = IconButton("M15,6 L9,12 L15,18", "Brush.TextSoft");
+        back.Margin = new Thickness(0, 0, 8, 0);
+        back.Click += (_, _) => { _mergePlan = null; _nav.CancelMerge(); ReturnToSettings(); };
+        var title = Text(null, "Double.FontSize.Title", "Brush.Text");
+        title.Text = appName != null ? TimeText.Str(AddAppStrings.MergeTitle, appName) : TimeText.Str(AddAppStrings.MergeTitle, "");
+        title.FontWeight = FontWeights.Bold;
+        title.VerticalAlignment = VerticalAlignment.Center;
+        head.Children.Add(back);
+        head.Children.Add(title);
+        Grid.SetRow(head, 0);
+        root.Children.Add(head);
+
+        var note = Note("Str.AddInstalledLoading");
+        Grid.SetRow(note, 1);
+        root.Children.Add(note);
+        Content = root;
+
         Task.Run(() => _catalogue.OpenMergePlan(mainId, TileIconPx)).ContinueWith(t =>
         {
             var plan = t.IsCompletedSuccessfully ? t.Result : null;
-            if (!_nav.CompleteMergeOpen(mainId, plan is not null)) return; // the user went elsewhere meanwhile
+            if (!_nav.CompleteMergeOpen(mainId, plan is not null)) return;
             _mergePlan = plan;
-            if (_nav.State.Tab == AddAppTab.Tracked) ShowTracked();
+            if (plan != null)
+                Content = BuildMergeScreen(plan);
+            else
+                ReturnToSettings();
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
@@ -430,26 +462,55 @@ public sealed partial class AddAppView
         var localDev = devInfo.FirstOrDefault(kv => kv.Value.IsLocal).Key;
         var devices = plan.Devices;
         var orderedDevices = devices.OrderByDescending(d => DeviceInfoService.IsLocal(devInfo, d, localDev)).ToList();
+        if (orderedDevices.Count == 0)
+            orderedDevices.Add(localDev ?? plan.MainDeviceId ?? "local");
         if (plan.DeviceFilter == null && orderedDevices.Count > 0)
             plan.DeviceFilter = orderedDevices[0];
 
         var root = new Grid();
+        root.SetResourceReference(Panel.BackgroundProperty, "Brush.Surface");
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var head = new StackPanel { Margin = new Thickness(20, 14, 20, 0) };
+        root.Focusable = true;
+        root.Loaded += (_, _) => root.Focus();
+        root.PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Escape || Keyboard.FocusedElement is TextBox) return;
+            e.Handled = true;
+            _mergePlan = null;
+            _nav.CancelMerge();
+            ReturnToSettings();
+        };
+
+        var head = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(14, 12, 16, 6), VerticalAlignment = VerticalAlignment.Center };
+        var back = IconButton("M15,6 L9,12 L15,18", "Brush.TextSoft");
+        back.Margin = new Thickness(0, 0, 8, 0);
+        back.Click += (_, _) => { _mergePlan = null; _nav.CancelMerge(); ReturnToSettings(); };
         var title = Text(null, "Double.FontSize.Title", "Brush.Text");
         title.Text = TimeText.Str(AddAppStrings.MergeTitle, plan.MainName);
         title.FontWeight = FontWeights.Bold;
         title.TextTrimming = TextTrimming.CharacterEllipsis;
-        var sub = Text("Str.AddMergeSub", "Double.FontSize.Small", "Brush.TextMuted");
-        sub.TextWrapping = TextWrapping.Wrap;
-        sub.Margin = new Thickness(0, 4, 0, 0);
+        title.VerticalAlignment = VerticalAlignment.Center;
+        head.Children.Add(back);
         head.Children.Add(title);
-        head.Children.Add(sub);
-        root.Children.Add(head);
+
+        var devTabs = new StackPanel { Orientation = Orientation.Horizontal };
+        var devTabsBar = new Border
+        {
+            Margin = new Thickness(16, 0, 16, 0),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Child = devTabs
+        };
+        devTabsBar.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
+
+        var headerArea = new StackPanel();
+        headerArea.Children.Add(head);
+        if (orderedDevices.Count > 0) headerArea.Children.Add(devTabsBar);
+        Grid.SetRow(headerArea, 0);
+        root.Children.Add(headerArea);
 
         var list = new StackPanel { Margin = new Thickness(16, 8, 16, 8) };
         var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = list };
@@ -475,7 +536,7 @@ public sealed partial class AddAppView
         note.TextWrapping = TextWrapping.Wrap;
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(14, 0, 14, 12) };
-        var cancel = Button(AddAppStrings.Cancel, BtnKind.Outline, () => { _mergePlan = null; _nav.CancelMerge(); ShowTracked(); ReturnToSettings(); });
+        var cancel = Button(AddAppStrings.Cancel, BtnKind.Outline, () => { _mergePlan = null; _nav.CancelMerge(); ReturnToSettings(); });
         cancel.Margin = new Thickness(0, 0, 8, 0);
         var go = Button(AddAppStrings.Merge, BtnKind.Ghost, () => ConfirmMerge(plan));
         buttons.Children.Add(cancel);
@@ -488,31 +549,23 @@ public sealed partial class AddAppView
         Grid.SetRow(foot, 3);
         root.Children.Add(foot);
 
-        var topStack = new StackPanel();
+        var topStack = new StackPanel { Margin = new Thickness(16, 8, 16, 0) };
+        var sub = Text("Str.AddMergeSub", "Double.FontSize.Small", "Brush.TextMuted");
+        sub.TextWrapping = TextWrapping.Wrap;
+        sub.Margin = new Thickness(0, 2, 0, 0);
+        topStack.Children.Add(sub);
 
-        // 1. Device tabs
-        var devTabs = new StackPanel { Orientation = Orientation.Horizontal };
-        var devTabsBar = new Border
-        {
-            Margin = new Thickness(20, 10, 20, 0),
-            BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = devTabs
-        };
-        devTabsBar.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
-        if (orderedDevices.Count > 1) topStack.Children.Add(devTabsBar);
-
-        // 2. Filter segments (Tracked / Untracked / All)
+        // 1. Filter segments (Tracked / Untracked / All)
         var segments = new StackPanel { Orientation = Orientation.Horizontal };
-        var seg = new Border { Margin = new Thickness(20, 10, 20, 0), Padding = new Thickness(3), BorderThickness = new Thickness(1), Child = segments };
+        var seg = new Border { Padding = new Thickness(2), BorderThickness = new Thickness(1), Child = segments };
         seg.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
         seg.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
         seg.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
-        topStack.Children.Add(seg);
 
-        // 3. Suggested match banner
+        // 2. Suggested match banner
         var suggestedBanner = new Border
         {
-            Margin = new Thickness(20, 8, 20, 0),
+            Margin = new Thickness(0, 8, 0, 0),
             Padding = new Thickness(12, 8, 12, 8),
             BorderThickness = new Thickness(1),
         };
@@ -544,14 +597,22 @@ public sealed partial class AddAppView
         bannerGrid.Children.Add(tickMatchBtn);
         suggestedBanner.Child = bannerGrid;
 
-        // 4. Search box
+        // 3. Search box
         var searchBoxRes = SearchBoxWithHint("Str.AddTrackedSearch", AddAppStrings.TrackedSearch, plan.Query, text => { plan.Query = text; Render(); });
         var search = searchBoxRes.Border;
         updateSearchHint = searchBoxRes.UpdateHint;
-        search.Margin = new Thickness(20, 8, 20, 0);
 
+        var controlsGrid = new Grid { Margin = new Thickness(0, 8, 0, 0) };
+        controlsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        controlsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        search.Margin = new Thickness(0, 0, 8, 0);
+        Grid.SetColumn(search, 0);
+        controlsGrid.Children.Add(search);
+        Grid.SetColumn(seg, 1);
+        controlsGrid.Children.Add(seg);
+
+        topStack.Children.Add(controlsGrid);
         topStack.Children.Add(suggestedBanner);
-        topStack.Children.Add(search);
 
         Grid.SetRow(topStack, 1);
         root.Children.Add(topStack);
@@ -560,12 +621,13 @@ public sealed partial class AddAppView
         {
             // Update device tabs
             devTabs.Children.Clear();
-            if (orderedDevices.Count > 1)
+            if (orderedDevices.Count > 0)
             {
                 foreach (var d in orderedDevices)
                 {
                     var isLocal = DeviceInfoService.IsLocal(devInfo, d, localDev);
                     var devName = DeviceInfoService.GetName(devInfo, d, isLocal);
+                    var labelText = isLocal ? "This PC" : devName;
                     var isSelected = string.Equals(plan.DeviceFilter, d, StringComparison.OrdinalIgnoreCase);
                     var tickedCount = plan.TickedCountForDevice(d);
 
@@ -579,7 +641,7 @@ public sealed partial class AddAppView
                         VerticalAlignment = VerticalAlignment.Center
                     });
                     var tabLabel = Text(null, "Double.FontSize.Body", isSelected ? "Brush.Text" : "Brush.TextMuted");
-                    tabLabel.Text = devName;
+                    tabLabel.Text = labelText;
                     tabLabel.FontWeight = isSelected ? FontWeights.SemiBold : FontWeights.Normal;
                     tabLabel.VerticalAlignment = VerticalAlignment.Center;
                     tabInner.Children.Add(tabLabel);
@@ -613,13 +675,21 @@ public sealed partial class AddAppView
                     {
                         Height = 32,
                         Padding = new Thickness(0, 0, 0, isSelected ? 4 : 6),
-                        Margin = new Thickness(0, 0, 16, 0),
+                        Margin = new Thickness(0, 0, 16, -1),
                         BorderThickness = new Thickness(0, 0, 0, isSelected ? 2 : 0),
                         Cursor = Cursors.Hand,
                         Background = Brushes.Transparent,
                         Child = tabInner
                     };
                     if (isSelected) tabItem.SetResourceReference(Border.BorderBrushProperty, "Brush.Accent");
+                    tabItem.MouseEnter += (_, _) =>
+                    {
+                        if (!isSelected) tabLabel.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+                    };
+                    tabItem.MouseLeave += (_, _) =>
+                    {
+                        if (!isSelected) tabLabel.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+                    };
                     var targetDev = d;
                     tabItem.MouseLeftButtonUp += (_, _) =>
                     {
@@ -631,7 +701,7 @@ public sealed partial class AddAppView
             }
 
             // Update search placeholder
-            var activeDeviceName = plan.DeviceFilter != null ? DeviceInfoService.GetName(devInfo, plan.DeviceFilter, DeviceInfoService.IsLocal(devInfo, plan.DeviceFilter, localDev)) : "";
+            var activeDeviceName = plan.DeviceFilter != null ? (DeviceInfoService.IsLocal(devInfo, plan.DeviceFilter, localDev) ? "This PC" : DeviceInfoService.GetName(devInfo, plan.DeviceFilter, false)) : "";
             updateSearchHint?.Invoke(orderedDevices.Count > 1 && !string.IsNullOrEmpty(activeDeviceName) ? $"Search apps on {activeDeviceName}" : TimeText.Str(AddAppStrings.TrackedSearch));
 
             // Update suggestions banner
@@ -647,18 +717,12 @@ public sealed partial class AddAppView
                 (MergeFilter.All, AddAppStrings.FilterAll),
             })
             {
-                var count = plan.CountOf(filter);
                 var on = plan.Filter == filter;
                 var label = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
-                var name = Text("Str." + char.ToUpperInvariant(key[0]) + key[1..], "Double.FontSize.Body", on ? "Brush.Accent" : "Brush.TextMuted");
-                name.FontWeight = FontWeights.SemiBold;
-                var n = Text(null, "Double.FontSize.Small", on ? "Brush.Accent" : "Brush.TextMuted");
-                n.Text = count.ToString();
-                n.Margin = new Thickness(6, 0, 0, 0);
-                n.VerticalAlignment = VerticalAlignment.Center;
+                var name = Text("Str." + char.ToUpperInvariant(key[0]) + key[1..], "Double.FontSize.Small", on ? "Brush.Text" : "Brush.TextMuted");
+                name.FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal;
                 label.Children.Add(name);
-                label.Children.Add(n);
-                var segment = new Border { MinWidth = 110, Padding = new Thickness(8, 6, 8, 6), BorderThickness = new Thickness(1), Cursor = Cursors.Hand, Child = label };
+                var segment = new Border { Padding = new Thickness(8, 4, 8, 4), BorderThickness = new Thickness(1), Cursor = Cursors.Hand, Child = label };
                 segment.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
                 if (on)
                 {
@@ -718,7 +782,7 @@ public sealed partial class AddAppView
 
             var otherDevs = orderedDevices.Where(d => !string.Equals(d, plan.DeviceFilter, StringComparison.OrdinalIgnoreCase)).ToList();
             var otherNotes = otherDevs.Count > 0
-                ? " Ticks on other devices stay: " + string.Join(" · ", otherDevs.Select(d => $"{DeviceInfoService.GetName(devInfo, d, DeviceInfoService.IsLocal(devInfo, d, localDev))} {plan.TickedCountForDevice(d)}")) + "."
+                ? " Ticks on other devices stay: " + string.Join(" · ", otherDevs.Select(d => $"{(DeviceInfoService.IsLocal(devInfo, d, localDev) ? "This PC" : DeviceInfoService.GetName(devInfo, d, false))} {plan.TickedCountForDevice(d)}")) + "."
                 : "";
             note.Text = $"Ticked untracked apps start being tracked now and count under {plan.MainName}.{otherNotes}";
 
@@ -825,7 +889,6 @@ public sealed partial class AddAppView
         _mergePlan = null;
         _nav.MergeConfirmed(plan.MainId);
         UpdateCount();
-        ShowTracked();
         ReturnToSettings();
     }
 

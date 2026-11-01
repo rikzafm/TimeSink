@@ -46,7 +46,7 @@ public sealed partial class AddAppView
     /// <summary>Back to the settings screen after the merge screen it opened is done (the navigation already points at it).</summary>
     private void ReturnToSettings()
     {
-        if (_nav.State.SettingsId is null) return;
+        if (_nav.State.SettingsId is null) { Content = _shell; ShowTracked(); return; }
         _settingsOffset = 0;
         Content = BuildAppSettings();
     }
@@ -313,8 +313,7 @@ public sealed partial class AddAppView
         {
             _listOffset = _trackedScroll?.VerticalOffset ?? 0;
             _nav.OpenMergeFromSettings(app.Id);
-            Content = _shell;
-            OpenMergeScreen(app.Id);
+            OpenMergeScreen(app.Id, app.DisplayName);
         });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal };
         if (app.Merged.Count > 0)

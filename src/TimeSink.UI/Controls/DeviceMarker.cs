@@ -10,6 +10,12 @@ namespace TimeSink.UI.Controls;
 /// </summary>
 public sealed class DeviceMarker : Border
 {
+    static DeviceMarker()
+    {
+        WidthProperty.OverrideMetadata(typeof(DeviceMarker), new FrameworkPropertyMetadata(double.NaN, FrameworkPropertyMetadataOptions.AffectsRender, (d, _) => ((DeviceMarker)d).Update()));
+        HeightProperty.OverrideMetadata(typeof(DeviceMarker), new FrameworkPropertyMetadata(double.NaN, FrameworkPropertyMetadataOptions.AffectsRender, (d, _) => ((DeviceMarker)d).Update()));
+    }
+
     public static readonly DependencyProperty IsLocalProperty = DependencyProperty.Register(
         nameof(IsLocal), typeof(bool), typeof(DeviceMarker), new PropertyMetadata(true, (d, _) => ((DeviceMarker)d).Update()));
 
