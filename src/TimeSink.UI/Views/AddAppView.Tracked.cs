@@ -223,10 +223,38 @@ public sealed partial class AddAppView
             card.MouseEnter += (_, _) => card.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
             card.MouseLeave += (_, _) => card.Background = Brushes.Transparent;
         }
+
+        var nameRow = new StackPanel { Orientation = Orientation.Horizontal };
+        nameRow.Children.Add(name);
+
+        var devs = new List<string>();
+        if (!string.IsNullOrEmpty(app.DeviceId)) devs.Add(app.DeviceId);
+        devs.AddRange(app.Merged.Select(m => m.DeviceId).Where(d => !string.IsNullOrEmpty(d)));
+        var distinctDevs = devs.Distinct().ToList();
+        if (distinctDevs.Count > 1)
+        {
+            var devInfo = DeviceInfoService.Load(_dbPath);
+            var localDev = devInfo.FirstOrDefault(kv => kv.Value.IsLocal).Key;
+            var ordered = distinctDevs.OrderByDescending(d => DeviceInfoService.IsLocal(devInfo, d, localDev)).ToList();
+            foreach (var d in ordered)
+            {
+                var isLocal = DeviceInfoService.IsLocal(devInfo, d, localDev);
+                var marker = new DeviceMarker
+                {
+                    IsLocal = isLocal,
+                    Width = 6,
+                    Height = 6,
+                    Margin = new Thickness(5, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                nameRow.Children.Add(marker);
+            }
+        }
+
         var sub = Text(null, "Double.FontSize.Small", "Brush.TextMuted");
         sub.Text = PublisherOf(app) ?? TimeText.Str(AddAppStrings.TrackedNoPublisher);
         sub.TextTrimming = TextTrimming.CharacterEllipsis;
-        texts.Children.Add(open && mode == TrackedRowMode.Rename ? RenameInline(app) : name);
+        texts.Children.Add(open && mode == TrackedRowMode.Rename ? RenameInline(app) : nameRow);
         texts.Children.Add(sub);
 
         Grid.SetColumn(texts, 1);

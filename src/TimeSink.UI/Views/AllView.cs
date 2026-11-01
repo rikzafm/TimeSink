@@ -52,6 +52,7 @@ public sealed class AllView : UserControl, ILiveView
     private AllSort _sort = AllSort.Default;
     private bool _icons;
     private long? _selected;
+    private Dictionary<string, (string Name, bool IsLocal)> _deviceInfo = new(StringComparer.OrdinalIgnoreCase);
 
     public AllView(string dbPath, ThemeService themes, LiveState live, FlyoutWindow? window, Action<long>? openDetail = null)
     {
@@ -60,6 +61,7 @@ public sealed class AllView : UserControl, ILiveView
         _themes = themes;
         _live = live;
         _window = window;
+        _deviceInfo = DeviceInfoService.Load(dbPath);
         _icons = AppSettings.ForFile(dbPath).Get(Setting.AllLayout) == "icons";
 
         Focusable = true;
@@ -284,6 +286,29 @@ public sealed class AllView : UserControl, ILiveView
         name.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
         var nameRow = new StackPanel { Orientation = Orientation.Horizontal };
         nameRow.Children.Add(name);
+
+        var scope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
+        var markerCount = 0;
+        if (scope == TimeSink.Core.Devices.DeviceScope.All && a.Devices is { Count: > 0 })
+        {
+            var localDevId = _live?.LocalDeviceId;
+            var ordered = a.Devices.OrderByDescending(d => DeviceInfoService.IsLocal(_deviceInfo, d, localDevId)).ToList();
+            foreach (var d in ordered)
+            {
+                var isLocal = DeviceInfoService.IsLocal(_deviceInfo, d, localDevId);
+                var marker = new DeviceMarker
+                {
+                    IsLocal = isLocal,
+                    Width = 6,
+                    Height = 6,
+                    Margin = new Thickness(5, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                nameRow.Children.Add(marker);
+                markerCount++;
+            }
+        }
+
         if (a.Background) // why this app ranks below the others
         {
             var badge = BackgroundBadge.CreateIcon(); // icon only: the text pill squeezed names down to ".."
@@ -309,7 +334,7 @@ public sealed class AllView : UserControl, ILiveView
         middle.Children.Add(nameRow);
         middle.Children.Add(stats);
         // The badge sits right after the name; the name gives up width (and trims) before the badge is pushed out.
-        var reserve = a.Background ? 26 : 0;
+        var reserve = (a.Background ? 26 : 0) + (markerCount * 11);
         middle.SizeChanged += (_, _) => name.MaxWidth = Math.Max(40, middle.ActualWidth - reserve);
         Grid.SetColumn(middle, 1);
         grid.Children.Add(middle);

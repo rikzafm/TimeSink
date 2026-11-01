@@ -1,6 +1,6 @@
 # All, Tracked and App detail: device markers
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 3)
 Blocked by: 06
 Design: design/mac/All.dc.html, design/mac/AddTracked.dc.html, design/mac/AppDetail.dc.html (AppDetail still has the older header)

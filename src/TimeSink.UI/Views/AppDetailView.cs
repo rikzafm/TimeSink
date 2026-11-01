@@ -53,7 +53,7 @@ public sealed class AppDetailView : UserControl
         SetResourceReference(BackgroundProperty, "Brush.Surface");
         Focusable = true;
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { _close(); e.Handled = true; } };
-        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached);
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope);
         (_year, _anchor) = (_loader.Today.Year, _loader.Today);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw);
         Loaded += (_, _) =>
@@ -113,16 +113,93 @@ public sealed class AppDetailView : UserControl
             ? Str(AppDetailStringKeys.Footnote, UsageText.HoursMinutes(r.PeakDaySeconds))
             : Str(AppDetailStringKeys.FootnoteNone, r.Year.ToString(En));
         header.Margin = new Thickness(0, 10, 0, 0);
-        tiles.Margin = new Thickness(0, 10, 0, 0);
+        var tilesPanel = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
+        tilesPanel.Children.Add(tiles);
+        var scope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
+        if (scope == TimeSink.Core.Devices.DeviceScope.All && r.DeviceSeconds is { Count: > 1 })
+        {
+            tilesPanel.Children.Add(DeviceSplitBar(r));
+        }
+
         card.Margin = new Thickness(0, 10, 0, 0);
         Grid.SetRow(header, 1);
-        Grid.SetRow(tiles, 2);
+        Grid.SetRow(tilesPanel, 2);
         Grid.SetRow(card, 3);
         Grid.SetRow(note, 4);
         root.Children.Add(header);
-        root.Children.Add(tiles);
+        root.Children.Add(tilesPanel);
         root.Children.Add(card);
         root.Children.Add(note);
+    }
+
+    private FrameworkElement DeviceSplitBar(AppDetailResult r)
+    {
+        var box = new Border
+        {
+            Padding = new Thickness(12, 10, 12, 10),
+            BorderThickness = new Thickness(1),
+            Margin = new Thickness(0, 10, 0, 0),
+        };
+        box.SetResourceReference(Border.BackgroundProperty, "Brush.Surface");
+        box.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
+        box.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
+
+        var devInfo = DeviceInfoService.Load(_dbPath);
+        var localDevId = _live?.LocalDeviceId;
+
+        var ordered = r.DeviceSeconds!.OrderByDescending(kv => DeviceInfoService.IsLocal(devInfo, kv.Key, localDevId)).ToList();
+        var devA = ordered[0];
+        var devB = ordered.Count > 1 ? ordered[1] : new KeyValuePair<string, long>("", 0L);
+
+        var isLocalA = DeviceInfoService.IsLocal(devInfo, devA.Key, localDevId);
+        var nameA = DeviceInfoService.GetName(devInfo, devA.Key, isLocalA);
+        var isLocalB = DeviceInfoService.IsLocal(devInfo, devB.Key, localDevId);
+        var nameB = DeviceInfoService.GetName(devInfo, devB.Key, isLocalB);
+
+        var header = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+        var left = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left };
+        var markerA = new DeviceMarker { IsLocal = isLocalA, Width = 7, Height = 7, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+        var textA = new TextBlock { Text = $"{nameA} {UsageText.Hours(devA.Value)} h", FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+        textA.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextSoft");
+        left.Children.Add(markerA);
+        left.Children.Add(textA);
+
+        var right = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var textB = new TextBlock { Text = $"{nameB} {UsageText.Hours(devB.Value)} h", FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+        textB.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextSoft");
+        var markerB = new DeviceMarker { IsLocal = isLocalB, Width = 7, Height = 7, VerticalAlignment = VerticalAlignment.Center };
+        right.Children.Add(textB);
+        right.Children.Add(markerB);
+
+        header.Children.Add(left);
+        header.Children.Add(right);
+
+        var bar = new Grid { Height = 8 };
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(devA.Value, GridUnitType.Star) });
+        if (devB.Value > 0)
+        {
+            bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Pixel) });
+            bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(devB.Value, GridUnitType.Star) });
+        }
+
+        var segA = new Border { CornerRadius = new CornerRadius(3, devB.Value > 0 ? 0 : 3, devB.Value > 0 ? 0 : 3, 3) };
+        segA.SetResourceReference(Border.BackgroundProperty, TimeSink.Core.Devices.DeviceTokens.BrushKeyFor(isLocalA));
+        Grid.SetColumn(segA, 0);
+        bar.Children.Add(segA);
+
+        if (devB.Value > 0)
+        {
+            var segB = new Border { CornerRadius = new CornerRadius(0, 3, 3, 0) };
+            segB.SetResourceReference(Border.BackgroundProperty, TimeSink.Core.Devices.DeviceTokens.BrushKeyFor(isLocalB));
+            Grid.SetColumn(segB, 2);
+            bar.Children.Add(segB);
+        }
+
+        var stack = new StackPanel();
+        stack.Children.Add(header);
+        stack.Children.Add(bar);
+        box.Child = stack;
+        return box;
     }
 
     private FrameworkElement BackRow(AppDetailResult? r)
