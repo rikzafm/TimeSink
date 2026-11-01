@@ -51,6 +51,7 @@ public final class AppState: ObservableObject {
     @Published public var yearOffset: Int = 0
     @Published public var yearSubView: YearSubView = .pace
     @Published public var wrappedCardIndex: Int = 0
+    @Published public var detailYear: Int = Calendar.current.component(.year, from: Date())
 
     @Published public var selectedAppDetailId: Int64?
     @Published public var showingAddApp: Bool = false
@@ -64,11 +65,20 @@ public final class AppState: ObservableObject {
     @Published public var lastSyncUtc: Int64 = 0
     @Published public var lastBackupUtc: Int64 = 0
     @Published public var openAtLogin: Bool = false
-    @Published public var showMenuBarTime: Bool = true
-    @Published public var weekStart: String = "Monday"
+    @Published public var weekStart: String = "Mon"
     @Published public var pauseWhileSleep: Bool = true
     @Published public var countWhenLocked: Bool = true
     @Published public var minSessionSeconds: Int = 15
+    @Published public var theme: String = "System"
+    @Published public var accent: String = "Lime"
+    @Published public var appIcon: String = IconCatalogue.defaultId
+    @Published public var showMenuBarTime: Bool = false
+    @Published public var backupMode: String = "Daily"
+    @Published public var showingAppIconPicker: Bool = false
+
+    public var onMenuBarTimeChanged: ((Int64, Bool) -> Void)?
+    public var onThemeChanged: (() -> Void)?
+    public var onAppIconChanged: ((String) -> Void)?
 
     // All tab search and sort
     @Published public var allSearchQuery: String = ""
@@ -164,6 +174,16 @@ public final class AppState: ObservableObject {
         isLocalDevice(devId)
     }
 
+    /// Splits per-device seconds into this Mac and the other device. Only two devices are drawn.
+    public func deviceSplit(_ seconds: [String: Int64]?) -> (mac: Int64, pc: Int64) {
+        guard let seconds else { return (0, 0) }
+        let mac = seconds.filter { isLocalDevice($0.key) }.values.reduce(0, +)
+        let pc = seconds.filter { !isLocalDevice($0.key) }.values.max() ?? 0
+        return (mac, pc)
+    }
+
+    public var showsDeviceSplit: Bool { deviceScope == .all && hasMultipleDevices }
+
     public func refresh() {
         let ctx = makeUsageContext()
         do {
@@ -175,19 +195,84 @@ public final class AppState: ObservableObject {
                     let df = DateFormatter()
                     df.dateFormat = "yyyy-MM-dd"
                     let forDay = df.string(from: targetDate)
-                    todayResult = try TodayQuery.run(ctx, forDay: forDay)
+                    let res = try TodayQuery.run(ctx, forDay: forDay)
+                    if res.firstTrackedDay == nil {
+                        daysBack = 0
+                        todayResult = try TodayQuery.run(ctx)
+                    } else if let first = res.firstTrackedDay, res.date < first {
+                        if let firstDate = df.date(from: first) {
+                            let todayStart = cal.startOfDay(for: Date())
+                            let firstStart = cal.startOfDay(for: firstDate)
+                            daysBack = max(0, cal.dateComponents([.day], from: firstStart, to: todayStart).day ?? 0)
+                            let clampedTarget = cal.date(byAdding: .day, value: -daysBack, to: Date()) ?? Date()
+                            todayResult = try TodayQuery.run(ctx, forDay: df.string(from: clampedTarget))
+                        } else {
+                            todayResult = res
+                        }
+                    } else {
+                        todayResult = res
+                    }
                 } else {
                     todayResult = try TodayQuery.run(ctx)
                 }
             case .week:
-                weekResult = try WeekQuery.run(ctx, weeksBack: weeksBack)
+                let res = try WeekQuery.run(ctx, weeksBack: weeksBack)
+                if res.firstTrackedDay == nil && weeksBack > 0 {
+                    weeksBack = 0
+                    weekResult = try WeekQuery.run(ctx, weeksBack: 0)
+                } else if let first = res.firstTrackedDay, weeksBack > 0 {
+                    let ws = WeekStart.parse(weekStart)
+                    let earliestWeekStart = WeekStarts.containing(day: first, weekStart: ws)
+                    if res.shownWeekStart < earliestWeekStart {
+                        let df = DateFormatter()
+                        df.dateFormat = "yyyy-MM-dd"
+                        if let eDate = df.date(from: earliestWeekStart), let tDate = df.date(from: res.today) {
+                            var cal = Calendar(identifier: .gregorian)
+                            cal.timeZone = TimeZone(secondsFromGMT: 0)!
+                            let diffDays = cal.dateComponents([.day], from: eDate, to: tDate).day ?? 0
+                            weeksBack = max(0, diffDays / 7)
+                            weekResult = try WeekQuery.run(ctx, weeksBack: weeksBack)
+                        } else {
+                            weekResult = res
+                        }
+                    } else {
+                        weekResult = res
+                    }
+                } else {
+                    weekResult = res
+                }
             case .month:
                 let cal = Calendar.current
                 let now = Date()
                 let targetDate = cal.date(byAdding: .month, value: -monthsBack, to: now) ?? now
                 let y = cal.component(.year, from: targetDate)
                 let m = cal.component(.month, from: targetDate)
-                monthResult = try MonthQuery.run(ctx, year: y, month: m)
+                let res = try MonthQuery.run(ctx, year: y, month: m)
+                if res.firstTracked == nil && monthsBack > 0 {
+                    monthsBack = 0
+                    let cy = cal.component(.year, from: now)
+                    let cm = cal.component(.month, from: now)
+                    monthResult = try MonthQuery.run(ctx, year: cy, month: cm)
+                } else if let first = res.firstTracked, monthsBack > 0 {
+                    let earliestPrefix = String(first.prefix(7))
+                    let currentPrefix = String(format: "%04d-%02d", res.year, res.month)
+                    if currentPrefix < earliestPrefix {
+                        let firstYear = Int(first.prefix(4)) ?? y
+                        let firstMonth = Int(first.dropFirst(5).prefix(2)) ?? m
+                        let nowYear = cal.component(.year, from: now)
+                        let nowMonth = cal.component(.month, from: now)
+                        let maxMonths = max(0, (nowYear - firstYear) * 12 + (nowMonth - firstMonth))
+                        monthsBack = maxMonths
+                        let clampedDate = cal.date(byAdding: .month, value: -monthsBack, to: now) ?? now
+                        let cy = cal.component(.year, from: clampedDate)
+                        let cm = cal.component(.month, from: clampedDate)
+                        monthResult = try MonthQuery.run(ctx, year: cy, month: cm)
+                    } else {
+                        monthResult = res
+                    }
+                } else {
+                    monthResult = res
+                }
             case .year:
                 let cal = Calendar.current
                 let currentYear = cal.component(.year, from: Date()) - yearOffset
@@ -208,25 +293,102 @@ public final class AppState: ObservableObject {
             }
 
             if let appId = selectedAppDetailId {
-                let currentYear = Calendar.current.component(.year, from: Date())
-                appDetailResult = AppDetailQuery.run(context: ctx, appId: appId, year: currentYear)
+                appDetailResult = AppDetailQuery.run(context: ctx, appId: appId, year: detailYear)
             }
         } catch {
             NSLog("Error executing query for \(selectedTab): \(error)")
         }
+        onMenuBarTimeChanged?(currentTodaySeconds, showMenuBarTime)
+    }
+
+    public var currentTodaySeconds: Int64 {
+        if let res = todayResult, daysBack == 0 {
+            return res.totalSeconds
+        }
+        let ctx = makeUsageContext()
+        return (try? TodayQuery.run(ctx).totalSeconds) ?? 0
     }
 
     public func openAppDetail(appId: Int64) {
         self.selectedAppDetailId = appId
-        let ctx = makeUsageContext()
-        let currentYear = Calendar.current.component(.year, from: Date())
-        self.appDetailResult = AppDetailQuery.run(context: ctx, appId: appId, year: currentYear)
+        self.detailYear = Calendar.current.component(.year, from: Date())
+        self.appDetailResult = AppDetailQuery.run(context: makeUsageContext(), appId: appId, year: detailYear)
     }
 
     public func closeAppDetail() {
         self.selectedAppDetailId = nil
         self.appDetailResult = nil
         refresh()
+    }
+
+    // MARK: - Navigation
+
+    public var canTodayGoPrev: Bool {
+        todayResult?.canPrev == true
+    }
+
+    public func previousDay() {
+        guard canTodayGoPrev else { return }
+        daysBack += 1
+        refresh()
+    }
+
+    public func nextDay() {
+        guard daysBack > 0 else { return }
+        daysBack -= 1
+        refresh()
+    }
+
+    public var canWeekGoPrev: Bool {
+        weekResult?.canPrev(weekStart: WeekStart.parse(weekStart)) == true
+    }
+
+    public func previousWeek() {
+        guard canWeekGoPrev else { return }
+        weeksBack += 1
+        refresh()
+    }
+
+    public func nextWeek() {
+        guard weeksBack > 0 else { return }
+        weeksBack -= 1
+        refresh()
+    }
+
+    public var canMonthGoPrev: Bool {
+        monthResult?.canPrev == true
+    }
+
+    public func previousMonth() {
+        guard canMonthGoPrev else { return }
+        monthsBack += 1
+        refresh()
+    }
+
+    public func nextMonth() {
+        guard monthsBack > 0 else { return }
+        monthsBack -= 1
+        refresh()
+    }
+
+    public func openDayInToday(dateString: String) {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        if let date = df.date(from: dateString) {
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = .current
+            let today = cal.startOfDay(for: Date())
+            let target = cal.startOfDay(for: date)
+            let diff = max(0, cal.dateComponents([.day], from: target, to: today).day ?? 0)
+            self.daysBack = diff
+            self.selectedTab = .today
+            self.refresh()
+        }
+    }
+
+    public func loadDayDetail(day: String) -> DayDetail? {
+        let ctx = makeUsageContext()
+        return try? DayDetailQuery.run(ctx, day: day)
     }
 
     // MARK: - Device and Sync Management
@@ -241,7 +403,6 @@ public final class AppState: ObservableObject {
             self.lastSyncUtc = max(lastExp, lastImp)
             self.lastBackupUtc = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'backup.last_utc';")) ?? 0
             self.openAtLogin = LoginItemManager.shared.isEnabled
-            self.showMenuBarTime = (try db.scalarText("SELECT value FROM settings WHERE key = 'ui.showMenuBarTime';")) != "false"
             let pauseVal = (try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.pauseOnSleep)';"))
                 ?? (try? db.scalarText("SELECT value FROM settings WHERE key = 'tracking.pauseWhileSleep';"))
             self.pauseWhileSleep = pauseVal?.lowercased() != "false"
@@ -252,7 +413,77 @@ public final class AppState: ObservableObject {
             if let s = try db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'tracking.minSessionSeconds';"), s > 0 {
                 self.minSessionSeconds = Int(s)
             }
+            if let t = try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.theme)';") {
+                self.theme = t
+            }
+            if let a = try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.accent)';") {
+                self.accent = a
+            }
+            ThemeManager.shared.update(theme: self.theme, accent: self.accent)
+
+            let smbt = (try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.showMenuBarTime)';"))
+            self.showMenuBarTime = smbt?.lowercased() == "true"
+
+            let storedIcon = try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.appIcon)';")
+            self.appIcon = IconCatalogue.resolve(storedIcon)
+
+            if let bm = try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.backupMode)';") {
+                self.backupMode = bm
+            }
         } catch {}
+    }
+
+    public func setAppIcon(_ iconId: String) {
+        let resolved = IconCatalogue.resolve(iconId)
+        self.appIcon = resolved
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.appIcon)', '\(resolved)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        onAppIconChanged?(resolved)
+        objectWillChange.send()
+    }
+
+    public func setWeekStart(_ val: String) {
+        self.weekStart = val
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.weekStart)', '\(val)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        refresh()
+    }
+
+    public func setMinSessionSeconds(_ seconds: Int) {
+        self.minSessionSeconds = seconds
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.minSessionSeconds)', '\(seconds)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+    }
+
+    public func setTheme(_ theme: String) {
+        self.theme = theme
+        ThemeManager.shared.update(theme: theme, accent: accent)
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.theme)', '\(theme)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        onThemeChanged?()
+        objectWillChange.send()
+        refresh()
+    }
+
+    public func setAccent(_ accent: String) {
+        self.accent = accent
+        ThemeManager.shared.update(theme: theme, accent: accent)
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.accent)', '\(accent)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        onThemeChanged?()
+        objectWillChange.send()
+        refresh()
+    }
+
+    public func setShowMenuBarTime(_ show: Bool) {
+        self.showMenuBarTime = show
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.showMenuBarTime)', '\(show ? "true" : "false")') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        onMenuBarTimeChanged?(currentTodaySeconds, show)
+    }
+
+    public func setBackupMode(_ mode: String) {
+        self.backupMode = mode
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.backupMode)', '\(mode)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+    }
+
+    public func checkAutoBackup() {
+        AutoBackup.runIfDue(db: db, folder: defaultBackupFolder)
+        self.lastBackupUtc = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'backup.last_utc';")) ?? 0
     }
 
     public func setSyncEnabled(_ enabled: Bool) {
@@ -286,11 +517,6 @@ public final class AppState: ObservableObject {
     public func setOpenAtLogin(_ enabled: Bool) {
         self.openAtLogin = enabled
         try? LoginItemManager.shared.setEnabled(enabled)
-    }
-
-    public func setShowMenuBarTime(_ show: Bool) {
-        self.showMenuBarTime = show
-        try? db.exec("INSERT INTO settings (key, value) VALUES ('ui.showMenuBarTime', '\(show ? "true" : "false")') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
     }
 
     public var pauseOnSleep: Bool {
@@ -526,21 +752,20 @@ public final class AppState: ObservableObject {
         }
     }
 
-    public func saveWrappedImage() {
+    @discardableResult
+    public func saveWrappedImage() -> Bool {
+        guard let result = wrappedResult else { return false }
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "timesink-wrapped-\(wrappedResult?.year ?? 2026).png"
-        if panel.runModal() == .OK, let url = panel.url {
-            let img = NSImage(size: NSSize(width: 800, height: 600))
-            img.lockFocus()
-            NSColor(red: 0.067, green: 0.078, blue: 0.059, alpha: 1.0).setFill()
-            NSRect(x: 0, y: 0, width: 800, height: 600).fill()
-            img.unlockFocus()
-            if let tiff = img.tiffRepresentation,
-               let rep = NSBitmapImageRep(data: tiff),
-               let png = rep.representation(using: .png, properties: [:]) {
-                try? png.write(to: url)
-            }
+        panel.nameFieldStringValue = "timesink-\(result.year)-wrapped-\(wrappedCardIndex + 1).png"
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
+        let renderer = ImageRenderer(content: WrappedCardView(state: self, result: result, index: wrappedCardIndex).frame(width: 368, height: 470))
+        renderer.scale = 2
+        if let cg = renderer.cgImage,
+           let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+            try? png.write(to: url)
+            return true
         }
+        return false
     }
 
     public func deleteAllHistory(confirmation: String) throws {

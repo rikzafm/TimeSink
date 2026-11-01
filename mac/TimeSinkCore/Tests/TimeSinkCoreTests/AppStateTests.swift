@@ -169,5 +169,160 @@ final class AppStateTests: XCTestCase {
         try db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.pauseOnSleep)', 'true') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
         XCTAssertTrue(engineSettings.pauseOnSleep)
     }
+
+    func testPeriodCanPrevAcrossViews() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+
+        let devId = try db.scalarText("SELECT device_id FROM devices LIMIT 1;") ?? "mac-1"
+        // App added on 2026-11-01 (UTC: 1793500000 approx)
+        // 2026-11-01 00:00:00 UTC is 1793491200
+        let nov1Utc: Int64 = 1793491200
+        try db.exec("""
+            INSERT INTO apps (id, exe_path, display_name, category, added_utc, device_id)
+            VALUES (1, '/Applications/Xcode.app', 'Xcode', 'Developer Tools', \(nov1Utc), '\(devId)');
+            """)
+
+        let zone = TimeZone(secondsFromGMT: 0)!
+
+        // 1. On 2026-11-01 (same day tracking started)
+        let ctxNov1 = UsageContext(
+            now: Date(timeIntervalSince1970: TimeInterval(nov1Utc + 3600)),
+            zone: zone,
+            db: db,
+            deviceScope: .this,
+            localDeviceId: devId
+        )
+
+        let todayNov1 = try TodayQuery.run(ctxNov1)
+        XCTAssertEqual(todayNov1.firstTrackedDay, "2026-11-01")
+        XCTAssertFalse(todayNov1.canPrev, "Today chevron should be disabled when viewing the first tracked day")
+
+        let weekNov1 = try WeekQuery.run(ctxNov1, weeksBack: 0)
+        XCTAssertEqual(weekNov1.firstTrackedDay, "2026-11-01")
+        XCTAssertFalse(weekNov1.canPrev(weekStart: .mon), "Week chevron should be disabled when viewing the week containing the first tracked day")
+
+        let monthNov1 = try MonthQuery.run(ctxNov1, year: 2026, month: 11)
+        XCTAssertEqual(monthNov1.firstTracked, "2026-11-01")
+        XCTAssertFalse(monthNov1.canPrev, "Month chevron should be disabled when viewing the month containing the first tracked day")
+
+        // 2. Later date: 2026-11-15 (2 weeks later, same month)
+        let nov15Utc = nov1Utc + 14 * 86400
+        let ctxNov15 = UsageContext(
+            now: Date(timeIntervalSince1970: TimeInterval(nov15Utc)),
+            zone: zone,
+            db: db,
+            deviceScope: .this,
+            localDeviceId: devId
+        )
+
+        let todayNov15 = try TodayQuery.run(ctxNov15)
+        XCTAssertTrue(todayNov15.canPrev, "Today chevron should be enabled when viewing a date after the first tracked day")
+
+        let weekNov15 = try WeekQuery.run(ctxNov15, weeksBack: 0)
+        XCTAssertTrue(weekNov15.canPrev(weekStart: .mon), "Week chevron should be enabled when viewing a week after the first tracked week")
+
+        let monthNov15 = try MonthQuery.run(ctxNov15, year: 2026, month: 11)
+        XCTAssertFalse(monthNov15.canPrev, "Month chevron should still be disabled in November since November contains the first tracked day")
+
+        // 3. Next month: 2026-12-05
+        let dec5Utc = nov1Utc + 34 * 86400
+        let ctxDec5 = UsageContext(
+            now: Date(timeIntervalSince1970: TimeInterval(dec5Utc)),
+            zone: zone,
+            db: db,
+            deviceScope: .this,
+            localDeviceId: devId
+        )
+
+        let monthDec = try MonthQuery.run(ctxDec5, year: 2026, month: 12)
+        XCTAssertTrue(monthDec.canPrev, "Month chevron should be enabled in December when tracking started in November")
+    }
+
+    func testPeriodCanPrevWhenNoData() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+
+        let devId = try db.scalarText("SELECT device_id FROM devices LIMIT 1;") ?? "mac-1"
+        let zone = TimeZone(secondsFromGMT: 0)!
+        let ctx = UsageContext(
+            now: Date(timeIntervalSince1970: 1793491200),
+            zone: zone,
+            db: db,
+            deviceScope: .this,
+            localDeviceId: devId
+        )
+
+        let today = try TodayQuery.run(ctx)
+        XCTAssertNil(today.firstTrackedDay)
+        XCTAssertFalse(today.canPrev, "Today chevron should be disabled when there is no tracking data")
+
+        let week = try WeekQuery.run(ctx, weeksBack: 0)
+        XCTAssertNil(week.firstTrackedDay)
+        XCTAssertFalse(week.canPrev(weekStart: .mon), "Week chevron should be disabled when there is no tracking data")
+
+        let month = try MonthQuery.run(ctx, year: 2026, month: 11)
+        XCTAssertNil(month.firstTracked)
+        XCTAssertFalse(month.canPrev, "Month chevron should be disabled when there is no tracking data")
+    }
+
+    func testSettingKeysConstants() {
+        XCTAssertEqual(SettingKeys.weekStart, "week.start")
+        XCTAssertEqual(SettingKeys.minSessionSeconds, "tracking.minSessionSeconds")
+        XCTAssertEqual(SettingKeys.theme, "ui.theme")
+        XCTAssertEqual(SettingKeys.accent, "ui.accent")
+        XCTAssertEqual(SettingKeys.appIcon, "ui.icon")
+        XCTAssertEqual(SettingKeys.showMenuBarTime, "ui.showMenuBarTime")
+        XCTAssertEqual(SettingKeys.backupMode, "backup.mode")
+        XCTAssertEqual(SettingKeys.backupLastUtc, "backup.last_utc")
+    }
+
+    func testBackupRetentionKeepsNewestSevenAndMonthly() {
+        let now = Date(timeIntervalSince1970: 1793500000) // late 2026
+
+        // Create 10 daily backup names
+        var files: [String] = []
+        for i in 1...10 {
+            files.append(String(format: "daily-202610%02d.timesink", i))
+        }
+        // Non-backup or manual files shouldn't be touched
+        files.append("manual-20261015-120000.timesink")
+        files.append("other.txt")
+
+        let toDelete = BackupRetention.filesToDelete(fileNames: files, now: now)
+        // Out of 10 daily backups, 7 newest are kept (10, 09, 08, 07, 06, 05, 04)
+        // And the newest of October 2026 is 10 (already kept).
+        // Therefore, 01, 02, 03 should be deleted.
+        XCTAssertTrue(toDelete.contains("daily-20261001.timesink"))
+        XCTAssertTrue(toDelete.contains("daily-20261002.timesink"))
+        XCTAssertTrue(toDelete.contains("daily-20261003.timesink"))
+        XCTAssertFalse(toDelete.contains("daily-20261010.timesink"))
+        XCTAssertFalse(toDelete.contains("daily-20261004.timesink"))
+        XCTAssertFalse(toDelete.contains("manual-20261015-120000.timesink"))
+        XCTAssertFalse(toDelete.contains("other.txt"))
+    }
+
+    func testAutoBackupRunIfDue() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("test-autobackup-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: tempDir) }
+
+        // Mode is not set or Off
+        try db.exec("INSERT INTO settings (key, value) VALUES ('backup.mode', 'Off');")
+        let resOff = AutoBackup.runIfDue(db: db, folder: tempDir)
+        XCTAssertNil(resOff)
+
+        // Set mode to Daily, last backup is recent (< 23 hours)
+        let now = Date()
+        let nowSec = Int64(now.timeIntervalSince1970)
+        try db.exec("INSERT INTO settings (key, value) VALUES ('backup.mode', 'Daily') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        try db.exec("INSERT INTO settings (key, value) VALUES ('backup.last_utc', '\(nowSec - 3600)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+
+        let resRecent = AutoBackup.runIfDue(db: db, folder: tempDir, now: now)
+        XCTAssertNil(resRecent)
+    }
 }
 

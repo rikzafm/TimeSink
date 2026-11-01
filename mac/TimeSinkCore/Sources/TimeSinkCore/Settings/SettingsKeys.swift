@@ -68,4 +68,10 @@ public enum SettingKeys {
     public static let deviceName = "device.name"
     public static let syncFolder = "sync.folder"
     public static let syncEnabled = "sync.enabled"
+    public static let theme = "ui.theme"
+    public static let accent = "ui.accent"
+    public static let appIcon = "ui.icon"
+    public static let showMenuBarTime = "ui.showMenuBarTime"
+    public static let backupMode = "backup.mode"
+    public static let backupLastUtc = "backup.last_utc"
 }

@@ -188,6 +188,11 @@ public struct TodayResult: Sendable, Equatable {
         self.deviceUptimes = deviceUptimes
         self.onBothSeconds = onBothSeconds
     }
+
+    public var canPrev: Bool {
+        guard let first = firstTrackedDay else { return false }
+        return PeriodNavigator(unit: .day, first: first, today: date).canPrev(anchor: date)
+    }
 }
 
 public enum TodayQuery {
@@ -250,16 +255,44 @@ public enum TodayQuery {
         var hourlyDeviceSeconds = [[String: Int64]](repeating: [:], count: hoursInDay)
         var hourlyDeviceApps = [[String: Set<Int64>]](repeating: [:], count: hoursInDay)
 
-        for s in segs {
-            let a = max(s.start, d0)
-            let b = min(s.end, d1)
-            if b <= a { continue }
-            let dev = s.deviceId.isEmpty ? (apps[s.appId]?.deviceId ?? "") : s.deviceId
-            for p in UsageDays.hourPieces(from: a, to: b, zone: zone) {
-                let h = p.hour
-                if h < 0 || h >= hoursInDay { continue }
-                hourlyDeviceSeconds[h][dev, default: 0] += (p.end - p.start)
-                hourlyDeviceApps[h][dev, default: []].insert(s.appId)
+        let byGroupForHours = Dictionary(grouping: segs) { $0.group }
+        for (_, groupSegs) in byGroupForHours {
+            let byDev = Dictionary(grouping: groupSegs) { s in
+                s.deviceId.isEmpty ? (apps[s.appId]?.deviceId ?? "") : s.deviceId
+            }
+            for (dev, devSegs) in byDev {
+                let sorted = devSegs.filter { $0.end > d0 && $0.start < d1 }.sorted { $0.start < $1.start }
+                var unioned: [(start: Int64, end: Int64)] = []
+                for s in sorted {
+                    let st = max(s.start, d0)
+                    let en = min(s.end, d1)
+                    if en <= st { continue }
+                    if let last = unioned.last, st <= last.end {
+                        unioned[unioned.count - 1].end = max(last.end, en)
+                    } else {
+                        unioned.append((start: st, end: en))
+                    }
+                }
+                for interval in unioned {
+                    for p in UsageDays.hourPieces(from: interval.start, to: interval.end, zone: zone) {
+                        let h = p.hour
+                        if h >= 0 && h < hoursInDay {
+                            hourlyDeviceSeconds[h][dev, default: 0] += (p.end - p.start)
+                        }
+                    }
+                }
+            }
+            for s in groupSegs {
+                let a = max(s.start, d0)
+                let b = min(s.end, d1)
+                if b <= a { continue }
+                let dev = s.deviceId.isEmpty ? (apps[s.appId]?.deviceId ?? "") : s.deviceId
+                for p in UsageDays.hourPieces(from: a, to: b, zone: zone) {
+                    let h = p.hour
+                    if h >= 0 && h < hoursInDay {
+                        hourlyDeviceApps[h][dev, default: []].insert(s.appId)
+                    }
+                }
             }
         }
 
@@ -303,21 +336,23 @@ public enum TodayQuery {
                 }
 
             let open = isToday ? groupSegs.filter { $0.open } : []
-            let seconds = groupSegs.reduce(0) { $0 + UsageDays.overlap($1, d0, d1) }
+            let seconds = UsageUptime.openSeconds(segs: groupSegs, from: d0, to: d1)
             if seconds == 0 && open.isEmpty { continue }
 
             var devSecs: [String: Int64] = [:]
-            for s in groupSegs {
-                let dev = s.deviceId.isEmpty ? (apps[s.appId]?.deviceId ?? "") : s.deviceId
-                let sec = UsageDays.overlap(s, d0, d1)
+            let byDev = Dictionary(grouping: groupSegs) { s in
+                s.deviceId.isEmpty ? (apps[s.appId]?.deviceId ?? "") : s.deviceId
+            }
+            for (dev, devGroupSegs) in byDev {
+                let sec = UsageUptime.openSeconds(segs: devGroupSegs, from: d0, to: d1)
                 if sec > 0 {
-                    devSecs[dev, default: 0] += sec
+                    devSecs[dev] = sec
                 }
             }
             var rowOnBoth: Int64 = 0
             if devSecs.count > 1 {
-                let unionSecs = UsageUptime.openSeconds(segs: groupSegs, from: d0, to: d1)
-                rowOnBoth = max(0, seconds - unionSecs)
+                let sumDevSecs = devSecs.values.reduce(0, +)
+                rowOnBoth = max(0, sumDevSecs - seconds)
             }
 
             let closedToday = groupSegs.filter { !$0.open && $0.end >= d0 && $0.end < d1 }
@@ -336,7 +371,7 @@ public enum TodayQuery {
                 avgDays += 1
                 let a = LocalDays.startOf(year: py, month: pm, day: pd, timeZone: zone)
                 let b = LocalDays.startOfNextDay(for: a, timeZone: zone)
-                avgSum += groupSegs.reduce(0) { $0 + UsageDays.overlap($1, a, b) }
+                avgSum += UsageUptime.openSeconds(segs: groupSegs, from: a, to: b)
             }
 
             let avg: Double? = avgDays > 0 ? Double(avgSum) / Double(avgDays) : nil
@@ -405,7 +440,8 @@ public enum TodayQuery {
         } else {
             cut = d0
         }
-        let yesterdayByNow = segs.reduce(0) { $0 + UsageDays.overlap($1, y0, cut) }
+        let yesterdayByGroup = Dictionary(grouping: segs) { $0.group }
+        let yesterdayByNow = yesterdayByGroup.values.reduce(0) { $0 + UsageUptime.openSeconds(segs: $1, from: y0, to: cut) }
 
         // Uptime
         let dayEnd = isToday ? nowUtc : d1

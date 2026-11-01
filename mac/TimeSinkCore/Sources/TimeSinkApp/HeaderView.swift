@@ -8,98 +8,51 @@ public struct HeaderView: View {
         self.state = state
     }
 
+    private var isAll: Bool { state.selectedTab == .all }
+    private var isToday: Bool { state.selectedTab == .today }
+    private var isWrapped: Bool { state.selectedTab == .year && state.yearSubView == .wrapped }
+
     public var body: some View {
-        HStack(spacing: 10) {
-            // Wordmark with leading green dot
-            HStack(spacing: 7) {
+        let wide = isToday || isWrapped
+        HStack(spacing: isAll ? 6 : 2) {
+            HStack(spacing: 9) {
                 Circle()
                     .fill(ThemeColors.accent)
-                    .frame(width: 8, height: 8)
+                    .frame(width: 9, height: 9)
 
                 Text("TimeSink")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundColor(ThemeColors.textPrimary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer()
-
-            // Device Scope Control (segmented)
-            HStack(spacing: 0) {
-                Button(action: {
-                    state.setDeviceScope(.this)
-                }) {
-                    Text("This Mac")
-                        .font(.system(size: 11, weight: state.deviceScope == .this ? .semibold : .regular))
-                        .foregroundColor(state.deviceScope == .this ? ThemeColors.textPrimary : ThemeColors.textMuted)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(state.deviceScope == .this ? ThemeColors.surfaceRaised : Color.clear)
-                        .cornerRadius(4)
-                }
-                .buttonStyle(.plain)
-
-                Button(action: {
-                    state.setDeviceScope(.all)
-                }) {
-                    Text("All devices")
-                        .font(.system(size: 11, weight: state.deviceScope == .all ? .semibold : .regular))
-                        .foregroundColor(state.deviceScope == .all ? ThemeColors.textPrimary : ThemeColors.textMuted)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(state.deviceScope == .all ? ThemeColors.surfaceRaised : Color.clear)
-                        .cornerRadius(4)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(2)
-            .background(ThemeColors.surface)
-            .cornerRadius(6)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(ThemeColors.border, lineWidth: 1)
+            Segmented(
+                options: [(DeviceScope.this, "This Mac"), (DeviceScope.all, "All devices")],
+                selection: Binding(get: { state.deviceScope }, set: { state.setDeviceScope($0) })
             )
+            .padding(.trailing, 6)
 
-            // Devices & sync shortcut button
-            Button(action: {
-                state.showingSettings = true
-                state.showingDevicesSync = true
-            }) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 5)
-                        .stroke(ThemeColors.border, lineWidth: 1)
-                        .frame(width: 24, height: 20)
-
-                    Image(systemName: "plus")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(ThemeColors.textMuted)
-                }
-                .frame(width: 26, height: 24)
+            Button(action: { state.toggleGamesOnly() }) {
+                IconView(.gamepad, size: 20, weight: 1.8, color: state.gamesOnly ? ThemeColors.accent : ThemeColors.textDim)
+                    .frame(width: isAll ? 30 : 28, height: isAll ? 30 : 28)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Devices and sync")
+            .help("Games only")
 
-            // Settings button
             Button(action: {
                 state.showingDevicesSync = false
                 state.showingSettings = true
             }) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 14))
-                    .foregroundColor(ThemeColors.textMuted)
-                    .frame(width: 24, height: 24)
+                IconView(.gear, size: 20, weight: 1.8, color: ThemeColors.textDim)
+                    .frame(width: isAll ? 30 : 28, height: isAll ? 30 : 28)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Settings")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(ThemeColors.background)
-        .overlay(
-            Rectangle()
-                .frame(height: 1)
-                .foregroundColor(ThemeColors.borderSubtle),
-            alignment: .bottom
-        )
+        .padding(.leading, wide || isAll ? 16 : 14)
+        .padding(.trailing, wide ? 12 : 14)
+        .frame(height: isAll ? 48 : 44)
     }
 }
-

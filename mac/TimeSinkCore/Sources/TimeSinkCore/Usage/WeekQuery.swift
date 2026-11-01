@@ -97,6 +97,11 @@ public struct WeekResult: Sendable, Equatable {
         self.deviceTotals = deviceTotals
         self.onBothSeconds = onBothSeconds
     }
+
+    public func canPrev(weekStart: WeekStart = .mon) -> Bool {
+        guard let first = firstTrackedDay else { return false }
+        return PeriodNavigator(unit: .week, first: first, today: today, weekStart: weekStart).canPrev(anchor: shownWeekStart)
+    }
 }
 
 public enum WeekQuery {

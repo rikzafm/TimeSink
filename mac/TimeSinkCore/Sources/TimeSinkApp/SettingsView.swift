@@ -25,6 +25,8 @@ public struct SettingsView: View {
         Group {
             if state.showingDevicesSync {
                 DevicesSyncView(state: state)
+            } else if state.showingAppIconPicker {
+                AppIconPickerView(state: state)
             } else {
                 mainSettingsView
             }
@@ -48,40 +50,30 @@ public struct SettingsView: View {
     private var mainSettingsView: some View {
         VStack(spacing: 0) {
             // Header
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button(action: {
                     state.showingSettings = false
                 }) {
                     HStack(spacing: 4) {
-                        Text("‹")
-                            .font(.system(size: 16, weight: .bold))
-                        Text("Back")
-                            .font(.system(size: 13, weight: .medium))
+                        Text("‹").font(.system(size: 16))
+                        Text("Back").font(.system(size: 13))
                     }
                     .foregroundColor(ThemeColors.accent)
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .frame(height: 28)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-
-                Spacer()
 
                 Text("Settings")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(ThemeColors.textPrimary)
-                    .offset(x: -24)
-
-                Spacer()
+                    .frame(maxWidth: .infinity)
+                    .padding(.trailing, 56)
             }
-            .frame(height: 44)
             .padding(.horizontal, 10)
-            .background(ThemeColors.surface)
-            .overlay(
-                Rectangle()
-                    .frame(height: 1)
-                    .foregroundColor(ThemeColors.border),
-                alignment: .bottom
-            )
+            .frame(height: 44)
+            .bottomRule()
 
             // Scrollable Settings Sections
             ScrollView(.vertical, showsIndicators: false) {
@@ -96,11 +88,15 @@ public struct SettingsView: View {
                                 set: { state.setOpenAtLogin($0) }
                             )
                         )
-                        Divider().background(ThemeColors.borderSubtle)
-                        settingValueRow(
+                        settingsRule
+                        settingSegmentedRow(
                             label: "Week starts on",
                             desc: "",
-                            value: "Monday"
+                            options: [("Mon", "Mon"), ("Sun", "Sun"), ("Sat", "Sat")],
+                            selection: Binding(
+                                get: { WeekStart.parse(state.weekStart).rawValue },
+                                set: { state.setWeekStart($0) }
+                            )
                         )
                     }
 
@@ -114,7 +110,7 @@ public struct SettingsView: View {
                                 set: { state.setPauseWhileSleep($0) }
                             )
                         )
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
                         settingSwitchRow(
                             label: "Keep counting when locked",
                             desc: "",
@@ -123,28 +119,40 @@ public struct SettingsView: View {
                                 set: { state.setCountWhenLocked($0) }
                             )
                         )
-                        Divider().background(ThemeColors.borderSubtle)
-                        settingValueRow(
+                        settingsRule
+                        settingSegmentedRow(
                             label: "Ignore short sessions",
                             desc: "Shorter than this are dropped",
-                            value: "\(state.minSessionSeconds) s"
+                            options: [(5, "5s"), (15, "15s"), (30, "30s")],
+                            selection: Binding(
+                                get: { state.minSessionSeconds },
+                                set: { state.setMinSessionSeconds($0) }
+                            )
                         )
                     }
 
                     // APPEARANCE
                     settingsSection(title: "APPEARANCE") {
-                        settingValueRow(
+                        settingSegmentedRow(
                             label: "Theme",
                             desc: "Follows macOS when set to System",
-                            value: "System"
+                            options: [("System", "System"), ("Dark", "Dark"), ("Light", "Light")],
+                            selection: Binding(
+                                get: { state.theme },
+                                set: { state.setTheme($0) }
+                            )
                         )
-                        Divider().background(ThemeColors.borderSubtle)
-                        settingValueRow(
+                        settingsRule
+                        settingSegmentedRow(
                             label: "Accent",
                             desc: "",
-                            value: "Lime"
+                            options: [("Lime", "Lime"), ("Blue", "Blue"), ("Pink", "Pink")],
+                            selection: Binding(
+                                get: { state.accent },
+                                set: { state.setAccent($0) }
+                            )
                         )
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
                         settingSwitchRow(
                             label: "Show time in the menu bar",
                             desc: "Today’s total next to the icon",
@@ -153,6 +161,45 @@ public struct SettingsView: View {
                                 set: { state.setShowMenuBarTime($0) }
                             )
                         )
+                        settingsRule
+                        Button(action: {
+                            state.showingAppIconPicker = true
+                        }) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("App icon")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(ThemeColors.textPrimary)
+                                    Text("How TimeSink looks in the menu bar.")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(ThemeColors.textMuted)
+                                }
+                                Spacer()
+                                HStack(spacing: 6) {
+                                    let currentId = state.appIcon
+                                    if let entry = IconCatalogue.find(currentId) {
+                                        if let thumb = IconCatalogue.image(for: currentId, size: 20, accentColor: NSColor(ThemeColors.accent)) {
+                                            Image(nsImage: thumb)
+                                                .resizable()
+                                                .interpolation(.high)
+                                                .aspectRatio(contentMode: .fit)
+                                                .frame(width: 20, height: 20)
+                                                .cornerRadius(4)
+                                        }
+                                        Text(entry.name)
+                                            .font(.system(size: 12))
+                                            .foregroundColor(ThemeColors.textDim)
+                                    }
+                                    Text("›")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(ThemeColors.textMuted)
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     // DEVICES AND SYNC
@@ -168,7 +215,9 @@ public struct SettingsView: View {
                                     let syncDesc: String = {
                                         if !state.syncEnabled { return "Off" }
                                         if state.syncFolder.isEmpty { return "No sync folder set" }
-                                        return URL(fileURLWithPath: state.syncFolder).lastPathComponent
+                                        let name = URL(fileURLWithPath: state.syncFolder).lastPathComponent
+                                        let isOneDrive = state.syncFolder.contains("OneDrive")
+                                        return isOneDrive ? "OneDrive · \(name) folder" : "\(name) folder"
                                     }()
                                     Text(syncDesc)
                                         .font(.system(size: 11))
@@ -180,16 +229,17 @@ public struct SettingsView: View {
                                         .font(.system(size: 12))
                                         .foregroundColor(ThemeColors.textDim)
                                     Text("›")
-                                        .font(.system(size: 14))
+                                        .font(.system(size: 12))
                                         .foregroundColor(ThemeColors.textMuted)
                                 }
                             }
                             .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, 6)
+                            .frame(minHeight: 44)
                         }
                         .buttonStyle(.plain)
 
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
 
                         Button(action: {
                             renameMacText = state.localDeviceName
@@ -210,24 +260,29 @@ public struct SettingsView: View {
                                         .font(.system(size: 12))
                                         .foregroundColor(ThemeColors.textDim)
                                     Text("›")
-                                        .font(.system(size: 14))
+                                        .font(.system(size: 12))
                                         .foregroundColor(ThemeColors.textMuted)
                                 }
                             }
                             .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, 6)
+                            .frame(minHeight: 44)
                         }
                         .buttonStyle(.plain)
                     }
 
                     // BACKUP AND DATA
                     settingsSection(title: "BACKUP AND DATA") {
-                        settingValueRow(
+                        settingSegmentedRow(
                             label: "Automatic backup",
                             desc: "Keeps the last 7 plus one per month",
-                            value: "Daily"
+                            options: [("Off", "Off"), ("Daily", "Daily"), ("Weekly", "Weekly")],
+                            selection: Binding(
+                                get: { state.backupMode },
+                                set: { state.setBackupMode($0) }
+                            )
                         )
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
 
                         // Back up now
                         HStack {
@@ -250,9 +305,10 @@ public struct SettingsView: View {
                             .disabled(isBackingUp)
                         }
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 44)
 
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
 
                         // Restore
                         HStack {
@@ -273,9 +329,10 @@ public struct SettingsView: View {
                             .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 44)
 
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
 
                         // Export data
                         HStack {
@@ -296,9 +353,10 @@ public struct SettingsView: View {
                             .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 44)
 
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
 
                         // Delete all history
                         HStack {
@@ -322,7 +380,8 @@ public struct SettingsView: View {
                             .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 44)
                     }
 
                     // ABOUT
@@ -334,9 +393,15 @@ public struct SettingsView: View {
                         )
                     }
                 }
-                .padding(14)
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 14)
             }
         }
+    }
+
+    private var settingsRule: some View {
+        Rectangle().fill(ThemeColors.borderSubtle).frame(height: 1)
     }
 
     // MARK: - Row Helpers
@@ -345,66 +410,73 @@ public struct SettingsView: View {
     private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(ThemeColors.textMuted)
+                .caps(10)
                 .padding(.horizontal, 4)
 
             VStack(spacing: 0) {
                 content()
             }
-            .background(ThemeColors.surface)
-            .cornerRadius(10)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(ThemeColors.border, lineWidth: 1)
-            )
+            .card()
+        }
+    }
+
+    private func rowLabels(_ label: String, _ desc: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(ThemeColors.textPrimary)
+            if !desc.isEmpty {
+                Text(desc)
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
+            }
         }
     }
 
     @ViewBuilder
     private func settingSwitchRow(label: String, desc: String, isOn: Binding<Bool>) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(.system(size: 13))
-                    .foregroundColor(ThemeColors.textPrimary)
-                if !desc.isEmpty {
-                    Text(desc)
-                        .font(.system(size: 11))
-                        .foregroundColor(ThemeColors.textMuted)
-                }
-            }
+        HStack(spacing: 10) {
+            rowLabels(label, desc)
             Spacer()
-            Toggle("", isOn: isOn)
-                .toggleStyle(SwitchToggleStyle(tint: ThemeColors.accent))
-                .labelsHidden()
+            TSSwitch(isOn: isOn)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
+        .frame(minHeight: 44)
+    }
+
+    @ViewBuilder
+    private func settingSegmentedRow<T: Hashable>(label: String, desc: String, options: [(T, String)], selection: Binding<T>) -> some View {
+        HStack(spacing: 10) {
+            rowLabels(label, desc)
+            Spacer()
+            Segmented(
+                options: options,
+                selection: selection,
+                hPad: 8,
+                radius: 7,
+                fill: Tokens.well,
+                border: ThemeColors.borderSubtle
+            )
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(minHeight: 44)
     }
 
     @ViewBuilder
     private func settingValueRow(label: String, desc: String, value: String) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(.system(size: 13))
-                    .foregroundColor(ThemeColors.textPrimary)
-                if !desc.isEmpty {
-                    Text(desc)
-                        .font(.system(size: 11))
-                        .foregroundColor(ThemeColors.textMuted)
-                }
-            }
+        HStack(spacing: 10) {
+            rowLabels(label, desc)
             Spacer()
             if !value.isEmpty {
-                Text(value)
+                (Text(value).foregroundColor(ThemeColors.textDim) + Text(" ›").foregroundColor(ThemeColors.textMuted))
                     .font(.system(size: 12))
-                    .foregroundColor(ThemeColors.textDim)
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
+        .frame(minHeight: 44)
     }
 
     // MARK: - Handlers

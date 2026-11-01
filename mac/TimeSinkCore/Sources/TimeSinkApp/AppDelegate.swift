@@ -35,7 +35,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             syncHost.onSyncCompleted = { [weak self] in
                 Task { @MainActor [weak self] in
                     self?.appState?.handleSyncCompleted()
-                    self?.updateMenuTotal()
                 }
             }
             syncHost.start()
@@ -62,9 +61,34 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             popover = NSPopover()
             popover.contentSize = NSSize(width: 400, height: 640)
             popover.behavior = .transient
+            popover.appearance = ThemeManager.shared.nsAppearance ?? NSAppearance(named: .darkAqua)
             popover.contentViewController = NSHostingController(rootView: PopoverRootView(state: appState))
 
-            statusBarController = StatusBarController(popover: popover)
+            statusBarController = StatusBarController(popover: popover, initialIconId: appState.appIcon)
+            updateDockIcon(appState.appIcon)
+
+            appState.onThemeChanged = { [weak self] in
+                self?.popover.appearance = ThemeManager.shared.nsAppearance
+                self?.statusBarController?.update(
+                    todaySeconds: self?.appState?.currentTodaySeconds ?? 0,
+                    showTime: self?.appState?.showMenuBarTime ?? false,
+                    iconId: self?.appState?.appIcon
+                )
+                if self?.appState?.appIcon == "clean.clock" {
+                    self?.updateDockIcon("clean.clock")
+                }
+            }
+            appState.onMenuBarTimeChanged = { [weak self] todaySec, showTime in
+                self?.statusBarController?.update(todaySeconds: todaySec, showTime: showTime, iconId: self?.appState?.appIcon)
+            }
+            appState.onAppIconChanged = { [weak self] iconId in
+                self?.statusBarController?.update(
+                    todaySeconds: self?.appState?.currentTodaySeconds ?? 0,
+                    showTime: self?.appState?.showMenuBarTime ?? false,
+                    iconId: iconId
+                )
+                self?.updateDockIcon(iconId)
+            }
 
             // Heartbeat timer every 15s
             timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
@@ -87,22 +111,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private func tick() {
         let now = Date()
         try? engine.onTick(now)
-        updateMenuTotal()
+        appState?.checkAutoBackup()
         appState?.refresh()
     }
 
-    private func updateMenuTotal() {
-        guard let db else { return }
-        do {
-            let now = Date()
-            let todayStr = LocalDays.dayString(for: Int64(now.timeIntervalSince1970), timeZone: .current)
-            let stmt = try db.prepare("SELECT COALESCE(SUM(seconds), 0) FROM daily_usage WHERE day = ?;")
-            try stmt.bind(text: todayStr, at: 1)
-            if try stmt.step() {
-                let seconds = stmt.columnInt64(at: 0)
-                statusBarController.updateTodayTotal(seconds: seconds)
-            }
-        } catch {}
+    private func updateDockIcon(_ iconId: String) {
+        if let appImg = IconCatalogue.image(for: iconId, size: 256, accentColor: NSColor(ThemeColors.accent)) {
+            NSApp.applicationIconImage = appImg
+        }
     }
 
     public static func databasePath() -> String {

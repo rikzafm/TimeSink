@@ -3,304 +3,552 @@ import TimeSinkCore
 
 public struct WeekTabView: View {
     @ObservedObject var state: AppState
+    @State private var selectedDate: String?
+    @State private var dayDetail: DayDetail?
+    @State private var focusAppId: Int64?
+    @State private var hoveredDate: String?
+    @State private var hoveredWeekIdx: Int?
+    @State private var hoveredSparkKey: String? // "\(appId)-\(date)"
 
     public init(state: AppState) {
         self.state = state
     }
 
     public var body: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
                 if let result = state.weekResult {
-                    // Navigator + period total
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Button(action: {
-                                state.weeksBack += 1
-                                state.refresh()
-                            }) {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(ThemeColors.textDim)
-                                    .frame(width: 20, height: 20)
-                            }
-                            .buttonStyle(.plain)
+                    headline(result)
+                    if state.showsDeviceSplit {
+                        let t = state.deviceSplit(result.deviceTotals)
+                        DeviceLegend(
+                            mac: "Mac \(Formatters.paddedHM(t.mac))",
+                            pc: "PC \(Formatters.paddedHM(t.pc))",
+                            both: "\(Formatters.paddedHM(result.onBothSeconds)) on both"
+                        )
+                    }
+                    columnsView(result)
 
-                            Text(state.weeksBack == 0 ? "This week" : result.shownWeekStart)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(ThemeColors.textDim)
-
-                            Button(action: {
-                                if state.weeksBack > 0 {
-                                    state.weeksBack -= 1
-                                    state.refresh()
-                                }
-                            }) {
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(state.weeksBack > 0 ? ThemeColors.textDim : ThemeColors.border)
-                                    .frame(width: 20, height: 20)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(state.weeksBack == 0)
-
-                            Spacer()
-                        }
-
-                        // Headline total
-                        HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text(Formatters.hoursMinutes(seconds: result.totalSeconds))
-                                .font(.system(size: 32, weight: .bold, design: .rounded))
-                                .foregroundColor(ThemeColors.accent)
-
-                            let delta = result.totalSeconds - result.previousWeekTotalSeconds
-                            if delta != 0 || result.previousWeekTotalSeconds > 0 {
-                                Text("\(delta >= 0 ? "+" : "-")\(Formatters.hoursMinutes(seconds: abs(delta))) vs last week")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(delta >= 0 ? ThemeColors.accent : ThemeColors.warning)
-                            }
-                        }
-
-                        // Multi-device breakdown row in All Scope
-                        if state.deviceScope == .all, let totals = result.deviceTotals, totals.count > 1 {
-                            let devA = totals.values.first ?? 0
-                            let devB = totals.values.dropFirst().first ?? 0
-
-                            HStack(spacing: 8) {
-                                HStack(spacing: 4) {
-                                    Circle().fill(ThemeColors.deviceA).frame(width: 6, height: 6)
-                                    Text("Mac \(Formatters.hoursMinutes(seconds: devA))")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(ThemeColors.textPrimary)
-                                }
-
-                                HStack(spacing: 4) {
-                                    RoundedRectangle(cornerRadius: 1).fill(ThemeColors.deviceB).frame(width: 6, height: 6)
-                                    Text("PC \(Formatters.hoursMinutes(seconds: devB))")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(ThemeColors.textPrimary)
-                                }
-
-                                Text("\(Formatters.hoursMinutes(seconds: result.onBothSeconds)) on both")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(ThemeColors.textMuted)
-                            }
-                            .padding(.top, 2)
-                        }
+                    if let detail = dayDetail, selectedDate != nil {
+                        dayDetailCard(detail)
                     }
 
-                    // 7-day columns card
-                    VStack(alignment: .leading, spacing: 8) {
-                        weekColumnsView(days: result.days)
+                    historyView(result)
 
-                        // Legend
-                        HStack(spacing: 6) {
-                            Circle().fill(ThemeColors.deviceA).frame(width: 6, height: 6)
-                            Text("Mac")
-                                .font(.system(size: 10))
-                                .foregroundColor(ThemeColors.textDim)
-
-                            RoundedRectangle(cornerRadius: 1).fill(ThemeColors.deviceB).frame(width: 6, height: 6)
-                            Text("PC")
-                                .font(.system(size: 10))
-                                .foregroundColor(ThemeColors.textDim)
-
-                            Text("Overlapping bars = both on · label is uptime, overlap once")
-                                .font(.system(size: 10))
-                                .foregroundColor(ThemeColors.textDim)
-                        }
-                        .padding(.top, 4)
-                    }
-                    .padding(12)
-                    .background(ThemeColors.surface)
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(ThemeColors.border, lineWidth: 1)
-                    )
-
-                    // Contribution heatmap card (Last 20 weeks)
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Last 20 weeks")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(ThemeColors.textMuted)
-
-                            Spacer()
-
-                            Text("\(max(23, result.streakDays))-day streak")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(ThemeColors.accent)
-                        }
-
-                        // 7 rows x 20 cols heat grid
-                        twentyWeeksHeatGrid()
-                    }
-                    .padding(12)
-                    .background(ThemeColors.surface)
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(ThemeColors.border, lineWidth: 1)
-                    )
-
-                    // Top apps list
-                    VStack(spacing: 6) {
-                        ForEach(result.rows, id: \.appId) { appRow in
-                            weekAppRowView(row: appRow, maxSeconds: result.rows.map(\.seconds).max() ?? 1)
-                        }
+                    VStack(spacing: 2) {
+                        ForEach(result.rows, id: \.appId) { appRow($0, result: result) }
                     }
                 } else {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, minHeight: 200)
+                    ProgressView().frame(maxWidth: .infinity, minHeight: 200)
                 }
             }
-            .padding(16)
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
         }
-        .background(ThemeColors.background)
     }
 
-    private func twentyWeeksHeatGrid() -> some View {
-        HStack(spacing: 3) {
-            ForEach(0..<20, id: \.self) { col in
-                VStack(spacing: 3) {
-                    ForEach(0..<7, id: \.self) { row in
-                        let level = heatLevel(col: col, row: row)
-                        RoundedRectangle(cornerRadius: 1.5)
-                            .fill(heatColorForLevel(level))
-                            .frame(height: 7)
-                    }
+    private func isDayHighlighted(_ day: WeekDay) -> Bool {
+        if let selectedDate {
+            return day.date == selectedDate
+        }
+        return day.isToday
+    }
+
+    private func toggleDay(_ date: String, focusApp: Int64? = nil) {
+        if selectedDate == date && focusAppId == focusApp && focusApp == nil {
+            selectedDate = nil
+            dayDetail = nil
+            focusAppId = nil
+        } else {
+            selectedDate = date
+            focusAppId = focusApp
+            dayDetail = state.loadDayDetail(day: date)
+        }
+    }
+
+    private func headline(_ result: WeekResult) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                PeriodArrow(left: true, enabled: result.canPrev(weekStart: WeekStart.parse(state.weekStart)), box: 14, iconSize: 8) {
+                    clearSelection()
+                    state.previousWeek()
+                }
+                Text(state.weeksBack == 0 ? "This week" : "Week of \(Formatters.dayText(result.shownWeekStart, format: "d MMM"))")
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textDim)
+                PeriodArrow(left: false, enabled: state.weeksBack > 0, box: 14, iconSize: 8) {
+                    clearSelection()
+                    state.nextWeek()
                 }
             }
-        }
-    }
+            .padding(.bottom, 2)
 
-    private func heatLevel(col: Int, row: Int) -> Int {
-        // Deterministic plausible heat levels matching the visual pattern
-        let seed = (col * 7 + row * 13) % 17
-        if col < 4 { return seed % 2 }
-        if col > 15 { return 2 + (seed % 3) }
-        return 1 + (seed % 4)
-    }
-
-    private func heatColorForLevel(_ level: Int) -> Color {
-        switch level {
-        case 0: return ThemeColors.barBackground
-        case 1: return ThemeColors.accentDark.opacity(0.4)
-        case 2: return ThemeColors.accentDark
-        case 3: return ThemeColors.accent.opacity(0.8)
-        default: return ThemeColors.accent
-        }
-    }
-
-    private func weekColumnsView(days: [WeekDay]) -> some View {
-        let maxSec = max(3600, days.map(\.seconds).max() ?? 3600)
-        let chartHeight: CGFloat = 80
-        let dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-        return VStack(spacing: 4) {
-            HStack(alignment: .bottom, spacing: 8) {
-                ForEach(Array(days.enumerated()), id: \.offset) { idx, day in
-                    let h = CGFloat(day.seconds) / CGFloat(maxSec) * chartHeight
-                    let labelHours = max(1, (day.seconds + 1800) / 3600)
-
-                    VStack(spacing: 4) {
-                        Text("\(labelHours)h")
-                            .font(.system(size: 9))
-                            .foregroundColor(ThemeColors.textDim)
-
-                        ZStack(alignment: .bottom) {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(ThemeColors.barBackground)
-                                .frame(height: chartHeight)
-
-                            if state.deviceScope == .all, let devSecs = day.deviceSeconds, devSecs.count > 1 {
-                                let devA = devSecs.values.first ?? 0
-                                let devB = devSecs.values.dropFirst().first ?? 0
-                                let hA = CGFloat(devA) / CGFloat(maxSec) * chartHeight
-                                let hB = CGFloat(devB) / CGFloat(maxSec) * chartHeight
-
-                                ZStack(alignment: .bottomLeading) {
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(ThemeColors.deviceA)
-                                        .frame(width: 22, height: max(2, hA))
-
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(ThemeColors.deviceB)
-                                        .frame(width: 22, height: max(2, hB))
-                                        .offset(x: 8)
-                                }
-                            } else {
-                                if day.seconds > 0 {
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(day.isToday ? ThemeColors.accent : ThemeColors.accentDark)
-                                        .frame(height: max(2, h))
-                                }
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-
-                        Text(idx < dayLabels.count ? dayLabels[idx] : "")
-                            .font(.system(size: 10, weight: day.isToday ? .bold : .regular))
-                            .foregroundColor(day.isToday ? ThemeColors.accent : ThemeColors.textDim)
-                    }
-                }
-            }
-        }
-    }
-
-    private func weekAppRowView(row: WeekAppRow, maxSeconds: Int64) -> some View {
-        Button(action: {
-            state.openAppDetail(appId: row.appId)
-        }) {
-            HStack(spacing: 10) {
-                // Icon tile
-                ZStack {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(ThemeColors.surfaceRaised)
-                        .frame(width: 28, height: 28)
-
-                    if let png = state.iconCache.getCachedIcon(forAppId: row.appId),
-                       let nsImg = NSImage(data: png) {
-                        Image(nsImage: nsImg)
-                            .resizable()
-                            .frame(width: 20, height: 20)
-                            .cornerRadius(3)
-                    } else {
-                        Text(String(row.name.prefix(1)).uppercased())
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(ThemeColors.accent)
-                    }
-                }
-
-                Text(row.name)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(ThemeColors.textPrimary)
+            HStack(alignment: .center) {
+                Text(Formatters.paddedHM(result.totalSeconds))
+                    .font(.system(size: 34, weight: .bold))
+                    .tracking(-0.8)
+                    .foregroundColor(ThemeColors.accent)
 
                 Spacer()
 
-                // Sparkline
-                HStack(alignment: .bottom, spacing: 2) {
-                    let sparkMax = max(1, row.sparkline.max() ?? 1)
-                    ForEach(Array(row.sparkline.enumerated()), id: \.offset) { _, s in
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(s > 0 ? ThemeColors.accent : ThemeColors.barBackground)
-                            .frame(width: 4, height: max(2, CGFloat(s) / CGFloat(sparkMax) * 16))
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(result.streakDays)-day streak")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(ThemeColors.textPrimary)
+                    Text("apps open daily")
+                        .font(.system(size: 11))
+                        .foregroundColor(ThemeColors.textMuted)
+                }
+            }
+
+            comparisonAndAverage(result)
+        }
+    }
+
+    private func clearSelection() {
+        selectedDate = nil
+        dayDetail = nil
+        focusAppId = nil
+    }
+
+    private func comparisonAndAverage(_ result: WeekResult) -> some View {
+        let daysCounted = max(1, result.days.filter { !$0.isFuture }.count)
+        let avgSeconds = result.totalSeconds / Int64(daysCounted)
+        let avgText = "avg \(Formatters.paddedHM(avgSeconds)) / day"
+
+        let vsText = state.weeksBack == 0 ? "vs last week so far" : "vs last week"
+        let delta = result.totalSeconds - result.previousWeekTotalSeconds
+        let isPositive = delta >= 0
+        let arrow = isPositive ? "▲" : "▼"
+        let diffText = "\(arrow) \(Formatters.paddedHM(abs(delta))) \(vsText)"
+
+        let fullText: String
+        if result.previousWeekTotalSeconds > 0 {
+            fullText = "\(diffText) · \(avgText)"
+        } else if result.totalSeconds > 0 {
+            fullText = avgText
+        } else {
+            fullText = "avg 0m / day"
+        }
+
+        return Text(fullText)
+            .font(.system(size: 11))
+            .foregroundColor(ThemeColors.textMuted)
+            .lineLimit(1)
+    }
+
+    private func columnsView(_ result: WeekResult) -> some View {
+        let barMaxHeight: CGFloat = 66
+        let top = max(3600, result.days.map { d -> Int64 in
+            let p = state.deviceSplit(d.deviceSeconds)
+            return state.showsDeviceSplit ? max(p.mac, p.pc) : d.seconds
+        }.max() ?? 3600)
+        let k = barMaxHeight / CGFloat(top)
+
+        let daysCounted = max(1, result.days.filter { !$0.isFuture }.count)
+        let avgSeconds = result.totalSeconds / Int64(daysCounted)
+        let avgBarHeight = CGFloat(avgSeconds) * k
+
+        return VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .bottom) {
+                // Dashed horizontal average reference line
+                if avgSeconds > 0 {
+                    GeometryReader { geo in
+                        let lineY = geo.size.height - avgBarHeight
+                        Path { path in
+                            path.move(to: CGPoint(x: 0, y: lineY))
+                            path.addLine(to: CGPoint(x: geo.size.width, y: lineY))
+                        }
+                        .stroke(ThemeColors.textMuted.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                     }
                 }
-                .frame(width: 40, height: 16)
 
-                Text(Formatters.hoursMinutes(seconds: row.seconds))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(ThemeColors.textPrimary)
-                    .frame(width: 60, alignment: .trailing)
+                // 7 Day columns
+                HStack(alignment: .bottom, spacing: 8) {
+                    ForEach(result.days, id: \.date) { day in
+                        let highlighted = isDayHighlighted(day)
+                        let isHovered = hoveredDate == day.date
+                        let barH = CGFloat(day.seconds) * k
+                        let tooltip = "\(Formatters.dayText(day.date, format: "EEEE, d MMMM yyyy"))\n\(day.seconds > 0 ? Formatters.paddedHM(day.seconds) : "No activity tracked")"
+
+                        Button(action: {
+                            if !day.isFuture { toggleDay(day.date) }
+                        }) {
+                            ZStack(alignment: .bottom) {
+                                if isHovered && !day.isFuture {
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .fill(ThemeColors.textMuted.opacity(0.12))
+                                        .frame(height: barMaxHeight + 18)
+                                }
+
+                                VStack(spacing: 3) {
+                                    Text(day.seconds > 0 ? Formatters.paddedHM(day.seconds) : "")
+                                        .font(.system(size: 10.5, weight: highlighted ? .bold : .medium))
+                                        .foregroundColor(highlighted ? ThemeColors.accent : ThemeColors.textMuted)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.7)
+
+                                    if state.showsDeviceSplit {
+                                        let p = state.deviceSplit(day.deviceSeconds)
+                                        let macH = CGFloat(p.mac) * k
+                                        let pcH = CGFloat(p.pc) * k
+                                        OverlapBar(
+                                            mac: macH,
+                                            pc: pcH,
+                                            macColor: highlighted ? ThemeColors.accent : Tokens.ramp[3],
+                                            pcColor: highlighted ? ThemeColors.deviceB : ThemeColors.deviceBDark,
+                                            radius: 4
+                                        )
+                                        .frame(height: max(macH, pcH))
+                                    } else {
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(highlighted ? ThemeColors.accent : Tokens.ramp[2])
+                                            .frame(height: max(day.seconds > 0 ? 3 : 0, barH))
+                                    }
+                                }
+
+                                if selectedDate == day.date {
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .strokeBorder(ThemeColors.accent, lineWidth: 1.5)
+                                        .frame(height: barMaxHeight + 18)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .bottom)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(tooltip)
+                        .onHover { isH in
+                            if !day.isFuture {
+                                hoveredDate = isH ? day.date : (hoveredDate == day.date ? nil : hoveredDate)
+                            }
+                        }
+                    }
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(ThemeColors.surface)
-            .cornerRadius(6)
+            .frame(height: barMaxHeight + 18)
+
+            // Day labels row
+            HStack(spacing: 8) {
+                ForEach(result.days, id: \.date) { day in
+                    let highlighted = isDayHighlighted(day)
+                    Button(action: {
+                        if !day.isFuture { toggleDay(day.date) }
+                    }) {
+                        Text(Formatters.dayText(day.date, format: "EEE"))
+                            .font(.system(size: 11, weight: highlighted ? .bold : .regular))
+                            .foregroundColor(highlighted ? ThemeColors.accent : (day.isFuture ? ThemeColors.textDisabled : ThemeColors.textMuted))
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(Formatters.dayText(day.date, format: "EEEE, d MMMM yyyy"))
+                    .onHover { isH in
+                        if !day.isFuture {
+                            hoveredDate = isH ? day.date : (hoveredDate == day.date ? nil : hoveredDate)
+                        }
+                    }
+                }
+            }
+            .padding(.top, 5)
         }
-        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func dayDetailCard(_ detail: DayDetail) -> some View {
+        let total = max(1, detail.totalSeconds)
+        let sortedApps: [BarApp] = {
+            if let focusId = focusAppId, let idx = detail.apps.firstIndex(where: { $0.appId == focusId }) {
+                var list = detail.apps
+                let focus = list.remove(at: idx)
+                list.insert(focus, at: 0)
+                return list
+            }
+            return detail.apps
+        }()
+
+        VStack(alignment: .leading, spacing: 8) {
+            // Header: Title & Close
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Formatters.dayText(detail.date, format: "EEEE, d MMMM yyyy"))
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(ThemeColors.textPrimary)
+
+                    let spanText: String = {
+                        if let first = detail.firstStartUtc, let last = detail.lastEndUtc {
+                            return " · active \(Formatters.formatClock(utcSeconds: first)) – \(Formatters.formatClock(utcSeconds: last))"
+                        }
+                        return ""
+                    }()
+
+                    let subText: String = {
+                        if let focusId = focusAppId, let f = detail.apps.first(where: { $0.appId == focusId }) {
+                            let fTime = f.seconds > 0 ? Formatters.paddedHM(f.seconds) : "not used"
+                            return "\(f.name): \(fTime) of \(Formatters.paddedHM(detail.totalSeconds))\(spanText)"
+                        } else if detail.totalSeconds == 0 {
+                            return "No activity tracked"
+                        } else if let first = detail.apps.first {
+                            return "\(Formatters.paddedHM(detail.totalSeconds)) · mostly \(first.name) (\(Formatters.paddedHM(first.seconds)))\(spanText)"
+                        } else {
+                            return "\(Formatters.paddedHM(detail.totalSeconds))\(spanText)"
+                        }
+                    }()
+
+                    Text(subText)
+                        .font(.system(size: 11))
+                        .foregroundColor(ThemeColors.textMuted)
+                }
+
+                Spacer()
+
+                Button(action: clearSelection) {
+                    Text("✕")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(ThemeColors.textMuted)
+                        .padding(4)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            // App breakdown bars
+            if !sortedApps.isEmpty {
+                VStack(spacing: 7) {
+                    ForEach(sortedApps, id: \.appId) { app in
+                        let sharePct = detail.totalSeconds > 0 ? Int((Double(app.seconds) / Double(detail.totalSeconds) * 100).rounded()) : 0
+                        Button(action: { state.openAppDetail(appId: app.appId) }) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack {
+                                    Text(app.name)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(ThemeColors.textPrimary)
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Text("\(Formatters.paddedHM(app.seconds)) · \(sharePct)%")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(ThemeColors.textMuted)
+                                }
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        RoundedRectangle(cornerRadius: 3).fill(ThemeColors.barBackground)
+                                        RoundedRectangle(cornerRadius: 3)
+                                            .fill(Tokens.appColor(app.name))
+                                            .frame(width: max(4, geo.size.width * CGFloat(app.seconds) / CGFloat(total)))
+                                    }
+                                }
+                                .frame(height: 6)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .help("Click to inspect \(app.name)")
+                    }
+                }
+            }
+
+            // Comparison metrics
+            Divider().overlay(ThemeColors.borderSubtle).padding(.vertical, 2)
+
+            let deltaAvg = detail.totalSeconds - Int64(detail.weekAverageSeconds.rounded())
+            let signAvg = deltaAvg >= 0 ? "+" : "-"
+            HStack {
+                Text("vs week average")
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
+                Spacer()
+                Text("\(signAvg)\(Formatters.paddedHM(abs(deltaAvg)))")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(deltaAvg >= 0 ? ThemeColors.accent : ThemeColors.warning)
+            }
+
+            if detail.sameDayLastWeekSeconds > 0 || detail.totalSeconds > 0 {
+                let deltaLast = detail.totalSeconds - detail.sameDayLastWeekSeconds
+                let signLast = deltaLast >= 0 ? "+" : "-"
+                HStack {
+                    Text("vs same day last week")
+                        .font(.system(size: 11))
+                        .foregroundColor(ThemeColors.textMuted)
+                    Spacer()
+                    Text("\(signLast)\(Formatters.paddedHM(abs(deltaLast)))")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(deltaLast >= 0 ? ThemeColors.accent : ThemeColors.warning)
+                }
+            }
+
+            // Action: Open in Today
+            Button(action: {
+                state.openDayInToday(dateString: detail.date)
+            }) {
+                HStack(spacing: 4) {
+                    Text("Open in Today")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(ThemeColors.accent)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(ThemeColors.accent)
+                    Spacer()
+                }
+                .padding(.top, 4)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 10).fill(ThemeColors.surfaceActive))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ThemeColors.accent, lineWidth: 1))
+    }
+
+    private func historyView(_ result: WeekResult) -> some View {
+        let maxWeek = max(3600, result.weekTotals.max() ?? 3600)
+        let activeIndex = (WeekQuery.gridWeeks - 1) - state.weeksBack
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Last 20 weeks")
+                    .foregroundColor(ThemeColors.textMuted)
+                Spacer()
+                Text("weekly total")
+                    .foregroundColor(ThemeColors.textMuted)
+            }
+            .font(.system(size: 11))
+
+            HStack(alignment: .bottom, spacing: 3.5) {
+                ForEach(0..<result.weekTotals.count, id: \.self) { idx in
+                    let total = result.weekTotals[idx]
+                    let isActive = (idx == activeIndex)
+                    let isHovered = (hoveredWeekIdx == idx)
+                    let barH = max(2.5, CGFloat(total) / CGFloat(maxWeek) * 26)
+
+                    let startIdx = idx * 7
+                    let endIdx = min(result.heatGrid.count - 1, idx * 7 + 6)
+                    let startDay = startIdx < result.heatGrid.count ? result.heatGrid[startIdx].date : ""
+                    let endDay = endIdx < result.heatGrid.count ? result.heatGrid[endIdx].date : ""
+                    let rangeStr = !startDay.isEmpty ? "\(Formatters.dayText(startDay, format: "d MMM")) – \(Formatters.dayText(endDay, format: "d MMM"))" : "Week \(idx + 1)"
+                    let tip = "\(rangeStr)\n\(Formatters.paddedHM(total))"
+
+                    Button(action: {
+                        let back = (WeekQuery.gridWeeks - 1) - idx
+                        if back >= 0 {
+                            clearSelection()
+                            state.weeksBack = back
+                            state.refresh()
+                        }
+                    }) {
+                        ZStack(alignment: .bottom) {
+                            if isHovered {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(ThemeColors.textMuted.opacity(0.2))
+                                    .frame(height: 28)
+                            }
+                            RoundedRectangle(cornerRadius: 1.5)
+                                .fill(isActive ? ThemeColors.accent : (isHovered ? Tokens.ramp[3] : (total > 0 ? Tokens.ramp[2] : Tokens.ramp[1])))
+                                .frame(height: barH)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: 28, alignment: .bottom)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(tip)
+                    .onHover { isH in
+                        hoveredWeekIdx = isH ? idx : (hoveredWeekIdx == idx ? nil : hoveredWeekIdx)
+                    }
+                }
+            }
+            .frame(height: 28, alignment: .bottom)
+        }
+        .padding(.top, 4)
+    }
+
+    private func sparkDate(for index: Int, total: Int, todayStr: String) -> String {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        guard let today = df.date(from: todayStr) else { return todayStr }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        if let d = calendar.date(byAdding: .day, value: index - (total - 1), to: today) {
+            return df.string(from: d)
+        }
+        return todayStr
+    }
+
+    private func selectSparkDay(_ dateStr: String, appId: Int64, result: WeekResult) {
+        if result.days.contains(where: { $0.date == dateStr }) {
+            toggleDay(dateStr, focusApp: appId)
+        } else {
+            // Day belongs to another week: navigate to that week and select day
+            let ws = WeekStart.parse(state.weekStart)
+            let targetWeekStart = WeekStarts.containing(day: dateStr, weekStart: ws)
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            if let tDate = df.date(from: targetWeekStart), let nowD = df.date(from: result.today) {
+                var cal = Calendar(identifier: .gregorian)
+                cal.timeZone = .current
+                let diffDays = cal.dateComponents([.day], from: tDate, to: nowD).day ?? 0
+                state.weeksBack = max(0, diffDays / 7)
+                state.refresh()
+                toggleDay(dateStr, focusApp: appId)
+            }
+        }
+    }
+
+    private func appRow(_ row: WeekAppRow, result: WeekResult) -> some View {
+        HStack(spacing: 10) {
+            Button(action: { state.openAppDetail(appId: row.appId) }) {
+                HStack(spacing: 10) {
+                    AppTile(name: row.name, png: state.iconCache.getCachedIcon(forAppId: row.appId))
+                    Text(row.name)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(ThemeColors.textPrimary)
+                        .lineLimit(1)
+                }
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            // Sparkline bars (interactive)
+            HStack(alignment: .bottom, spacing: 2) {
+                let top = max(1, row.sparkline.max() ?? 1)
+                ForEach(Array(row.sparkline.enumerated()), id: \.offset) { sIdx, s in
+                    let sDate = sparkDate(for: sIdx, total: row.sparkline.count, todayStr: result.today)
+                    let key = "\(row.appId)-\(sDate)"
+                    let isHovered = hoveredSparkKey == key
+                    let tip = "\(row.name)\n\(Formatters.dayText(sDate, format: "EEEE, d MMM")) · \(Formatters.paddedHM(s))"
+
+                    Button(action: {
+                        selectSparkDay(sDate, appId: row.appId, result: result)
+                    }) {
+                        ZStack(alignment: .bottom) {
+                            if isHovered {
+                                RoundedRectangle(cornerRadius: 1.5)
+                                    .fill(ThemeColors.textMuted.opacity(0.2))
+                                    .frame(width: 6, height: 22)
+                            }
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(isHovered ? ThemeColors.accent : Tokens.appColor(row.name).opacity(0.8))
+                                .frame(width: 4, height: max(2, CGFloat(s) / CGFloat(top) * 20))
+                        }
+                        .frame(width: 6, height: 22, alignment: .bottom)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(tip)
+                    .onHover { isH in
+                        hoveredSparkKey = isH ? key : (hoveredSparkKey == key ? nil : hoveredSparkKey)
+                    }
+                }
+            }
+            .frame(height: 22, alignment: .bottom)
+
+            Button(action: { state.openAppDetail(appId: row.appId) }) {
+                Text(Formatters.paddedHM(row.seconds))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(ThemeColors.textPrimary)
+                    .frame(width: 62, alignment: .trailing)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 6)
+        .frame(height: 46)
+        .contentShape(Rectangle())
     }
 }
-

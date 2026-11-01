@@ -14,8 +14,39 @@ public struct TrackedAppItem: Sendable, Identifiable, Equatable {
     public let deviceId: String
     public let mergedCount: Int
     public let totalSeconds: Int64
+    public let mergedNames: [String]
 
     public var isTracked: Bool { state == "tracked" }
+
+    public init(
+        id: Int64,
+        canonicalId: Int64?,
+        exePath: String,
+        displayName: String,
+        category: String,
+        state: String,
+        addedUtc: Int64,
+        isBackground: Bool,
+        kind: AppKind,
+        deviceId: String,
+        mergedCount: Int,
+        totalSeconds: Int64,
+        mergedNames: [String] = []
+    ) {
+        self.id = id
+        self.canonicalId = canonicalId
+        self.exePath = exePath
+        self.displayName = displayName
+        self.category = category
+        self.state = state
+        self.addedUtc = addedUtc
+        self.isBackground = isBackground
+        self.kind = kind
+        self.deviceId = deviceId
+        self.mergedCount = mergedCount
+        self.totalSeconds = totalSeconds
+        self.mergedNames = mergedNames
+    }
 }
 
 public struct InstalledAppItem: Sendable, Identifiable, Equatable {
@@ -24,12 +55,14 @@ public struct InstalledAppItem: Sendable, Identifiable, Equatable {
     public let bundleUrl: URL
     public let executablePath: String
     public let bundleId: String?
+    public let publisher: String?
 
-    public init(name: String, bundleUrl: URL, executablePath: String, bundleId: String?) {
+    public init(name: String, bundleUrl: URL, executablePath: String, bundleId: String?, publisher: String? = nil) {
         self.name = name
         self.bundleUrl = bundleUrl
         self.executablePath = executablePath
         self.bundleId = bundleId
+        self.publisher = publisher
     }
 }
 
@@ -123,12 +156,35 @@ public final class MacAppLibrary: @unchecked Sendable {
         _ = try stmt.step()
     }
 
+    public func getActiveSeconds(appId: Int64) throws -> Int64 {
+        let stmt = try db.prepare("""
+            SELECT start_utc, COALESCE(end_utc, last_seen_utc)
+            FROM sessions
+            WHERE app_id = ?1 OR app_id IN (SELECT id FROM apps WHERE canonical_id = ?1)
+            ORDER BY start_utc ASC;
+            """)
+        try stmt.bind(int64: appId, at: 1)
+        var intervals: [(start: Int64, end: Int64)] = []
+        while try stmt.step() {
+            let start = stmt.columnInt64(at: 0)
+            let end = stmt.columnInt64(at: 1)
+            if end <= start { continue }
+            if let last = intervals.last, start <= last.end {
+                intervals[intervals.count - 1].end = max(last.end, end)
+            } else {
+                intervals.append((start: start, end: end))
+            }
+        }
+        return intervals.reduce(0) { $0 + ($1.end - $1.start) }
+    }
+
     public func getTrackedApps(deviceId: String? = nil) throws -> [TrackedAppItem] {
         var sql = """
             SELECT a.id, a.canonical_id, a.exe_path, a.display_name, a.category, a.state,
                    a.added_utc, a.is_background, a.kind, a.device_id,
                    (SELECT COUNT(*) FROM apps m WHERE m.canonical_id = a.id) as merged_count,
-                   (SELECT COALESCE(SUM(u.seconds), 0) FROM daily_usage u WHERE u.app_id = a.id OR u.app_id IN (SELECT m.id FROM apps m WHERE m.canonical_id = a.id)) as total_sec
+                   (SELECT COALESCE(SUM(u.seconds), 0) FROM daily_usage u WHERE u.app_id = a.id OR u.app_id IN (SELECT m.id FROM apps m WHERE m.canonical_id = a.id)) as total_sec,
+                   (SELECT GROUP_CONCAT(m.display_name, '||') FROM apps m WHERE m.canonical_id = a.id) as merged_names
             FROM apps a
             WHERE a.state = 'tracked' AND a.canonical_id IS NULL
             """
@@ -151,7 +207,9 @@ public final class MacAppLibrary: @unchecked Sendable {
             let kind = AppKind(rawValue: stmt.columnInt64(at: 8)) ?? .other
             let dev = stmt.columnText(at: 9) ?? ""
             let merged = Int(stmt.columnInt64(at: 10))
-            let sec = stmt.columnInt64(at: 11)
+            let sec = merged > 0 ? ((try? getActiveSeconds(appId: id)) ?? stmt.columnInt64(at: 11)) : stmt.columnInt64(at: 11)
+            let mergedNamesStr = stmt.columnText(at: 12)
+            let mergedNames = mergedNamesStr.flatMap { $0.isEmpty ? nil : $0.components(separatedBy: "||") } ?? []
 
             items.append(TrackedAppItem(
                 id: id,
@@ -165,7 +223,8 @@ public final class MacAppLibrary: @unchecked Sendable {
                 kind: kind,
                 deviceId: dev,
                 mergedCount: merged,
-                totalSeconds: sec
+                totalSeconds: sec,
+                mergedNames: mergedNames
             ))
         }
         return items
@@ -237,7 +296,8 @@ public final class MacAppLibrary: @unchecked Sendable {
                 exePath: path,
                 appId: id,
                 seconds: sec,
-                deviceId: dev
+                deviceId: dev,
+                publisher: AppVendor.name(executable: path)
             ))
         }
 
@@ -269,7 +329,16 @@ public final class MacAppLibrary: @unchecked Sendable {
                 if seenPaths.contains(path) { continue }
                 seenPaths.insert(path)
 
+                // Skip internal Campo (Siri AI) companion app in /System/Applications to avoid duplicate Siri
+                if url.lastPathComponent == "Siri AI.app" {
+                    continue
+                }
+
                 let bundle = Bundle(url: url)
+                if bundle?.bundleIdentifier == "com.apple.campo" {
+                    continue
+                }
+
                 let name = bundle?.localizedInfoDictionary?["CFBundleDisplayName"] as? String
                     ?? bundle?.infoDictionary?["CFBundleName"] as? String
                     ?? url.deletingPathExtension().lastPathComponent
@@ -280,7 +349,8 @@ public final class MacAppLibrary: @unchecked Sendable {
                     name: name,
                     bundleUrl: url,
                     executablePath: execPath,
-                    bundleId: bundleId
+                    bundleId: bundleId,
+                    publisher: AppVendor.name(executable: execPath)
                 ))
             }
         }

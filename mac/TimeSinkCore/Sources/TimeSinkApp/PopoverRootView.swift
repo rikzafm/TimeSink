@@ -17,16 +17,11 @@ public struct PopoverRootView: View {
                     state.showingAddApp = false
                 }
             } else if state.selectedAppDetailId != nil {
-                // App Detail View takes over content
                 AppDetailView(state: state)
             } else {
-                // Main Header
                 HeaderView(state: state)
-
-                // Tab Selection Bar
                 TabBarView(state: state)
 
-                // Active Tab Content
                 Group {
                     switch state.selectedTab {
                     case .today:
@@ -43,90 +38,73 @@ public struct PopoverRootView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                // Bottom bar
-                HStack(alignment: .center) {
-                    Button(action: {
-                        state.showingAddApp = true
-                    }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 11, weight: .bold))
-                            Text("Add app")
-                                .font(.system(size: 12, weight: .medium))
-                        }
-                        .foregroundColor(ThemeColors.accent)
-                    }
-                    .buttonStyle(.plain)
-
-                    Spacer()
-
-                    tabFooterTrailingView()
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(ThemeColors.surface)
-                .overlay(
-                    Rectangle()
-                        .frame(height: 1)
-                        .foregroundColor(ThemeColors.borderSubtle),
-                    alignment: .top
-                )
+                footer
             }
         }
         .frame(width: 400, height: 640)
         .background(ThemeColors.background)
+        .font(.system(size: 12).monospacedDigit())
+    }
+
+    private var isTall: Bool {
+        state.selectedTab == .today || (state.selectedTab == .year && state.yearSubView == .wrapped) || state.selectedTab == .all
+    }
+
+    private var footerHeight: CGFloat {
+        if state.selectedTab == .all { return 42 }
+        return isTall ? 46 : 44
+    }
+
+    private var footer: some View {
+        HStack {
+            Button(action: { state.showingAddApp = true }) {
+                Text("+ Add app")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(ThemeColors.accent)
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            footerTrailing
+        }
+        .padding(.horizontal, isTall ? 16 : 14)
+        .frame(height: footerHeight)
+        .topRule()
+    }
+
+    private func muted(_ text: String, size: CGFloat = 12) -> some View {
+        Text(text)
+            .font(.system(size: size))
+            .foregroundColor(ThemeColors.textMuted)
     }
 
     @ViewBuilder
-    private func tabFooterTrailingView() -> some View {
+    private var footerTrailing: some View {
         switch state.selectedTab {
         case .today:
-            if state.deviceScope == .all {
-                Text("Updated just now · synced 2 min ago")
-                    .font(.system(size: 11))
-                    .foregroundColor(ThemeColors.textMuted)
+            if state.deviceScope == .all && state.lastSyncUtc > 0 {
+                muted("Updated just now · synced \(Formatters.timeAgo(state.lastSyncUtc))", size: 11)
             } else {
-                Text("Updated just now")
-                    .font(.system(size: 11))
-                    .foregroundColor(ThemeColors.textMuted)
+                muted("Updated just now", size: 11)
             }
         case .week:
-            Text("Last backup · 1 day ago")
-                .font(.system(size: 11))
-                .foregroundColor(ThemeColors.textMuted)
+            muted("Last backup · \(Formatters.timeAgo(state.lastBackupUtc))")
         case .month:
-            Button(action: {
-                // Export Month CSV
-                state.exportMonthCsv()
-            }) {
+            Button(action: { state.exportMonthCsv() }) {
                 Text("Export month (CSV)")
-                    .font(.system(size: 11))
-                    .foregroundColor(ThemeColors.textMuted)
+                    .font(.system(size: 12))
+                    .foregroundColor(ThemeColors.textDim)
             }
             .buttonStyle(.plain)
         case .year:
             switch state.yearSubView {
             case .pace:
-                Text("Tap a month")
-                    .font(.system(size: 11))
-                    .foregroundColor(ThemeColors.textMuted)
+                muted("Tap a month")
             case .wrapped:
-                Button(action: {
-                    state.saveWrappedImage()
-                }) {
-                    Text("Save as image")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(ThemeColors.background)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
-                        .background(ThemeColors.accent)
-                        .cornerRadius(6)
-                }
-                .buttonStyle(.plain)
+                EmptyView()
             case .matrix:
-                Text("Tap an app or a month")
-                    .font(.system(size: 11))
-                    .foregroundColor(ThemeColors.textMuted)
+                muted("Tap an app or a month")
             }
         case .all:
             EmptyView()

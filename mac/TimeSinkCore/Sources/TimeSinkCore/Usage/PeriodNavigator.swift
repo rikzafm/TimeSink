@@ -9,22 +9,28 @@ public enum PeriodUnit: Sendable, Codable {
 
 public final class PeriodNavigator: @unchecked Sendable {
     public let unit: PeriodUnit
-    public let first: String
+    public let first: String?
     public let today: String
     private let weekStart: WeekStart
 
-    public init(unit: PeriodUnit, first: String, today: String, weekStart: WeekStart = .mon) {
+    public init(unit: PeriodUnit, first: String?, today: String, weekStart: WeekStart = .mon) {
         self.unit = unit
         self.today = today
-        self.first = first > today ? today : first
+        if let first = first {
+            self.first = first > today ? today : first
+        } else {
+            self.first = nil
+        }
         self.weekStart = weekStart
     }
 
     public func contains(day: String) -> Bool {
-        day >= first && day <= today
+        guard let first = first else { return false }
+        return day >= first && day <= today
     }
 
     public func clamp(day: String) -> String {
+        guard let first = first else { return today }
         if day < first { return first }
         if day > today { return today }
         return day
@@ -75,7 +81,8 @@ public final class PeriodNavigator: @unchecked Sendable {
     }
 
     public func canPrev(anchor: String) -> Bool {
-        startOf(day: anchor) > startOf(day: first)
+        guard let first = first else { return false }
+        return startOf(day: anchor) > startOf(day: first)
     }
 
     public func canNext(anchor: String) -> Bool {

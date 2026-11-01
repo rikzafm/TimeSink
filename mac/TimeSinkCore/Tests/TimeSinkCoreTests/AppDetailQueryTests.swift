@@ -36,6 +36,23 @@ final class AppDetailQueryTests: XCTestCase {
         XCTAssertFalse(nav.canPrev(anchor: "2026-01-10"))
         XCTAssertTrue(nav.canNext(anchor: "2026-03-15"))
         XCTAssertFalse(nav.canNext(anchor: "2026-06-25"))
+
+        // When first is nil (e.g. no tracking data)
+        let emptyNav = PeriodNavigator(unit: .month, first: nil, today: "2026-06-20", weekStart: .mon)
+        XCTAssertFalse(emptyNav.canPrev(anchor: "2026-06-20"))
+        XCTAssertFalse(emptyNav.contains(day: "2026-06-20"))
+        XCTAssertEqual(emptyNav.clamp(day: "2025-01-01"), "2026-06-20")
+
+        // Day unit
+        let dayNav = PeriodNavigator(unit: .day, first: "2026-06-18", today: "2026-06-20")
+        XCTAssertTrue(dayNav.canPrev(anchor: "2026-06-20"))
+        XCTAssertTrue(dayNav.canPrev(anchor: "2026-06-19"))
+        XCTAssertFalse(dayNav.canPrev(anchor: "2026-06-18"))
+
+        // Week unit (2026-06-17 is Wednesday, week starts 2026-06-15)
+        let weekNav = PeriodNavigator(unit: .week, first: "2026-06-17", today: "2026-06-28", weekStart: .mon)
+        XCTAssertTrue(weekNav.canPrev(anchor: "2026-06-22")) // Next week can go back
+        XCTAssertFalse(weekNav.canPrev(anchor: "2026-06-15")) // Same week as first cannot go back
     }
 
     func testAppDetailChartRangeCycling() {

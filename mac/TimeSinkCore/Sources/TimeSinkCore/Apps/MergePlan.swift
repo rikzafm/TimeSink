@@ -17,6 +17,7 @@ public struct MergeCandidate: Sendable, Equatable {
     public let bundleId: String?
     public let png: Data?
     public let deviceId: String
+    public let publisher: String?
 
     public var isTracked: Bool { kind == .tracked || kind == .merged }
 
@@ -29,7 +30,8 @@ public struct MergeCandidate: Sendable, Equatable {
         seconds: Int64,
         bundleId: String? = nil,
         png: Data? = nil,
-        deviceId: String = ""
+        deviceId: String = "",
+        publisher: String? = nil
     ) {
         self.key = key
         self.kind = kind
@@ -40,6 +42,7 @@ public struct MergeCandidate: Sendable, Equatable {
         self.bundleId = bundleId
         self.png = png
         self.deviceId = deviceId
+        self.publisher = publisher
     }
 }
 
@@ -83,8 +86,8 @@ public final class MergePlan: @unchecked Sendable {
         self.mainId = mainId
         self.mainName = mainName
         self.mainDeviceId = mainDeviceId
-        self.candidates = candidates
-        for c in candidates where c.kind == .merged {
+        self.candidates = candidates.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        for c in self.candidates where c.kind == .merged {
             self.ticked.insert(c.key)
         }
     }
@@ -125,9 +128,21 @@ public final class MergePlan: @unchecked Sendable {
         let inFilter = candidates.filter { matches(filter: filter, candidate: $0) && matchesDevice(candidate: $0) }
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if q.isEmpty { return inFilter }
-        return inFilter.filter {
-            $0.name.localizedCaseInsensitiveContains(q) || $0.exePath.localizedCaseInsensitiveContains(q)
+        var scored: [(candidate: MergeCandidate, score: Int)] = []
+        for c in inFilter {
+            let pub = c.publisher ?? (c.exePath.isEmpty ? nil : AppVendor.name(executable: c.exePath))
+            if let score = FuzzySearch.score(query: q, name: c.name, publisher: pub) {
+                scored.append((c, score))
+            }
         }
+        return scored.enumerated()
+            .sorted { a, b in
+                if a.element.score != b.element.score {
+                    return a.element.score > b.element.score
+                }
+                return a.offset < b.offset
+            }
+            .map(\.element.candidate)
     }
 
     private func matches(filter: MergeFilter, candidate: MergeCandidate) -> Bool {

@@ -8,160 +8,170 @@ public struct AllTabView: View {
         self.state = state
     }
 
-    public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                // Header description + Grid button
-                HStack {
-                    Text("Lifetime · every app, one table")
-                        .font(.system(size: 11))
-                        .foregroundColor(ThemeColors.textDim)
-
-                    Spacer()
-
-                    Button(action: {}) {
-                        Image(systemName: "square.grid.2x2")
-                            .font(.system(size: 12))
-                            .foregroundColor(ThemeColors.textMuted)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                if let result = state.allResult {
-                    // Headline total + Subtext
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(Formatters.hoursOrMinutes(seconds: result.totalSeconds))
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
-                            .foregroundColor(ThemeColors.accent)
-
-                        Spacer()
-
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("\(result.apps.count) tracked · 1 retired")
-                                .font(.system(size: 11))
-                                .foregroundColor(ThemeColors.textDim)
-
-                            Text("sorted by hours ↓")
-                                .font(.system(size: 11))
-                                .foregroundColor(ThemeColors.textDim)
-                        }
-                    }
-
-                    // Column headers
-                    HStack {
-                        Text("APP")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(ThemeColors.textDim)
-
-                        Spacer()
-
-                        Text("HOURS ↓")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(ThemeColors.textDim)
-                    }
-                    .padding(.top, 4)
-
-                    // App rows
-                    VStack(spacing: 8) {
-                        ForEach(result.apps, id: \.appId) { row in
-                            allAppRowView(row: row)
-                        }
-
-                        // Total uptime row
-                        Divider().background(ThemeColors.borderSubtle)
-
-                        HStack {
-                            Text("Total uptime")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(ThemeColors.textPrimary)
-
-                            Spacer()
-
-                            Text(Formatters.hoursOrMinutes(seconds: result.totalSeconds))
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(ThemeColors.textPrimary)
-                        }
-                        .padding(.vertical, 6)
-                    }
-                } else {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, minHeight: 200)
-                }
-            }
-            .padding(16)
+    private var sortLabel: String {
+        switch state.allSort {
+        case .time: return "hours ↓"
+        case .name: return "name ↓"
+        case .lastOpened: return "last opened ↓"
         }
-        .background(ThemeColors.background)
     }
 
-    private func allAppRowView(row: AllAppRow) -> some View {
-        Button(action: {
-            state.openAppDetail(appId: row.appId)
-        }) {
-            HStack(spacing: 12) {
-                // App letter tile or icon
-                ZStack {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(ThemeColors.surfaceRaised)
-                        .frame(width: 32, height: 32)
+    private func sorted(_ rows: [AllAppRow]) -> [AllAppRow] {
+        switch state.allSort {
+        case .time: return rows
+        case .name: return rows.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .lastOpened: return rows.sorted { $0.lastUsedUtc > $1.lastUsedUtc }
+        }
+    }
 
-                    if let png = state.iconCache.getCachedIcon(forAppId: row.appId),
-                       let nsImg = NSImage(data: png) {
-                        Image(nsImage: nsImg)
-                            .resizable()
-                            .frame(width: 24, height: 24)
-                            .cornerRadius(4)
-                    } else {
-                        Text(String(row.name.prefix(1)).uppercased())
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(ThemeColors.accent)
-                    }
-                }
-
-                // App name + device markers + recent stats
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 5) {
-                        Text(row.name)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(ThemeColors.textPrimary)
-
-                        if state.deviceScope == .all, let devs = row.devices {
-                            ForEach(devs, id: \.self) { devId in
-                                let isMac = state.isLocalDevice(devId)
-                                DeviceMarker(isLocal: isMac, size: 6)
-                            }
-                        } else {
-                            Circle().fill(ThemeColors.deviceA).frame(width: 5, height: 5)
-                        }
-                    }
-
-                    HStack(spacing: 8) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "clock")
-                                .font(.system(size: 9))
-                                .foregroundColor(ThemeColors.textDim)
-                            Text("1h 24m")
-                                .font(.system(size: 10))
-                                .foregroundColor(ThemeColors.textDim)
-                        }
-
-                        HStack(spacing: 3) {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 9))
-                                .foregroundColor(ThemeColors.textDim)
-                            Text("Just now")
-                                .font(.system(size: 10))
-                                .foregroundColor(ThemeColors.textDim)
-                        }
-                    }
-                }
-
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text("Lifetime · every app, one table")
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
                 Spacer()
-
-                Text(Formatters.hoursOrMinutes(seconds: row.seconds))
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(ThemeColors.accent)
+                Menu {
+                    ForEach(AllSortOption.allCases) { option in
+                        Button("Sort by \(option.rawValue.lowercased())") { state.allSort = option }
+                    }
+                } label: {
+                    IconView(.tableOptions, size: 16, color: ThemeColors.textDim)
+                        .frame(width: 32, height: 30)
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(ThemeColors.border, lineWidth: 1))
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Table options")
             }
-            .padding(.vertical, 4)
+
+            if let result = state.allResult {
+                headline(result)
+                table(result)
+            } else {
+                ProgressView().frame(maxWidth: .infinity, minHeight: 200)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+    }
+
+    private func headline(_ result: AllResult) -> some View {
+        HStack(alignment: .bottom) {
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text(Formatters.grouped((result.totalSeconds + 1800) / 3600))
+                    .font(.system(size: 46, weight: .bold))
+                    .tracking(-1)
+                Text(" h").font(.system(size: 28, weight: .bold))
+            }
+            .foregroundColor(ThemeColors.accent)
+            .frame(height: 52)
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 0) {
+                (Text("\(result.apps.count)").bold().foregroundColor(ThemeColors.textPrimary) + Text(" tracked · ")
+                    + Text("\(result.retired.count)").bold().foregroundColor(ThemeColors.textPrimary) + Text(" retired"))
+                    .frame(height: 17)
+                (Text("sorted by ") + Text(sortLabel).bold().foregroundColor(ThemeColors.textPrimary))
+                    .frame(height: 17)
+            }
+            .font(.system(size: 11))
+            .foregroundColor(ThemeColors.textMuted)
+            .padding(.bottom, 4)
+        }
+    }
+
+    private func table(_ result: AllResult) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("APP").foregroundColor(ThemeColors.textMuted)
+                Spacer()
+                Text("HOURS ↓").foregroundColor(ThemeColors.accent)
+            }
+            .font(.system(size: 11, weight: .bold))
+            .tracking(1)
+            .padding(.horizontal, 14)
+            .frame(height: 34)
+            .bottomRule()
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    ForEach(Array(sorted(result.apps).enumerated()), id: \.element.appId) { i, row in
+                        rowView(row, highlighted: i == 0)
+                    }
+                }
+            }
+
+            HStack {
+                Text("Total uptime").foregroundColor(ThemeColors.textPrimary)
+                Spacer()
+                Text(Formatters.hours(result.totalSeconds)).foregroundColor(ThemeColors.accent)
+            }
+            .font(.system(size: 14, weight: .bold))
+            .padding(.horizontal, 14)
+            .frame(height: 44)
+            .topRule(ThemeColors.border)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .card(border: ThemeColors.border, radius: 12)
+        .padding(.top, 4)
+        .padding(.bottom, 6)
+    }
+
+    private func lastOpened(_ row: AllAppRow) -> String {
+        let span = Date().timeIntervalSince1970 - Double(row.lastUsedUtc)
+        if row.lastUsedUtc <= 0 { return "Never" }
+        if span < 3600 { return "Just now" }
+        if span < 86400 { return "\(Int(span / 3600)) h ago" }
+        if span < 172800 { return "Yesterday" }
+        return "\(Int(span / 86400)) d ago"
+    }
+
+    private func rowView(_ row: AllAppRow, highlighted: Bool) -> some View {
+        Button(action: { state.openAppDetail(appId: row.appId) }) {
+            HStack(spacing: 12) {
+                AppTile(name: row.name, png: state.iconCache.getCachedIcon(forAppId: row.appId), size: 36, radius: 10, fontSize: 17, fill: ThemeColors.background)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(row.name)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(ThemeColors.textPrimary)
+                            .lineLimit(1)
+                        ForEach(row.devices ?? [], id: \.self) { DeviceMarker(isLocal: state.isLocalDevice($0), size: 6) }
+                    }
+                    HStack(spacing: 14) {
+                        HStack(spacing: 5) {
+                            IconView(.clock, size: 12, weight: 1.2, color: ThemeColors.textMuted)
+                            Text(Formatters.paddedHM(Int64(row.averageSessionSeconds)))
+                        }
+                        HStack(spacing: 5) {
+                            IconView(.history, size: 12, weight: 1.2, color: ThemeColors.textMuted)
+                            Text(lastOpened(row))
+                        }
+                    }
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textDim)
+                }
+
+                Spacer(minLength: 4)
+
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text(Formatters.grouped((row.seconds + 1800) / 3600))
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(ThemeColors.accent)
+                    Text(" h")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(ThemeColors.textMuted)
+                }
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 56)
+            .background(highlighted ? ThemeColors.barBackground : .clear)
+            .bottomRule()
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
