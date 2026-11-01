@@ -71,3 +71,4 @@ public final class UsageAccumulator: @unchecked Sendable {
         return results
     }
 }
+

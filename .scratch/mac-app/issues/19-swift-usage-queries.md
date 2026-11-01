@@ -1,6 +1,6 @@
 # Swift usage queries with device scope
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 4)
 Blocked by: 06, 18
 Needs a Mac.

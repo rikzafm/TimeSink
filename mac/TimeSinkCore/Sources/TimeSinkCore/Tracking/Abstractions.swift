@@ -188,3 +188,4 @@ public protocol SessionStore: Sendable {
     func getDailyUsage() throws -> [DailyUsageRow]
     func replaceDailyUsage(_ rows: [DailyUsageRow]) throws
 }
+
