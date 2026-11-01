@@ -51,7 +51,20 @@ public static class DeviceIdentity
             cmd.ExecuteNonQuery();
         }
 
-        var platform = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows" : "macos";
+        string? existingPlatform = null;
+        using (var checkCmd = connection.CreateCommand())
+        {
+            checkCmd.CommandText = "SELECT platform FROM devices WHERE device_id = $id;";
+            var pCheck = checkCmd.CreateParameter();
+            pCheck.ParameterName = "$id";
+            pCheck.Value = id;
+            checkCmd.Parameters.Add(pCheck);
+            existingPlatform = checkCmd.ExecuteScalar() as string;
+        }
+
+        var platform = !string.IsNullOrWhiteSpace(existingPlatform)
+            ? existingPlatform
+            : (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows" : "macos");
         var nowUtc = DateTimeOffset.UtcNow;
 
         using var insCmd = connection.CreateCommand();
