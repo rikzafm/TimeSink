@@ -31,11 +31,13 @@ public static class StringKeys
 
     // Today view. Values with {0} are composed by the view (string.Format).
     public const string TodayCaption = "todayCaption";
+    public const string TodayCaptionAll = "todayCaptionAll";
     public const string TodayCombined = "todayCombined";
     public const string TodayEarlyCaption = "todayEarlyCaption";
     public const string TodayEarlyHint = "todayEarlyHint";
     public const string TodayEmpty = "todayEmpty";
     public const string RunningPill = "runningPill";
+    public const string RunningPillDevice = "runningPillDevice";
     public const string LegendAppsOpen = "legendAppsOpen";
     public const string LegendTypical = "legendTypical";
     public const string LegendAsleep = "legendAsleep";
@@ -47,6 +49,7 @@ public static class StringKeys
     public const string TileLongestValue = "tileLongestValue";
     public const string TileVsYesterdayValue = "tileVsYesterdayValue";
     public const string StatusRunning = "statusRunning";
+    public const string StatusRunningOn = "statusRunningOn";
     public const string StatusClosed = "statusClosed";
     public const string SessionsToday = "sessionsToday";
     public const string SessionLine = "sessionLine";
@@ -58,6 +61,12 @@ public static class StringKeys
     public const string DialAverage = "dialAverage";
     public const string DialBlips = "dialBlips";
     public const string DialLabel = "dialLabel";
+    public const string DialOuterRing = "dialOuterRing";
+    public const string DialMiddleRing = "dialMiddleRing";
+    public const string DialOverlap = "dialOverlap";
+    public const string DialOnBoth = "dialOnBoth";
+    public const string DialVsAverage = "dialVsAverage";
+    public const string SummaryOnBoth = "summaryOnBoth";
 
     // Month view.
     public const string MonthCombined = "monthCombined";
@@ -99,10 +108,10 @@ public static class StringKeys
     public static readonly IReadOnlyList<string> All =
     [
         AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, Back, GamesOnly, ScopeThisPc, ScopeAllDevices, StubComingSoon,
-        TodayCaption, TodayCombined, TodayEarlyCaption,TodayEarlyHint, TodayEmpty, RunningPill, LegendAppsOpen, LegendTypical,
+        TodayCaption, TodayCaptionAll, TodayCombined, TodayEarlyCaption, TodayEarlyHint, TodayEmpty, RunningPill, RunningPillDevice, LegendAppsOpen, LegendTypical,
         LegendAsleep, LegendOverlapping, TileFirstApp, TileLongest, TileVsYesterday, TileNone, TileLongestValue, TileVsYesterdayValue,
-        StatusRunning, StatusClosed, SessionsToday, SessionLine, SessionNow, VsAverage, VsAverageNone,
-        DialSessions, DialLongest, DialAverage, DialBlips, DialLabel,
+        StatusRunning, StatusRunningOn, StatusClosed, SessionsToday, SessionLine, SessionNow, VsAverage, VsAverageNone,
+        DialSessions, DialLongest, DialAverage, DialBlips, DialLabel, DialOuterRing, DialMiddleRing, DialOverlap, DialOnBoth, DialVsAverage, SummaryOnBoth,
         WeekCaption, WeekLastCaption, WeekStreak, WeekStreakSub, WeekGridCaption, WeekEmpty, WeekVsLastUp, WeekVsLastDown, WeekAvg, WeekTrendCaption,
         .. MonthKeys,
     ];

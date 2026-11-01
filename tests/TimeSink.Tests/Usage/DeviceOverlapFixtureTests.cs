@@ -82,7 +82,7 @@ public sealed class DeviceOverlapFixtureTests
         }
     }
 
-    private static (string DbPath, Action Dispose) CreateTestDb(DeviceOverlapDoc doc, DeviceOverlapCase c)
+    internal static (string DbPath, Action Dispose) CreateTestDb(DeviceOverlapDoc doc, DeviceOverlapCase c)
     {
         var dir = Path.Combine(Path.GetTempPath(), "ts-dev-overlap-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);

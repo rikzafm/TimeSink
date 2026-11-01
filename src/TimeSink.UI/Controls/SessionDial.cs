@@ -11,6 +11,10 @@ public sealed class SessionDial : FrameworkElement
 {
     private const double Design = 260;       // geometry below is authored on a 260 unit board and scaled
     private const double OuterRadius = 100, OuterStroke = 14, InnerRadius = 76, InnerStroke = 14, TickInner = 66, TickOuter = 88;
+    private const double OuterRadiusMulti = 104, OuterStrokeMulti = 11;
+    private const double MiddleRadiusMulti = 86, MiddleStrokeMulti = 11;
+    private const double InnerRadiusMulti = 68, InnerStrokeMulti = 11;
+    private const double TickInnerMulti = 58, TickOuterMulti = 80;
     private const double TotalOpacity = 0.5; // the inner fill is the app colour, softer than the session arcs
 
     private static DependencyProperty Reg<T>(string name, T def = default!) =>
@@ -30,6 +34,24 @@ public sealed class SessionDial : FrameworkElement
     public static readonly DependencyProperty CenterBrushProperty = Reg<Brush?>(nameof(CenterBrush));
     public static readonly DependencyProperty LabelBrushProperty = Reg<Brush?>(nameof(LabelBrush));
     public static readonly DependencyProperty NumberFontProperty = Reg<FontFamily?>(nameof(NumberFont));
+
+    public static readonly DependencyProperty IsMultiDeviceProperty = Reg<bool>(nameof(IsMultiDevice), false);
+    public static readonly DependencyProperty SegmentsAProperty = Reg<IReadOnlyList<(double Start, double End, int Index)>?>(nameof(SegmentsA));
+    public static readonly DependencyProperty TailsAProperty = Reg<IReadOnlyList<double?>?>(nameof(TailsA));
+    public static readonly DependencyProperty SegmentsBProperty = Reg<IReadOnlyList<(double Start, double End, int Index)>?>(nameof(SegmentsB));
+    public static readonly DependencyProperty TailsBProperty = Reg<IReadOnlyList<double?>?>(nameof(TailsB));
+    public static readonly DependencyProperty DeviceABrushProperty = Reg<Brush?>(nameof(DeviceABrush));
+    public static readonly DependencyProperty DeviceBBrushProperty = Reg<Brush?>(nameof(DeviceBBrush));
+    public static readonly DependencyProperty CenterSubTextProperty = Reg<string?>(nameof(CenterSubText));
+
+    public bool IsMultiDevice { get => (bool)GetValue(IsMultiDeviceProperty); set => SetValue(IsMultiDeviceProperty, value); }
+    public IReadOnlyList<(double Start, double End, int Index)>? SegmentsA { get => (IReadOnlyList<(double, double, int)>?)GetValue(SegmentsAProperty); set => SetValue(SegmentsAProperty, value); }
+    public IReadOnlyList<double?>? TailsA { get => (IReadOnlyList<double?>?)GetValue(TailsAProperty); set => SetValue(TailsAProperty, value); }
+    public IReadOnlyList<(double Start, double End, int Index)>? SegmentsB { get => (IReadOnlyList<(double, double, int)>?)GetValue(SegmentsBProperty); set => SetValue(SegmentsBProperty, value); }
+    public IReadOnlyList<double?>? TailsB { get => (IReadOnlyList<double?>?)GetValue(TailsBProperty); set => SetValue(TailsBProperty, value); }
+    public Brush? DeviceABrush { get => (Brush?)GetValue(DeviceABrushProperty); set => SetValue(DeviceABrushProperty, value); }
+    public Brush? DeviceBBrush { get => (Brush?)GetValue(DeviceBBrushProperty); set => SetValue(DeviceBBrushProperty, value); }
+    public string? CenterSubText { get => (string?)GetValue(CenterSubTextProperty); set => SetValue(CenterSubTextProperty, value); }
 
     public IReadOnlyList<(double Start, double End)>? Segments { get => (IReadOnlyList<(double, double)>?)GetValue(SegmentsProperty); set => SetValue(SegmentsProperty, value); }
     /// <summary>
@@ -66,14 +88,37 @@ public sealed class SessionDial : FrameworkElement
     private int SegmentAt(Point p)
     {
         var size = Math.Min(ActualWidth, ActualHeight);
-        if (Segments is null || size <= 0) return -1;
+        if (size <= 0) return -1;
         var k = size / Design;
         double dx = p.X - size / 2, dy = p.Y - size / 2;
         var r = Math.Sqrt(dx * dx + dy * dy);
-        if (Math.Abs(r - OuterRadius * k) > (OuterStroke / 2 + 4) * k) return -1;
         var f = Math.Atan2(dx, -dy) / (2 * Math.PI);
         if (f < 0) f += 1;
         var slop = MinSweep(k);
+
+        if (IsMultiDevice)
+        {
+            if (SegmentsA is not null && Math.Abs(r - OuterRadiusMulti * k) <= (OuterStrokeMulti / 2 + 4) * k)
+            {
+                for (var i = 0; i < SegmentsA.Count; i++)
+                {
+                    if (f >= SegmentsA[i].Start - slop && f <= Math.Max(SegmentsA[i].End, SegmentsA[i].Start + 2 * slop) + slop) return SegmentsA[i].Index;
+                    if (TailsA is { } ta && i < ta.Count && ta[i] is { } tail && f >= tail) return SegmentsA[i].Index;
+                }
+            }
+            if (SegmentsB is not null && Math.Abs(r - MiddleRadiusMulti * k) <= (MiddleStrokeMulti / 2 + 4) * k)
+            {
+                for (var i = 0; i < SegmentsB.Count; i++)
+                {
+                    if (f >= SegmentsB[i].Start - slop && f <= Math.Max(SegmentsB[i].End, SegmentsB[i].Start + 2 * slop) + slop) return SegmentsB[i].Index;
+                    if (TailsB is { } tb && i < tb.Count && tb[i] is { } tail && f >= tail) return SegmentsB[i].Index;
+                }
+            }
+            return -1;
+        }
+
+        if (Segments is null) return -1;
+        if (Math.Abs(r - OuterRadius * k) > (OuterStroke / 2 + 4) * k) return -1;
         for (var i = 0; i < Segments.Count; i++)
         {
             if (f >= Segments[i].Start - slop && f <= Math.Max(Segments[i].End, Segments[i].Start + 2 * slop) + slop) return i;
@@ -114,6 +159,124 @@ public sealed class SessionDial : FrameworkElement
         var c = new Point(size / 2, size / 2);
 
         Pen Ring(Brush? b, double stroke) { var p = new Pen(b, stroke * k) { StartLineCap = PenLineCap.Flat, EndLineCap = PenLineCap.Flat }; p.Freeze(); return p; }
+
+        if (IsMultiDevice)
+        {
+            dc.DrawEllipse(Brushes.Transparent, null, c, size / 2, size / 2);
+            dc.DrawEllipse(null, Ring(TrackBrush, OuterStrokeMulti), c, OuterRadiusMulti * k, OuterRadiusMulti * k);
+            dc.DrawEllipse(null, Ring(TrackBrush, MiddleStrokeMulti), c, MiddleRadiusMulti * k, MiddleRadiusMulti * k);
+            dc.DrawEllipse(null, Ring(TrackBrush, InnerStrokeMulti), c, InnerRadiusMulti * k, InnerRadiusMulti * k);
+
+            var outerA = Ring(DeviceABrush ?? SegmentBrush, OuterStrokeMulti);
+            var dottedA = new Pen(DeviceABrush ?? SegmentBrush, OuterStrokeMulti * k)
+            {
+                DashStyle = new DashStyle(new DoubleCollection { 0.17, 0.5 }, 0),
+                DashCap = PenLineCap.Flat, StartLineCap = PenLineCap.Flat, EndLineCap = PenLineCap.Flat,
+            };
+            dottedA.Freeze();
+            var carriedA = false;
+            if (SegmentsA is not null)
+                for (var i = 0; i < SegmentsA.Count; i++)
+                {
+                    var (s, e, idx) = SegmentsA[i];
+                    var dim = HighlightIndex >= 0 && idx != HighlightIndex;
+                    if (dim) dc.PushOpacity(0.35);
+                    if (TailsA is { } ta && i < ta.Count && ta[i] is { } tail)
+                    {
+                        carriedA = true;
+                        dc.PushOpacity(0.75);
+                        Arc(dc, dottedA, c, OuterRadiusMulti * k, tail, 1);
+                        dc.Pop();
+                    }
+                    Arc(dc, outerA, c, OuterRadiusMulti * k, s, Math.Max(e, s + MinSweep(k)));
+                    if (dim) dc.Pop();
+                }
+            if (carriedA)
+            {
+                var tick = new Pen(TickBrush, Math.Max(1.5, 1.5 * k * 1.6));
+                dc.DrawLine(tick, At(c, (OuterRadiusMulti - OuterStrokeMulti / 2 - 4) * k, 0), At(c, (OuterRadiusMulti + OuterStrokeMulti / 2 + 1) * k, 0));
+            }
+
+            var middleB = Ring(DeviceBBrush ?? SegmentBrush, MiddleStrokeMulti);
+            var dottedB = new Pen(DeviceBBrush ?? SegmentBrush, MiddleStrokeMulti * k)
+            {
+                DashStyle = new DashStyle(new DoubleCollection { 0.17, 0.5 }, 0),
+                DashCap = PenLineCap.Flat, StartLineCap = PenLineCap.Flat, EndLineCap = PenLineCap.Flat,
+            };
+            dottedB.Freeze();
+            var carriedB = false;
+            if (SegmentsB is not null)
+                for (var i = 0; i < SegmentsB.Count; i++)
+                {
+                    var (s, e, idx) = SegmentsB[i];
+                    var dim = HighlightIndex >= 0 && idx != HighlightIndex;
+                    if (dim) dc.PushOpacity(0.35);
+                    if (TailsB is { } tb && i < tb.Count && tb[i] is { } tail)
+                    {
+                        carriedB = true;
+                        dc.PushOpacity(0.75);
+                        Arc(dc, dottedB, c, MiddleRadiusMulti * k, tail, 1);
+                        dc.Pop();
+                    }
+                    Arc(dc, middleB, c, MiddleRadiusMulti * k, s, Math.Max(e, s + MinSweep(k)));
+                    if (dim) dc.Pop();
+                }
+            if (carriedB)
+            {
+                var tick = new Pen(TickBrush, Math.Max(1.5, 1.5 * k * 1.6));
+                dc.DrawLine(tick, At(c, (MiddleRadiusMulti - MiddleStrokeMulti / 2 - 4) * k, 0), At(c, (MiddleRadiusMulti + MiddleStrokeMulti / 2 + 1) * k, 0));
+            }
+
+            var totalM = Math.Clamp(TotalFraction, 0, 1);
+            if (totalM > 0)
+            {
+                dc.PushOpacity(TotalOpacity);
+                Arc(dc, Ring(SegmentBrush, InnerStrokeMulti), c, InnerRadiusMulti * k, 0, totalM);
+                dc.Pop();
+            }
+
+            if (AverageFraction is { } avg && avg > 0)
+            {
+                var a = Math.Clamp(avg, 0, 1) * 2 * Math.PI;
+                var tick = new Pen(TickBrush, Math.Max(2, 3 * k * 1.6)) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+                dc.DrawLine(tick, At(c, TickInnerMulti * k, a), At(c, TickOuterMulti * k, a));
+            }
+
+            if (NowFraction is { } now)
+            {
+                var a = Math.Clamp(now, 0, 1) * 2 * Math.PI;
+                var dot = Math.Max(4, 7 * k);
+                dc.DrawEllipse(ChartSupport.Brush(this, "Brush.Panel"), new Pen(NowBrush, Math.Max(2, 4 * k)), At(c, OuterRadiusMulti * k, a), dot, dot);
+            }
+
+            var label = LabelBrush;
+            var lsize = Math.Max(9, 14 * k);
+            foreach (var h in new[] { 0, 6, 12, 18 })
+            {
+                var t = ChartSupport.Text(this, h.ToString("00"), NumberFont, lsize, label, FontWeights.Normal);
+                var a = h / 24.0 * 2 * Math.PI;
+                var p = At(c, (OuterRadiusMulti + OuterStrokeMulti / 2 + 9) * k, a);
+                dc.DrawText(t, new Point(p.X - t.Width / 2, p.Y - t.Height / 2));
+            }
+
+            if (!string.IsNullOrEmpty(CenterText))
+            {
+                var t = ChartSupport.Text(this, CenterText!, NumberFont, 32 * k, CenterBrush, FontWeights.Bold);
+                if (!string.IsNullOrEmpty(CenterSubText))
+                {
+                    var sub = ChartSupport.Text(this, CenterSubText!, null, 10 * k, LabelBrush, FontWeights.Normal);
+                    var totalH = t.Height + sub.Height + 2;
+                    var topY = c.Y - totalH / 2;
+                    dc.DrawText(t, new Point(c.X - t.Width / 2, topY));
+                    dc.DrawText(sub, new Point(c.X - sub.Width / 2, topY + t.Height + 2));
+                }
+                else
+                {
+                    dc.DrawText(t, new Point(c.X - t.Width / 2, c.Y - t.Height / 2));
+                }
+            }
+            return;
+        }
 
         dc.DrawEllipse(Brushes.Transparent, null, c, size / 2, size / 2);
         dc.DrawEllipse(null, Ring(TrackBrush, OuterStroke), c, OuterRadius * k, OuterRadius * k);
@@ -157,25 +320,25 @@ public sealed class SessionDial : FrameworkElement
             dc.Pop();
         }
 
-        if (AverageFraction is { } avg && avg > 0)
+        if (AverageFraction is { } avg1 && avg1 > 0)
         {
-            var a = Math.Clamp(avg, 0, 1) * 2 * Math.PI;
+            var a = Math.Clamp(avg1, 0, 1) * 2 * Math.PI;
             var tick = new Pen(TickBrush, Math.Max(2, 3 * k * 1.6)) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
             dc.DrawLine(tick, At(c, TickInner * k, a), At(c, TickOuter * k, a));
         }
 
-        if (NowFraction is { } now)
+        if (NowFraction is { } now1)
         {
-            var a = Math.Clamp(now, 0, 1) * 2 * Math.PI;
+            var a = Math.Clamp(now1, 0, 1) * 2 * Math.PI;
             var dot = Math.Max(4, 7 * k);
             dc.DrawEllipse(ChartSupport.Brush(this, "Brush.Panel"), new Pen(NowBrush, Math.Max(2, 4 * k)), At(c, OuterRadius * k, a), dot, dot);
         }
 
-        var label = LabelBrush;
-        var lsize = Math.Max(9, 14 * k);
+        var label1 = LabelBrush;
+        var lsize1 = Math.Max(9, 14 * k);
         foreach (var h in new[] { 0, 6, 12, 18 })
         {
-            var t = ChartSupport.Text(this, h.ToString("00"), NumberFont, lsize, label, FontWeights.Normal);
+            var t = ChartSupport.Text(this, h.ToString("00"), NumberFont, lsize1, label1, FontWeights.Normal);
             var a = h / 24.0 * 2 * Math.PI;
             var p = At(c, (OuterRadius + OuterStroke / 2 + 9) * k, a);
             dc.DrawText(t, new Point(p.X - t.Width / 2, p.Y - t.Height / 2));

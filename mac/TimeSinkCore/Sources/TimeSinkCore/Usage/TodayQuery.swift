@@ -5,17 +5,19 @@ public struct TodaySession: Sendable, Equatable {
     public let endUtc: Int64
     public let isOpen: Bool
     public let beganUtc: Int64?
+    public let deviceId: String
 
     public var seconds: Int64 { max(0, endUtc - startUtc) }
     public var carriesOver: Bool { (beganUtc ?? startUtc) < startUtc }
     public var fullStartUtc: Int64 { beganUtc ?? startUtc }
     public var fullSeconds: Int64 { max(0, endUtc - fullStartUtc) }
 
-    public init(startUtc: Int64, endUtc: Int64, isOpen: Bool, beganUtc: Int64? = nil) {
+    public init(startUtc: Int64, endUtc: Int64, isOpen: Bool, beganUtc: Int64? = nil, deviceId: String = "") {
         self.startUtc = startUtc
         self.endUtc = endUtc
         self.isOpen = isOpen
         self.beganUtc = beganUtc
+        self.deviceId = deviceId
     }
 }
 
@@ -91,6 +93,8 @@ public struct TodayAppRow: Sendable, Equatable {
     public let sessions: [TodaySession]
     public let sevenDayAverageSeconds: Double?
     public let sevenDayDays: Int
+    public let deviceSeconds: [String: Int64]?
+    public let onBothSeconds: Int64
 
     public init(
         appId: Int64,
@@ -101,7 +105,9 @@ public struct TodayAppRow: Sendable, Equatable {
         lastClosedUtc: Int64?,
         sessions: [TodaySession],
         sevenDayAverageSeconds: Double?,
-        sevenDayDays: Int
+        sevenDayDays: Int,
+        deviceSeconds: [String: Int64]? = nil,
+        onBothSeconds: Int64 = 0
     ) {
         self.appId = appId
         self.name = name
@@ -112,6 +118,8 @@ public struct TodayAppRow: Sendable, Equatable {
         self.sessions = sessions
         self.sevenDayAverageSeconds = sevenDayAverageSeconds
         self.sevenDayDays = sevenDayDays
+        self.deviceSeconds = deviceSeconds
+        self.onBothSeconds = onBothSeconds
     }
 }
 
@@ -285,17 +293,33 @@ public enum TodayQuery {
                 .filter { UsageDays.overlap($0, d0, d1) > 0 || ($0.open && $0.end >= d0) }
                 .sorted { $0.start < $1.start }
                 .map { s in
-                    TodaySession(
+                    let dev = s.deviceId.isEmpty ? (apps[s.appId]?.deviceId ?? "") : s.deviceId
+                    return TodaySession(
                         startUtc: max(s.start, d0),
                         endUtc: min(s.end, d1),
                         isOpen: s.open && isToday,
-                        beganUtc: s.start < d0 ? s.start : nil
+                        beganUtc: s.start < d0 ? s.start : nil,
+                        deviceId: dev
                     )
                 }
 
             let open = isToday ? groupSegs.filter { $0.open } : []
             let seconds = groupSegs.reduce(0) { $0 + UsageDays.overlap($1, d0, d1) }
             if seconds == 0 && open.isEmpty { continue }
+
+            var devSecs: [String: Int64] = [:]
+            for s in groupSegs {
+                let dev = s.deviceId.isEmpty ? (apps[s.appId]?.deviceId ?? "") : s.deviceId
+                let sec = UsageDays.overlap(s, d0, d1)
+                if sec > 0 {
+                    devSecs[dev, default: 0] += sec
+                }
+            }
+            var rowOnBoth: Int64 = 0
+            if devSecs.count > 1 {
+                let unionSecs = UsageUptime.openSeconds(segs: groupSegs, from: d0, to: d1)
+                rowOnBoth = max(0, seconds - unionSecs)
+            }
 
             let closedToday = groupSegs.filter { !$0.open && $0.end >= d0 && $0.end < d1 }
             let groupApps = apps.values.filter { $0.group == grpId }
@@ -327,7 +351,9 @@ public enum TodayQuery {
                 lastClosedUtc: closedToday.map(\.end).max(),
                 sessions: sessions,
                 sevenDayAverageSeconds: avg,
-                sevenDayDays: avgDays
+                sevenDayDays: avgDays,
+                deviceSeconds: devSecs.isEmpty ? nil : devSecs,
+                onBothSeconds: rowOnBoth
             ))
         }
 

@@ -54,12 +54,61 @@ public partial class TodayView : UserControl, ILiveView
     }
 
     private DateOnly Today => _loader.Today;
+    private readonly Dictionary<string, (string Name, bool IsLocal)> _deviceInfo = new(StringComparer.OrdinalIgnoreCase);
+
+    private void LoadDeviceInfo()
+    {
+        try
+        {
+            using var c = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly");
+            c.Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "SELECT device_id, name, platform, is_local FROM devices;";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var id = reader.GetString(0);
+                var name = reader.GetString(1);
+                var platform = reader.GetString(2);
+                var isLocal = reader.GetInt64(3) == 1;
+                var shortName = !string.IsNullOrEmpty(name) ? name : (platform == "macos" ? "Mac" : "PC");
+                _deviceInfo[id] = (shortName, isLocal);
+            }
+        }
+        catch { }
+    }
+
+    private bool IsLocalDevice(string? deviceId)
+    {
+        if (string.IsNullOrEmpty(deviceId)) return true;
+        if (_deviceInfo.TryGetValue(deviceId, out var info)) return info.IsLocal;
+        if (_live?.LocalDeviceId != null) return string.Equals(deviceId, _live.LocalDeviceId, StringComparison.OrdinalIgnoreCase);
+        return true;
+    }
+
+    private string GetDeviceName(string? deviceId, bool isLocal)
+    {
+        if (!string.IsNullOrEmpty(deviceId) && _deviceInfo.TryGetValue(deviceId, out var info) && !string.IsNullOrEmpty(info.Name))
+            return info.Name;
+        return isLocal ? "PC" : "Mac";
+    }
+
+    private string GetOtherDeviceName(string? localDeviceId)
+    {
+        foreach (var (id, info) in _deviceInfo)
+        {
+            if (!info.IsLocal && !string.Equals(id, localDeviceId, StringComparison.OrdinalIgnoreCase))
+                return info.Name;
+        }
+        return "Mac";
+    }
 
     public TodayView(string dbPath, ThemeService themes, LiveState live)
     {
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
+        LoadDeviceInfo();
         InitializeComponent();
         // WPF doesn't clamp CornerRadius like CSS does, so a huge value draws an oval: use half the height.
         RunningPill.SizeChanged += (_, e) => RunningPill.CornerRadius = new CornerRadius(e.NewSize.Height / 2);
@@ -194,20 +243,69 @@ public partial class TodayView : UserControl, ILiveView
         var early = live && TodayEarly.ShowCaption(r.UptimeSeconds);
         var since = early ? TodayEarly.TrackingSinceUtc(r.DayStartUtc, SignInTime.Cached(), r.FirstApp?.StartUtc) : null;
 
+        var scope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
         Nav.Configure(Today, _first ?? r.Date, r.Date, _weekStart);
-        Nav.CaptionText = since is not null
-            ? Str(StringKeys.TodayEarlyCaption, Clock(since.Value))
-            : Str(StringKeys.TodayCaption, UsageText.WeekdayDate(r.Date, full: true));
+        if (scope == TimeSink.Core.Devices.DeviceScope.All)
+        {
+            Nav.CaptionText = Str(StringKeys.TodayCaptionAll, UsageText.WeekdayDate(r.Date, full: true));
+            var localName = GetDeviceName(_live?.LocalDeviceId, isLocal: true);
+            RunningText.Text = Str(StringKeys.RunningPillDevice, r.RunningCount, localName);
+        }
+        else
+        {
+            Nav.CaptionText = since is not null
+                ? Str(StringKeys.TodayEarlyCaption, Clock(since.Value))
+                : Str(StringKeys.TodayCaption, UsageText.WeekdayDate(r.Date, full: true));
+            RunningText.Text = Str(StringKeys.RunningPill, r.RunningCount);
+        }
         EarlyHint.Visibility = early ? Visibility.Visible : Visibility.Collapsed;
-        RunningText.Text = Str(StringKeys.RunningPill, r.RunningCount);
         RunningPill.Visibility = live ? Visibility.Visible : Visibility.Collapsed;
 
         var nowLocalHour = live ? TimeText.Local(r.NowUtc).Hour : -1;
-        Chart.DeviceScope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
+        Chart.DeviceScope = scope;
         Chart.LocalDeviceId = _live?.LocalDeviceId;
-        LegendOverlap.Visibility = Chart.DeviceScope == TimeSink.Core.Devices.DeviceScope.All ? Visibility.Visible : Visibility.Collapsed;
+        LegendOverlap.Visibility = scope == TimeSink.Core.Devices.DeviceScope.All ? Visibility.Visible : Visibility.Collapsed;
         Chart.Hours = r.Hours;
         BuildAxis();
+
+        if (scope == TimeSink.Core.Devices.DeviceScope.All && r.DeviceUptimes is { Count: > 0 })
+        {
+            DeviceSummaryRow.Visibility = Visibility.Visible;
+            DeviceSummaryRow.Children.Clear();
+            foreach (var (devId, du) in r.DeviceUptimes)
+            {
+                var isLocal = IsLocalDevice(devId);
+                var devName = GetDeviceName(devId, isLocal);
+                var devItem = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 12, 0) };
+                var marker = new DeviceMarker { IsLocal = isLocal, Width = 7, Height = 7, Margin = new Thickness(0, 0, 5, 0), VerticalAlignment = VerticalAlignment.Center };
+                devItem.Children.Add(marker);
+                var offText = (!live || !du.IsLive) && du.LastActiveUtc is { } la ? $" · off {Clock(la)}" : "";
+                var txt = new TextBlock
+                {
+                    Text = $"{devName} {UsageText.HoursMinutes(du.UptimeSeconds)}{offText}",
+                    VerticalAlignment = VerticalAlignment.Center,
+                    FontSize = 11,
+                };
+                txt.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextSoft");
+                devItem.Children.Add(txt);
+                DeviceSummaryRow.Children.Add(devItem);
+            }
+            if (r.OnBothSeconds > 0)
+            {
+                var bothText = new TextBlock
+                {
+                    Text = Str(StringKeys.SummaryOnBoth, UsageText.HoursMinutes(r.OnBothSeconds)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    FontSize = 11,
+                };
+                bothText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+                DeviceSummaryRow.Children.Add(bothText);
+            }
+        }
+        else
+        {
+            DeviceSummaryRow.Visibility = Visibility.Collapsed;
+        }
 
         TileFirst.Text = r.FirstApp is { } f ? Clock(f.StartUtc) : Str(StringKeys.TileNone);
         AppIcons.Load(_dbPath, r.Longest is { } lg ? new[] { lg.AppId } : Array.Empty<long>());
@@ -332,24 +430,73 @@ public partial class TodayView : UserControl, ILiveView
         name.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
         name.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Title");
 
+        var scope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
         var status = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
         status.Style = (Style)FindResource("Small");
         status.SetResourceReference(TextBlock.ForegroundProperty, row.IsRunning ? "Brush.Accent" : "Brush.TextMuted");
-        status.Text = row.IsRunning
-            ? Str(StringKeys.StatusRunning, UsageText.HoursMinutes(r.NowUtc + elapsed - row.RunningSinceUtc!.Value))
-            : row.LastClosedUtc is { } closed ? Str(StringKeys.StatusClosed, Clock(closed)) : "";
+        if (row.IsRunning)
+        {
+            if (scope == TimeSink.Core.Devices.DeviceScope.All)
+            {
+                var localName = GetDeviceName(_live?.LocalDeviceId, isLocal: true);
+                status.Text = Str(StringKeys.StatusRunningOn, localName, UsageText.HoursMinutes(r.NowUtc + elapsed - row.RunningSinceUtc!.Value));
+            }
+            else
+            {
+                status.Text = Str(StringKeys.StatusRunning, UsageText.HoursMinutes(r.NowUtc + elapsed - row.RunningSinceUtc!.Value));
+            }
+        }
+        else
+        {
+            status.Text = row.LastClosedUtc is { } closed ? Str(StringKeys.StatusClosed, Clock(closed)) : "";
+        }
 
         var time = new TextBlock { Text = UsageText.HoursMinutes(row.Seconds + (row.IsRunning ? elapsed : 0)), VerticalAlignment = VerticalAlignment.Top };
         time.Style = (Style)FindResource("Number");
         time.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Title");
 
-        var strip = new SessionStrip
+        UIElement stripElement;
+        SessionStrip? stripA = null;
+        SessionStrip? stripB = null;
+        var shown = RowDetails.ShownSessions(row).ToList();
+        var isMultiDev = scope == TimeSink.Core.Devices.DeviceScope.All && row.DeviceSeconds is { Count: > 1 };
+
+        if (isMultiDev)
         {
-            Margin = new Thickness(0, 8, 0, 0),
-            Segments = row.Sessions.Select(s => (r.DayFraction(s.StartUtc), r.DayFraction(s.EndUtc))).ToList(),
-        };
-        strip.SetResourceReference(SessionStrip.SegmentBrushProperty, appBrush);
-        strip.SetResourceReference(SessionStrip.TrackBrushProperty, "Brush.BorderSoft");
+            var stripBox = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+            stripA = new SessionStrip
+            {
+                Height = 3,
+                Segments = row.Sessions.Select(s => IsLocalDevice(s.DeviceId) ? (r.DayFraction(s.StartUtc), r.DayFraction(s.EndUtc)) : (0.0, 0.0)).ToList(),
+            };
+            stripA.SetResourceReference(SessionStrip.SegmentBrushProperty, "Brush.DeviceA");
+            stripA.SetResourceReference(SessionStrip.TrackBrushProperty, "Brush.BorderSoft");
+
+            stripB = new SessionStrip
+            {
+                Height = 3,
+                Margin = new Thickness(0, 2, 0, 0),
+                Segments = row.Sessions.Select(s => !IsLocalDevice(s.DeviceId) ? (r.DayFraction(s.StartUtc), r.DayFraction(s.EndUtc)) : (0.0, 0.0)).ToList(),
+            };
+            stripB.SetResourceReference(SessionStrip.SegmentBrushProperty, "Brush.DeviceB");
+            stripB.SetResourceReference(SessionStrip.TrackBrushProperty, "Brush.BorderSoft");
+
+            stripBox.Children.Add(stripA);
+            stripBox.Children.Add(stripB);
+            stripElement = stripBox;
+        }
+        else
+        {
+            var singleStrip = new SessionStrip
+            {
+                Margin = new Thickness(0, 8, 0, 0),
+                Segments = row.Sessions.Select(s => (r.DayFraction(s.StartUtc), r.DayFraction(s.EndUtc))).ToList(),
+            };
+            singleStrip.SetResourceReference(SessionStrip.SegmentBrushProperty, appBrush);
+            singleStrip.SetResourceReference(SessionStrip.TrackBrushProperty, "Brush.BorderSoft");
+            stripElement = singleStrip;
+            stripA = singleStrip;
+        }
 
         var link = new SessionLink();
         // The dial, stats and pills are built the first time the row opens: most rows are never expanded.
@@ -360,24 +507,36 @@ public partial class TodayView : UserControl, ILiveView
             details.Child = BuildDetails(r, row, appBrush, link);
             link.Apply!();
         }
-        var shown = RowDetails.ShownSessions(row).ToList();
         if (_pinnedSession.TryGetValue(row.AppId, out var pinnedStart))
             link.Pinned = shown.FindIndex(x => x.StartUtc == pinnedStart);
         // Opened by hand, not through ToolTipService: that only shows a tip once per enter, so dragging across the gap
         // between two sessions closed it and the next session never got one.
-        var stripTip = new ToolTip { PlacementTarget = strip, Placement = System.Windows.Controls.Primitives.PlacementMode.Relative, VerticalOffset = -30, StaysOpen = true };
+        var stripTip = new ToolTip { PlacementTarget = stripElement, Placement = System.Windows.Controls.Primitives.PlacementMode.Relative, VerticalOffset = -30, StaysOpen = true };
         StyleTip(stripTip);
-        strip.Unloaded += (_, _) => stripTip.IsOpen = false; // the rows are rebuilt on refresh
-        strip.SegmentHovered += (i, p) =>
+        stripElement.Unloaded += (_, _) => stripTip.IsOpen = false; // the rows are rebuilt on refresh
+
+        void WireStrip(SessionStrip s)
         {
-            link.Hover = i < 0 ? -1 : shown.IndexOf(row.Sessions[i]);
-            link.Apply!();
-            if (i < 0) { stripTip.IsOpen = false; return; }
-            var s = row.Sessions[i];
-            stripTip.Content = $"{Clock(s.FullStartUtc)} – {(s.IsOpen ? Str(StringKeys.SessionNow) : Clock(s.EndUtc))} · {UsageText.HoursMinutes(s.FullSeconds)}";
-            stripTip.HorizontalOffset = p.X + 8;
-            stripTip.IsOpen = true;
-        };
+            s.SegmentHovered += (i, p) =>
+            {
+                link.Hover = i < 0 ? -1 : shown.IndexOf(row.Sessions[i]);
+                link.Apply!();
+                if (i < 0) { stripTip.IsOpen = false; return; }
+                var session = row.Sessions[i];
+                stripTip.Content = $"{Clock(session.FullStartUtc)} – {(session.IsOpen ? Str(StringKeys.SessionNow) : Clock(session.EndUtc))} · {UsageText.HoursMinutes(session.FullSeconds)}";
+                stripTip.HorizontalOffset = p.X + 8;
+                stripTip.IsOpen = true;
+            };
+            s.SegmentClicked += i =>
+            {
+                SetOpen(true);
+                var at = shown.IndexOf(row.Sessions[i]);
+                link.Pinned = link.Pinned == at ? -1 : at;
+                PinSession(row, link, shown);
+            };
+        }
+        if (stripA != null) WireStrip(stripA);
+        if (stripB != null) WireStrip(stripB);
 
         var grid = new Grid { Margin = new Thickness(0, 0, 0, 0) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -394,7 +553,7 @@ public partial class TodayView : UserControl, ILiveView
 
         var stack = new StackPanel();
         stack.Children.Add(grid);
-        stack.Children.Add(strip);
+        stack.Children.Add(stripElement);
         stack.Children.Add(details);
 
         var card = new Border { Margin = new Thickness(-8, 0, -8, 0), Background = System.Windows.Media.Brushes.Transparent, Cursor = Cursors.Hand, Child = stack };
@@ -417,16 +576,11 @@ public partial class TodayView : UserControl, ILiveView
         {
             link.ApplyDetails?.Invoke();
             var active = link.Active;
-            strip.HighlightIndex = active >= 0 ? IndexOf(row.Sessions, shown[active]) : -1;
+            var activeIdx = active >= 0 ? IndexOf(row.Sessions, shown[active]) : -1;
+            if (stripA != null) stripA.HighlightIndex = activeIdx;
+            if (stripB != null) stripB.HighlightIndex = activeIdx;
         };
         if (details.Visibility == Visibility.Visible) EnsureDetails();
-        strip.SegmentClicked += i =>
-        {
-            SetOpen(true);
-            var at = shown.IndexOf(row.Sessions[i]);
-            link.Pinned = link.Pinned == at ? -1 : at;
-            PinSession(row, link, shown);
-        };
         link.Apply();
 
         _rowViews[row.AppId] = (time, status, row);
@@ -446,6 +600,7 @@ public partial class TodayView : UserControl, ILiveView
         var hidden = detail.Blips;
         var avg = detail.AverageSeconds;
 
+        var isMultiDev = _live?.DeviceScope == TimeSink.Core.Devices.DeviceScope.All && row.DeviceSeconds is { Count: > 1 };
         var dial = new SessionDial
         {
             Width = DialSize, Height = DialSize, VerticalAlignment = VerticalAlignment.Top,
@@ -461,6 +616,35 @@ public partial class TodayView : UserControl, ILiveView
         dial.SetResourceReference(SessionDial.NowBrushProperty, "Brush.Accent");
         dial.SetResourceReference(SessionDial.LabelBrushProperty, "Brush.TextMuted");
         dial.SetResourceReference(SessionDial.NumberFontProperty, "FontFamily.Numbers");
+
+        if (isMultiDev)
+        {
+            dial.IsMultiDevice = true;
+            dial.SetResourceReference(SessionDial.DeviceABrushProperty, "Brush.DeviceA");
+            dial.SetResourceReference(SessionDial.DeviceBBrushProperty, "Brush.DeviceB");
+            dial.CenterSubText = Str(StringKeys.DialVsAverage);
+
+            var shownA = new List<(double Start, double End, int Index)>();
+            var tailsA = new List<double?>();
+            var shownB = new List<(double Start, double End, int Index)>();
+            var tailsB = new List<double?>();
+
+            for (var i = 0; i < shown.Count; i++)
+            {
+                var s = shown[i];
+                var isA = IsLocalDevice(s.DeviceId);
+                var sf = r.DayFraction(s.StartUtc);
+                var ef = r.DayFraction(s.EndUtc);
+                var tail = s.CarriesOver ? (double?)r.DayFractionBefore(s.FullStartUtc) : null;
+                if (isA) { shownA.Add((sf, ef, i)); tailsA.Add(tail); }
+                else { shownB.Add((sf, ef, i)); tailsB.Add(tail); }
+            }
+            dial.SegmentsA = shownA;
+            dial.TailsA = tailsA;
+            dial.SegmentsB = shownB;
+            dial.TailsB = tailsB;
+        }
+
         if (detail.VsAverage is { } change)
         {
             dial.CenterText = UsageText.Delta(change);
@@ -475,9 +659,56 @@ public partial class TodayView : UserControl, ILiveView
 
         var longest = detail.LongestSeconds;
         var stats = new StackPanel { Margin = new Thickness(14, 2, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        stats.Children.Add(Stat(StringKeys.DialSessions, shown.Count.ToString(), first: true));
-        stats.Children.Add(Stat(StringKeys.DialLongest, longest > 0 ? UsageText.HoursMinutes(longest) : Str(StringKeys.TileNone)));
-        stats.Children.Add(Stat(StringKeys.DialAverage, avg is { } m ? UsageText.HoursMinutes((long)Math.Round(m)) : Str(StringKeys.TileNone)));
+        if (isMultiDev && row.DeviceSeconds is { Count: > 1 })
+        {
+            var secA = 0L;
+            var secB = 0L;
+            if (_live?.LocalDeviceId is { } loc)
+            {
+                row.DeviceSeconds.TryGetValue(loc, out secA);
+                foreach (var (k, v) in row.DeviceSeconds) if (k != loc) secB += v;
+            }
+            else
+            {
+                var first = true;
+                foreach (var v in row.DeviceSeconds.Values)
+                {
+                    if (first) { secA = v; first = false; }
+                    else secB += v;
+                }
+            }
+            var devAName = GetDeviceName(_live?.LocalDeviceId, isLocal: true).ToUpperInvariant();
+            var devBName = GetOtherDeviceName(_live?.LocalDeviceId).ToUpperInvariant();
+            var countA = shown.Count(s => IsLocalDevice(s.DeviceId));
+            var countB = shown.Count(s => !IsLocalDevice(s.DeviceId));
+
+            stats.Children.Add(DeviceStat(
+                Str(StringKeys.DialOuterRing, devAName),
+                $"{UsageText.HoursMinutes(secA)} · {countA} {(countA == 1 ? "session" : "sessions")}",
+                isLocal: true, first: true));
+
+            stats.Children.Add(DeviceStat(
+                Str(StringKeys.DialMiddleRing, devBName),
+                $"{UsageText.HoursMinutes(secB)} · {countB} {(countB == 1 ? "session" : "sessions")}",
+                isLocal: false, first: false));
+
+            if (row.OnBothSeconds > 0)
+            {
+                stats.Children.Add(PlainStat(
+                    Str(StringKeys.DialOverlap),
+                    Str(StringKeys.DialOnBoth, UsageText.HoursMinutes(row.OnBothSeconds))));
+            }
+
+            stats.Children.Add(PlainStat(
+                Str(StringKeys.DialAverage),
+                avg is { } m ? UsageText.HoursMinutes((long)Math.Round(m)) : Str(StringKeys.TileNone)));
+        }
+        else
+        {
+            stats.Children.Add(Stat(StringKeys.DialSessions, shown.Count.ToString(), first: true));
+            stats.Children.Add(Stat(StringKeys.DialLongest, longest > 0 ? UsageText.HoursMinutes(longest) : Str(StringKeys.TileNone)));
+            stats.Children.Add(Stat(StringKeys.DialAverage, avg is { } m ? UsageText.HoursMinutes((long)Math.Round(m)) : Str(StringKeys.TileNone)));
+        }
 
         var top = new StackPanel { Orientation = Orientation.Horizontal };
         top.Children.Add(dial);
@@ -553,6 +784,32 @@ public partial class TodayView : UserControl, ILiveView
         return s;
     }
 
+    private UIElement DeviceStat(string labelText, string value, bool isLocal, bool first = false)
+    {
+        var label = new TextBlock { Text = labelText, Style = (Style)FindResource("Small") };
+        var number = new TextBlock { Text = value, Style = (Style)FindResource("Number") };
+        number.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Title");
+        var valRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        var marker = new DeviceMarker { IsLocal = isLocal, Width = 8, Height = 8, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+        valRow.Children.Add(marker);
+        valRow.Children.Add(number);
+        var s = new StackPanel { Margin = new Thickness(0, first ? 0 : 8, 0, 0) };
+        s.Children.Add(label);
+        s.Children.Add(valRow);
+        return s;
+    }
+
+    private UIElement PlainStat(string labelText, string value, bool first = false)
+    {
+        var label = new TextBlock { Text = labelText, Style = (Style)FindResource("Small") };
+        var number = new TextBlock { Text = value, Style = (Style)FindResource("Number") };
+        number.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Title");
+        var s = new StackPanel { Margin = new Thickness(0, first ? 0 : 8, 0, 0) };
+        s.Children.Add(label);
+        s.Children.Add(number);
+        return s;
+    }
+
     /// <summary>One session as a rounded chip: time span, then its length; the open session reads in the accent colour.</summary>
     private Border Pill(TodaySession s, string appBrush)
     {
@@ -578,6 +835,17 @@ public partial class TodayView : UserControl, ILiveView
             row.Children.Add(text);
             content = row;
         }
+
+        if (_live?.DeviceScope == TimeSink.Core.Devices.DeviceScope.All && !string.IsNullOrEmpty(s.DeviceId))
+        {
+            var isLocal = IsLocalDevice(s.DeviceId);
+            var marker = new DeviceMarker { IsLocal = isLocal, Width = 6, Height = 6, Margin = new Thickness(0, 0, 5, 0), VerticalAlignment = VerticalAlignment.Center };
+            var pillRow = new StackPanel { Orientation = Orientation.Horizontal };
+            pillRow.Children.Add(marker);
+            pillRow.Children.Add(content);
+            content = pillRow;
+        }
+
         var pill = new Border { Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 6, 6), Child = content };
         pill.SetResourceReference(Border.BorderBrushProperty, s.IsOpen ? "Brush.Accent" : "Brush.Border");
         pill.SetResourceReference(Border.BorderThicknessProperty, "Thickness.Border");

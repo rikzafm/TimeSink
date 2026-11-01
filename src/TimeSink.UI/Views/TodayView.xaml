@@ -70,6 +70,8 @@
                 </Border>
             </Grid>
 
+            <WrapPanel x:Name="DeviceSummaryRow" Margin="0,2,0,8" Visibility="Collapsed"/>
+
             <c:HourlyBars x:Name="Chart" Height="104" Margin="0,0,0,4"
                           TextElement.FontFamily="{DynamicResource FontFamily.Numbers}"
                           LabelFontFamily="{DynamicResource FontFamily.Numbers}"

@@ -96,10 +96,30 @@ public static class TodayQuery
             var groupSegs = g.ToList();
             var sessions = groupSegs.Where(s => UsageDays.Overlap(s, d0, d1) > 0 || (s.Open && s.End >= d0))
                 .OrderBy(s => s.Start)
-                .Select(s => new TodaySession(Math.Max(s.Start, d0), Math.Min(s.End, d1), s.Open && isToday, s.Start < d0 ? s.Start : null)).ToList();
+                .Select(s => new TodaySession(
+                    Math.Max(s.Start, d0),
+                    Math.Min(s.End, d1),
+                    s.Open && isToday,
+                    s.Start < d0 ? s.Start : null,
+                    string.IsNullOrEmpty(s.DeviceId) ? (apps.TryGetValue(s.AppId, out var ga) ? ga.DeviceId : "") : s.DeviceId)).ToList();
             var open = isToday ? groupSegs.Where(s => s.Open).ToList() : [];
             var seconds = groupSegs.Sum(s => UsageDays.Overlap(s, d0, d1));
             if (seconds == 0 && open.Count == 0) continue;
+
+            var devSecs = new Dictionary<string, long>();
+            foreach (var s in groupSegs)
+            {
+                var dev = string.IsNullOrEmpty(s.DeviceId) ? (apps.TryGetValue(s.AppId, out var ga) ? ga.DeviceId : "") : s.DeviceId;
+                var sec = UsageDays.Overlap(s, d0, d1);
+                if (sec > 0)
+                    devSecs[dev] = devSecs.GetValueOrDefault(dev) + sec;
+            }
+            long rowOnBoth = 0;
+            if (devSecs.Count > 1)
+            {
+                var union = UsageUptime.OpenSeconds(groupSegs, d0, d1);
+                rowOnBoth = Math.Max(0, seconds - union);
+            }
 
             var closedToday = groupSegs.Where(s => !s.Open && s.End >= d0 && s.End < d1).ToList();
             var added = LocalDays.DateOf(apps.Values.Where(a => a.Group == g.Key).Min(a => a.AddedUtc), zone);
@@ -122,7 +142,8 @@ public static class TodayQuery
                 seconds, open.Count > 0,
                 open.Count > 0 ? open.Min(s => s.Start) : null,
                 closedToday.Count > 0 ? closedToday.Max(s => s.End) : null,
-                sessions, avg, avgDays));
+                sessions, avg, avgDays,
+                devSecs.Count > 0 ? devSecs : null, rowOnBoth));
         }
         // The live day lists running apps first (most time first), then closed ones by most recent close; Background apps
         // stay after the rest within each group. A past day keeps the plain time ranking.

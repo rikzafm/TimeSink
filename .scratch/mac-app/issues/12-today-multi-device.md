@@ -1,6 +1,6 @@
 # Today for multiple devices
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 3)
 Blocked by: 06, 11
 Design: design/mac/Main.dc.html, design/mac/TodayAll.dc.html

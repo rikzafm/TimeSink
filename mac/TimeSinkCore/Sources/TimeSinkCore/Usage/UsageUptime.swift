@@ -182,6 +182,22 @@ public enum UsageUptime {
         )
     }
 
+    /// The union duration of segments overlapping [from, to), overlaps counted once.
+    public static func openSeconds(segs: [UsageSeg], from: Int64, to: Int64) -> Int64 {
+        var total: Int64 = 0
+        var runEnd: Int64 = from
+        let sorted = segs.filter { $0.end > from && $0.start < to }.sorted { $0.start < $1.start }
+        for s in sorted {
+            let start = max(max(s.start, from), runEnd)
+            let end = min(s.end, to)
+            if end > start {
+                total += end - start
+            }
+            runEnd = max(runEnd, end)
+        }
+        return total
+    }
+
     /// From each sleep-close to the next session start of any app (or now), merged and clipped.
     public static func sleepBands(segs: [UsageSeg], d0: Int64, nowUtc: Int64) -> [SleepBand] {
         var bands: [(start: Int64, end: Int64)] = []

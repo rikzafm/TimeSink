@@ -4,7 +4,7 @@ namespace TimeSink.Core.Usage;
 /// A span of one local day (UTC unix seconds), already clipped to that day. <paramref name="BeganUtc"/> is where the whole
 /// Session really started when that was before the day began (a carry-over from the day before); null otherwise.
 /// </summary>
-public sealed record TodaySession(long StartUtc, long EndUtc, bool IsOpen, long? BeganUtc = null)
+public sealed record TodaySession(long StartUtc, long EndUtc, bool IsOpen, long? BeganUtc = null, string DeviceId = "")
 {
     /// <summary>Time inside this day.</summary>
     public long Seconds => Math.Max(0, EndUtc - StartUtc);
@@ -43,7 +43,9 @@ public sealed record TodayAppRow(
     long? LastClosedUtc,
     IReadOnlyList<TodaySession> Sessions,
     double? SevenDayAverageSeconds,
-    int SevenDayDays);
+    int SevenDayDays,
+    IReadOnlyDictionary<string, long>? DeviceSeconds = null,
+    long OnBothSeconds = 0);
 
 /// <summary>Everything the Today view shows, computed at <see cref="NowUtc"/> with the day cut in <see cref="Zone"/>.</summary>
 public sealed record TodayResult(
