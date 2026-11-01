@@ -223,10 +223,11 @@ public partial class TodayView : UserControl, ILiveView
         var nowUtc = Math.Max(r.NowUtc, _loader.Now.ToUnixTimeSeconds());
         var uptime = r.UptimeAt(nowUtc, _day is null); // the PC is on while the view is live
         TotalMain.Text = UsageText.HoursMinutes(uptime);
-        TotalSeconds.Text = $"{uptime % 60:00}s";
+        TotalSeconds.Text = $"{uptime % 60}s";
         CombinedText.Text = Str(StringKeys.TodayCombined, UsageText.HoursMinutes(r.CombinedSecondsAt(nowUtc)));
         Chart.NowFraction = _day is null ? r.DayFraction(nowUtc) : 0;
         Chart.NowLabel = Clock(nowUtc);
+        Chart.CurrentHour = _day is null ? TimeText.Local(nowUtc).Hour : -1;
         foreach (var (_, (time, status, row)) in _rowViews)
         {
             if (!row.IsRunning) continue;
@@ -259,7 +260,7 @@ public partial class TodayView : UserControl, ILiveView
             RunningText.Text = Str(StringKeys.RunningPill, r.RunningCount);
         }
         EarlyHint.Visibility = early ? Visibility.Visible : Visibility.Collapsed;
-        RunningPill.Visibility = live ? Visibility.Visible : Visibility.Collapsed;
+        RunningPill.Visibility = live && r.RunningCount > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         var nowLocalHour = live ? TimeText.Local(r.NowUtc).Hour : -1;
         Chart.DeviceScope = scope;
@@ -284,7 +285,14 @@ public partial class TodayView : UserControl, ILiveView
             LegendAsleepText.Text = Str(StringKeys.LegendAsleep);
             StatTilesGrid.Visibility = Visibility.Visible;
         }
+
+        Chart.CurrentHour = nowLocalHour;
+        Chart.DayStartUtc = r.DayStartUtc;
+        Chart.SleepBands = r.SleepBands;
+        Chart.HasTypical = r.HasTypical;
         Chart.Hours = r.Hours;
+        Chart.NowFraction = live ? r.DayFraction(r.NowUtc) : 0;
+        Chart.NowLabel = Clock(r.NowUtc);
         BuildAxis();
 
         if (scope == TimeSink.Core.Devices.DeviceScope.All && r.DeviceUptimes is { Count: > 0 })
@@ -411,8 +419,9 @@ public partial class TodayView : UserControl, ILiveView
         for (var i = 0; i < 4; i++) Axis.ColumnDefinitions.Add(new ColumnDefinition());
         for (var i = 0; i < 5; i++)
         {
-            var t = new TextBlock { Style = (Style)FindResource("Small") };
+            var t = new TextBlock { Style = (Style)FindResource("Small"), FontSize = 10 };
             t.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
+            t.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
             if (i < 4) { Grid.SetColumn(t, i); t.HorizontalAlignment = HorizontalAlignment.Left; }
             else { Grid.SetColumnSpan(t, 4); t.HorizontalAlignment = HorizontalAlignment.Right; }
             Axis.Children.Add(t);

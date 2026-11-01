@@ -6,13 +6,19 @@ using TimeSink.Core.Usage;
 namespace TimeSink.UI.Controls;
 
 /// <summary>
-/// Today's hourly chart: 24 columns (height = app-hours open, scale max 6), the current hour in the accent colour,
-/// dotted typical-day marks for hours still to come, hatched sleep bands and a "now" marker with a time label.
-/// Drawn with plain primitives; every colour is a DP bound to a theme brush.
+/// Today's hourly chart: 24 columns scaled to peak hour, current hour in accent,
+/// dotted typical-day outlines for future hours, hatched sleep bands, and a "now" marker with a time label.
+/// Follows Mac HourlyChartView visual style.
 /// </summary>
 public sealed class HourlyBars : FrameworkElement
 {
-    private const double MaxAppHours = 6, LabelBand = 22, Gap = 3;
+    private const double LabelBand = 16, Gap = 3;
+    private static readonly Brush DefaultTypicalBrush = new SolidColorBrush(Color.FromRgb(0x46, 0x51, 0x4a));
+
+    static HourlyBars()
+    {
+        DefaultTypicalBrush.Freeze();
+    }
 
     private static DependencyProperty Reg<T>(string name, T def = default!) =>
         DependencyProperty.Register(name, typeof(T), typeof(HourlyBars),
@@ -20,22 +26,29 @@ public sealed class HourlyBars : FrameworkElement
 
     public static readonly DependencyProperty HoursProperty = Reg<IReadOnlyList<HourBucket>?>(nameof(Hours));
     public static readonly DependencyProperty SleepFractionsProperty = Reg<IReadOnlyList<(double Start, double End)>?>(nameof(SleepFractions));
+    public static readonly DependencyProperty SleepBandsProperty = Reg<IReadOnlyList<SleepBand>?>(nameof(SleepBands));
+    public static readonly DependencyProperty DayStartUtcProperty = Reg<long>(nameof(DayStartUtc));
+    public static readonly DependencyProperty HasTypicalProperty = Reg<bool>(nameof(HasTypical));
     public static readonly DependencyProperty NowFractionProperty = Reg<double>(nameof(NowFraction));
     public static readonly DependencyProperty NowLabelProperty = Reg<string>(nameof(NowLabel), "");
     public static readonly DependencyProperty CurrentHourProperty = Reg<int>(nameof(CurrentHour), -1);
     public static readonly DependencyProperty BarBrushProperty = Reg<Brush?>(nameof(BarBrush));
     public static readonly DependencyProperty CurrentBrushProperty = Reg<Brush?>(nameof(CurrentBrush));
+    public static readonly DependencyProperty Heat0Property = Reg<Brush?>(nameof(Heat0));
+    public static readonly DependencyProperty Heat1Property = Reg<Brush?>(nameof(Heat1));
+    public static readonly DependencyProperty Heat2Property = Reg<Brush?>(nameof(Heat2));
+    public static readonly DependencyProperty Heat3Property = Reg<Brush?>(nameof(Heat3));
+    public static readonly DependencyProperty TypicalBrushProperty = Reg<Brush?>(nameof(TypicalBrush));
     public static readonly DependencyProperty MutedBrushProperty = Reg<Brush?>(nameof(MutedBrush));
     public static readonly DependencyProperty LabelTextBrushProperty = Reg<Brush?>(nameof(LabelTextBrush));
     public static readonly DependencyProperty LabelFontFamilyProperty = Reg<FontFamily?>(nameof(LabelFontFamily));
-    public static readonly DependencyProperty LabelFontSizeProperty = Reg<double>(nameof(LabelFontSize), 11.0);
+    public static readonly DependencyProperty LabelFontSizeProperty = Reg<double>(nameof(LabelFontSize), 10.0);
     public static readonly DependencyProperty DeviceScopeProperty = Reg<TimeSink.Core.Devices.DeviceScope>(nameof(DeviceScope), TimeSink.Core.Devices.DeviceScope.This);
     public static readonly DependencyProperty LocalDeviceIdProperty = Reg<string?>(nameof(LocalDeviceId));
     public static readonly DependencyProperty DeviceABrushProperty = Reg<Brush?>(nameof(DeviceABrush));
     public static readonly DependencyProperty DeviceBBrushProperty = Reg<Brush?>(nameof(DeviceBBrush));
 
     public static readonly DependencyProperty SelectedHourProperty = Reg<int>(nameof(SelectedHour), -1);
-
     public static readonly DependencyProperty SelectedBrushProperty = Reg<Brush?>(nameof(SelectedBrush));
     public static readonly DependencyProperty HoveredHourProperty = Reg<int>(nameof(HoveredHour), -1);
 
@@ -81,11 +94,19 @@ public sealed class HourlyBars : FrameworkElement
 
     public IReadOnlyList<HourBucket>? Hours { get => (IReadOnlyList<HourBucket>?)GetValue(HoursProperty); set => SetValue(HoursProperty, value); }
     public IReadOnlyList<(double Start, double End)>? SleepFractions { get => ((IReadOnlyList<(double, double)>?)GetValue(SleepFractionsProperty)); set => SetValue(SleepFractionsProperty, value); }
+    public IReadOnlyList<SleepBand>? SleepBands { get => (IReadOnlyList<SleepBand>?)GetValue(SleepBandsProperty); set => SetValue(SleepBandsProperty, value); }
+    public long DayStartUtc { get => (long)GetValue(DayStartUtcProperty); set => SetValue(DayStartUtcProperty, value); }
+    public bool HasTypical { get => (bool)GetValue(HasTypicalProperty); set => SetValue(HasTypicalProperty, value); }
     public double NowFraction { get => (double)GetValue(NowFractionProperty); set => SetValue(NowFractionProperty, value); }
     public string NowLabel { get => (string)GetValue(NowLabelProperty); set => SetValue(NowLabelProperty, value); }
     public int CurrentHour { get => (int)GetValue(CurrentHourProperty); set => SetValue(CurrentHourProperty, value); }
     public Brush? BarBrush { get => (Brush?)GetValue(BarBrushProperty); set => SetValue(BarBrushProperty, value); }
     public Brush? CurrentBrush { get => (Brush?)GetValue(CurrentBrushProperty); set => SetValue(CurrentBrushProperty, value); }
+    public Brush? Heat0 { get => (Brush?)GetValue(Heat0Property); set => SetValue(Heat0Property, value); }
+    public Brush? Heat1 { get => (Brush?)GetValue(Heat1Property); set => SetValue(Heat1Property, value); }
+    public Brush? Heat2 { get => (Brush?)GetValue(Heat2Property); set => SetValue(Heat2Property, value); }
+    public Brush? Heat3 { get => (Brush?)GetValue(Heat3Property); set => SetValue(Heat3Property, value); }
+    public Brush? TypicalBrush { get => (Brush?)GetValue(TypicalBrushProperty); set => SetValue(TypicalBrushProperty, value); }
     public Brush? MutedBrush { get => (Brush?)GetValue(MutedBrushProperty); set => SetValue(MutedBrushProperty, value); }
     public Brush? LabelTextBrush { get => (Brush?)GetValue(LabelTextBrushProperty); set => SetValue(LabelTextBrushProperty, value); }
     public FontFamily? LabelFontFamily { get => (FontFamily?)GetValue(LabelFontFamilyProperty); set => SetValue(LabelFontFamilyProperty, value); }
@@ -107,29 +128,54 @@ public sealed class HourlyBars : FrameworkElement
         var col = w / 24.0;
         var barW = Math.Max(1, col - Gap);
 
-        // Sleep bands first so bars draw over them.
-        if (SleepFractions is { } bands && MutedBrush is { } muted)
+        var top = hours.Max(b => Math.Max((double)b.AppSeconds, b.TypicalAppSeconds));
+        var scale = Math.Max(3600.0, top);
+
+        var nowH = CurrentHour >= 0 ? CurrentHour
+            : NowFraction > 0 ? Math.Min(23, (int)(NowFraction * 24)) : 24;
+
+        var h0 = Heat0 ?? (TryFindResource("Brush.Heat0") as Brush);
+        var h1 = Heat1 ?? (TryFindResource("Brush.Heat1") as Brush) ?? BarBrush;
+        var h2 = Heat2 ?? (TryFindResource("Brush.Heat2") as Brush) ?? BarBrush;
+        var h3 = Heat3 ?? (TryFindResource("Brush.Heat3") as Brush) ?? BarBrush;
+        var accent = CurrentBrush ?? (TryFindResource("Brush.Accent") as Brush);
+        var typical = TypicalBrush ?? DefaultTypicalBrush;
+
+        bool IsHourAsleep(int hour)
         {
-            var pen = new Pen(muted, 1) { };
-            foreach (var (s, e) in bands)
+            if (SleepBands is { Count: > 0 })
             {
-                var x0 = Math.Clamp(s, 0, 1) * w;
-                var x1 = Math.Clamp(e, 0, 1) * w;
-                if (x1 - x0 < 1) continue;
-                var rect = new Rect(x0, plotTop, x1 - x0, plotH);
-                dc.PushClip(new RectangleGeometry(rect));
-                for (var x = x0 - plotH; x < x1; x += 5)
-                    dc.DrawLine(pen, new Point(x, plotTop + plotH), new Point(x + plotH, plotTop));
-                dc.Pop();
+                var start = DayStartUtc + (long)hour * 3600;
+                var end = start + 3600;
+                return SleepBands.Any(b => Math.Min(b.EndUtc, end) - Math.Max(b.StartUtc, start) >= 1800);
             }
+            if (SleepFractions is { Count: > 0 })
+            {
+                var sHour = hour / 24.0;
+                var eHour = (hour + 1) / 24.0;
+                return SleepFractions.Any(b => Math.Min(b.End, eHour) - Math.Max(b.Start, sHour) >= 0.5 / 24.0);
+            }
+            return false;
+        }
+
+        Brush GetBarBrush(long seconds, int hour)
+        {
+            if (hour == nowH) return accent ?? Brushes.LimeGreen;
+            var f = (double)seconds / scale;
+            if (f <= 0) return h0 ?? Brushes.DarkSlateGray;
+            if (f > 0.75) return h3 ?? Brushes.ForestGreen;
+            if (f > 0.5) return h2 ?? Brushes.OliveDrab;
+            return h1 ?? Brushes.DarkOliveGreen;
         }
 
         for (var i = 0; i < 24; i++)
         {
-            var x = i * col + Gap / 2;
+            var x = i * col + Gap / 2.0;
             var bucket = hours[i];
-            var barH = Math.Min(1.0, bucket.AppSeconds / 3600.0 / MaxAppHours) * plotH;
-            var future = CurrentHour >= 0 && i > CurrentHour;
+            var isFuture = i > nowH;
+            var isAsleep = IsHourAsleep(i);
+
+            // Hover highlight
             if (i == HoveredHour && MutedBrush is { } hoverFill)
             {
                 dc.PushOpacity(0.18);
@@ -137,15 +183,51 @@ public sealed class HourlyBars : FrameworkElement
                 dc.Pop();
             }
 
-            if (DeviceScope == TimeSink.Core.Devices.DeviceScope.All && bucket.ByDevice != null && bucket.ByDevice.Count > 0)
+            if (isFuture)
             {
-                long secA = 0, secB = 0;
+                if (HasTypical && bucket.TypicalAppSeconds > 0)
+                {
+                    var typH = Math.Max(2.0, (bucket.TypicalAppSeconds / scale) * plotH);
+                    var pen = new Pen(typical ?? MutedBrush, 1.0)
+                    {
+                        DashStyle = new DashStyle(new double[] { 1.0, 1.5 }, 0)
+                    };
+                    pen.Freeze();
+                    dc.DrawRoundedRectangle(null, pen, new Rect(x, plotTop + plotH - typH, barW, typH), 2, 2);
+                }
+            }
+            else if (isAsleep)
+            {
+                var appH = (bucket.AppSeconds / scale) * plotH;
+                if (appH > 0.5)
+                {
+                    var appBrush = GetBarBrush(bucket.AppSeconds, i);
+                    dc.DrawRoundedRectangle(appBrush, null, new Rect(x, plotTop + plotH - appH, barW, appH), 2, 2);
+                }
+
+                var asleepH = Math.Max(appH, plotH * 0.7);
+                var rect = new Rect(x, plotTop + plotH - asleepH, barW, asleepH);
+                dc.PushClip(new RectangleGeometry(rect, 2, 2));
+
+                var hatchBrush = h2 ?? MutedBrush ?? Brushes.Gray;
+                var pen = new Pen(hatchBrush, 1.5);
+                pen.Freeze();
+                var step = (1.5 + 1.5) * 1.414;
+                for (var hx = rect.Left - rect.Height; hx < rect.Right; hx += step)
+                {
+                    dc.DrawLine(pen, new Point(hx, rect.Bottom), new Point(hx + rect.Height, rect.Top));
+                }
+                dc.Pop();
+            }
+            else if (DeviceScope == TimeSink.Core.Devices.DeviceScope.All && bucket.ByDevice != null && bucket.ByDevice.Count > 0)
+            {
+                long secLocal = 0, secRemote = 0;
                 if (LocalDeviceId != null)
                 {
-                    if (bucket.ByDevice.TryGetValue(LocalDeviceId, out var dhA)) secA = dhA.AppSeconds;
+                    if (bucket.ByDevice.TryGetValue(LocalDeviceId, out var dhA)) secLocal = dhA.AppSeconds;
                     foreach (var (devId, dh) in bucket.ByDevice)
                     {
-                        if (devId != LocalDeviceId) secB += dh.AppSeconds;
+                        if (devId != LocalDeviceId) secRemote += dh.AppSeconds;
                     }
                 }
                 else
@@ -153,52 +235,50 @@ public sealed class HourlyBars : FrameworkElement
                     var first = true;
                     foreach (var dh in bucket.ByDevice.Values)
                     {
-                        if (first) { secA = dh.AppSeconds; first = false; }
-                        else secB += dh.AppSeconds;
+                        if (first) { secLocal = dh.AppSeconds; first = false; }
+                        else secRemote += dh.AppSeconds;
                     }
                 }
-                var hA = Math.Min(1.0, secA / 3600.0 / MaxAppHours) * plotH;
-                var hB = Math.Min(1.0, secB / 3600.0 / MaxAppHours) * plotH;
+                var hLocal = Math.Max(2.0, (secLocal / scale) * plotH);
+                var hRemote = Math.Max(2.0, (secRemote / scale) * plotH);
 
-                var (back, front) = OverlapBars.Layout(x, barW, hA, hB);
+                var (back, front) = OverlapBars.Layout(x, barW, hLocal, hRemote);
                 void DrawDeviceBar(OverlapBarGeometry g)
                 {
                     if (g.Height <= 0.5) return;
-                    var brush = g.IsDeviceA ? (DeviceABrush ?? (i == CurrentHour ? CurrentBrush : BarBrush))
-                                            : (DeviceBBrush ?? BarBrush);
-                    dc.DrawRoundedRectangle(brush, null, new Rect(g.X, plotTop + plotH - g.Height, g.Width, g.Height), 1.5, 1.5);
+                    var brush = g.IsDeviceA ? (i == nowH ? accent : h3)
+                                            : (DeviceBBrush ?? h2);
+                    dc.DrawRoundedRectangle(brush, null, new Rect(g.X, plotTop + plotH - g.Height, g.Width, g.Height), 2, 2);
                 }
                 DrawDeviceBar(back);
                 DrawDeviceBar(front);
             }
             else
             {
-                if (barH > 0.5)
-                {
-                    dc.DrawRoundedRectangle(i == CurrentHour ? CurrentBrush : BarBrush, null,
-                        new Rect(x, plotTop + plotH - barH, barW, barH), 1.5, 1.5);
-                }
+                var barH = Math.Max(2.0, (bucket.AppSeconds / scale) * plotH);
+                var brush = GetBarBrush(bucket.AppSeconds, i);
+                dc.DrawRoundedRectangle(brush, null, new Rect(x, plotTop + plotH - barH, barW, barH), 2, 2);
             }
 
+            // Selection highlight
             if (i == SelectedHour && SelectedBrush is { } sel)
-                dc.DrawRoundedRectangle(null, new Pen(sel, 1.5), new Rect(x - 1, plotTop, barW + 2, plotH), 2, 2);
-            if (future && bucket.TypicalAppSeconds > 0 && MutedBrush is { } m)
             {
-                var ty = plotTop + plotH - Math.Min(1.0, bucket.TypicalAppSeconds / 3600.0 / MaxAppHours) * plotH;
-                dc.DrawRectangle(m, null, new Rect(x, ty - 1, barW, 2));
+                dc.DrawRoundedRectangle(null, new Pen(sel, 1.5), new Rect(x - 1, plotTop, barW + 2, plotH), 2, 2);
             }
         }
 
-        // Now marker + label.
-        if (NowFraction is > 0 and <= 1 && CurrentBrush is { } accent)
+        // Now marker + label (flag)
+        if (NowFraction is > 0 and <= 1 && accent is not null)
         {
             var nx = NowFraction * w;
-            dc.DrawRectangle(accent, null, new Rect(nx - 0.5, LabelBand - 4, 1, plotH + 4));
-            var text = ChartSupport.Text(this, NowLabel, LabelFontFamily, LabelFontSize, LabelTextBrush, FontWeights.SemiBold);
-            var pw = text.Width + 12;
-            var px = Math.Clamp(nx - pw / 2, 0, w - pw);
-            dc.DrawRoundedRectangle(accent, null, new Rect(px, 0, pw, LabelBand - 5), 4, 4);
-            dc.DrawText(text, new Point(px + 6, (LabelBand - 5 - text.Height) / 2));
+            dc.DrawRectangle(accent, null, new Rect(nx - 0.5, 0, 1, plotTop + plotH));
+
+            var text = ChartSupport.Text(this, NowLabel, LabelFontFamily, LabelFontSize, LabelTextBrush ?? (TryFindResource("Brush.OnAccent") as Brush) ?? Brushes.Black, FontWeights.Bold);
+            var pw = text.Width + 12.0;
+            var ph = 16.0;
+            var px = Math.Clamp(Math.Min(nx - 24.0, w - pw), 0, Math.Max(0, w - pw));
+            dc.DrawRoundedRectangle(accent, null, new Rect(px, 0, pw, ph), 4, 4);
+            dc.DrawText(text, new Point(px + 6.0, (ph - text.Height) / 2.0));
         }
     }
 }

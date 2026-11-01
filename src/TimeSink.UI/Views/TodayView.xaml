@@ -35,81 +35,84 @@
             <Grid Margin="0,2,0,6">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock x:Name="TotalMain" Foreground="{DynamicResource Brush.Accent}"
-                               FontFamily="{DynamicResource FontFamily.Numbers}" FontWeight="SemiBold"
+                               FontFamily="{DynamicResource FontFamily.Numbers}" FontWeight="Bold"
                                FontSize="{DynamicResource Double.FontSize.Display}"/>
-                    <TextBlock x:Name="TotalSeconds" Style="{StaticResource Small}" Margin="6,0,0,5" VerticalAlignment="Bottom"
-                               FontFamily="{DynamicResource FontFamily.Numbers}" FontSize="{DynamicResource Double.FontSize.Body}"/>
+                    <TextBlock x:Name="TotalSeconds" Style="{StaticResource Small}" Margin="4,0,0,6" VerticalAlignment="Bottom"
+                               FontFamily="{DynamicResource FontFamily.Numbers}" FontSize="14" FontWeight="Medium"/>
                 </StackPanel>
-                <Border x:Name="RunningPill" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="8,4,10,4"
-                        Background="{DynamicResource Brush.SurfaceAlt}" BorderBrush="{DynamicResource Brush.Border}"
+                <Border x:Name="RunningPill" HorizontalAlignment="Right" VerticalAlignment="Center" Height="24"
+                        CornerRadius="12" Padding="10,0"
+                        Background="{DynamicResource Brush.SurfaceAlt}" BorderBrush="{DynamicResource Brush.BorderSoft}"
                         BorderThickness="{DynamicResource Thickness.Border}">
-                    <StackPanel Orientation="Horizontal">
-                        <Grid Width="8" Height="8" Margin="0,0,6,0" VerticalAlignment="Center">
-                            <Ellipse Fill="{DynamicResource Brush.Accent}" RenderTransformOrigin="0.5,0.5" Opacity="0.6">
-                                <Ellipse.RenderTransform>
-                                    <ScaleTransform x:Name="PulseScale" ScaleX="1" ScaleY="1"/>
-                                </Ellipse.RenderTransform>
-                                <Ellipse.Triggers>
-                                    <EventTrigger RoutedEvent="Loaded">
-                                        <BeginStoryboard>
-                                            <Storyboard RepeatBehavior="Forever" Timeline.DesiredFrameRate="20">
-                                                <DoubleAnimation Storyboard.TargetName="PulseScale" Storyboard.TargetProperty="ScaleX"
-                                                                 From="1" To="2.75" Duration="0:0:1.6"/>
-                                                <DoubleAnimation Storyboard.TargetName="PulseScale" Storyboard.TargetProperty="ScaleY"
-                                                                 From="1" To="2.75" Duration="0:0:1.6"/>
-                                                <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.6" To="0" Duration="0:0:1.6"/>
-                                            </Storyboard>
-                                        </BeginStoryboard>
-                                    </EventTrigger>
-                                </Ellipse.Triggers>
-                            </Ellipse>
-                            <Ellipse x:Name="RunningDot" Fill="{DynamicResource Brush.Accent}"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Grid Width="13" Height="13" Margin="0,0,6,0" VerticalAlignment="Center">
+                            <Ellipse Width="13" Height="13" Fill="{DynamicResource Brush.Accent}" Opacity="0.25"/>
+                            <Ellipse x:Name="RunningDot" Width="7" Height="7" Fill="{DynamicResource Brush.Accent}"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Grid>
-                        <TextBlock x:Name="RunningText" Style="{StaticResource Number}" FontSize="12" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="RunningText" Style="{StaticResource Number}" FontSize="11" FontWeight="SemiBold"/>
                     </StackPanel>
                 </Border>
             </Grid>
 
             <WrapPanel x:Name="DeviceSummaryRow" Margin="0,2,0,8" Visibility="Collapsed"/>
 
-            <c:HourlyBars x:Name="Chart" Height="104" Margin="0,0,0,4"
+            <c:HourlyBars x:Name="Chart" Height="62" Margin="0,0,0,2"
                           TextElement.FontFamily="{DynamicResource FontFamily.Numbers}"
                           LabelFontFamily="{DynamicResource FontFamily.Numbers}"
-                          LabelFontSize="{DynamicResource Double.FontSize.Small}"
+                          LabelFontSize="10"
                           BarBrush="{DynamicResource Brush.Heat2}" CurrentBrush="{DynamicResource Brush.Accent}"
+                          Heat0="{DynamicResource Brush.Heat0}" Heat1="{DynamicResource Brush.Heat1}"
+                          Heat2="{DynamicResource Brush.Heat2}" Heat3="{DynamicResource Brush.Heat3}"
                           DeviceABrush="{DynamicResource Brush.DeviceA}" DeviceBBrush="{DynamicResource Brush.DeviceB}"
                           Cursor="Hand"
                           MutedBrush="{DynamicResource Brush.TextMuted}" LabelTextBrush="{DynamicResource Brush.OnAccent}"/>
-            <Grid x:Name="Axis" Margin="0,0,0,6"/>
+            <Grid x:Name="Axis" Margin="0,0,0,8" Height="16"/>
             <c:DetailPanel x:Name="Panel"/>
 
-            <WrapPanel Margin="0,0,0,12">
+            <WrapPanel x:Name="LegendPanel" Margin="0,0,0,12">
                 <StackPanel x:Name="LegendAppsOpen" Orientation="Horizontal" Margin="0,0,14,0">
-                    <Rectangle Width="9" Height="9" RadiusX="2" RadiusY="2" Fill="{DynamicResource Brush.Accent}" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                    <TextBlock Style="{StaticResource Small}" Text="{DynamicResource Str.LegendAppsOpen}"/>
+                    <Rectangle Width="8" Height="8" RadiusX="2" RadiusY="2" Fill="{DynamicResource Brush.Accent}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                    <TextBlock Style="{StaticResource Small}" FontSize="10" Text="{DynamicResource Str.LegendAppsOpen}"/>
                 </StackPanel>
-                <StackPanel x:Name="LegendDeviceA" Orientation="Horizontal" Margin="0,0,14,0" Visibility="Collapsed">
-                    <Ellipse Width="8" Height="8" Fill="{DynamicResource Brush.DeviceA}" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="LegendDeviceAText" Style="{StaticResource Small}"/>
+                <StackPanel x:Name="LegendDeviceA" Orientation="Horizontal" Margin="0,0,9,0" Visibility="Collapsed">
+                    <Rectangle Width="8" Height="8" RadiusX="2" RadiusY="2" Fill="{DynamicResource Brush.Heat3}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="LegendDeviceAText" Style="{StaticResource Small}" FontSize="10"/>
                 </StackPanel>
-                <StackPanel x:Name="LegendDeviceB" Orientation="Horizontal" Margin="0,0,14,0" Visibility="Collapsed">
-                    <Rectangle Width="8" Height="8" RadiusX="1.5" RadiusY="1.5" Fill="{DynamicResource Brush.DeviceB}" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="LegendDeviceBText" Style="{StaticResource Small}"/>
+                <StackPanel x:Name="LegendDeviceB" Orientation="Horizontal" Margin="0,0,9,0" Visibility="Collapsed">
+                    <Rectangle Width="8" Height="8" RadiusX="2" RadiusY="2" Fill="{DynamicResource Brush.DeviceB}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="LegendDeviceBText" Style="{StaticResource Small}" FontSize="10"/>
                 </StackPanel>
-                <StackPanel x:Name="LegendOverlap" Orientation="Horizontal" Margin="0,0,14,0" Visibility="Collapsed">
-                    <Grid Width="13" Height="9" Margin="0,0,5,0" VerticalAlignment="Center">
-                        <Rectangle Width="8" Height="9" RadiusX="1.5" RadiusY="1.5" Fill="{DynamicResource Brush.DeviceA}" HorizontalAlignment="Left" VerticalAlignment="Bottom"/>
-                        <Rectangle Width="8" Height="6" RadiusX="1.5" RadiusY="1.5" Fill="{DynamicResource Brush.DeviceB}" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
+                <StackPanel x:Name="LegendOverlap" Orientation="Horizontal" Margin="0,0,9,0" Visibility="Collapsed">
+                    <Grid Width="12" Height="8" Margin="0,0,5,0" VerticalAlignment="Center">
+                        <Rectangle Width="7" Height="8" RadiusX="1" RadiusY="1" Fill="{DynamicResource Brush.Heat3}" HorizontalAlignment="Left" VerticalAlignment="Bottom"/>
+                        <Rectangle Width="7" Height="5" RadiusX="1" RadiusY="1" Fill="{DynamicResource Brush.DeviceB}" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
                     </Grid>
-                    <TextBlock Style="{StaticResource Small}" Text="{DynamicResource Str.LegendOverlapping}"/>
+                    <TextBlock Style="{StaticResource Small}" FontSize="10" Text="{DynamicResource Str.LegendOverlapping}"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
-                    <Rectangle Width="9" Height="2" Fill="{DynamicResource Brush.TextMuted}" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                    <TextBlock Style="{StaticResource Small}" Text="{DynamicResource Str.LegendTypical}"/>
+                    <Line X1="0" Y1="0" X2="14" Y2="0" Stroke="{DynamicResource Brush.TextMuted}" StrokeThickness="1.5"
+                          StrokeDashArray="2 1.5" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                    <TextBlock Style="{StaticResource Small}" FontSize="10" Text="{DynamicResource Str.LegendTypical}"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <Rectangle Width="9" Height="9" Stroke="{DynamicResource Brush.TextMuted}" StrokeThickness="1" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="LegendAsleepText" Style="{StaticResource Small}" Text="{DynamicResource Str.LegendAsleep}"/>
+                    <Rectangle Width="8" Height="8" RadiusX="2" RadiusY="2" Margin="0,0,5,0" VerticalAlignment="Center">
+                        <Rectangle.Fill>
+                            <DrawingBrush Viewport="0,0,3,3" ViewportUnits="Absolute" TileMode="Tile">
+                                <DrawingBrush.Drawing>
+                                    <GeometryDrawing>
+                                        <GeometryDrawing.Pen>
+                                            <Pen Brush="{DynamicResource Brush.TextMuted}" Thickness="1.5"/>
+                                        </GeometryDrawing.Pen>
+                                        <GeometryDrawing.Geometry>
+                                            <LineGeometry StartPoint="0,3" EndPoint="3,0"/>
+                                        </GeometryDrawing.Geometry>
+                                    </GeometryDrawing>
+                                </DrawingBrush.Drawing>
+                            </DrawingBrush>
+                        </Rectangle.Fill>
+                    </Rectangle>
+                    <TextBlock x:Name="LegendAsleepText" Style="{StaticResource Small}" FontSize="10" Text="{DynamicResource Str.LegendAsleep}"/>
                 </StackPanel>
             </WrapPanel>
 

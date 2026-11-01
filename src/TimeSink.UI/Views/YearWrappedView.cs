@@ -163,7 +163,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
             var label = index switch
             {
                 1 => WrappedStringKeys.Card2Label, 2 => WrappedStringKeys.Card4Label, 3 => WrappedStringKeys.Card5Label,
-                4 => WrappedStringKeys.Card3Label, 5 => WrappedStringKeys.Card6Label, _ => WrappedStringKeys.Card1Label,
+                4 => WrappedStringKeys.Card6Label, 5 => WrappedStringKeys.Card3Label, _ => WrappedStringKeys.Card1Label,
             };
             return new EmptyCardModel(Str(label, r.Year), Str(YearStringKeys.Empty));
         }
@@ -172,8 +172,8 @@ public sealed class YearWrappedView : UserControl, IYearSubView
             1 => Podium(Str(WrappedStringKeys.Card2Label), WrappedStringKeys.TopHeadline, r.Podium, r.Others, ""),
             2 => Podium(Str(WrappedStringKeys.Card4Label), WrappedStringKeys.GamesHeadline, r.GamesTop?.Podium, r.GamesTop?.Others, WrappedStringKeys.NoGames),
             3 => Podium(Str(WrappedStringKeys.Card5Label), WrappedStringKeys.GachaHeadline, r.GachaTop?.Podium, r.GachaTop?.Others, WrappedStringKeys.NoGacha),
-            4 => Habits(r),
-            5 => Podium(Str(WrappedStringKeys.Card6Label), WrappedStringKeys.LongestHeadline, r.LongestSessions, null, ""),
+            4 => Podium(Str(WrappedStringKeys.Card6Label), WrappedStringKeys.LongestHeadline, r.LongestSessions, null, ""),
+            5 => Habits(r),
             _ => Total(r),
         };
     }
@@ -289,7 +289,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         _card.MediumRadius = Application.Current.TryFindResource("CornerRadius.Medium") is CornerRadius mr ? mr.TopLeft : 10;
         _card.LargeRadius = Application.Current.TryFindResource("CornerRadius.Large") is CornerRadius lr ? lr.TopLeft : 12;
         _pager.ButtonRadius = Application.Current.TryFindResource("CornerRadius.Small") is CornerRadius sr ? sr.TopLeft : 8;
-        var names = new[] { Str(WrappedStringKeys.CardNameTotal), Str(WrappedStringKeys.CardNameTop), Str(WrappedStringKeys.CardNameGames), Str(WrappedStringKeys.CardNameGacha), Str(WrappedStringKeys.CardNameHabits), Str(WrappedStringKeys.CardNameLongest) };
+        var names = new[] { Str(WrappedStringKeys.CardNameTotal), Str(WrappedStringKeys.CardNameTop), Str(WrappedStringKeys.CardNameGames), Str(WrappedStringKeys.CardNameGacha), Str(WrappedStringKeys.CardNameLongest), Str(WrappedStringKeys.CardNameHabits) };
         System.Windows.Automation.AutomationProperties.SetName(_card, Str(WrappedStringKeys.GoTo, _index + 1, names[_index]));
         System.Windows.Automation.AutomationProperties.SetName(_pager, Str(WrappedStringKeys.Prev) + " / " + Str(WrappedStringKeys.Next));
         _card.Model = _result is { } r ? BuildModel(r, _index) : null;

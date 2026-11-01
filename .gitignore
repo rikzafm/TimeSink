@@ -6,3 +6,8 @@ artifacts/
 .vs/
 *.user
 .local/
+.build/
+.swiftpm/
+.agents/
+
+
