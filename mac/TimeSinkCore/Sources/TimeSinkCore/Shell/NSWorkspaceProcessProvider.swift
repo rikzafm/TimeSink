@@ -94,3 +94,4 @@ public final class NSWorkspaceProcessProvider: ProcessProvider, @unchecked Senda
         )
     }
 }
+

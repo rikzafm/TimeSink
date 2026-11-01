@@ -89,6 +89,23 @@ final class ShellTests: XCTestCase {
         XCTAssertEqual(retrieved, sampleData)
     }
 
+    func testResolveBundlePath() {
+        XCTAssertEqual(
+            MacIconCache.resolveBundlePath(from: "/Applications/OneDrive.app/Contents/MacOS/OneDrive"),
+            "/Applications/OneDrive.app"
+        )
+        XCTAssertEqual(
+            MacIconCache.resolveBundlePath(from: "/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"),
+            "/Applications/Utilities/Terminal.app"
+        )
+        XCTAssertEqual(
+            MacIconCache.resolveBundlePath(from: "/Applications/Safari.app"),
+            "/Applications/Safari.app"
+        )
+        XCTAssertNil(MacIconCache.resolveBundlePath(from: "/usr/local/bin/git"))
+        XCTAssertNil(MacIconCache.resolveBundlePath(from: ""))
+    }
+
     func testLoginItemManager() {
         let manager = LoginItemManager.shared
         // Reading isEnabled shouldn't crash

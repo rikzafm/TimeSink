@@ -164,3 +164,4 @@ public final class SyncHost: @unchecked Sendable {
         source.resume()
     }
 }
+

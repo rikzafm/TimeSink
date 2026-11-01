@@ -97,3 +97,4 @@ final class SyncTests: XCTestCase {
         XCTAssertEqual(res.status, .selfFile)
     }
 }
+

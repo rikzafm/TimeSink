@@ -108,3 +108,4 @@ public struct DeviceSummaryRowView: View {
         .padding(.vertical, 3)
     }
 }
+

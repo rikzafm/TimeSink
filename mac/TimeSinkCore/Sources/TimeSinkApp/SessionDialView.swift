@@ -84,3 +84,4 @@ public struct SessionDialView: View {
         .frame(width: 90, height: 90)
     }
 }
+

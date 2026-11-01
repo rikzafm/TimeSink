@@ -18,3 +18,4 @@ public static class DeviceTokens
 
     public static string BrushKeyFor(bool isLocal) => isLocal ? BrushDeviceA : BrushDeviceB;
 }
+

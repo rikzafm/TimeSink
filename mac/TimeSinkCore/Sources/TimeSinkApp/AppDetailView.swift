@@ -210,3 +210,4 @@ public struct AppDetailView: View {
         }
     }
 }
+

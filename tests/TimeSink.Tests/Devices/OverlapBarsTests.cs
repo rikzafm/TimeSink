@@ -109,3 +109,4 @@ public sealed class OverlapBarsTests
         second.Height.Should().Be(0);
     }
 }
+

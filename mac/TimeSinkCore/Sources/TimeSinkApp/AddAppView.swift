@@ -197,7 +197,7 @@ public struct AddAppView: View {
             let isTracked = trackedPaths.contains(path)
 
             HStack(spacing: 10) {
-                appTile(name: proc.name, path: path)
+                appTile(name: proc.name, path: path, bundleId: proc.bundleId)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(proc.name)
@@ -220,7 +220,7 @@ public struct AddAppView: View {
                         .foregroundColor(ThemeColors.accent)
                 } else {
                     Button(action: {
-                        trackApp(path: path, name: proc.name)
+                        trackApp(path: path, name: proc.name, bundleId: proc.bundleId)
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "plus")
@@ -256,7 +256,7 @@ public struct AddAppView: View {
             let isTracked = trackedPaths.contains(app.executablePath) || trackedPaths.contains(app.bundleUrl.path)
 
             HStack(spacing: 10) {
-                appTile(name: app.name, path: app.bundleUrl.path)
+                appTile(name: app.name, path: app.bundleUrl.path, bundleId: app.bundleId)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(app.name)
@@ -277,7 +277,7 @@ public struct AddAppView: View {
                         .foregroundColor(ThemeColors.accent)
                 } else {
                     Button(action: {
-                        trackApp(path: app.executablePath, name: app.name)
+                        trackApp(path: app.executablePath, name: app.name, bundleId: app.bundleId)
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "plus")
@@ -313,7 +313,7 @@ public struct AddAppView: View {
                 editingAppId = app.id
             }) {
                 HStack(spacing: 10) {
-                    appTile(name: app.displayName, path: app.exePath)
+                    appTile(name: app.displayName, path: app.exePath, appId: app.id)
 
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
@@ -395,13 +395,20 @@ public struct AddAppView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func appTile(name: String, path: String) -> some View {
+    private func appTile(name: String, path: String, bundleId: String? = nil, appId: Int64? = nil) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 6)
                 .fill(ThemeColors.surfaceRaised)
                 .frame(width: 28, height: 28)
 
-            if let png = state.iconCache.iconData(forFilePath: path, targetSize: 28),
+            if let appId = appId,
+               let png = state.iconCache.getCachedIcon(forAppId: appId, fallbackExePath: path),
+               let nsImg = NSImage(data: png) {
+                Image(nsImage: nsImg)
+                    .resizable()
+                    .frame(width: 20, height: 20)
+                    .cornerRadius(3)
+            } else if let png = state.iconCache.iconData(forFilePath: path, bundleId: bundleId, targetSize: 28),
                let nsImg = NSImage(data: png) {
                 Image(nsImage: nsImg)
                     .resizable()
@@ -415,7 +422,7 @@ public struct AddAppView: View {
         }
     }
 
-    private func trackApp(path: String, name: String) {
+    private func trackApp(path: String, name: String, bundleId: String? = nil) {
         let lib = MacAppLibrary(db: state.db)
         do {
             let appId = try lib.trackApp(
@@ -426,7 +433,7 @@ public struct AddAppView: View {
                 deviceId: state.localDeviceId
             )
             // Cache icon
-            if let png = state.iconCache.iconData(forFilePath: path, targetSize: 64) {
+            if let png = state.iconCache.iconData(forFilePath: path, bundleId: bundleId, targetSize: 64) {
                 state.iconCache.saveIcon(forAppId: appId, hash: "extracted:\(path)", png: png)
             }
             addedThisSession += 1

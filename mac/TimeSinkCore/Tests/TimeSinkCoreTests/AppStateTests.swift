@@ -88,3 +88,4 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(allAll.apps.count, 2)
     }
 }
+

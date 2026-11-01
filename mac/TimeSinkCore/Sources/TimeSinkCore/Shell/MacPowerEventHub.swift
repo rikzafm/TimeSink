@@ -69,3 +69,4 @@ public final class MacPowerEventHub: @unchecked Sendable {
         observers.append(contentsOf: [lockObs, unlockObs])
     }
 }
+

@@ -43,3 +43,4 @@ public static class DeviceInfoService
         return isLocal ? "PC" : "Mac";
     }
 }
+

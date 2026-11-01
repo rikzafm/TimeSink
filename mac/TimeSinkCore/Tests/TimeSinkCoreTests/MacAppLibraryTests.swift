@@ -126,3 +126,4 @@ final class MacAppLibraryTests: XCTestCase {
         XCTAssertEqual(countUsageAfter, 0)
     }
 }
+
