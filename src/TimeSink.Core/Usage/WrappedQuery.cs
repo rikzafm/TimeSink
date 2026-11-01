@@ -18,15 +18,15 @@ public static class WrappedQuery
     private const int OthersSize = 3;
 
 
-    public static WrappedResult Run(UsageContext context) => UsageWindow.Over(context, Run);
+    public static WrappedResult Run(UsageContext context, int? targetYear = null) => UsageWindow.Over(context, w => Run(w, targetYear));
 
-    internal static WrappedResult Run(UsageWindow window)
+    internal static WrappedResult Run(UsageWindow window, int? targetYear = null)
     {
         var context = window.Context;
         var (now, zone, gamesOnly, onSinceUtc) = (context.Now, context.Zone, context.GamesOnly, context.SignInUtc);
         var nowUtc = now.ToUnixTimeSeconds();
         var today = window.Today;
-        var year = today.Year;
+        var year = targetYear ?? today.Year;
         var yearStart = LocalDays.StartOf(new DateOnly(year, 1, 1), zone);
         var windowStart = LocalDays.StartOf(new DateOnly(year - 1, 12, 1), zone); // December feeds January's month delta
 
@@ -42,9 +42,11 @@ public static class WrappedQuery
         var beforeNoonDevice = new Dictionary<string, long>();
         long beforeNoon = 0, total = 0;
 
-        var segs = window.Segments(windowStart);
-        var windowed = segs.Select(s => s with { Start = Math.Max(s.Start, windowStart), End = Math.Min(s.End, nowUtc) }).ToList();
-        var months = new MonthRollup(windowed, zone, nowUtc, onSinceUtc, gamesOnly); // app-seconds per month (the window)
+        var endOfYearUtc = year < today.Year ? LocalDays.StartOf(new DateOnly(year + 1, 1, 1), zone) : (long?)null;
+        var maxUtc = endOfYearUtc ?? nowUtc;
+        var segs = window.Segments(windowStart, endOfYearUtc);
+        var windowed = segs.Select(s => s with { Start = Math.Max(s.Start, windowStart), End = Math.Min(s.End, maxUtc) }).ToList();
+        var months = new MonthRollup(windowed, zone, maxUtc, onSinceUtc, gamesOnly); // app-seconds per month (the window)
         foreach (var sl in UsageDays.Slices(windowed, zone))
         {
             var len = sl.End - sl.Start;
@@ -127,7 +129,8 @@ public static class WrappedQuery
         if (start.FirstDay is not null)
         {
             var from = start.Since(new DateOnly(year, 1, 1));
-            daysTracked = Math.Max(0, today.DayNumber - from.DayNumber + 1);
+            var toDay = year < today.Year ? new DateOnly(year, 12, 31) : today;
+            daysTracked = Math.Max(0, toDay.DayNumber - from.DayNumber + 1);
         }
 
         return new WrappedResult(

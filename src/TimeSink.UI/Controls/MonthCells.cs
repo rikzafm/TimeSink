@@ -22,11 +22,13 @@ public sealed class MonthCells : FrameworkElement
     public static readonly DependencyProperty DaysProperty = Reg<IReadOnlyList<AppDetailDay?>?>(nameof(Days));
     public static readonly DependencyProperty HeatBrushesProperty = Reg<IReadOnlyList<Brush>?>(nameof(HeatBrushes));
     public static readonly DependencyProperty OutlineBrushProperty = Reg<Brush?>(nameof(OutlineBrush));
+    public static readonly DependencyProperty HighlightBrushProperty = Reg<Brush?>(nameof(HighlightBrush));
 
     /// <summary>42 slots in row-major order (week by week); null slots lie outside the month.</summary>
     public IReadOnlyList<AppDetailDay?>? Days { get => (IReadOnlyList<AppDetailDay?>?)GetValue(DaysProperty); set => SetValue(DaysProperty, value); }
     public IReadOnlyList<Brush>? HeatBrushes { get => (IReadOnlyList<Brush>?)GetValue(HeatBrushesProperty); set => SetValue(HeatBrushesProperty, value); }
     public Brush? OutlineBrush { get => (Brush?)GetValue(OutlineBrushProperty); set => SetValue(OutlineBrushProperty, value); }
+    public Brush? HighlightBrush { get => (Brush?)GetValue(HighlightBrushProperty); set => SetValue(HighlightBrushProperty, value); }
 
     public event Action<AppDetailDay?>? HoverChanged;
 
@@ -43,6 +45,7 @@ public sealed class MonthCells : FrameworkElement
         ChartSupport.HitArea(dc, ActualWidth, ActualHeight);
         if (Days is not { } days || HeatBrushes is not { Count: >= 5 } heat) return;
         var pen = OutlineBrush is null ? null : new Pen(OutlineBrush, 1);
+        var highlightPen = HighlightBrush is null ? null : new Pen(HighlightBrush, 1.2);
         for (var i = 0; i < days.Count && i < Cols * Rows; i++)
         {
             if (days[i] is not { } d) continue;
@@ -51,6 +54,9 @@ public sealed class MonthCells : FrameworkElement
                 dc.DrawRoundedRectangle(heat[Math.Clamp(d.Level, 0, 4)], null, rect, Radius, Radius);
             else
                 dc.DrawRoundedRectangle(null, pen, new Rect(rect.X + 0.5, rect.Y + 0.5, rect.Width - 1, rect.Height - 1), Radius, Radius);
+
+            if (ReferenceEquals(d, _hover) && highlightPen is not null)
+                dc.DrawRoundedRectangle(null, highlightPen, new Rect(rect.X - 0.5, rect.Y - 0.5, rect.Width + 1, rect.Height + 1), Radius + 0.5, Radius + 0.5);
         }
     }
 
@@ -80,6 +86,7 @@ public sealed class MonthCells : FrameworkElement
     {
         if (ReferenceEquals(day, _hover)) return;
         _hover = day;
+        InvalidateVisual();
         HoverChanged?.Invoke(day);
     }
 }

@@ -28,7 +28,13 @@ public final class AppState: ObservableObject {
     public let syncHost: SyncHost?
     public let iconCache: MacIconCache
 
-    @Published public var selectedTab: AppTab = .today
+    @Published public var selectedTab: AppTab = .today {
+        didSet {
+            if oldValue != selectedTab {
+                yearOffset = 0
+            }
+        }
+    }
     @Published public var deviceScope: DeviceScope = .this
     @Published public var gamesOnly: Bool = false
 
@@ -363,6 +369,32 @@ public final class AppState: ObservableObject {
     public func nextMonth() {
         guard monthsBack > 0 else { return }
         monthsBack -= 1
+        refresh()
+    }
+
+    public var canYearGoPrev: Bool {
+        if let y = yearResult {
+            return y.canPrev
+        }
+        guard let start = todayResult?.firstTracked ?? monthResult?.firstTracked else { return false }
+        guard let firstYear = Int(start.prefix(4)) else { return false }
+        let currentYear = Calendar.current.component(.year, from: Date()) - yearOffset
+        return currentYear > firstYear
+    }
+
+    public var canYearGoNext: Bool {
+        yearOffset > 0
+    }
+
+    public func previousYear() {
+        guard canYearGoPrev else { return }
+        yearOffset += 1
+        refresh()
+    }
+
+    public func nextYear() {
+        guard canYearGoNext else { return }
+        yearOffset -= 1
         refresh()
     }
 
@@ -748,11 +780,27 @@ public final class AppState: ObservableObject {
     }
 
     public func exportAppCsv(appId: Int64) {
+        guard let result = appDetailResult else { return }
         let panel = NSSavePanel()
-        let name = appDetailResult?.name ?? "app"
-        panel.nameFieldStringValue = "timesink-\(name).csv"
+        let cleanName = result.name.lowercased().replacingOccurrences(of: " ", with: "-")
+        panel.nameFieldStringValue = "timesink-\(cleanName).csv"
         if panel.runModal() == .OK, let url = panel.url {
-            _ = try? exportCsv(folder: url.deletingLastPathComponent().path)
+            var csv = "date,app,seconds\r\n"
+            let appField = result.name.contains(",") ? "\"\(result.name)\"" : result.name
+            if let daySeconds = result.daySeconds {
+                for (d, s) in daySeconds.sorted(by: { $0.key < $1.key }) {
+                    if s > 0 {
+                        csv += "\(d),\(appField),\(s)\r\n"
+                    }
+                }
+            } else {
+                for day in result.days {
+                    if day.seconds > 0 {
+                        csv += "\(day.date),\(appField),\(day.seconds)\r\n"
+                    }
+                }
+            }
+            try? csv.write(to: url, atomically: true, encoding: .utf8)
         }
     }
 

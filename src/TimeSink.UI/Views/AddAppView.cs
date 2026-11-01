@@ -54,6 +54,13 @@ public sealed partial class AddAppView : UserControl
     private readonly Dictionary<string, RadioButton> _tabButtons = new();
     private readonly TileRegistry _tiles;      // Installed tab rows waiting for their icon
     private readonly TileRegistry _mergeTiles; // merge screen rows waiting for their icon
+    private Action? _externalSettingsClose;
+
+    public void ShowAppSettingsDirect(long id, Action onClose)
+    {
+        _externalSettingsClose = onClose;
+        ShowAppSettings(id);
+    }
 
     public AddAppView(ThemeService themes, string dbPath, Action close)
     {

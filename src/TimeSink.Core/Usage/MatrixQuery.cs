@@ -22,24 +22,26 @@ public static class MatrixQuery
         return pct < 30 * best ? 0 : pct < 55 * best ? 1 : pct < 75 * best ? 2 : pct < 90 * best ? 3 : 4;
     }
 
-    public static MatrixResult Run(UsageContext context) => UsageWindow.Over(context, Run);
+    public static MatrixResult Run(UsageContext context, int? targetYear = null) => UsageWindow.Over(context, w => Run(w, targetYear));
 
-    internal static MatrixResult Run(UsageWindow window)
+    internal static MatrixResult Run(UsageWindow window, int? targetYear = null)
     {
         var context = window.Context;
         var (now, zone, gamesOnly, onSinceUtc) = (context.Now, context.Zone, context.GamesOnly, context.SignInUtc);
         var nowUtc = now.ToUnixTimeSeconds();
         var today = window.Today;
-        var year = today.Year;
+        var year = targetYear ?? today.Year;
         var apps = window.Apps;
         var started = TrackingStart.Of(apps, zone).FirstDay;
         if (started is null) return new MatrixResult(year, nowUtc, null, 1, [], [], 0);
         var first = started is { } s && s.Year == year ? s.Month : 1;
-        var count = today.Month - first + 1;
+        var lastMonth = year < today.Year ? 12 : today.Month;
+        var count = lastMonth - first + 1;
         if (count < 1) return new MatrixResult(year, nowUtc, started, first, [], [], 0);
 
-        var segs = window.Segments(LocalDays.StartOf(new DateOnly(year, first, 1), zone));
-        var rollup = new MonthRollup(segs, zone, nowUtc, onSinceUtc, gamesOnly);
+        var endOfYearUtc = year < today.Year ? LocalDays.StartOf(new DateOnly(year + 1, 1, 1), zone) : (long?)null;
+        var segs = window.Segments(LocalDays.StartOf(new DateOnly(year, first, 1), zone), endOfYearUtc);
+        var rollup = new MonthRollup(segs, zone, endOfYearUtc ?? nowUtc, onSinceUtc, gamesOnly);
         var months = Enumerable.Range(0, count).Select(i => new MonthKey(year, first + i)).ToList();
         var perApp = new Dictionary<long, long[]>();
         for (var i = 0; i < count; i++)

@@ -15,18 +15,18 @@ public static class YearQuery
     private const int RecentMonths = 3;
 
 
-    public static YearResult Run(UsageContext context)
+    public static YearResult Run(UsageContext context, int? targetYear = null)
     {
-        return UsageWindow.Over(context, Run);
+        return UsageWindow.Over(context, w => Run(w, targetYear));
     }
 
-    internal static YearResult Run(UsageWindow window)
+    internal static YearResult Run(UsageWindow window, int? targetYear = null)
     {
         var context = window.Context;
         var (now, zone, gamesOnly, onSinceUtc) = (context.Now, context.Zone, context.GamesOnly, context.SignInUtc);
         var nowUtc = now.ToUnixTimeSeconds();
         var today = window.Today;
-        var year = today.Year;
+        var year = targetYear ?? today.Year;
         var cur = MonthKey.Of(today);
         var firstMonth = new MonthKey(year, 1).AddMonths(-(RecentMonths - 1)); // two earlier months feed the "last 3 months" and January's delta
 
@@ -39,15 +39,16 @@ public static class YearQuery
 
         // The window runs from two months before the year to now. Month totals are PC uptime; the per-app shares only feed
         // each month's top apps.
-        var segs = window.Segments(LocalDays.StartOf(firstMonth.First, zone));
-        var rollup = new MonthRollup(segs, zone, nowUtc, onSinceUtc, gamesOnly, window.LocalDeviceId);
+        var endOfYearUtc = year < today.Year ? LocalDays.StartOf(new DateOnly(year + 1, 1, 1), zone) : (long?)null;
+        var segs = window.Segments(LocalDays.StartOf(firstMonth.First, zone), endOfYearUtc);
+        var rollup = new MonthRollup(segs, zone, endOfYearUtc ?? nowUtc, onSinceUtc, gamesOnly, window.LocalDeviceId);
         long Secs(MonthKey m) => rollup.Uptime(m);
 
         // Current month projection: seconds / days elapsed since tracking (or month) began * days in month.
         long curSecs = Secs(cur);
         long curProj = curSecs;
         var hasPace = first is not null;
-        if (hasPace)
+        if (hasPace && year == today.Year)
         {
             var monthFirst = new DateOnly(today.Year, today.Month, 1);
             var from = start.Since(monthFirst);
@@ -58,7 +59,7 @@ public static class YearQuery
         // Ghost value: mean of the last three months (the current one at its projection), skipping months before
         // tracking and the part-month tracking began in (unless that is the current month).
         var recent = new List<long>();
-        for (var i = cur.AddMonths(-(RecentMonths - 1)); i <= cur; i = i.AddMonths(1))
+        if (year == today.Year) for (var i = cur.AddMonths(-(RecentMonths - 1)); i <= cur; i = i.AddMonths(1))
         {
             if (BeforeTracking(i)) continue;
             if (i == cur) recent.Add(curProj);
@@ -112,11 +113,11 @@ public static class YearQuery
         var best = months.Where(m => m.Kind is YearMonthKind.Tracked or YearMonthKind.Current && m.Seconds > 0)
             .OrderByDescending(m => m.Seconds).FirstOrDefault();
 
-        long? pace = hasPace
+        long? pace = hasPace && year == today.Year
             ? total + (curProj - curSecs) + months.Where(m => m.Kind == YearMonthKind.Future).Sum(m => m.ProjectedSeconds)
             : null;
 
         return new YearResult(year, nowUtc, first, months, total, average, best?.Month, best?.Seconds ?? 0, pace,
-            hasPace ? recent.Count : 0, yearDeviceTotals.Count > 0 ? yearDeviceTotals : null, yearOnBoth);
+            (hasPace && year == today.Year) ? recent.Count : 0, yearDeviceTotals.Count > 0 ? yearDeviceTotals : null, yearOnBoth);
     }
 }

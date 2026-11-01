@@ -39,6 +39,12 @@ public sealed partial class AddAppView
     {
         _nav.CloseSettings();
         _settingsScroll = null;
+        if (_externalSettingsClose is { } external)
+        {
+            _externalSettingsClose = null;
+            external();
+            return;
+        }
         Content = _shell;
         if (_trackedList is not null && _nav.State.Tab == AddAppTab.Tracked && _mergePlan is null) RenderTracked();
     }

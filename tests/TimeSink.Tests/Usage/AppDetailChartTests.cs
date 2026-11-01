@@ -28,6 +28,7 @@ public sealed class AppDetailChartTests
     {
         var d = Build(AppDetailRange.All);
         d.Bars.Select(b => (b.Label, b.Seconds)).Should().Equal(("2025", 3600L), ("2026", 9600L));
+        d.Bars.Select(b => b.Sessions).Should().Equal(1, 3);
         d.TotalSeconds.Should().Be(13200);
         d.CanPrev.Should().BeFalse();
         d.CanNext.Should().BeFalse();
@@ -41,7 +42,9 @@ public sealed class AppDetailChartTests
         var d = Build(AppDetailRange.Year);
         d.Bars.Should().HaveCount(12);
         d.Bars[0].Seconds.Should().Be(7200);
+        d.Bars[0].Sessions.Should().Be(1);
         d.Bars[2].Seconds.Should().Be(2400);
+        d.Bars[2].Sessions.Should().Be(2);
         d.OpensByHour[21].Should().Be(2);
         d.CanPrev.Should().BeTrue();
         d.CanNext.Should().BeFalse();
@@ -94,10 +97,11 @@ public sealed class AppDetailChartTests
         AppDetailChart.Step(range, Today, dir).Should().Be(DateOnly.Parse(expected));
 
     [Theory]
+    [InlineData(AppDetailRange.Matrix, AppDetailRange.All)]
     [InlineData(AppDetailRange.All, AppDetailRange.Year)]
     [InlineData(AppDetailRange.Year, AppDetailRange.Month)]
     [InlineData(AppDetailRange.Month, AppDetailRange.Week)]
-    [InlineData(AppDetailRange.Week, AppDetailRange.All)]
+    [InlineData(AppDetailRange.Week, AppDetailRange.Matrix)]
     public void NextRange_cycles_through_the_ranges(AppDetailRange range, AppDetailRange expected) =>
         AppDetailChart.NextRange(range).Should().Be(expected);
 }

@@ -115,27 +115,33 @@ public struct HourlyChartView: View {
     @ViewBuilder
     private func barView(_ bucket: HourBucket) -> some View {
         if bucket.hour > nowHour {
-            RoundedRectangle(cornerRadius: 2)
-                .strokeBorder(Tokens.typical, style: StrokeStyle(lineWidth: 1, dash: [1, 1.5]))
-                .frame(height: max(2, height(bucket.typicalUptimeSeconds)))
-                .opacity(result.hasTypical ? 1 : 0)
+            EmptyView()
         } else if isAsleep(bucket.hour) {
             Hatch(color: Tokens.ramp[2])
                 .frame(height: max(height(Double(bucket.uptimeSeconds)), barsHeight * 0.7))
                 .clipShape(RoundedRectangle(cornerRadius: 2))
         } else if split {
             let parts = state.deviceSplit(bucket.byDevice?.mapValues(\.uptimeSeconds))
-            OverlapBar(
-                mac: height(Double(parts.mac)),
-                pc: height(Double(parts.pc)),
-                macColor: bucket.hour == nowHour ? ThemeColors.accent : Tokens.ramp[3],
-                pcColor: ThemeColors.deviceBDark,
-                radius: 2
-            )
+            let macSec = parts.mac >= 60 ? parts.mac : 0
+            let pcSec = parts.pc >= 60 ? parts.pc : 0
+            if macSec > 0 || pcSec > 0 {
+                OverlapBar(
+                    mac: macSec > 0 ? max(2, height(Double(macSec))) : 0,
+                    pc: pcSec > 0 ? max(2, height(Double(pcSec))) : 0,
+                    macColor: bucket.hour == nowHour ? ThemeColors.accent : Tokens.ramp[3],
+                    pcColor: ThemeColors.deviceBDark,
+                    radius: 2
+                )
+            } else {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(bucket.hour == nowHour ? ThemeColors.accent : Tokens.ramp[0])
+                    .frame(height: 2)
+            }
         } else {
+            let sec = bucket.uptimeSeconds >= 60 ? bucket.uptimeSeconds : 0
             RoundedRectangle(cornerRadius: 2)
-                .fill(color(bucket.uptimeSeconds, hour: bucket.hour))
-                .frame(height: max(2, height(Double(bucket.uptimeSeconds))))
+                .fill(color(sec, hour: bucket.hour))
+                .frame(height: sec > 0 ? max(2, height(Double(sec))) : 2)
         }
     }
 
@@ -306,11 +312,9 @@ public struct HourlyChartView: View {
                     .frame(width: 12, height: 8, alignment: .leading)
                     Text("Overlapping = both on")
                 }
-                typicalKey
                 asleepKey("Asleep")
             } else {
                 HStack(spacing: 5) { swatch(ThemeColors.accent); Text("Apps open") }
-                typicalKey
                 asleepKey("Mac asleep · paused")
             }
         }

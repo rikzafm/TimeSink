@@ -45,4 +45,7 @@ public sealed record YearResult(
     long? PaceYearSeconds,
     int RecentMonthCount,
     IReadOnlyDictionary<string, long>? DeviceTotals = null,
-    long OnBothSeconds = 0);
+    long OnBothSeconds = 0)
+{
+    public bool CanPrev => TrackingStarted is { } s && Year > s.Year;
+};

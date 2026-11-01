@@ -58,14 +58,27 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button x:Name="SettingsButton" Width="34" Height="34" ToolTip="{DynamicResource Str.Settings}">
+                    <Button x:Name="SettingsButton" Width="34" Height="34" AutomationProperties.Name="Settings" ToolTip="{DynamicResource Str.Settings}">
                         <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource LinkButton}">
-                                <Style.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}"/>
-                                    </Trigger>
-                                </Style.Triggers>
+                            <Style TargetType="Button">
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.TextSoft}"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                                <Setter Property="Focusable" Value="False"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Box" CornerRadius="{DynamicResource CornerRadius.Small}" BorderThickness="1" BorderBrush="Transparent" Background="Transparent">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}"/>
+                                                    <Setter TargetName="Box" Property="Background" Value="{DynamicResource Brush.SurfaceAlt}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
                             </Style>
                         </Button.Style>
                         <Viewbox Width="20" Height="20">

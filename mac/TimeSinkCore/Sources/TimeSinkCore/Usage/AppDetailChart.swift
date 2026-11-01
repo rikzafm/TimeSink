@@ -1,6 +1,7 @@
 import Foundation
 
 public enum AppDetailRange: String, Sendable, Codable, CaseIterable {
+    case matrix
     case all
     case year
     case month
@@ -12,12 +13,14 @@ public struct AppDetailBar: Sendable, Codable, Equatable {
     public let seconds: Int64
     public let from: String
     public let to: String
+    public let sessions: Int
 
-    public init(label: String, seconds: Int64, from: String, to: String) {
+    public init(label: String, seconds: Int64, from: String, to: String, sessions: Int = 0) {
         self.label = label
         self.seconds = seconds
         self.from = from
         self.to = to
+        self.sessions = sessions
     }
 }
 
@@ -76,7 +79,7 @@ public enum AppDetailChart {
                 let yStr = String(y)
                 let start = "\(yStr)-01-01"
                 let end = "\(yStr)-12-31"
-                bars.append(bar(label: yStr, from: start, to: end, daySeconds: daySeconds))
+                bars.append(bar(label: yStr, from: start, to: end, daySeconds: daySeconds, opens: opens))
             }
         case .year:
             let yStr = String(from.prefix(4))
@@ -87,7 +90,7 @@ public enum AppDetailChart {
             for m in 1...12 {
                 let start = String(format: "%04d-%02d-01", y, m)
                 let end = String(format: "%04d-%02d-%02d", y, m, daysInMonth[m - 1])
-                bars.append(bar(label: monthNames[m - 1], from: start, to: end, daySeconds: daySeconds))
+                bars.append(bar(label: monthNames[m - 1], from: start, to: end, daySeconds: daySeconds, opens: opens))
             }
         case .month, .week:
             var cur = from
@@ -109,7 +112,7 @@ public enum AppDetailChart {
                     let dNum = Int(cur.suffix(2)) ?? 1
                     label = String(dNum)
                 }
-                bars.append(bar(label: label, from: cur, to: cur, daySeconds: daySeconds))
+                bars.append(bar(label: label, from: cur, to: cur, daySeconds: daySeconds, opens: opens))
                 cur = PeriodNavigator.stepBy(unit: .day, anchor: cur, dir: 1)
             }
         }
@@ -156,7 +159,7 @@ public enum AppDetailChart {
 
     private static func unitOf(_ range: AppDetailRange) -> PeriodUnit {
         switch range {
-        case .year: return .year
+        case .matrix, .year: return .year
         case .month: return .month
         case .week: return .week
         case .all: return .day
@@ -175,7 +178,7 @@ public enum AppDetailChart {
             let fYear = String(first.prefix(4))
             let tYear = String(today.prefix(4))
             return ("\(fYear)-01-01", "\(tYear)-12-31")
-        case .year:
+        case .matrix, .year:
             let y = String(anchor.prefix(4))
             return ("\(y)-01-01", "\(y)-12-31")
         case .month:
@@ -192,14 +195,15 @@ public enum AppDetailChart {
         }
     }
 
-    private static func bar(label: String, from: String, to: String, daySeconds: [String: Int64]) -> AppDetailBar {
+    private static func bar(label: String, from: String, to: String, daySeconds: [String: Int64], opens: [AppDetailOpen]) -> AppDetailBar {
         var seconds: Int64 = 0
         var cur = from
         while cur <= to {
             seconds += daySeconds[cur] ?? 0
             cur = PeriodNavigator.stepBy(unit: .day, anchor: cur, dir: 1)
         }
-        return AppDetailBar(label: label, seconds: seconds, from: from, to: to)
+        let sessions = opens.filter { $0.date >= from && $0.date <= to }.count
+        return AppDetailBar(label: label, seconds: seconds, from: from, to: to, sessions: sessions)
     }
 }
 

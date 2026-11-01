@@ -38,12 +38,15 @@ public sealed class YearMatrixView : UserControl, IYearSubView
     private MatrixResult? _result;
     private bool _selectMonth;
     private int _selected; // row index, or month column index when _selectMonth
+    private int _year = DateTime.Today.Year;
+    private readonly Action<DateOnly?>? _onTrackingStarted;
 
-    public YearMatrixView(string dbPath, ThemeService themes, LiveState live)
+    public YearMatrixView(string dbPath, ThemeService themes, LiveState live, Action<DateOnly?>? onTrackingStarted = null)
     {
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
+        _onTrackingStarted = onTrackingStarted;
 
         _total.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
         _total.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
@@ -136,13 +139,21 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         return t;
     }
 
+    public void SetYear(int year)
+    {
+        if (_year == year) return;
+        _year = year;
+        _selected = 0;
+        Refresh();
+    }
+
     public void Start() => _driver.Start();
 
     public void Stop() => _driver.Stop();
 
     public async void Refresh()
     {
-        if (await _loader.Refresh(c => MatrixQuery.Run(c), r => _result = r)) Redraw();
+        if (await _loader.Refresh(c => MatrixQuery.Run(c, _year), r => { _result = r; _onTrackingStarted?.Invoke(r.TrackingStarted); })) Redraw();
     }
 
     private static string H(long seconds) => Str(MatrixStringKeys.Hours, UsageText.Hours(seconds));

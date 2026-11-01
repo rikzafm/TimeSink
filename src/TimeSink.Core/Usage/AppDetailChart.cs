@@ -3,10 +3,10 @@ using System.Globalization;
 namespace TimeSink.Core.Usage;
 
 /// <summary>How far back the app detail bar chart looks: the whole history, or one year, month or week.</summary>
-public enum AppDetailRange { All, Year, Month, Week }
+public enum AppDetailRange { Matrix, All, Year, Month, Week }
 
 /// <summary>One bar: its label and the time in it. <see cref="From"/> to <see cref="To"/> (inclusive) is the span it covers.</summary>
-public sealed record AppDetailBar(string Label, long Seconds, DateOnly From, DateOnly To);
+public sealed record AppDetailBar(string Label, long Seconds, DateOnly From, DateOnly To, int Sessions = 0);
 
 /// <summary>
 /// The bar chart and the time-of-day histogram of one period. <see cref="OpensByHour"/> counts session starts per local
@@ -44,18 +44,18 @@ public static class AppDetailChart
         {
             case AppDetailRange.All:
                 for (var y = from.Year; y <= to.Year; y++)
-                    bars.Add(Bar(y.ToString(En), new DateOnly(y, 1, 1), new DateOnly(y, 12, 31), daySeconds));
+                    bars.Add(Bar(y.ToString(En), new DateOnly(y, 1, 1), new DateOnly(y, 12, 31), daySeconds, opens));
                 break;
             case AppDetailRange.Year:
                 for (var m = 1; m <= 12; m++)
                 {
                     var start = new DateOnly(from.Year, m, 1);
-                    bars.Add(Bar(start.ToString("MMM", En), start, start.AddMonths(1).AddDays(-1), daySeconds));
+                    bars.Add(Bar(start.ToString("MMM", En), start, start.AddMonths(1).AddDays(-1), daySeconds, opens));
                 }
                 break;
             default:
                 for (var d = from; d <= to; d = d.AddDays(1))
-                    bars.Add(Bar(range == AppDetailRange.Week ? d.ToString("ddd", En) : d.Day.ToString(En), d, d, daySeconds));
+                    bars.Add(Bar(range == AppDetailRange.Week ? d.ToString("ddd", En) : d.Day.ToString(En), d, d, daySeconds, opens));
                 break;
         }
 
@@ -81,6 +81,7 @@ public static class AppDetailChart
 
     private static PeriodUnit UnitOf(AppDetailRange range) => range switch
     {
+        AppDetailRange.Matrix => PeriodUnit.Year,
         AppDetailRange.Year => PeriodUnit.Year,
         AppDetailRange.Month => PeriodUnit.Month,
         AppDetailRange.Week => PeriodUnit.Week,
@@ -93,6 +94,7 @@ public static class AppDetailChart
         {
             case AppDetailRange.All:
                 return (new DateOnly(first.Year, 1, 1), new DateOnly(today.Year, 12, 31));
+            case AppDetailRange.Matrix:
             case AppDetailRange.Year:
                 return (new DateOnly(anchor.Year, 1, 1), new DateOnly(anchor.Year, 12, 31));
             case AppDetailRange.Month:
@@ -104,11 +106,12 @@ public static class AppDetailChart
         }
     }
 
-    private static AppDetailBar Bar(string label, DateOnly from, DateOnly to, IReadOnlyDictionary<DateOnly, long> daySeconds)
+    private static AppDetailBar Bar(string label, DateOnly from, DateOnly to, IReadOnlyDictionary<DateOnly, long> daySeconds, IReadOnlyList<AppDetailOpen> opens)
     {
         long seconds = 0;
         for (var d = from; d <= to; d = d.AddDays(1))
             seconds += daySeconds.GetValueOrDefault(d);
-        return new AppDetailBar(label, seconds, from, to);
+        var sessions = opens.Count(o => o.Date >= from && o.Date <= to);
+        return new AppDetailBar(label, seconds, from, to, sessions);
     }
 }

@@ -7,6 +7,9 @@ namespace TimeSink.UI.Views;
 /// </summary>
 public interface IYearSubView
 {
+    /// <summary>Set the active year to display.</summary>
+    void SetYear(int year);
+
     /// <summary>Begin (or resume) loading; idempotent.</summary>
     void Start();
 

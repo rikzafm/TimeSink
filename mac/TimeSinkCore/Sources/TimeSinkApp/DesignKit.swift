@@ -484,7 +484,13 @@ public struct OverlapBar: View {
                 .frame(width: w, height: pc)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             ZStack {
-                if mac <= pc { pcBar; macBar } else { macBar; pcBar }
+                if mac > 0 && pc > 0 {
+                    if mac <= pc { pcBar; macBar } else { macBar; pcBar }
+                } else if mac > 0 {
+                    macBar
+                } else if pc > 0 {
+                    pcBar
+                }
             }
         }
     }

@@ -39,14 +39,17 @@ public sealed class YearWrappedView : UserControl, IYearSubView
 
     private WrappedResult? _result;
     private int _index;
+    private int _year = DateTime.Today.Year;
+    private readonly Action<DateOnly?>? _onTrackingStarted;
     private Point? _dragFrom;
     private DispatcherTimer? _savedReset;
 
-    public YearWrappedView(string dbPath, ThemeService themes, LiveState live)
+    public YearWrappedView(string dbPath, ThemeService themes, LiveState live, Action<DateOnly?>? onTrackingStarted = null)
     {
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
+        _onTrackingStarted = onTrackingStarted;
 #if DEBUG
         if (int.TryParse(Environment.GetEnvironmentVariable("TS_WRAPPED_CARD"), out var start)) _index = Math.Clamp(start - 1, 0, CardCount - 1); // test aid (decision 115)
 #endif
@@ -130,6 +133,13 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         Redraw();
     }
 
+    public void SetYear(int year)
+    {
+        if (_year == year) return;
+        _year = year;
+        Refresh();
+    }
+
     public void Start() => _driver.Start();
 
     public void Stop() => _driver.Stop();
@@ -137,7 +147,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
     public async void Refresh()
     {
         WrappedResult? loaded = null;
-        if (!await _loader.Refresh(c => WrappedQuery.Run(c), r => loaded = r)) return;
+        if (!await _loader.Refresh(c => WrappedQuery.Run(c, _year), r => { loaded = r; _onTrackingStarted?.Invoke(r.TrackingStarted); })) return;
         var result = loaded!;
         _result = result;
         AppIcons.Load(_dbPath, result.Podium.Concat(result.Others).Concat(result.GamesTop?.Podium ?? []).Concat(result.GachaTop?.Podium ?? []).Concat(result.LongestSessions ?? []).Select(a => a.AppId));
@@ -228,7 +238,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         }
 
         return new TotalCardModel(
-            Str(WrappedStringKeys.Card1Label, r.Year),
+            Str(r.Year == _loader.Today.Year ? WrappedStringKeys.Card1Label : WrappedStringKeys.Card1LabelPast, r.Year),
             r.TotalHours.ToString(CultureInfo.CurrentCulture),
             Str(r.TotalHours == 1 ? WrappedStringKeys.Hour : WrappedStringKeys.Hours),
             Str(isMultiDev ? WrappedStringKeys.EquivalentAll : WrappedStringKeys.Equivalent, highlight), highlight,

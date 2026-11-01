@@ -416,6 +416,16 @@
     "detailTimeOfDay": "WHEN IT OPENS",
     "detailOpenedAround": "Usually opened around {0}",
     "detailOpenedNone": "Not opened in this period",
+    "detailTitle": "App detail",
+    "detailSettings": "Settings",
+    "detailLifetimeShare": "lifetime · {0}% share",
+    "detailMergedTrackedSince": "Merged ×{0} · tracked since {1}",
+    "detailTrackedSince": "tracked since {0}",
+    "detailRangeMatrix": "Matrix",
+    "detailPeriodTotal": "{0} in this period",
+    "detailFooterUptime": "App time, not uptime",
+    "detailExportCsv": "Export app (CSV)",
+    "detailQuartersPeak": "Quarters of this app's busiest day ({0})",
     "weekCaption": "This week",
     "weekLastCaption": "Last week",
     "weekStreak": "{0}-day streak",
@@ -513,6 +523,9 @@
     "setMergeHintBoth": "{0} apps exist on both devices",
     "setMergeHintDesc": "Merge {0} so they count as one app.",
     "setMergeButton": "Merge…",
-    "setLastSync": "Last sync · {0}"
+    "setLastSync": "Last sync · {0}",
+    "wrapCard1LabelPast": "YOUR {0} IN REVIEW",
+    "yearCaptionPast": "{0} · PC uptime",
+    "yearCaptionAllPast": "{0} · PC uptime, all devices (overlap once)"
   }
 }

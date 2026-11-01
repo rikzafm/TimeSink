@@ -48,11 +48,23 @@ public static class AppDetailStringKeys
     public const string OpenedAround = "detailOpenedAround";
     public const string OpenedNone = "detailOpenedNone";
 
+    public const string Title = "detailTitle";
+    public const string Settings = "detailSettings";
+    public const string LifetimeShare = "detailLifetimeShare";
+    public const string MergedTrackedSince = "detailMergedTrackedSince";
+    public const string TrackedSince = "detailTrackedSince";
+    public const string RangeMatrix = "detailRangeMatrix";
+    public const string PeriodTotal = "detailPeriodTotal";
+    public const string FooterUptime = "detailFooterUptime";
+    public const string ExportCsv = "detailExportCsv";
+    public const string QuartersPeak = "detailQuartersPeak";
+
     public static readonly IReadOnlyList<string> All =
     [
         Back, Meta, LastOpened, AvgSession, TimesOpened, Today, Yesterday, RunningNow, LastSub, LastSubRunning, Never,
         Longest, TotalIn, YearCaption, YearHours, PrevYear, NextYear, Hint, DayTracked, SessionOne, SessionMany,
         NotOpened, BeforeTracking, NotYet, Footnote, FootnoteNone, ViewCalendar, ViewBars, RangeAll, RangeYear, RangeMonth,
         RangeWeek, PrevPeriod, NextPeriod, AllTime, BarsHint, BarTip, TimeOfDay, OpenedAround, OpenedNone,
+        Title, Settings, LifetimeShare, MergedTrackedSince, TrackedSince, RangeMatrix, PeriodTotal, FooterUptime, ExportCsv, QuartersPeak,
     ];
 }

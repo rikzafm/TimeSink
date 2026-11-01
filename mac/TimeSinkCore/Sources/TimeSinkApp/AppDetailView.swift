@@ -4,8 +4,12 @@ import TimeSinkCore
 public struct AppDetailView: View {
     @ObservedObject var state: AppState
     @State private var showingSettings = false
-    @State private var range: AppDetailRange = .year
+    @State private var range: AppDetailRange = .matrix
+    @State private var anchor = ""
     @State private var mergedCount = 0
+    @State private var hoveredDayText: String?
+    @State private var hoveredBarText: String?
+    @State private var hoveredBarIndex: Int?
 
     public init(state: AppState) {
         self.state = state
@@ -103,7 +107,7 @@ public struct AppDetailView: View {
             }
             if state.showsDeviceSplit { deviceCard(result) }
             rangeRow(result)
-            if range == .year { yearGrid(result) } else { rangeBars(result) }
+            if range == .matrix { yearGrid(result) } else { rangeBars(result) }
         }
         .padding(.horizontal, 14)
         .padding(.top, 4)
@@ -201,10 +205,55 @@ public struct AppDetailView: View {
         .card()
     }
 
-    private func yearButton(_ glyph: String, enabled: Bool, delta: Int) -> some View {
+    private func currentAnchor() -> String {
+        anchor.isEmpty ? LocalDays.dayString(for: Int64(Date().timeIntervalSince1970), timeZone: .current) : anchor
+    }
+
+    private func currentChart(_ result: AppDetailResult) -> AppDetailChartData {
+        let today = LocalDays.dayString(for: Int64(Date().timeIntervalSince1970), timeZone: .current)
+        return AppDetailChart.build(
+            range: range,
+            anchor: (range == .matrix || range == .year) ? String(format: "%04d-01-01", result.year) : currentAnchor(),
+            today: today,
+            firstTracked: result.firstTracked,
+            weekStart: WeekStart.parse(state.weekStart),
+            daySeconds: result.daySeconds ?? [:],
+            opens: result.opens ?? []
+        )
+    }
+
+    private func periodLabel(_ result: AppDetailResult, _ chart: AppDetailChartData) -> String {
+        switch range {
+        case .matrix, .year:
+            return String(result.year)
+        case .month:
+            let parts = chart.from.split(separator: "-")
+            if parts.count >= 2, let m = Int(parts[1]) {
+                return "\(Formatters.monthName(m, short: true)) \(parts[0])"
+            }
+            return chart.from
+        case .week:
+            func fmt(_ s: String) -> String {
+                let p = s.split(separator: "-")
+                if p.count == 3, let d = Int(p[2]), let m = Int(p[1]) {
+                    return "\(d) \(Formatters.monthName(m, short: true))"
+                }
+                return s
+            }
+            return "\(fmt(chart.from)) – \(fmt(chart.to))"
+        case .all:
+            return ""
+        }
+    }
+
+    private func stepButton(_ glyph: String, enabled: Bool, delta: Int) -> some View {
         Button(action: {
-            state.detailYear += delta
-            state.refresh()
+            if range == .matrix || range == .year {
+                state.detailYear += delta
+                state.refresh()
+            } else {
+                anchor = AppDetailChart.step(range: range, anchor: currentAnchor(), dir: delta)
+            }
         }) {
             Text(glyph)
                 .font(.system(size: 13))
@@ -217,18 +266,33 @@ public struct AppDetailView: View {
     }
 
     private func rangeRow(_ result: AppDetailResult) -> some View {
-        HStack {
-            HStack(spacing: 6) {
-                yearButton("‹", enabled: result.year > result.firstYear, delta: -1)
-                Text(String(result.year))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(ThemeColors.textPrimary)
-                    .frame(width: 40)
-                yearButton("›", enabled: result.year < result.lastYear, delta: 1)
+        let chart = currentChart(result)
+        let canPrev = (range == .matrix || range == .year) ? (result.year > result.firstYear) : chart.canPrev
+        let canNext = (range == .matrix || range == .year) ? (result.year < result.lastYear) : chart.canNext
+        let label = periodLabel(result, chart)
+
+        return HStack {
+            if range != .all {
+                HStack(spacing: 6) {
+                    stepButton("‹", enabled: canPrev, delta: -1)
+                    Text(label)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(ThemeColors.textPrimary)
+                        .frame(minWidth: 40)
+                    stepButton("›", enabled: canNext, delta: 1)
+                }
+            } else {
+                Spacer().frame(width: 40)
             }
             Spacer()
             Segmented(
-                options: [(AppDetailRange.all, "All"), (.year, "Year"), (.month, "Month"), (.week, "Week")],
+                options: [
+                    (AppDetailRange.matrix, "Matrix"),
+                    (AppDetailRange.all, "All"),
+                    (AppDetailRange.year, "Year"),
+                    (AppDetailRange.month, "Month"),
+                    (AppDetailRange.week, "Week")
+                ],
                 selection: $range,
                 vPad: 2,
                 radius: 7,
@@ -248,7 +312,7 @@ public struct AppDetailView: View {
                 }
             }
             HStack(spacing: 6) {
-                Text("Quarters of this app's busiest day (\(Formatters.paddedHM(result.peakDaySeconds)))")
+                Text(hoveredDayText ?? "Quarters of this app's busiest day (\(Formatters.paddedHM(result.peakDaySeconds)))")
                 Spacer()
                 HStack(spacing: 2) {
                     ForEach(0..<5, id: \.self) { RoundedRectangle(cornerRadius: 2).fill(Tokens.heat($0)).frame(width: 10, height: 8) }
@@ -285,40 +349,118 @@ public struct AppDetailView: View {
 
     @ViewBuilder
     private func dayCell(_ day: AppDetailDay?) -> some View {
-        if let day, day.kind == .tracked {
-            RoundedRectangle(cornerRadius: 2).fill(Tokens.heat(day.level)).frame(height: 8)
-        } else {
-            RoundedRectangle(cornerRadius: 2).strokeBorder(ThemeColors.borderSubtle, lineWidth: 1).frame(height: 8)
+        let isHovered = hoveredDayText != nil && hoveredDayText == dayText(day)
+        let content = Group {
+            if let day, day.kind == .tracked {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Tokens.heat(day.level))
+                    .frame(height: 8)
+                    .opacity(isHovered ? 0.75 : 1.0)
+            } else {
+                RoundedRectangle(cornerRadius: 2)
+                    .strokeBorder(isHovered ? ThemeColors.accent : ThemeColors.borderSubtle, lineWidth: 1)
+                    .frame(height: 8)
+            }
         }
+        if let text = dayText(day) {
+            content
+                .help(text)
+                .onHover { h in
+                    if h {
+                        hoveredDayText = text
+                    } else if hoveredDayText == text {
+                        hoveredDayText = nil
+                    }
+                }
+        } else {
+            content
+        }
+    }
+
+    private func dayText(_ day: AppDetailDay?) -> String? {
+        guard let day else { return nil }
+        let date = formatDayDate(day.date)
+        switch day.kind {
+        case .future:
+            return "\(date) · not here yet"
+        case .beforeTracking:
+            return "\(date) · before tracking began"
+        case .tracked:
+            if day.seconds <= 0 {
+                return "\(date) · not opened"
+            }
+            let opens = day.sessions == 1 ? "1 session" : "\(day.sessions) sessions"
+            return "\(date) · \(Formatters.paddedHM(day.seconds)) · \(opens)"
+        }
+    }
+
+    private func formatDayDate(_ yyyyMMdd: String) -> String {
+        let parts = yyyyMMdd.split(separator: "-")
+        if parts.count == 3, let y = Int(parts[0]), let m = Int(parts[1]), let d = Int(parts[2]) {
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = TimeZone(secondsFromGMT: 0)!
+            if let date = cal.date(from: DateComponents(year: y, month: m, day: d)) {
+                let weekdayIdx = cal.component(.weekday, from: date) - 1
+                let shortWeekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+                let w = shortWeekdays[weekdayIdx]
+                return "\(w), \(d) \(Formatters.monthName(m, short: true))"
+            }
+        }
+        return yyyyMMdd
     }
 
     @ViewBuilder
     private func rangeBars(_ result: AppDetailResult) -> some View {
-        let today = LocalDays.dayString(for: Int64(Date().timeIntervalSince1970), timeZone: .current)
-        let chart = AppDetailChart.build(
-            range: range,
-            anchor: today,
-            today: today,
-            firstTracked: result.firstTracked,
-            weekStart: WeekStart.parse(state.weekStart),
-            daySeconds: result.daySeconds ?? [:],
-            opens: result.opens ?? []
-        )
+        let chart = currentChart(result)
         let top = CGFloat(max(1, chart.bars.map(\.seconds).max() ?? 1))
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .bottom, spacing: 3) {
-                ForEach(Array(chart.bars.enumerated()), id: \.offset) { _, bar in
+                ForEach(Array(chart.bars.enumerated()), id: \.offset) { index, bar in
+                    let isHovered = hoveredBarIndex == index
+                    let hoverText = barText(bar)
                     RoundedRectangle(cornerRadius: 2)
                         .fill(ThemeColors.accent)
+                        .opacity(isHovered ? 0.75 : 1.0)
                         .frame(height: max(2, CGFloat(bar.seconds) / top * 120))
                         .frame(maxWidth: .infinity)
-                        .help("\(bar.label) · \(Formatters.paddedHM(bar.seconds))")
+                        .help(hoverText)
+                        .onHover { h in
+                            if h {
+                                hoveredBarIndex = index
+                                hoveredBarText = hoverText
+                            } else if hoveredBarIndex == index {
+                                hoveredBarIndex = nil
+                                hoveredBarText = nil
+                            }
+                        }
                 }
             }
             .frame(height: 120, alignment: .bottom)
-            Text("\(Formatters.paddedHM(chart.totalSeconds)) in this period")
+            Text(hoveredBarText ?? "\(Formatters.paddedHM(chart.totalSeconds)) in this period")
                 .font(.system(size: 10))
                 .foregroundColor(ThemeColors.textMuted)
+        }
+    }
+
+    private func barText(_ bar: AppDetailBar) -> String {
+        let label = barName(bar)
+        if bar.seconds <= 0 {
+            return "\(label) · not opened"
+        }
+        let opens = bar.sessions == 1 ? "1 session" : "\(bar.sessions) sessions"
+        return "\(label) · \(Formatters.paddedHM(bar.seconds)) · \(opens)"
+    }
+
+    private func barName(_ bar: AppDetailBar) -> String {
+        switch range {
+        case .all:
+            return bar.label
+        case .year:
+            return "\(bar.label) \(state.detailYear)"
+        case .month, .week:
+            return formatDayDate(bar.from)
+        case .matrix:
+            return bar.label
         }
     }
 }

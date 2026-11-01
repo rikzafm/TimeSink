@@ -37,12 +37,15 @@ public sealed class YearPaceView : UserControl, IYearSubView
 
     private YearResult? _result;
     private int _selected = -1;
+    private int _year = DateTime.Today.Year;
+    private readonly Action<DateOnly?>? _onTrackingStarted;
 
-    public YearPaceView(string dbPath, ThemeService themes, LiveState live)
+    public YearPaceView(string dbPath, ThemeService themes, LiveState live, Action<DateOnly?>? onTrackingStarted = null)
     {
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
+        _onTrackingStarted = onTrackingStarted;
 
         _total.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
         _total.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
@@ -167,18 +170,27 @@ public sealed class YearPaceView : UserControl, IYearSubView
         return t;
     }
 
+    public void SetYear(int year)
+    {
+        if (_year == year) return;
+        _year = year;
+        _selected = -1;
+        Refresh();
+    }
+
     public void Start() => _driver.Start();
 
     public void Stop() => _driver.Stop();
 
     public async void Refresh()
     {
-        if (!await _loader.Refresh(c => YearQuery.Run(c), r =>
+        if (!await _loader.Refresh(c => YearQuery.Run(c, _year), r =>
             {
                 if (_result is null || _result.Year != r.Year) _selected = -1;
                 _result = r;
+                _onTrackingStarted?.Invoke(r.TrackingStarted);
             })) return;
-        if (_selected < 0) _selected = _loader.Today.Month - 1;
+        if (_selected < 0) _selected = _year == _loader.Today.Year ? _loader.Today.Month - 1 : 11;
         Redraw();
     }
 
@@ -196,14 +208,15 @@ public sealed class YearPaceView : UserControl, IYearSubView
             return;
         }
         var scope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
+        var isCurrent = r.Year == _loader.Today.Year;
         if (scope == TimeSink.Core.Devices.DeviceScope.All)
         {
-            _caption.Text = Str(YearStringKeys.CaptionAll, r.Year);
+            _caption.Text = isCurrent ? Str(YearStringKeys.CaptionAll, r.Year) : Str(YearStringKeys.CaptionAllPast, r.Year);
             _deviceSummaryRow.Update(r.DeviceTotals, r.OnBothSeconds, _live?.LocalDeviceId, useHoursOnly: true);
         }
         else
         {
-            _caption.Text = Str(YearStringKeys.Caption, r.Year);
+            _caption.Text = isCurrent ? Str(YearStringKeys.Caption, r.Year) : Str(YearStringKeys.CaptionPast, r.Year);
             _deviceSummaryRow.Visibility = Visibility.Collapsed;
         }
         _total.Text = UsageText.HoursMinutes(r.TotalSeconds);

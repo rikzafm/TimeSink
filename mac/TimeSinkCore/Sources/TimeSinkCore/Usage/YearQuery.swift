@@ -91,6 +91,11 @@ public struct YearResult: Sendable, Equatable {
         self.deviceTotals = deviceTotals
         self.onBothSeconds = onBothSeconds
     }
+
+    public var canPrev: Bool {
+        guard let start = trackingStarted, let firstYear = Int(start.prefix(4)) else { return false }
+        return year > firstYear
+    }
 }
 
 public enum YearQuery {
@@ -240,7 +245,8 @@ public enum YearQuery {
         let best = months.filter { ($0.kind == .tracked || $0.kind == .current) && $0.seconds > 0 }
             .max(by: { $0.seconds < $1.seconds })
 
-        let pace: Int64? = hasPace
+        let isPastYear = (todayYear < calendar.component(.year, from: Date()))
+        let pace: Int64? = (hasPace && !isPastYear)
             ? (total + (curProj - curSecs) + months.filter { $0.kind == .future }.reduce(0) { $0 + $1.projectedSeconds })
             : nil
 
@@ -254,7 +260,7 @@ public enum YearQuery {
             bestMonth: best?.month,
             bestMonthSeconds: best?.seconds ?? 0,
             paceYearSeconds: pace,
-            recentMonthCount: hasPace ? recent.count : 0,
+            recentMonthCount: (hasPace && !isPastYear) ? recent.count : 0,
             deviceTotals: yearDeviceTotals.isEmpty ? nil : yearDeviceTotals,
             onBothSeconds: yearOnBoth
         )

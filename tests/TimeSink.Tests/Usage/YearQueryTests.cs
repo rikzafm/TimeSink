@@ -100,4 +100,21 @@ public sealed class YearQueryTests : IDisposable
         YearSubViews.Parse("Matrix").Should().Be(YearSubView.Matrix);
         Setting.LastYearView.Key.Should().Be("ui.lastYearView");
     }
+    [Fact]
+    public void CanPrev_is_false_when_selected_year_matches_first_tracked_year()
+    {
+        var r = Run();
+        r.TrackingStarted.Should().Be(new DateOnly(2026, 2, 15));
+        r.CanPrev.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Past_year_query_has_no_pace_and_all_past_months_are_tracked_or_before_tracking()
+    {
+        var ctx = Q.Ctx(_f.DbPath, YearFixture.Now, TimeZoneInfo.Utc);
+        var r = YearQuery.Run(ctx, 2025);
+        r.Year.Should().Be(2025);
+        r.PaceYearSeconds.Should().BeNull();
+        r.Months.Should().OnlyContain(m => m.Kind == YearMonthKind.BeforeTracking);
+    }
 }

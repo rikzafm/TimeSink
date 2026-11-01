@@ -50,6 +50,22 @@ public struct YearTabView: View {
                 .buttonStyle(.plain)
             }
             Spacer()
+            yearNavigator
+        }
+    }
+
+    private var yearNavigator: some View {
+        let currentYear = Calendar.current.component(.year, from: Date()) - state.yearOffset
+        return HStack(spacing: 6) {
+            PeriodArrow(left: true, enabled: state.canYearGoPrev, box: 22, iconSize: 10) {
+                state.previousYear()
+            }
+            Text(String(currentYear))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(ThemeColors.textPrimary)
+            PeriodArrow(left: false, enabled: state.canYearGoNext, box: 22, iconSize: 10) {
+                state.nextYear()
+            }
         }
     }
 
@@ -93,7 +109,7 @@ public struct YearTabView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("\(String(result.year)) so far · \(scope)")
+                        Text(state.yearOffset == 0 ? "\(String(result.year)) so far · \(scope)" : "\(String(result.year)) · \(scope)")
                             .font(.system(size: 11))
                             .foregroundColor(ThemeColors.textMuted)
                         Text(Formatters.paddedHM(result.totalSeconds))
@@ -748,7 +764,7 @@ public struct WrappedCardView: View {
         let highlight = parts.joined(separator: " and ")
 
         return VStack(alignment: .leading, spacing: 0) {
-            eyebrow("YOUR \(yearText) SO FAR")
+            eyebrow(state.yearOffset == 0 ? "YOUR \(yearText) SO FAR" : "YOUR \(yearText) IN REVIEW")
 
             HStack(alignment: .lastTextBaseline, spacing: 8) {
                 Text(Formatters.grouped(result.totalHours))

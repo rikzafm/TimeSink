@@ -7,12 +7,13 @@ namespace TimeSink.UI.Controls;
 
 /// <summary>
 /// Today's hourly chart: 24 columns scaled to peak hour, current hour in accent,
-/// dotted typical-day outlines for future hours, hatched sleep bands, and a "now" marker with a time label.
+/// hatched sleep bands, and a "now" marker with a time label.
 /// Follows Mac HourlyChartView visual style.
 /// </summary>
 public sealed class HourlyBars : FrameworkElement
 {
     private const double MaxUptimeSeconds = 3600.0, LabelBand = 16, Gap = 3;
+    private const long MinActivitySeconds = 60;
     private static readonly Brush DefaultTypicalBrush = new SolidColorBrush(Color.FromRgb(0x46, 0x51, 0x4a));
 
     static HourlyBars()
@@ -184,16 +185,7 @@ public sealed class HourlyBars : FrameworkElement
 
             if (isFuture)
             {
-                if (HasTypical && bucket.TypicalUptimeSeconds > 0)
-                {
-                    var typH = Math.Max(2.0, (bucket.TypicalUptimeSeconds / scale) * plotH);
-                    var pen = new Pen(typical ?? MutedBrush, 1.0)
-                    {
-                        DashStyle = new DashStyle(new double[] { 1.0, 1.5 }, 0)
-                    };
-                    pen.Freeze();
-                    dc.DrawRoundedRectangle(null, pen, new Rect(x, plotTop + plotH - typH, barW, typH), 2, 2);
-                }
+                // Future hours: no bar outline drawn
             }
             else if (isAsleep)
             {
@@ -238,24 +230,32 @@ public sealed class HourlyBars : FrameworkElement
                         else secRemote += dh.UptimeSeconds;
                     }
                 }
-                var hLocal = Math.Max(2.0, (secLocal / scale) * plotH);
-                var hRemote = Math.Max(2.0, (secRemote / scale) * plotH);
+                var hLocal = secLocal >= MinActivitySeconds ? Math.Max(2.0, (secLocal / scale) * plotH) : 0;
+                var hRemote = secRemote >= MinActivitySeconds ? Math.Max(2.0, (secRemote / scale) * plotH) : 0;
 
-                var (back, front) = OverlapBars.Layout(x, barW, hLocal, hRemote);
-                void DrawDeviceBar(OverlapBarGeometry g)
+                if (hLocal > 0 || hRemote > 0)
                 {
-                    if (g.Height <= 0.5) return;
-                    var brush = g.IsDeviceA ? (i == nowH ? accent : h3)
-                                            : (DeviceBBrush ?? h2);
-                    dc.DrawRoundedRectangle(brush, null, new Rect(g.X, plotTop + plotH - g.Height, g.Width, g.Height), 2, 2);
+                    var (back, front) = OverlapBars.Layout(x, barW, hLocal, hRemote);
+                    void DrawDeviceBar(OverlapBarGeometry g)
+                    {
+                        if (g.Height <= 0.5) return;
+                        var brush = g.IsDeviceA ? (i == nowH ? accent : h3)
+                                                : (DeviceBBrush ?? h2);
+                        dc.DrawRoundedRectangle(brush, null, new Rect(g.X, plotTop + plotH - g.Height, g.Width, g.Height), 2, 2);
+                    }
+                    DrawDeviceBar(back);
+                    DrawDeviceBar(front);
                 }
-                DrawDeviceBar(back);
-                DrawDeviceBar(front);
+                else
+                {
+                    var upBrush = GetBarBrush(0, i);
+                    dc.DrawRoundedRectangle(upBrush, null, new Rect(x, plotTop + plotH - 2.0, barW, 2.0), 2, 2);
+                }
             }
             else
             {
-                var barH = Math.Max(2.0, (bucket.UptimeSeconds / scale) * plotH);
-                var brush = GetBarBrush(bucket.UptimeSeconds, i);
+                var barH = bucket.UptimeSeconds >= MinActivitySeconds ? Math.Max(2.0, (bucket.UptimeSeconds / scale) * plotH) : 2.0;
+                var brush = GetBarBrush(bucket.UptimeSeconds >= MinActivitySeconds ? bucket.UptimeSeconds : 0, i);
                 dc.DrawRoundedRectangle(brush, null, new Rect(x, plotTop + plotH - barH, barW, barH), 2, 2);
             }
 

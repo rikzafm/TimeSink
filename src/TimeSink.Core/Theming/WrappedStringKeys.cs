@@ -7,6 +7,7 @@ namespace TimeSink.Core.Theming;
 public static class WrappedStringKeys
 {
     public const string Card1Label = "wrapCard1Label";
+    public const string Card1LabelPast = "wrapCard1LabelPast";
     public const string Equivalent = "wrapEquivalent";
     public const string EquivalentAll = "wrapEquivalentAll";
     public const string And = "wrapAnd";
