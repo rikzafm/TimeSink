@@ -61,7 +61,7 @@
 
                 <Grid Margin="0,0,0,8">
                     <StackPanel HorizontalAlignment="Left">
-                        <TextBlock Style="{StaticResource Small}" Text="{DynamicResource Str.MonthCombined}"/>
+                        <TextBlock x:Name="TotalCaption" Style="{StaticResource Small}" Text="{DynamicResource Str.MonthCombined}"/>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock x:Name="Total" Foreground="{DynamicResource Brush.Accent}"
                                        FontFamily="{DynamicResource FontFamily.Numbers}" FontWeight="Bold"
@@ -77,6 +77,8 @@
                         <TextBlock x:Name="Best" Style="{StaticResource Small}" HorizontalAlignment="Right"/>
                     </StackPanel>
                 </Grid>
+
+                <c:DeviceSummaryRow x:Name="DeviceSummary" Margin="0,0,0,8"/>
 
                 <c:CalendarHeat x:Name="Calendar"
                                 TextBrush="{DynamicResource Brush.Text}" SoftBrush="{DynamicResource Brush.TextSoft}"

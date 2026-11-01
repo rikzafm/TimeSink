@@ -27,6 +27,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
     private readonly LiveViewDriver _driver;
 
     private readonly TextBlock _caption = Label("Small"), _total = new(), _avg = Label("Small"), _best = Label("Small");
+    private readonly DeviceSummaryRow _deviceSummaryRow = new() { Margin = new Thickness(0, 6, 0, 0) };
     private readonly TextBlock _banner = Label("Soft");
     private readonly PaceBars _bars = new() { Height = 150 };
     private readonly TextBlock _legendTracked = Label("Small"), _legendProjected = Label("Small"), _legendAverage = Label("Small"), _hint = Label("Small");
@@ -110,9 +111,12 @@ public sealed class YearPaceView : UserControl, IYearSubView
         panel.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         panel.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
 
+        _deviceSummaryRow.LoadDeviceInfo(dbPath);
+
         // Header, banner, chart and legend stay pinned; only the month panel (app list) scrolls beneath them.
         var pinned = new StackPanel { Margin = new Thickness(16, 6, 16, 0) };
         pinned.Children.Add(header);
+        pinned.Children.Add(_deviceSummaryRow);
         pinned.Children.Add(banner);
         pinned.Children.Add(_bars);
         pinned.Children.Add(legend);
@@ -191,7 +195,17 @@ public sealed class YearPaceView : UserControl, IYearSubView
             _banner.Text = Str(YearStringKeys.BannerNone);
             return;
         }
-        _caption.Text = Str(YearStringKeys.Caption, r.Year);
+        var scope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
+        if (scope == TimeSink.Core.Devices.DeviceScope.All)
+        {
+            _caption.Text = Str(YearStringKeys.CaptionAll, r.Year);
+            _deviceSummaryRow.Update(r.DeviceTotals, r.OnBothSeconds, _live?.LocalDeviceId, useHoursOnly: true);
+        }
+        else
+        {
+            _caption.Text = Str(YearStringKeys.Caption, r.Year);
+            _deviceSummaryRow.Visibility = Visibility.Collapsed;
+        }
         _total.Text = UsageText.HoursMinutes(r.TotalSeconds);
         _avg.Text = r.AverageMonthSeconds is { } a ? Str(YearStringKeys.Average, H(a)) : "";
         _best.Text = r.BestMonth is { } b ? Str(YearStringKeys.Best, Str(YearStringKeys.BestValue, UsageText.MonthAbbr(b), H(r.BestMonthSeconds))) : "";

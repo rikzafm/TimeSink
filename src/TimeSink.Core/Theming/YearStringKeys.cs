@@ -12,6 +12,7 @@ public static class YearStringKeys
     public const string SwitchMatrix = "yearSwitchMatrix";
 
     public const string Caption = "yearCaption";
+    public const string CaptionAll = "yearCaptionAll";
     public const string Hours = "yearHours";
     public const string Average = "yearAverage";
     public const string Best = "yearBest";
@@ -37,7 +38,7 @@ public static class YearStringKeys
 
     public static readonly IReadOnlyList<string> All =
     [
-        SwitchPace, SwitchWrapped, SwitchMatrix, Caption, Hours, Average, Best, BestValue, Banner, BannerOne, BannerNone,
+        SwitchPace, SwitchWrapped, SwitchMatrix, Caption, CaptionAll, Hours, Average, Best, BestValue, Banner, BannerOne, BannerNone,
         LegendTracked, LegendProjected, LegendAverage, TapHint, ProjectedSuffix, NoteBefore, NoteBeforeOn, NoteFirst,
         NoteProjected, NoteCurrent, NoteCurrentVs, NoteVs, NoteBest, NoteNoApps, Empty,
     ];

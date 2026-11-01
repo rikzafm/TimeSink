@@ -59,6 +59,8 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         Bind(_card, WrappedCard.MutedBrushProperty, "Brush.TextMuted");
         Bind(_card, WrappedCard.AccentBrushProperty, "Brush.Accent");
         Bind(_card, WrappedCard.OnAccentBrushProperty, "Brush.OnAccent");
+        Bind(_card, WrappedCard.DeviceABrushProperty, "Brush.DeviceA");
+        Bind(_card, WrappedCard.DeviceBBrushProperty, "Brush.DeviceB");
         Bind(_card, WrappedCard.FontFaceProperty, "FontFamily.Ui");
         Bind(_card, WrappedCard.NumberFontFaceProperty, "FontFamily.Numbers");
         Bind(_card, WrappedCard.SmallSizeProperty, "Double.FontSize.Small");
@@ -176,13 +178,42 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         };
     }
 
-    private static TotalCardModel Total(WrappedResult r)
+    private TotalCardModel Total(WrappedResult r)
     {
         var parts = new List<string>();
         if (r.EquivalentDays > 0) parts.Add(Plural(r.EquivalentDays, WrappedStringKeys.Day, WrappedStringKeys.Days));
         if (r.EquivalentHours > 0 || parts.Count == 0) parts.Add(Plural(r.EquivalentHours, WrappedStringKeys.Hour, WrappedStringKeys.Hours));
         var highlight = string.Join(Str(WrappedStringKeys.And), parts);
         var since = r.TrackingStarted is { } s ? (s.Year == r.Year ? UsageText.ShortDate(s) : UsageText.ShortDate(s, withYear: true)) : "";
+
+        var scope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
+        var isMultiDev = scope == TimeSink.Core.Devices.DeviceScope.All && r.DeviceTotals is { Count: > 1 };
+        string? devAName = null, devBName = null;
+        long secA = 0, secB = 0;
+        if (isMultiDev)
+        {
+            var devInfo = DeviceInfoService.Load(_dbPath);
+            var localId = _live?.LocalDeviceId;
+            var localEntry = devInfo.Values.FirstOrDefault(v => v.IsLocal);
+            var remoteEntry = devInfo.Values.FirstOrDefault(v => !v.IsLocal);
+            devAName = !string.IsNullOrEmpty(localEntry.Name) ? localEntry.Name : "PC";
+            devBName = !string.IsNullOrEmpty(remoteEntry.Name) ? remoteEntry.Name : "Mac";
+            if (localId != null && r.DeviceTotals!.TryGetValue(localId, out secA))
+            {
+                foreach (var (k, v) in r.DeviceTotals)
+                    if (k != localId) secB += v;
+            }
+            else
+            {
+                var first = true;
+                foreach (var v in r.DeviceTotals!.Values)
+                {
+                    if (first) { secA = v; first = false; }
+                    else secB += v;
+                }
+            }
+        }
+
         return new TotalCardModel(
             Str(WrappedStringKeys.Card1Label, r.Year),
             r.TotalHours.ToString(CultureInfo.CurrentCulture),
@@ -192,7 +223,14 @@ public sealed class YearWrappedView : UserControl, IYearSubView
                 new WrappedTile(r.DaysTracked.ToString(CultureInfo.CurrentCulture), Str(WrappedStringKeys.TileTracked, since)),
                 new WrappedTile(r.DaysWithActivity.ToString(CultureInfo.CurrentCulture), Str(WrappedStringKeys.TileActive)),
                 new WrappedTile(r.AppsTracked.ToString(CultureInfo.CurrentCulture), Str(WrappedStringKeys.TileApps)),
-            ]);
+            ],
+            IsMultiDevice: isMultiDev,
+            DeviceAName: devAName,
+            DeviceASeconds: secA,
+            DeviceBName: devBName,
+            DeviceBSeconds: secB,
+            OnBothSeconds: r.OnBothSeconds,
+            TotalSeconds: r.TotalSeconds);
     }
 
     private WrappedCardModel Podium(string label, string headlineKey, IReadOnlyList<WrappedApp>? p, IReadOnlyList<WrappedApp>? others, string emptyKey)

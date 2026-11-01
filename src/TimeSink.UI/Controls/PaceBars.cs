@@ -139,7 +139,7 @@ public sealed class PaceBars : FrameworkElement
 
                 if (hA > 0.5 || hB > 0.5)
                 {
-                    var (back, front) = OverlapBars.Layout(bx, bw, hA, hB);
+                    var (backBar, frontBar) = OverlapBars.Layout(bx, bw, hA, hB);
                     void DrawDeviceBar(OverlapBarGeometry g)
                     {
                         if (g.Height <= 0.5) return;
@@ -148,8 +148,8 @@ public sealed class PaceBars : FrameworkElement
                         var corner = (m.Kind == YearMonthKind.Current && extraH > 0.5) ? 0 : 2;
                         dc.DrawRoundedRectangle(b, null, new Rect(g.X, baseY - g.Height, g.Width, g.Height), corner, 2);
                     }
-                    DrawDeviceBar(back);
-                    DrawDeviceBar(front);
+                    DrawDeviceBar(backBar);
+                    DrawDeviceBar(frontBar);
                 }
                 else if (actualH > 0.5)
                 {

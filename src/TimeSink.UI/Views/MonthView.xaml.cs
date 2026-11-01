@@ -48,6 +48,7 @@ public partial class MonthView : UserControl, ILiveView
         Calendar.DayClicked += d => { _selected = d; Redraw(); };
         SelBar.HoverChanged += ShowBarNote;
         SelBar.SegmentClicked += _ => ShowBarNote(-1);
+        DeviceSummary.LoadDeviceInfo(dbPath);
         _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope);
         (_year, _month) = (_loader.Today.Year, _loader.Today.Month);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw,
@@ -105,6 +106,17 @@ public partial class MonthView : UserControl, ILiveView
         Next.IsEnabled = months.CanNext(first);
 
         Total.Text = UsageText.HoursMinutes(r.TotalSeconds);
+        var scope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
+        if (scope == TimeSink.Core.Devices.DeviceScope.All)
+        {
+            TotalCaption.Text = Str(StringKeys.MonthCombinedAll);
+            DeviceSummary.Update(r.DeviceTotals, r.OnBothSeconds, _live?.LocalDeviceId);
+        }
+        else
+        {
+            TotalCaption.Text = Str(StringKeys.MonthCombined);
+            DeviceSummary.Visibility = Visibility.Collapsed;
+        }
         BuildDelta(r);
         SetPair(Avg, StringKeys.MonthAvgPrefix, UsageText.HoursMinutes((long)Math.Round(r.DailyAverageSeconds)), StringKeys.MonthAvgSuffix);
         if (r.Best is { } b)

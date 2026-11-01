@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
+using TimeSink.Core.Usage;
 
 namespace TimeSink.UI.Controls;
 
@@ -16,7 +17,12 @@ public sealed record WrappedHabit(string Key, string Value, string Sub);
 /// <summary>What a <see cref="WrappedCard"/> draws. All text is composed by the view from the string table.</summary>
 public abstract record WrappedCardModel(string Label);
 
-public sealed record TotalCardModel(string Label, string Big, string Unit, string Line, string LineHighlight, IReadOnlyList<WrappedTile> Tiles)
+public sealed record TotalCardModel(
+    string Label, string Big, string Unit, string Line, string LineHighlight, IReadOnlyList<WrappedTile> Tiles,
+    bool IsMultiDevice = false,
+    string? DeviceAName = null, long DeviceASeconds = 0,
+    string? DeviceBName = null, long DeviceBSeconds = 0,
+    long OnBothSeconds = 0, long TotalSeconds = 0)
     : WrappedCardModel(Label);
 
 /// <param name="Entries">In display order (rank 4, 2, 1, 3, 5: the winner in the middle).</param>
@@ -51,6 +57,8 @@ public sealed class WrappedCard : FrameworkElement
     public static readonly DependencyProperty MutedBrushProperty = Reg<Brush?>(nameof(MutedBrush));
     public static readonly DependencyProperty AccentBrushProperty = Reg<Brush?>(nameof(AccentBrush));
     public static readonly DependencyProperty OnAccentBrushProperty = Reg<Brush?>(nameof(OnAccentBrush));
+    public static readonly DependencyProperty DeviceABrushProperty = Reg<Brush?>(nameof(DeviceABrush));
+    public static readonly DependencyProperty DeviceBBrushProperty = Reg<Brush?>(nameof(DeviceBBrush));
     public static readonly DependencyProperty AppBrushesProperty = Reg<IReadOnlyList<Brush>?>(nameof(AppBrushes));
     public static readonly DependencyProperty FontFaceProperty = Reg<FontFamily?>(nameof(FontFace));
     public static readonly DependencyProperty NumberFontFaceProperty = Reg<FontFamily?>(nameof(NumberFontFace));
@@ -70,6 +78,8 @@ public sealed class WrappedCard : FrameworkElement
     public Brush? MutedBrush { get => (Brush?)GetValue(MutedBrushProperty); set => SetValue(MutedBrushProperty, value); }
     public Brush? AccentBrush { get => (Brush?)GetValue(AccentBrushProperty); set => SetValue(AccentBrushProperty, value); }
     public Brush? OnAccentBrush { get => (Brush?)GetValue(OnAccentBrushProperty); set => SetValue(OnAccentBrushProperty, value); }
+    public Brush? DeviceABrush { get => (Brush?)GetValue(DeviceABrushProperty); set => SetValue(DeviceABrushProperty, value); }
+    public Brush? DeviceBBrush { get => (Brush?)GetValue(DeviceBBrushProperty); set => SetValue(DeviceBBrushProperty, value); }
     public IReadOnlyList<Brush>? AppBrushes { get => (IReadOnlyList<Brush>?)GetValue(AppBrushesProperty); set => SetValue(AppBrushesProperty, value); }
     public FontFamily? FontFace { get => (FontFamily?)GetValue(FontFaceProperty); set => SetValue(FontFaceProperty, value); }
     public FontFamily? NumberFontFace { get => (FontFamily?)GetValue(NumberFontFaceProperty); set => SetValue(NumberFontFaceProperty, value); }
@@ -172,6 +182,57 @@ public sealed class WrappedCard : FrameworkElement
         if (m.LineHighlight.Length > 0 && m.Line.IndexOf(m.LineHighlight, StringComparison.Ordinal) is var i and >= 0)
             line.SetForegroundBrush(AccentBrush, i, m.LineHighlight.Length);
         dc.DrawText(line, new Point(Pad, bigY + big.Height + 6));
+
+        if (m.IsMultiDevice && m.TotalSeconds > 0 && (m.DeviceASeconds > 0 || m.DeviceBSeconds > 0))
+        {
+            var barW = Math.Min(cw, 300);
+            var barH = 8.0;
+            var barY = bigY + big.Height + 6 + line.Height + 14;
+
+            // Track background
+            dc.DrawRoundedRectangle(TileBackBrush ?? BackBrush, null, new Rect(Pad, barY, barW, barH), 4, 4);
+
+            var trackRect = new Rect(Pad, barY, barW, barH);
+            dc.PushClip(new RectangleGeometry(trackRect, 4, 4));
+
+            var brushA = DeviceABrush ?? AccentBrush;
+            var brushB = DeviceBBrush ?? MutedBrush;
+
+            var wA = Math.Min(barW, barW * ((double)m.DeviceASeconds / m.TotalSeconds));
+            if (wA > 0)
+                dc.DrawRectangle(brushA, null, new Rect(Pad, barY, wA, barH));
+
+            var wB = Math.Min(barW, barW * ((double)m.DeviceBSeconds / m.TotalSeconds));
+            if (wB > 0)
+                dc.DrawRectangle(brushB, null, new Rect(Pad + barW - wB, barY, wB, barH));
+
+            dc.Pop();
+
+            // Row with Device A, on both, Device B
+            var labelY = barY + barH + 5;
+            var markerY = labelY + 2.0;
+
+            // Left: Device A circle marker + text
+            var markerA = new Rect(Pad, markerY, 7, 7);
+            dc.DrawRoundedRectangle(brushA, null, markerA, 3.5, 3.5);
+            var textA = Text($"{m.DeviceAName} {UsageText.Hours(m.DeviceASeconds)} h", SmallSize, MutedBrush);
+            dc.DrawText(textA, new Point(Pad + 12, labelY));
+
+            // Middle: on both
+            if (m.OnBothSeconds > 0)
+            {
+                var textMid = Text($"{UsageText.Hours(m.OnBothSeconds)} h on both", SmallSize, MutedBrush);
+                var midX = Pad + (barW - textMid.Width) / 2.0;
+                dc.DrawText(textMid, new Point(midX, labelY));
+            }
+
+            // Right: Device B square marker + text
+            var textB = Text($"{m.DeviceBName} {UsageText.Hours(m.DeviceBSeconds)} h", SmallSize, MutedBrush);
+            var bStartX = Pad + barW - textB.Width;
+            var markerB = new Rect(bStartX - 12, markerY, 7, 7);
+            dc.DrawRoundedRectangle(brushB, null, markerB, 2, 2);
+            dc.DrawText(textB, new Point(bStartX, labelY));
+        }
 
         var tiles = m.Tiles;
         if (tiles.Count == 0) return;

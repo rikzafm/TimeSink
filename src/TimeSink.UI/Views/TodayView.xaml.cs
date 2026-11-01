@@ -455,7 +455,7 @@ public partial class TodayView : UserControl, ILiveView
         time.Style = (Style)FindResource("Number");
         time.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Title");
 
-        UIElement stripElement;
+        FrameworkElement stripElement;
         SessionStrip? stripA = null;
         SessionStrip? stripB = null;
         var shown = RowDetails.ShownSessions(row).ToList();
@@ -515,6 +515,8 @@ public partial class TodayView : UserControl, ILiveView
         StyleTip(stripTip);
         stripElement.Unloaded += (_, _) => stripTip.IsOpen = false; // the rows are rebuilt on refresh
 
+        Border? card = null;
+
         void WireStrip(SessionStrip s)
         {
             s.SegmentHovered += (i, p) =>
@@ -556,7 +558,7 @@ public partial class TodayView : UserControl, ILiveView
         stack.Children.Add(stripElement);
         stack.Children.Add(details);
 
-        var card = new Border { Margin = new Thickness(-8, 0, -8, 0), Background = System.Windows.Media.Brushes.Transparent, Cursor = Cursors.Hand, Child = stack };
+        card = new Border { Margin = new Thickness(-8, 0, -8, 0), Background = System.Windows.Media.Brushes.Transparent, Cursor = Cursors.Hand, Child = stack };
         card.SetResourceReference(Border.PaddingProperty, "Thickness.RowCard");
         card.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
         void SetOpen(bool open)
@@ -564,8 +566,11 @@ public partial class TodayView : UserControl, ILiveView
             if (open) EnsureDetails();
             details.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
             if (open) _expanded.Add(row.AppId); else _expanded.Remove(row.AppId);
-            if (open) card.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
-            else card.Background = System.Windows.Media.Brushes.Transparent;
+            if (card != null)
+            {
+                if (open) card.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+                else card.Background = System.Windows.Media.Brushes.Transparent;
+            }
         }
         card.MouseLeftButtonUp += (_, _) => SetOpen(details.Visibility != Visibility.Visible);
         _cards[row.AppId] = (card, SetOpen);

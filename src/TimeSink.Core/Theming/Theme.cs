@@ -70,6 +70,7 @@ public static class StringKeys
 
     // Month view.
     public const string MonthCombined = "monthCombined";
+    public const string MonthCombinedAll = "monthCombinedAll";
     public const string MonthSpanSoFar = "monthSpanSoFar";
     public const string MonthSpanFull = "monthSpanFull";
     public const string MonthDeltaVs = "monthDeltaVs";
@@ -89,7 +90,7 @@ public static class StringKeys
 
     public static readonly IReadOnlyList<string> MonthKeys =
     [
-        MonthCombined, MonthSpanSoFar, MonthSpanFull, MonthDeltaVs, MonthAvgPrefix, MonthAvgSuffix, MonthBestPrefix,
+        MonthCombined, MonthCombinedAll, MonthSpanSoFar, MonthSpanFull, MonthDeltaVs, MonthAvgPrefix, MonthAvgSuffix, MonthBestPrefix,
         MonthWeek, MonthLess, MonthMore, MonthMostly, MonthSpread,MonthDayEmpty, MonthEmpty, MonthNewApp, MonthExport, MonthExportDone,
     ];
 

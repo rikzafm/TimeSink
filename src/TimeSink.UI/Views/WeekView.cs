@@ -32,6 +32,7 @@ public sealed class WeekView : UserControl, ILiveView
     private readonly TextBlock _streak = new() { FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Right };
     private readonly TextBlock _streakSub = Text("Small", "Double.FontSize.Body", "Brush.TextMuted");
     private readonly TextBlock _delta = Text("Small", "Double.FontSize.Body", "Brush.TextMuted");
+    private readonly DeviceSummaryRow _deviceSummaryRow = new() { Margin = new Thickness(0, 4, 0, 8) };
     private readonly WeekColumns _columns = new() { Height = 96 };
     private readonly StackPanel _deviceLegend = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
     private readonly TextBlock _gridCaption = Text("Small", "Double.FontSize.Small", "Brush.TextMuted");
@@ -122,9 +123,12 @@ public sealed class WeekView : UserControl, ILiveView
         nav.Children.Add(_caption);
         nav.Children.Add(_next);
 
+        _deviceSummaryRow.LoadDeviceInfo(dbPath);
+
         var root = new StackPanel { Margin = new Thickness(16, 10, 16, 12) };
         root.Children.Add(nav);
         root.Children.Add(header);
+        root.Children.Add(_deviceSummaryRow);
         root.Children.Add(_columns);
         root.Children.Add(_deviceLegend);
         root.Children.Add(_panel);
@@ -218,7 +222,16 @@ public sealed class WeekView : UserControl, ILiveView
         _streak.Text = Str(StringKeys.WeekStreak, r.StreakDays);
         _columns.DeviceScope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
         _columns.LocalDeviceId = _live?.LocalDeviceId;
-        _deviceLegend.Visibility = _columns.DeviceScope == TimeSink.Core.Devices.DeviceScope.All ? Visibility.Visible : Visibility.Collapsed;
+        if (_columns.DeviceScope == TimeSink.Core.Devices.DeviceScope.All)
+        {
+            _deviceSummaryRow.Update(r.DeviceTotals, r.OnBothSeconds, _live?.LocalDeviceId);
+            _deviceLegend.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            _deviceSummaryRow.Visibility = Visibility.Collapsed;
+            _deviceLegend.Visibility = Visibility.Collapsed;
+        }
         _columns.Days = r.Days;
         _trend.Values = r.WeekTotals;
 

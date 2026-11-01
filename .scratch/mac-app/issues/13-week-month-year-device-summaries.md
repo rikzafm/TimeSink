@@ -1,6 +1,6 @@
 # Week, Month and Year device summaries
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 3)
 Blocked by: 06, 11
 Design: design/mac/Week.dc.html, design/mac/Month.dc.html, design/mac/YearPace.dc.html, design/mac/YearWrapped.dc.html
