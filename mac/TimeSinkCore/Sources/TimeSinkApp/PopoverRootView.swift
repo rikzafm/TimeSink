@@ -102,15 +102,7 @@ public struct PopoverRootView: View {
             case .pace:
                 muted("Tap a month")
             case .wrapped:
-                Button(action: { state.saveWrappedImage() }) {
-                    Text("Save as image")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(ThemeColors.background)
-                        .padding(.horizontal, 14)
-                        .frame(height: 28)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(ThemeColors.accent))
-                }
-                .buttonStyle(.plain)
+                EmptyView()
             case .matrix:
                 muted("Tap an app or a month")
             }

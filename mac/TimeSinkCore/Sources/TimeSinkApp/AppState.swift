@@ -663,17 +663,20 @@ public final class AppState: ObservableObject {
         }
     }
 
-    public func saveWrappedImage() {
-        guard let result = wrappedResult else { return }
+    @discardableResult
+    public func saveWrappedImage() -> Bool {
+        guard let result = wrappedResult else { return false }
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "timesink-wrapped-\(result.year).png"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        panel.nameFieldStringValue = "timesink-\(result.year)-wrapped-\(wrappedCardIndex + 1).png"
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
         let renderer = ImageRenderer(content: WrappedCardView(state: self, result: result, index: wrappedCardIndex).frame(width: 368, height: 470))
         renderer.scale = 2
         if let cg = renderer.cgImage,
            let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
             try? png.write(to: url)
+            return true
         }
+        return false
     }
 
     public func deleteAllHistory(confirmation: String) throws {

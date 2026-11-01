@@ -6,6 +6,7 @@ public struct YearTabView: View {
     @State private var selectedMonth: Int?
     @State private var hoveredMonth: Int?
     @State private var selectedRow: Int64?
+    @State private var savedFeedback = false
 
     public init(state: AppState) {
         self.state = state
@@ -482,16 +483,45 @@ public struct YearTabView: View {
                     .frame(maxHeight: .infinity)
 
                 HStack {
-                    deckButton("‹", enabled: state.wrappedCardIndex > 0) { state.wrappedCardIndex -= 1 }
-                    Spacer()
-                    HStack(spacing: 6) {
-                        ForEach(0..<WrappedCardView.cardCount, id: \.self) { i in
-                            let on = i == state.wrappedCardIndex
-                            Capsule().fill(on ? ThemeColors.accent : ThemeColors.surfaceRaised).frame(width: on ? 22 : 6, height: 6)
+                    HStack(spacing: 8) {
+                        deckButton("‹", enabled: state.wrappedCardIndex > 0) { state.wrappedCardIndex -= 1 }
+                        Spacer(minLength: 4)
+                        HStack(spacing: 6) {
+                            ForEach(0..<WrappedCardView.cardCount, id: \.self) { i in
+                                let on = i == state.wrappedCardIndex
+                                Button(action: { state.wrappedCardIndex = i }) {
+                                    Capsule()
+                                        .fill(on ? ThemeColors.accent : ThemeColors.border)
+                                        .frame(width: on ? 22 : 6, height: 6)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
+                        Spacer(minLength: 4)
+                        deckButton("›", enabled: state.wrappedCardIndex < WrappedCardView.cardCount - 1) { state.wrappedCardIndex += 1 }
                     }
+                    .frame(width: 190)
+
                     Spacer()
-                    deckButton("›", enabled: state.wrappedCardIndex < WrappedCardView.cardCount - 1) { state.wrappedCardIndex += 1 }
+
+                    Button(action: {
+                        if state.saveWrappedImage() {
+                            savedFeedback = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                savedFeedback = false
+                            }
+                        }
+                    }) {
+                        Text(savedFeedback ? "Saved ✓" : "Save as image")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(ThemeColors.background)
+                            .padding(.horizontal, 14)
+                            .frame(height: 32)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(ThemeColors.accent))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
                 .frame(height: 34)
             }
@@ -503,7 +533,7 @@ public struct YearTabView: View {
             Text(glyph)
                 .font(.system(size: 15))
                 .foregroundColor(enabled ? ThemeColors.textPrimary : ThemeColors.textDisabled)
-                .frame(width: 32, height: 30)
+                .frame(width: 32, height: 32)
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(ThemeColors.border, lineWidth: 1))
                 .contentShape(Rectangle())
         }
@@ -643,7 +673,7 @@ public struct WrappedCardView: View {
     let result: WrappedResult
     let index: Int
 
-    public static let cardCount = 5
+    public static let cardCount = 6
 
     private func h(_ seconds: Int64) -> String { "\((seconds + 1800) / 3600)h" }
     private var yearText: String { String(result.year) }
@@ -678,9 +708,10 @@ public struct WrappedCardView: View {
     private var content: some View {
         switch index {
         case 0: totalCard
-        case 1: podiumCard(eyebrow: "YOUR TOP APPS", title: result.podium.first.map { "\($0.name) kept you company most." } ?? "No apps yet.", podium: result.podium, others: result.others)
-        case 2: podiumCard(eyebrow: "YOUR TOP GAMES", title: result.gamesTop?.podium.first.map { "\($0.name) was your game." } ?? "No games yet.", podium: result.gamesTop?.podium ?? [], others: result.gamesTop?.others ?? [])
-        case 3: podiumCard(eyebrow: "YOUR TOP GACHA", title: result.gachaTop?.podium.first.map { "\($0.name) got the daily logins." } ?? "No gacha games yet.", podium: result.gachaTop?.podium ?? [], others: result.gachaTop?.others ?? [])
+        case 1: podiumCard(eyebrow: "YOUR TOP APPS", title: result.podium.first.map { "\($0.name) kept you company most." } ?? "No apps yet.", podium: result.podium, others: result.others, emptyMessage: "No apps tracked yet.")
+        case 2: podiumCard(eyebrow: "YOUR TOP GAMES", title: result.gamesTop?.podium.first.map { "\($0.name) ate your evenings." } ?? "No games yet.", podium: result.gamesTop?.podium ?? [], others: result.gamesTop?.others ?? [], emptyMessage: "No games tracked yet. Mark one in Add app.")
+        case 3: podiumCard(eyebrow: "YOUR TOP GACHA", title: result.gachaTop?.podium.first.map { "\($0.name) got your pulls." } ?? "No gacha games yet.", podium: result.gachaTop?.podium ?? [], others: result.gachaTop?.others ?? [], emptyMessage: "No gacha games tracked yet. Mark one in Add app.")
+        case 4: podiumCard(eyebrow: "YOUR LONGEST SESSIONS", title: result.longestSessions?.first.map { "\($0.name) held on the longest." } ?? "No sessions yet.", podium: result.longestSessions ?? [], others: [], emptyMessage: "No sessions tracked yet.")
         default: habitsCard
         }
     }
@@ -692,6 +723,30 @@ public struct WrappedCardView: View {
     private var totalCard: some View {
         let split = state.deviceSplit(result.deviceTotals)
         let total = CGFloat(max(1, result.totalSeconds))
+
+        let deviceName: String = {
+            if state.deviceScope == .all {
+                return "Your devices were on"
+            }
+            if let totals = result.deviceTotals, !totals.isEmpty {
+                let hasLocal = totals.keys.contains { state.isLocalDevice($0) && (totals[$0] ?? 0) > 0 }
+                let hasRemote = totals.keys.contains { !state.isLocalDevice($0) && (totals[$0] ?? 0) > 0 }
+                if !hasLocal && hasRemote {
+                    return "Your PC was on"
+                }
+            }
+            return "Your Mac was on"
+        }()
+
+        var parts: [String] = []
+        if result.equivalentDays > 0 {
+            parts.append("\(result.equivalentDays) day\(result.equivalentDays == 1 ? "" : "s")")
+        }
+        if result.equivalentHours > 0 || parts.isEmpty {
+            parts.append("\(result.equivalentHours) hour\(result.equivalentHours == 1 ? "" : "s")")
+        }
+        let highlight = parts.joined(separator: " and ")
+
         return VStack(alignment: .leading, spacing: 0) {
             eyebrow("YOUR \(yearText) SO FAR")
 
@@ -709,7 +764,7 @@ public struct WrappedCardView: View {
             .frame(height: 84)
             .padding(.top, 22)
 
-            (Text("That's ") + Text("\(result.equivalentDays) days and \(result.equivalentHours) hours").foregroundColor(ThemeColors.accent) + Text(" of your apps running, back to back."))
+            (Text("\(deviceName) for ") + Text(highlight).foregroundColor(ThemeColors.accent) + Text(" this year."))
                 .font(.system(size: 17, weight: .semibold))
                 .lineSpacing(4)
                 .foregroundColor(ThemeColors.textPrimary)
@@ -785,18 +840,29 @@ public struct WrappedCardView: View {
             .padding(.top, 8)
     }
 
-    private func podiumCard(eyebrow label: String, title: String, podium: [WrappedApp], others: [WrappedApp]) -> some View {
-        let top = CGFloat(max(1, podium.first?.seconds ?? 1))
+    private func podiumCard(eyebrow label: String, title: String, podium: [WrappedApp], others: [WrappedApp], emptyMessage: String) -> some View {
         return VStack(alignment: .leading, spacing: 0) {
             eyebrow(label)
-            headline(title)
+            headline(podium.isEmpty ? emptyMessage : title)
             Spacer(minLength: 8)
             if !podium.isEmpty {
-                HStack(alignment: .bottom, spacing: 8) {
-                    slot(podium, rank: 2, top: top, tall: 170, fontSize: 26, inset: 10)
-                    slot(podium, rank: 1, top: top, tall: 170, fontSize: 30, inset: 12)
-                    slot(podium, rank: 3, top: top, tall: 170, fontSize: 24, inset: 8)
+                let order: [Int] = {
+                    var ord = [0]
+                    for i in 1..<podium.count {
+                        if i % 2 == 1 { ord.insert(i, at: 0) }
+                        else { ord.append(i) }
+                    }
+                    return ord
+                }()
+
+                HStack(alignment: .bottom, spacing: podium.count > 3 ? 6 : 8) {
+                    ForEach(order, id: \.self) { idx in
+                        let rank = idx + 1
+                        slot(podium[idx], rank: rank, count: podium.count)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .bottom)
+
                 if !others.isEmpty {
                     (Text("Then ") + others.prefix(3).enumerated().reduce(Text("")) { acc, item in
                         acc + Text(item.offset > 0 ? " · " : "") + Text("\(item.element.name) \(h(item.element.seconds))").foregroundColor(ThemeColors.textPrimary)
@@ -806,42 +872,74 @@ public struct WrappedCardView: View {
                     .lineLimit(1)
                     .padding(.top, 12)
                 }
+            } else {
+                Spacer()
             }
         }
     }
 
     @ViewBuilder
-    private func slot(_ podium: [WrappedApp], rank: Int, top: CGFloat, tall: CGFloat, fontSize: CGFloat, inset: CGFloat) -> some View {
-        if rank <= podium.count {
-            let app = podium[rank - 1]
-            VStack(spacing: 0) {
-                AppTile(name: app.name, png: state.iconCache.getCachedIcon(forAppId: app.appId), size: 34, radius: 9, fontSize: 15, border: ThemeColors.border)
-                Text(app.name)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(ThemeColors.textPrimary)
-                    .lineLimit(1)
-                    .padding(.top, 6)
-                Text(h(app.seconds))
-                    .font(.system(size: 10))
-                    .foregroundColor(ThemeColors.textDim)
-                    .padding(.bottom, 6)
-                Text("\(rank)")
-                    .font(.system(size: fontSize, weight: .heavy))
-                    .foregroundColor(ThemeColors.background)
-                    .padding(.top, inset)
-                    .frame(maxWidth: .infinity, alignment: .top)
-                    .frame(height: max(56, tall * CGFloat(app.seconds) / top), alignment: .top)
-                    .background(UnevenRoundedRectangle(topLeadingRadius: 8, topTrailingRadius: 8).fill(Tokens.appColor(app.name)))
+    private func slot(_ app: WrappedApp, rank: Int, count: Int) -> some View {
+        let isDense = count > 3
+        let iconSize: CGFloat = isDense ? 28 : 34
+        let iconRadius: CGFloat = isDense ? 7 : 9
+        let nameFont: CGFloat = isDense ? 10.5 : 12
+        let rankFont: CGFloat = {
+            switch rank {
+            case 1: return isDense ? 26 : 30
+            case 2: return isDense ? 22 : 26
+            case 3: return isDense ? 20 : 24
+            default: return 18
             }
-            .frame(maxWidth: .infinity)
-        } else {
-            Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
+        }()
+        let pillarH: CGFloat = {
+            switch rank {
+            case 1: return 108
+            case 2: return 84
+            case 3: return 68
+            case 4: return 54
+            default: return 42
+            }
+        }()
+        let inset: CGFloat = {
+            switch rank {
+            case 1: return 12
+            case 2: return 10
+            default: return 8
+            }
+        }()
+
+        VStack(spacing: 0) {
+            AppTile(name: app.name, png: state.iconCache.getCachedIcon(forAppId: app.appId), size: iconSize, radius: iconRadius, fontSize: isDense ? 13 : 15, border: ThemeColors.border)
+            Text(app.name)
+                .font(.system(size: nameFont, weight: .bold))
+                .foregroundColor(ThemeColors.textPrimary)
+                .lineLimit(1)
+                .padding(.top, 6)
+            Text(h(app.seconds))
+                .font(.system(size: 10))
+                .foregroundColor(ThemeColors.textDim)
+                .padding(.bottom, 6)
+            Text("\(rank)")
+                .font(.system(size: rankFont, weight: .heavy))
+                .foregroundColor(ThemeColors.background)
+                .padding(.top, inset)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .frame(height: pillarH, alignment: .top)
+                .background(UnevenRoundedRectangle(topLeadingRadius: 8, topTrailingRadius: 8).fill(Tokens.appColor(app.name)))
         }
+        .frame(maxWidth: .infinity)
     }
 
-    private var habitsTitle: String {
-        let summer = Formatters.dayText(result.streakStart, format: "M")
-        return ["6", "7", "8"].contains(summer) && result.longestStreakDays >= 7 ? "Consistent, with a long summer run." : "Consistent, with a long run."
+    private var streakSpan: String {
+        guard result.longestStreakDays > 0, let start = result.streakStart else { return "" }
+        if result.longestStreakDays == 1 {
+            return Formatters.dayText(start, format: "d MMM")
+        }
+        if let end = result.streakEnd {
+            return "\(Formatters.dayText(start, format: "d MMM")) to \(Formatters.dayText(end, format: "d MMM"))"
+        }
+        return Formatters.dayText(start, format: "d MMM")
     }
 
     private var busiestDelta: String {
@@ -865,15 +963,15 @@ public struct WrappedCardView: View {
     private var habitsCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             eyebrow("YOUR HABITS")
-            headline(habitsTitle)
+            headline("Your rhythm this year.")
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
-                    habit("LONGEST STREAK", "\(result.longestStreakDays) day\(result.longestStreakDays == 1 ? "" : "s")", "\(Formatters.dayText(result.streakStart, format: "d MMM")) to \(Formatters.dayText(result.streakEnd, format: "d MMM"))")
+                    habit("LONGEST STREAK", "\(result.longestStreakDays) day\(result.longestStreakDays == 1 ? "" : "s")", streakSpan)
                     habit("BUSIEST MONTH", result.busiestMonth.map { "\(Formatters.monthName($0, short: true)) · \(h(result.busiestMonthSeconds))" } ?? "—", busiestDelta)
                 }
                 HStack(spacing: 10) {
                     habit("PEAK HOUR", peakText, "most apps open together")
-                    habit("BEFORE NOON", "\(result.beforeNoonPercent)%", result.beforeNoonPercent < 50 ? "of your time, a night owl" : "of your time, an early bird")
+                    habit("BEFORE NOON", "\(result.beforeNoonPercent)%", result.beforeNoonPercent >= 50 ? "of your time, an early bird" : "of your time")
                 }
             }
             .padding(.top, 16)

@@ -40,11 +40,16 @@ final class MacAppLibraryTests: XCTestCase {
             deviceId: devId
         )
 
-        try lib.updateApp(appId: appId, displayName: "Hades II", kind: .game, isBackground: false)
+        try lib.updateApp(appId: appId, displayName: "Hades II", kind: .game, isBackground: true)
 
         var tracked = try lib.getTrackedApps()
         XCTAssertEqual(tracked.first?.displayName, "Hades II")
         XCTAssertEqual(tracked.first?.kind, .game)
+        XCTAssertEqual(tracked.first?.isBackground, true)
+
+        try lib.updateApp(appId: appId, displayName: "Hades II", kind: .game, isBackground: false)
+        tracked = try lib.getTrackedApps()
+        XCTAssertEqual(tracked.first?.isBackground, false)
 
         try lib.stopTracking(appId: appId)
         tracked = try lib.getTrackedApps()

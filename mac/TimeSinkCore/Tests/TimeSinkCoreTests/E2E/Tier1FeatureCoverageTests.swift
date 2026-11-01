@@ -475,11 +475,11 @@ final class Tier1FeatureCoverageTests: XCTestCase {
     }
 
     func testFeature27_WrappedCardPager() throws {
-        // Wrapped pager bounds: 0 to 4 (5 cards)
-        let cardIndices = [0, 1, 2, 3, 4]
-        XCTAssertEqual(cardIndices.count, 5)
+        // Wrapped pager bounds: 0 to 5 (6 cards)
+        let cardIndices = [0, 1, 2, 3, 4, 5]
+        XCTAssertEqual(cardIndices.count, 6)
         for idx in cardIndices {
-            XCTAssertTrue(idx >= 0 && idx < 5)
+            XCTAssertTrue(idx >= 0 && idx < 6)
         }
     }
 
@@ -554,6 +554,21 @@ final class Tier1FeatureCoverageTests: XCTestCase {
         let wrapped = try WrappedQuery.run(ctx)
         XCTAssertNotNil(wrapped.gachaTop)
         XCTAssertEqual(wrapped.gachaTop?.podium.first?.name, "Genshin")
+    }
+
+    func testFeature31b_WrappedCard4LongestSessions() throws {
+        let harness = try E2ETestHarness(name: "f31b")
+        let app1 = try harness.insertApp(path: "/Applications/Xcode.app", name: "Xcode")
+        let app2 = try harness.insertApp(path: "/Applications/Safari.app", name: "Safari")
+        let jan1: Int64 = 1767225600
+        try harness.insertSession(appId: app1, startUtc: jan1 + 3600, endUtc: jan1 + 25200, lastSeenUtc: jan1 + 25200) // 6 hours
+        try harness.insertSession(appId: app2, startUtc: jan1 + 3600, endUtc: jan1 + 7200, lastSeenUtc: jan1 + 7200)   // 1 hour
+
+        let ctx = harness.makeContext()
+        let wrapped = try WrappedQuery.run(ctx)
+        XCTAssertNotNil(wrapped.longestSessions)
+        XCTAssertEqual(wrapped.longestSessions?.first?.name, "Xcode")
+        XCTAssertEqual(wrapped.longestSessions?.first?.seconds, 21600)
     }
 
     func testFeature32_WrappedCard5Habits() throws {
@@ -786,8 +801,8 @@ final class Tier1FeatureCoverageTests: XCTestCase {
     }
 
     func testFeature50_MergeSearchAndFilter() throws {
-        let c1 = MergeCandidate(key: "1", kind: .tracked, name: "VS Code", exePath: "/Code", appId: 1, seconds: 100)
-        let c2 = MergeCandidate(key: "2", kind: .retired, name: "Xcode", exePath: "/Xcode", appId: 2, seconds: 200)
+        let c1 = MergeCandidate(key: "1", kind: .tracked, name: "Safari", exePath: "/Safari", appId: 2, seconds: 100)
+        let c2 = MergeCandidate(key: "2", kind: .retired, name: "Xcode", exePath: "/Xcode", appId: 3, seconds: 200)
 
         let plan = MergePlan(mainId: 1, mainName: "VS Code", candidates: [c1, c2])
         plan.filter = .tracked

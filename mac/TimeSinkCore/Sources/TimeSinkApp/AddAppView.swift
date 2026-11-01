@@ -27,20 +27,6 @@ private struct RetiredApp: Identifiable {
     let exePath: String
 }
 
-/// Best available publisher for an app, read from its bundle.
-private enum AppVendor {
-    static func name(executable: String) -> String {
-        guard let bundlePath = MacIconCache.resolveBundlePath(from: executable),
-              let bundle = Bundle(path: bundlePath) else { return "" }
-        if bundle.bundleIdentifier?.hasPrefix("com.apple.") == true { return "Apple" }
-        guard let raw = bundle.object(forInfoDictionaryKey: "NSHumanReadableCopyright") as? String else { return "" }
-        let cleaned = raw
-            .replacingOccurrences(of: "(?i)copyright|©|\\(c\\)|all rights reserved\\.?|[0-9]{4}(\\s*[-–]\\s*[0-9]{4})?", with: "", options: .regularExpression)
-            .trimmingCharacters(in: CharacterSet(charactersIn: " ,.\n\t"))
-        return cleaned.count <= 28 ? cleaned : ""
-    }
-}
-
 public struct AddAppView: View {
     @ObservedObject var state: AppState
     public let onDismiss: () -> Void
@@ -60,7 +46,6 @@ public struct AddAppView: View {
     @State private var retiredApps: [RetiredApp] = []
 
     @State private var editingAppId: Int64?
-    @State private var mergingAppId: Int64?
 
     public init(state: AppState, onDismiss: @escaping () -> Void) {
         self.state = state
@@ -90,12 +75,6 @@ public struct AddAppView: View {
             if let id = editingAppId {
                 AppSettingsSheet(state: state, appId: id) {
                     editingAppId = nil
-                    reloadAll()
-                }
-            }
-            if let id = mergingAppId {
-                MergeView(state: state, mainAppId: id) {
-                    mergingAppId = nil
                     reloadAll()
                 }
             }
@@ -204,12 +183,18 @@ public struct AddAppView: View {
 
     private func trackedButtons(_ app: TrackedAppItem, width: CGFloat, eyeLime: Bool) -> some View {
         let game = app.kind != .other
+        let isBg = app.isBackground
         return HStack(spacing: width == 38 ? 12 : 10) {
             iconButton(.gamepad, width: width, border: game ? ThemeColors.accent : ThemeColors.border, color: game ? ThemeColors.accent : ThemeColors.textDim, help: "Game type") {
                 try? library.updateApp(appId: app.id, displayName: app.displayName, kind: game ? .other : .game, isBackground: app.isBackground)
+                state.refresh()
                 reloadAll()
             }
-            iconButton(.layers, width: width, help: "Merge…") { mergingAppId = app.id }
+            iconButton(.layers, width: width, border: isBg ? ThemeColors.accent : ThemeColors.border, color: isBg ? ThemeColors.accent : ThemeColors.textDim, help: "Background app") {
+                try? library.updateApp(appId: app.id, displayName: app.displayName, kind: app.kind, isBackground: !isBg)
+                state.refresh()
+                reloadAll()
+            }
             iconButton(.eye, width: width, color: eyeLime ? ThemeColors.accent : ThemeColors.textDim, help: "Stop tracking") { stop(app.id) }
         }
     }
@@ -327,42 +312,60 @@ public struct AddAppView: View {
 
     // MARK: - Installed
 
-    private var installedRows: [(letter: String, apps: [InstalledAppItem])] {
-        let q = searchQuery.trimmingCharacters(in: .whitespaces)
-        let shown = q.isEmpty ? installedApps : installedApps.filter { $0.name.localizedCaseInsensitiveContains(q) }
-        let groups = Dictionary(grouping: shown) { String($0.name.prefix(1)).uppercased() }
+    private var unrankedInstalledGroups: [(letter: String, apps: [InstalledAppItem])] {
+        let groups = Dictionary(grouping: installedApps) { String($0.name.prefix(1)).uppercased() }
         return groups.keys.sorted().map { ($0, groups[$0]!.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) }
     }
 
     private var installedTab: some View {
-        VStack(spacing: 6) {
+        let q = searchQuery.trimmingCharacters(in: .whitespaces)
+        let isSearching = !q.isEmpty
+        let shown = isSearching ? InstalledSearch.search(installedApps, query: q, publisherOf: { AppVendor.name(executable: $0) }) : []
+
+        return VStack(spacing: 6) {
             searchField("Search installed apps").padding(.trailing, 4)
-            ScrollViewReader { proxy in
-                HStack(spacing: 6) {
-                    ScrollView(.vertical, showsIndicators: false) {
+            if isSearching {
+                ScrollView(.vertical, showsIndicators: false) {
+                    if shown.isEmpty {
+                        Text("No installed app matches “\(q)”")
+                            .font(.system(size: 12))
+                            .foregroundColor(ThemeColors.textDim)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 32)
+                    } else {
                         LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(installedRows, id: \.letter) { group in
-                                Text(group.letter)
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(ThemeColors.accent)
-                                    .frame(height: 24)
-                                    .id(group.letter)
-                                ForEach(group.apps) { installedRow($0) }
-                            }
+                            ForEach(shown) { installedRow($0) }
                         }
                     }
-                    VStack(spacing: 3) {
-                        ForEach(installedRows, id: \.letter) { group in
-                            Button(action: { proxy.scrollTo(group.letter, anchor: .top) }) {
-                                Text(group.letter)
-                                    .font(.system(size: 8, weight: .semibold))
-                                    .foregroundColor(ThemeColors.textMuted)
-                                    .contentShape(Rectangle())
+                }
+            } else {
+                ScrollViewReader { proxy in
+                    HStack(spacing: 6) {
+                        ScrollView(.vertical, showsIndicators: false) {
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                ForEach(unrankedInstalledGroups, id: \.letter) { group in
+                                    Text(group.letter)
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(ThemeColors.accent)
+                                        .frame(height: 24)
+                                        .id(group.letter)
+                                    ForEach(group.apps) { installedRow($0) }
+                                }
                             }
-                            .buttonStyle(.plain)
                         }
+                        VStack(spacing: 3) {
+                            ForEach(unrankedInstalledGroups, id: \.letter) { group in
+                                Button(action: { proxy.scrollTo(group.letter, anchor: .top) }) {
+                                    Text(group.letter)
+                                        .font(.system(size: 8, weight: .semibold))
+                                        .foregroundColor(ThemeColors.textMuted)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .frame(width: 12)
                     }
-                    .frame(width: 12)
                 }
             }
         }
@@ -407,13 +410,28 @@ public struct AddAppView: View {
 
     private var trackedTab: some View {
         let q = searchQuery.trimmingCharacters(in: .whitespaces)
-        let shown = q.isEmpty ? trackedApps : trackedApps.filter { $0.displayName.localizedCaseInsensitiveContains(q) }
+        let shown = TrackedSearch.apply(trackedApps, query: q, publisherOf: { AppVendor.name(executable: $0) })
+        let headerText = q.isEmpty ? "TRACKED NOW" : "\(shown.count) APPS TRACKED"
+
         return VStack(alignment: .leading, spacing: 10) {
             searchField("Search tracked apps")
-            Text("TRACKED NOW").caps(10, tracking: 1)
+            Text(headerText).caps(10, tracking: 1)
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    ForEach(shown) { trackedRow($0) }
+                if trackedApps.isEmpty {
+                    Text("Nothing is tracked yet. Add an app from Running or Installed.")
+                        .font(.system(size: 12))
+                        .foregroundColor(ThemeColors.textDim)
+                        .padding(.vertical, 16)
+                } else if shown.isEmpty {
+                    Text("No installed app matches “\(q)”")
+                        .font(.system(size: 12))
+                        .foregroundColor(ThemeColors.textDim)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 32)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(shown) { trackedRow($0) }
+                    }
                 }
             }
         }

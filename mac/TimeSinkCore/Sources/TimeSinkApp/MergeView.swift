@@ -94,8 +94,17 @@ public struct MergeView: View {
                         )
                     }
 
-                    VStack(spacing: 6) {
-                        ForEach(shown, id: \.key) { row($0) }
+                    if shown.isEmpty {
+                        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+                        Text(q.isEmpty ? "No candidates found" : "No installed app matches “\(q)”")
+                            .font(.system(size: 12))
+                            .foregroundColor(ThemeColors.textDim)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 24)
+                    } else {
+                        VStack(spacing: 6) {
+                            ForEach(shown, id: \.key) { row($0) }
+                        }
                     }
 
                     if !ticked.isEmpty { preview }
