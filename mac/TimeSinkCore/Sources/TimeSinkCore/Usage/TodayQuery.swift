@@ -24,22 +24,35 @@ public struct TodaySession: Sendable, Equatable {
 public struct DeviceHour: Sendable, Equatable {
     public let appSeconds: Int64
     public let distinctApps: Int
+    public let uptimeSeconds: Int64
 
-    public init(appSeconds: Int64, distinctApps: Int) {
+    public init(appSeconds: Int64, distinctApps: Int, uptimeSeconds: Int64 = 0) {
         self.appSeconds = appSeconds
         self.distinctApps = distinctApps
+        self.uptimeSeconds = uptimeSeconds
     }
 }
 
 public struct HourBucket: Sendable, Equatable {
     public let hour: Int
+    public let uptimeSeconds: Int64
     public let appSeconds: Int64
+    public let typicalUptimeSeconds: Double
     public let typicalAppSeconds: Double
     public let byDevice: [String: DeviceHour]?
 
-    public init(hour: Int, appSeconds: Int64, typicalAppSeconds: Double, byDevice: [String: DeviceHour]? = nil) {
+    public init(
+        hour: Int,
+        uptimeSeconds: Int64 = 0,
+        appSeconds: Int64,
+        typicalUptimeSeconds: Double = 0,
+        typicalAppSeconds: Double = 0,
+        byDevice: [String: DeviceHour]? = nil
+    ) {
         self.hour = hour
+        self.uptimeSeconds = uptimeSeconds
         self.appSeconds = appSeconds
+        self.typicalUptimeSeconds = typicalUptimeSeconds
         self.typicalAppSeconds = typicalAppSeconds
         self.byDevice = byDevice
     }
@@ -236,7 +249,22 @@ public enum TodayQuery {
         // Hourly chart & typical day
         let todayHours = UsageDays.hourSums(segs: segs, year: tYear, month: tMonth, day: tDay, zone: zone)
         let start = TrackingStart.of(apps: apps, zone: zone)
+        // Uptime breakdown
+        let dayEnd = isToday ? nowUtc : d1
+        let breakdown = UsageUptime.breakdown(
+            segs: segs,
+            from: d0,
+            to: dayEnd,
+            live: isToday,
+            onSince: onSinceUtc,
+            gamesOnly: gamesOnly,
+            localDeviceId: window.localDeviceId
+        )
+        let uptime = breakdown.unionSeconds
+        let onBoth = breakdown.onBothSeconds
+
         var typical = [Double](repeating: 0.0, count: hoursInDay)
+        var typicalUptime = [Double](repeating: 0.0, count: hoursInDay)
         var typicalDays = 0
 
         for k in 1...typicalWeeks {
@@ -249,7 +277,60 @@ public enum TodayQuery {
             for h in 0..<hoursInDay {
                 typical[h] += Double(sums[h])
             }
+            let pastD0 = LocalDays.startOf(year: py, month: pm, day: pd, timeZone: zone)
+            let pastNextDate = calendar.date(byAdding: .day, value: 1, to: pastDate)!
+            let pastNextComps = calendar.dateComponents([.year, .month, .day], from: pastNextDate)
+            let pastD1 = LocalDays.startOf(year: pastNextComps.year!, month: pastNextComps.month!, day: pastNextComps.day!, timeZone: zone)
+            let pastBreakdown = UsageUptime.breakdown(
+                segs: segs,
+                from: pastD0,
+                to: pastD1,
+                live: false,
+                onSince: nil,
+                gamesOnly: gamesOnly,
+                localDeviceId: window.localDeviceId
+            )
+            for p in UsageDays.hourPieces(from: pastD0, to: pastD1, zone: zone) {
+                let h = p.hour
+                if h >= 0 && h < hoursInDay {
+                    for interval in pastBreakdown.unionIntervals {
+                        let a = max(interval.startUtc, p.start)
+                        let b = min(interval.endUtc, p.end)
+                        if b > a {
+                            typicalUptime[h] += Double(b - a)
+                        }
+                    }
+                }
+            }
             typicalDays += 1
+        }
+
+        var hourUptime = [Int64](repeating: 0, count: hoursInDay)
+        var hourlyDeviceUptime = [[String: Int64]](repeating: [:], count: hoursInDay)
+        for p in UsageDays.hourPieces(from: d0, to: d1, zone: zone) {
+            let h = p.hour
+            if h >= 0 && h < hoursInDay {
+                for interval in breakdown.unionIntervals {
+                    let a = max(interval.startUtc, p.start)
+                    let b = min(interval.endUtc, p.end)
+                    if b > a {
+                        hourUptime[h] += (b - a)
+                    }
+                }
+                for (dev, intervals) in breakdown.deviceIntervals {
+                    var devSecs: Int64 = 0
+                    for interval in intervals {
+                        let a = max(interval.startUtc, p.start)
+                        let b = min(interval.endUtc, p.end)
+                        if b > a {
+                            devSecs += (b - a)
+                        }
+                    }
+                    if devSecs > 0 {
+                        hourlyDeviceUptime[h][dev, default: 0] += devSecs
+                    }
+                }
+            }
         }
 
         var hourlyDeviceSeconds = [[String: Int64]](repeating: [:], count: hoursInDay)
@@ -299,15 +380,18 @@ public enum TodayQuery {
         var hourBuckets: [HourBucket] = []
         for h in 0..<hoursInDay {
             var byDev: [String: DeviceHour] = [:]
-            let allDevs = Set(hourlyDeviceSeconds[h].keys).union(hourlyDeviceApps[h].keys)
+            let allDevs = Set(hourlyDeviceSeconds[h].keys).union(hourlyDeviceApps[h].keys).union(hourlyDeviceUptime[h].keys)
             for dev in allDevs {
                 let devSecs = hourlyDeviceSeconds[h][dev] ?? 0
                 let count = hourlyDeviceApps[h][dev]?.count ?? 0
-                byDev[dev] = DeviceHour(appSeconds: devSecs, distinctApps: count)
+                let devUptime = hourlyDeviceUptime[h][dev] ?? 0
+                byDev[dev] = DeviceHour(appSeconds: devSecs, distinctApps: count, uptimeSeconds: devUptime)
             }
             hourBuckets.append(HourBucket(
                 hour: h,
+                uptimeSeconds: hourUptime[h],
                 appSeconds: todayHours[h],
+                typicalUptimeSeconds: typicalDays == 0 ? 0.0 : typicalUptime[h] / Double(typicalDays),
                 typicalAppSeconds: typicalDays == 0 ? 0.0 : typical[h] / Double(typicalDays),
                 byDevice: byDev.isEmpty ? nil : byDev
             ))
@@ -443,19 +527,7 @@ public enum TodayQuery {
         let yesterdayByGroup = Dictionary(grouping: segs) { $0.group }
         let yesterdayByNow = yesterdayByGroup.values.reduce(0) { $0 + UsageUptime.openSeconds(segs: $1, from: y0, to: cut) }
 
-        // Uptime
-        let dayEnd = isToday ? nowUtc : d1
-        let breakdown = UsageUptime.breakdown(
-            segs: segs,
-            from: d0,
-            to: dayEnd,
-            live: isToday,
-            onSince: onSinceUtc,
-            gamesOnly: gamesOnly,
-            localDeviceId: window.localDeviceId
-        )
-        let uptime = breakdown.unionSeconds
-        let onBoth = breakdown.onBothSeconds
+        // Uptime (breakdown computed above for hourly bars)
 
         var devUptimes: [String: DeviceUptime] = [:]
         for (devId, devSecs) in breakdown.deviceSeconds {

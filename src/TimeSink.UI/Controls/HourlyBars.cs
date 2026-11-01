@@ -12,7 +12,7 @@ namespace TimeSink.UI.Controls;
 /// </summary>
 public sealed class HourlyBars : FrameworkElement
 {
-    private const double MaxAppHours = 6, LabelBand = 22, Gap = 3;
+    private const double MaxUptimeSeconds = 3600.0, LabelBand = 22, Gap = 3;
 
     private static DependencyProperty Reg<T>(string name, T def = default!) =>
         DependencyProperty.Register(name, typeof(T), typeof(HourlyBars),
@@ -128,7 +128,7 @@ public sealed class HourlyBars : FrameworkElement
         {
             var x = i * col + Gap / 2;
             var bucket = hours[i];
-            var barH = Math.Min(1.0, bucket.AppSeconds / 3600.0 / MaxAppHours) * plotH;
+            var barH = Math.Min(1.0, bucket.UptimeSeconds / MaxUptimeSeconds) * plotH;
             var future = CurrentHour >= 0 && i > CurrentHour;
             if (i == HoveredHour && MutedBrush is { } hoverFill)
             {
@@ -142,10 +142,10 @@ public sealed class HourlyBars : FrameworkElement
                 long secA = 0, secB = 0;
                 if (LocalDeviceId != null)
                 {
-                    if (bucket.ByDevice.TryGetValue(LocalDeviceId, out var dhA)) secA = dhA.AppSeconds;
+                    if (bucket.ByDevice.TryGetValue(LocalDeviceId, out var dhA)) secA = dhA.UptimeSeconds;
                     foreach (var (devId, dh) in bucket.ByDevice)
                     {
-                        if (devId != LocalDeviceId) secB += dh.AppSeconds;
+                        if (devId != LocalDeviceId) secB += dh.UptimeSeconds;
                     }
                 }
                 else
@@ -153,12 +153,12 @@ public sealed class HourlyBars : FrameworkElement
                     var first = true;
                     foreach (var dh in bucket.ByDevice.Values)
                     {
-                        if (first) { secA = dh.AppSeconds; first = false; }
-                        else secB += dh.AppSeconds;
+                        if (first) { secA = dh.UptimeSeconds; first = false; }
+                        else secB += dh.UptimeSeconds;
                     }
                 }
-                var hA = Math.Min(1.0, secA / 3600.0 / MaxAppHours) * plotH;
-                var hB = Math.Min(1.0, secB / 3600.0 / MaxAppHours) * plotH;
+                var hA = Math.Min(1.0, secA / MaxUptimeSeconds) * plotH;
+                var hB = Math.Min(1.0, secB / MaxUptimeSeconds) * plotH;
 
                 var (back, front) = OverlapBars.Layout(x, barW, hA, hB);
                 void DrawDeviceBar(OverlapBarGeometry g)
@@ -182,9 +182,9 @@ public sealed class HourlyBars : FrameworkElement
 
             if (i == SelectedHour && SelectedBrush is { } sel)
                 dc.DrawRoundedRectangle(null, new Pen(sel, 1.5), new Rect(x - 1, plotTop, barW + 2, plotH), 2, 2);
-            if (future && bucket.TypicalAppSeconds > 0 && MutedBrush is { } m)
+            if (future && bucket.TypicalUptimeSeconds > 0 && MutedBrush is { } m)
             {
-                var ty = plotTop + plotH - Math.Min(1.0, bucket.TypicalAppSeconds / 3600.0 / MaxAppHours) * plotH;
+                var ty = plotTop + plotH - Math.Min(1.0, bucket.TypicalUptimeSeconds / MaxUptimeSeconds) * plotH;
                 dc.DrawRectangle(m, null, new Rect(x, ty - 1, barW, 2));
             }
         }

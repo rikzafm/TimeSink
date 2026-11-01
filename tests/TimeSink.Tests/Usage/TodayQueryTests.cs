@@ -84,6 +84,16 @@ public sealed class TodayQueryTests : IDisposable
     }
 
     [Fact]
+    public void Hourly_buckets_count_uptime_seconds_per_hour_with_the_current_hour_partial()
+    {
+        var u = Run().Hours.Select(x => x.UptimeSeconds).ToArray();
+        u.Length.Should().Be(24);
+        u.Should().Equal(
+            3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 1800, 0, 3600,
+            3600, 3600, 1200, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    }
+
+    [Fact]
     public void Typical_day_averages_the_same_weekday_over_eight_weeks_ignoring_days_before_tracking()
     {
         // Wednesdays 03-04 and 02-25 count (tracking began 2026-02-20); 02-18 and earlier do not.
@@ -92,6 +102,9 @@ public sealed class TodayQueryTests : IDisposable
         r.Hours[10].TypicalAppSeconds.Should().Be(3600); // (3600 + 3600) / 2
         r.Hours[11].TypicalAppSeconds.Should().Be(1800); // (3600 + 0) / 2
         r.Hours[9].TypicalAppSeconds.Should().Be(0);
+        r.Hours[10].TypicalUptimeSeconds.Should().Be(3600);
+        r.Hours[11].TypicalUptimeSeconds.Should().Be(1800);
+        r.Hours[9].TypicalUptimeSeconds.Should().Be(0);
     }
 
     [Fact]

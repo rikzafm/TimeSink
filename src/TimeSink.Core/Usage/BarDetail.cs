@@ -14,10 +14,12 @@ public sealed record HourDetail(
     int Hour,
     long StartUtc,
     long EndUtc,
+    long UptimeSeconds,
     long AppSeconds,
-    double TypicalAppSeconds,
+    double TypicalUptimeSeconds,
     IReadOnlyList<BarApp> Apps,
-    IReadOnlyList<BarSession> Sessions);
+    IReadOnlyList<BarSession> Sessions,
+    double TypicalAppSeconds = 0);
 
 public static class BarDetail
 {
@@ -47,10 +49,13 @@ public static class BarDetail
             if (secs > 0) apps.Add(new BarApp(row.AppId, row.Name, secs));
         }
 
-        var bucket = r.Hours[hour];
+        var bucket = hour >= 0 && hour < r.Hours.Count ? r.Hours[hour] : null;
+        var uptimeSecs = bucket?.UptimeSeconds ?? 0;
+        var typUptimeSecs = bucket?.TypicalUptimeSeconds ?? 0;
+        var typAppSecs = bucket?.TypicalAppSeconds ?? 0;
         return new HourDetail(hour, windows.Count > 0 ? windows[0].S : r.DayStartUtc, windows.Count > 0 ? windows[^1].E : r.DayStartUtc,
-            apps.Sum(a => a.Seconds), bucket.TypicalAppSeconds,
+            uptimeSecs, apps.Sum(a => a.Seconds), typUptimeSecs,
             apps.OrderByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList(),
-            sessions.OrderBy(s => s.StartUtc).ToList());
+            sessions.OrderBy(s => s.StartUtc).ToList(), typAppSecs);
     }
 }

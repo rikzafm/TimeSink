@@ -21,10 +21,20 @@ public sealed record TodaySession(long StartUtc, long EndUtc, bool IsOpen, long?
 public sealed record SleepBand(long StartUtc, long EndUtc);
 
 /// <summary>App time and distinct apps active in one hour for one device.</summary>
-public sealed record DeviceHour(long AppSeconds, int DistinctApps);
+public sealed record DeviceHour(long AppSeconds, int DistinctApps, long UptimeSeconds = 0);
 
 /// <summary>One hour column: app-seconds open in that hour (sum over apps) and the typical-day average for it, with optional per-device breakdown.</summary>
-public sealed record HourBucket(int Hour, long AppSeconds, double TypicalAppSeconds, IReadOnlyDictionary<string, DeviceHour>? ByDevice = null);
+public sealed record HourBucket(
+    int Hour,
+    long UptimeSeconds,
+    long AppSeconds,
+    double TypicalUptimeSeconds,
+    IReadOnlyDictionary<string, DeviceHour>? ByDevice = null,
+    double TypicalAppSeconds = 0)
+{
+    public HourBucket(int hour, long appSeconds, double typicalAppSeconds, IReadOnlyDictionary<string, DeviceHour>? byDevice = null)
+        : this(hour, Math.Min(3600, appSeconds), appSeconds, Math.Min(3600, typicalAppSeconds), byDevice, typicalAppSeconds) { }
+}
 
 public sealed record FirstAppTile(long AppId, string AppName, long StartUtc);
 

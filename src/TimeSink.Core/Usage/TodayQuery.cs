@@ -38,10 +38,17 @@ public static class TodayQuery
         var segs = window.Segments(LocalDays.StartOf(date.AddDays(-TypicalWeeks * 7), zone));
         var byGroup = segs.ToLookup(s => s.Group);
 
+        // PC uptime breakdown.
+        var dayEnd = isToday ? nowUtc : d1;
+        var breakdown = UsageUptime.Breakdown(segs, d0, dayEnd, isToday, onSinceUtc, gamesOnly, window.LocalDeviceId);
+        var uptime = breakdown.UnionSeconds;
+        var onBoth = breakdown.OnBothSeconds;
+
         // Hourly chart + typical day.
         var todayHours = UsageDays.HourSums(segs, date, zone);
         var start = TrackingStart.Of(apps, zone);
         var typical = new double[Hours];
+        var typicalUptime = new double[Hours];
         var typicalDays = 0;
         for (var k = 1; k <= TypicalWeeks; k++)
         {
@@ -49,15 +56,57 @@ public static class TodayQuery
             if (!start.Counts(day)) continue;
             var sums = UsageDays.HourSums(segs, day, zone);
             for (var h = 0; h < Hours; h++) typical[h] += sums[h];
+
+            var pastD0 = LocalDays.StartOf(day, zone);
+            var pastD1 = LocalDays.StartOf(day.AddDays(1), zone);
+            var pastBreakdown = UsageUptime.Breakdown(segs, pastD0, pastD1, false, null, gamesOnly, window.LocalDeviceId);
+            foreach (var p in UsageDays.HourPieces(pastD0, pastD1, zone))
+            {
+                var h = p.Hour;
+                if (h < 0 || h >= Hours) continue;
+                foreach (var interval in pastBreakdown.UnionIntervals)
+                {
+                    var a = Math.Max(interval.StartUtc, p.Start);
+                    var b = Math.Min(interval.EndUtc, p.End);
+                    if (b > a) typicalUptime[h] += b - a;
+                }
+            }
             typicalDays++;
         }
 
+        var hourUptime = new long[Hours];
+        var hourlyDeviceUptime = new Dictionary<string, long>[Hours];
         var hourlyDeviceSeconds = new Dictionary<string, long>[Hours];
         var hourlyDeviceApps = new Dictionary<string, HashSet<long>>[Hours];
         for (var h = 0; h < Hours; h++)
         {
+            hourlyDeviceUptime[h] = [];
             hourlyDeviceSeconds[h] = [];
             hourlyDeviceApps[h] = [];
+        }
+
+        foreach (var p in UsageDays.HourPieces(d0, d1, zone))
+        {
+            var h = p.Hour;
+            if (h < 0 || h >= Hours) continue;
+            foreach (var interval in breakdown.UnionIntervals)
+            {
+                var a = Math.Max(interval.StartUtc, p.Start);
+                var b = Math.Min(interval.EndUtc, p.End);
+                if (b > a) hourUptime[h] += b - a;
+            }
+            foreach (var (dev, intervals) in breakdown.DeviceIntervals)
+            {
+                long devSecs = 0;
+                foreach (var interval in intervals)
+                {
+                    var a = Math.Max(interval.StartUtc, p.Start);
+                    var b = Math.Min(interval.EndUtc, p.End);
+                    if (b > a) devSecs += b - a;
+                }
+                if (devSecs > 0)
+                    hourlyDeviceUptime[h][dev] = hourlyDeviceUptime[h].GetValueOrDefault(dev) + devSecs;
+            }
         }
 
         foreach (var s in segs)
@@ -80,13 +129,20 @@ public static class TodayQuery
         var hours = Enumerable.Range(0, Hours).Select(h =>
         {
             var byDev = new Dictionary<string, DeviceHour>();
-            foreach (var dev in hourlyDeviceSeconds[h].Keys.Union(hourlyDeviceApps[h].Keys))
+            foreach (var dev in hourlyDeviceSeconds[h].Keys.Union(hourlyDeviceApps[h].Keys).Union(hourlyDeviceUptime[h].Keys))
             {
                 var devSecs = hourlyDeviceSeconds[h].GetValueOrDefault(dev);
                 var distinctApps = hourlyDeviceApps[h].TryGetValue(dev, out var set) ? set.Count : 0;
-                byDev[dev] = new DeviceHour(devSecs, distinctApps);
+                var devUptime = hourlyDeviceUptime[h].GetValueOrDefault(dev);
+                byDev[dev] = new DeviceHour(devSecs, distinctApps, devUptime);
             }
-            return new HourBucket(h, todayHours[h], typicalDays == 0 ? 0 : typical[h] / typicalDays, byDev.Count > 0 ? byDev : null);
+            return new HourBucket(
+                h,
+                hourUptime[h],
+                todayHours[h],
+                typicalDays == 0 ? 0 : typicalUptime[h] / typicalDays,
+                byDev.Count > 0 ? byDev : null,
+                typicalDays == 0 ? 0 : typical[h] / typicalDays);
         }).ToList();
 
         // Rows.
@@ -170,10 +226,6 @@ public static class TodayQuery
         var yesterdayByNow = segs.Sum(s => UsageDays.Overlap(s, y0, cut));
 
         // PC uptime: shown from the sign-in time when known, but compared like-for-like (first activity) with yesterday.
-        var dayEnd = isToday ? nowUtc : d1;
-        var breakdown = UsageUptime.Breakdown(segs, d0, dayEnd, isToday, onSinceUtc, gamesOnly, window.LocalDeviceId);
-        var uptime = breakdown.UnionSeconds;
-        var onBoth = breakdown.OnBothSeconds;
 
         var devUptimes = new Dictionary<string, DeviceUptime>();
         foreach (var (devId, devSecs) in breakdown.DeviceSeconds)

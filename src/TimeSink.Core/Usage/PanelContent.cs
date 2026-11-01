@@ -29,7 +29,8 @@ public sealed record PanelContent(
     PanelFocus? Focus,
     IReadOnlyList<BarApp> Apps,
     IReadOnlyList<BarSession> Sessions,
-    IReadOnlyList<PanelComparison> Comparisons);
+    IReadOnlyList<PanelComparison> Comparisons,
+    long UptimeSeconds = 0);
 
 /// <summary>Builds the <see cref="PanelContent"/> of a Today hour bar and of a Week day column.</summary>
 public static class PanelContents
@@ -41,8 +42,8 @@ public static class PanelContents
         var comparisons = new List<PanelComparison>();
         if (r.HasTypical)
             comparisons.Add(new PanelComparison(PanelComparisonKind.TypicalForHour,
-                (long)Math.Round(d.AppSeconds - d.TypicalAppSeconds), (long)Math.Round(d.TypicalAppSeconds)));
-        return new PanelContent(d.AppSeconds, d.Sessions.Count, null, null, null, d.Apps, d.Sessions, comparisons);
+                (long)Math.Round(d.UptimeSeconds - d.TypicalUptimeSeconds), (long)Math.Round(d.TypicalUptimeSeconds)));
+        return new PanelContent(d.AppSeconds, d.Sessions.Count, null, null, null, d.Apps, d.Sessions, comparisons, d.UptimeSeconds);
     }
 
     /// <summary>

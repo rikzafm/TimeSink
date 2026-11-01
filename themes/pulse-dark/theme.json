@@ -442,7 +442,7 @@
     "setOpenFailed": "Could not open the folder: {0}",
     "panelHourTypical": "Typical for this hour",
     "panelHourTypicalValue": "{0} · {1}",
-    "panelHourSummary": "{0} app time · {1} sessions",
+    "panelHourSummary": "{0} uptime · {1} app time · {2} sessions",
     "panelHourEmpty": "No activity this hour",
     "panelDayVsAverage": "vs the week's average",
     "panelDayVsLastWeek": "vs the same day last week",

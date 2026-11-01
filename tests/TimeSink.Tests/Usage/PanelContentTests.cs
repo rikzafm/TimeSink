@@ -81,6 +81,7 @@ public sealed class PanelContentTests : IDisposable
 
         var detail = BarDetail.ForHour(r, 9);
         content.TotalSeconds.Should().Be(detail.AppSeconds);
+        content.UptimeSeconds.Should().Be(detail.UptimeSeconds);
         content.SessionCount.Should().Be(detail.Sessions.Count);
         content.Apps.Should().Equal(detail.Apps);
         content.Sessions.Should().Equal(detail.Sessions);
@@ -89,8 +90,8 @@ public sealed class PanelContentTests : IDisposable
         foreach (var c in content.Comparisons)
         {
             c.Kind.Should().Be(PanelComparisonKind.TypicalForHour);
-            c.DeltaSeconds.Should().Be((long)Math.Round(detail.AppSeconds - detail.TypicalAppSeconds));
-            c.ReferenceSeconds.Should().Be((long)Math.Round(detail.TypicalAppSeconds));
+            c.DeltaSeconds.Should().Be((long)Math.Round(detail.UptimeSeconds - detail.TypicalUptimeSeconds));
+            c.ReferenceSeconds.Should().Be((long)Math.Round(detail.TypicalUptimeSeconds));
         }
     }
 

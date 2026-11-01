@@ -22,10 +22,7 @@ public struct HourlyChartView: View {
         CGFloat(result.nowUtc - result.dayStartUtc) / CGFloat(max(1, result.dayEndUtc - result.dayStartUtc))
     }
     private var nowHour: Int { isLive ? min(23, Int(nowFraction * 24)) : 24 }
-    private var scale: Double {
-        let top = result.hours.map { max(Double($0.appSeconds), $0.typicalAppSeconds) }.max() ?? 0
-        return max(3600, top)
-    }
+    private let scale: Double = 3600.0
 
     private func isAsleep(_ hour: Int) -> Bool {
         let start = result.dayStartUtc + Int64(hour) * 3600
@@ -46,7 +43,7 @@ public struct HourlyChartView: View {
 
     private func tooltipText(_ hour: Int) -> String {
         let d = BarDetail.forHour(result: result, hour: hour)
-        var lines = ["\(Formatters.hourRange(hour)) · " + (d.appSeconds > 0 ? Formatters.paddedHM(d.appSeconds) : "no activity")]
+        var lines = ["\(Formatters.hourRange(hour)) · " + (d.uptimeSeconds > 0 ? "\(Formatters.paddedHM(d.uptimeSeconds)) uptime" : (d.appSeconds > 0 ? "\(Formatters.paddedHM(d.appSeconds)) app time" : "no activity"))]
         for a in d.apps.prefix(3) {
             lines.append("\(a.name) \(Formatters.paddedHM(a.seconds))")
         }
@@ -120,14 +117,14 @@ public struct HourlyChartView: View {
         if bucket.hour > nowHour {
             RoundedRectangle(cornerRadius: 2)
                 .strokeBorder(Tokens.typical, style: StrokeStyle(lineWidth: 1, dash: [1, 1.5]))
-                .frame(height: max(2, height(bucket.typicalAppSeconds)))
+                .frame(height: max(2, height(bucket.typicalUptimeSeconds)))
                 .opacity(result.hasTypical ? 1 : 0)
         } else if isAsleep(bucket.hour) {
             Hatch(color: Tokens.ramp[2])
-                .frame(height: max(height(Double(bucket.appSeconds)), barsHeight * 0.7))
+                .frame(height: max(height(Double(bucket.uptimeSeconds)), barsHeight * 0.7))
                 .clipShape(RoundedRectangle(cornerRadius: 2))
         } else if split {
-            let parts = state.deviceSplit(bucket.byDevice?.mapValues(\.appSeconds))
+            let parts = state.deviceSplit(bucket.byDevice?.mapValues(\.uptimeSeconds))
             OverlapBar(
                 mac: height(Double(parts.mac)),
                 pc: height(Double(parts.pc)),
@@ -137,8 +134,8 @@ public struct HourlyChartView: View {
             )
         } else {
             RoundedRectangle(cornerRadius: 2)
-                .fill(color(bucket.appSeconds, hour: bucket.hour))
-                .frame(height: max(2, height(Double(bucket.appSeconds))))
+                .fill(color(bucket.uptimeSeconds, hour: bucket.hour))
+                .frame(height: max(2, height(Double(bucket.uptimeSeconds))))
         }
     }
 
@@ -178,8 +175,8 @@ public struct HourlyChartView: View {
                     Text(Formatters.hourRange(hour))
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(ThemeColors.textPrimary)
-                    Text(d.appSeconds > 0
-                         ? "\(Formatters.paddedHM(d.appSeconds)) app time · \(d.sessions.count) session\(d.sessions.count == 1 ? "" : "s")"
+                    Text(d.uptimeSeconds > 0 || d.appSeconds > 0
+                         ? "\(Formatters.paddedHM(d.uptimeSeconds)) uptime · \(Formatters.paddedHM(d.appSeconds)) app time · \(d.sessions.count) session\(d.sessions.count == 1 ? "" : "s")"
                          : "No activity this hour")
                         .font(.system(size: 10))
                         .foregroundColor(ThemeColors.textMuted)

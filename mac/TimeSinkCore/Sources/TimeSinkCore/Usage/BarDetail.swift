@@ -35,7 +35,9 @@ public struct HourDetail: Sendable, Equatable {
     public let hour: Int
     public let startUtc: Int64
     public let endUtc: Int64
+    public let uptimeSeconds: Int64
     public let appSeconds: Int64
+    public let typicalUptimeSeconds: Double
     public let typicalAppSeconds: Double
     public let apps: [BarApp]
     public let sessions: [BarSession]
@@ -44,15 +46,19 @@ public struct HourDetail: Sendable, Equatable {
         hour: Int,
         startUtc: Int64,
         endUtc: Int64,
+        uptimeSeconds: Int64 = 0,
         appSeconds: Int64,
-        typicalAppSeconds: Double,
+        typicalUptimeSeconds: Double = 0,
+        typicalAppSeconds: Double = 0,
         apps: [BarApp],
         sessions: [BarSession]
     ) {
         self.hour = hour
         self.startUtc = startUtc
         self.endUtc = endUtc
+        self.uptimeSeconds = uptimeSeconds
         self.appSeconds = appSeconds
+        self.typicalUptimeSeconds = typicalUptimeSeconds
         self.typicalAppSeconds = typicalAppSeconds
         self.apps = apps
         self.sessions = sessions
@@ -98,7 +104,9 @@ public enum BarDetail {
             hour: hour,
             startUtc: pieces.first?.start ?? result.dayStartUtc,
             endUtc: pieces.last?.end ?? result.dayStartUtc,
+            uptimeSeconds: bucket.uptimeSeconds,
             appSeconds: apps.reduce(0) { $0 + $1.seconds },
+            typicalUptimeSeconds: bucket.typicalUptimeSeconds,
             typicalAppSeconds: bucket.typicalAppSeconds,
             apps: sortedApps,
             sessions: sortedSessions

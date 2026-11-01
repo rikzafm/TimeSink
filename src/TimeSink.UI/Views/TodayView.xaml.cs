@@ -356,7 +356,10 @@ public partial class TodayView : UserControl, ILiveView
     {
         if (h < 0 || _result is not { } r) { _tip.IsOpen = false; return; }
         var d = BarDetail.ForHour(r, h);
-        var lines = new List<string> { $"{HourRange(h)} · " + (d.AppSeconds > 0 ? UsageText.HoursMinutes(d.AppSeconds) : "no activity") };
+        var headline = d.UptimeSeconds > 0
+            ? $"{HourRange(h)} · {UsageText.HoursMinutes(d.UptimeSeconds)} uptime"
+            : (d.AppSeconds > 0 ? $"{HourRange(h)} · {UsageText.HoursMinutes(d.AppSeconds)}" : $"{HourRange(h)} · no activity");
+        var lines = new List<string> { headline };
         lines.AddRange(d.Apps.Take(3).Select(a => $"{a.Name} {UsageText.HoursMinutes(a.Seconds)}"));
         _tip.Content = string.Join(Environment.NewLine, lines);
     }
