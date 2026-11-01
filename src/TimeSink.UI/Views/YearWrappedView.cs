@@ -112,7 +112,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         root.Children.Add(bar);
         Content = root;
 
-        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly);
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw);
         Unloaded += (_, _) => Stop();
         Redraw(); // static text and an empty card; data follows in Start
@@ -208,7 +208,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
             then.Add((Str(WrappedStringKeys.Then) + " ", false));
             for (var i = 0; i < others.Count; i++)
             {
-                if (i > 0) then.Add((" � ", false));
+                if (i > 0) then.Add((" · ", false));
                 then.Add(($"{others[i].Name} {Hours(others[i].Seconds)}", true));
             }
         }
@@ -217,7 +217,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
 
     private static HabitsCardModel Habits(WrappedResult r)
     {
-        const string none = "—";
+        const string none = "â";
         var streakValue = r.LongestStreakDays > 0 ? Plural(r.LongestStreakDays, WrappedStringKeys.Day, WrappedStringKeys.Days) : none;
         var streakSub = r.StreakStart is { } a && r.StreakEnd is { } b
             ? r.LongestStreakDays == 1 ? Str(WrappedStringKeys.StreakOne, UsageText.ShortDate(a)) : Str(WrappedStringKeys.StreakSpan, UsageText.ShortDate(a), UsageText.ShortDate(b))

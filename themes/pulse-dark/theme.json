@@ -9,6 +9,7 @@
     "border": "#2b3125", "borderSoft": "#232a1d",
     "text": "#eef2e6", "textSoft": "#cfd6c4", "textMuted": "#9aa391",
     "accent": "#c6f26b", "onAccent": "#11140f", "warning": "#ffb86b", "danger": "#ff8a7a", "scrim": "#000000a0",
+    "deviceA": "#c6f26b", "deviceB": "#5fa8ff",
     "heat": ["#1b2116", "#2d3d1c", "#46691f", "#75a826", "#c6f26b"],
     "apps": ["#8fd3ff", "#c6f26b", "#ffb86b", "#d3a6ff", "#ff9fb4", "#ffe08a"]
   },
@@ -18,6 +19,8 @@
   "strings": {
     "appName": "TimeSink",
     "settings": "Settings",
+    "scopeThisPc": "This PC",
+    "scopeAllDevices": "All devices",
     "tabToday": "Today",
     "tabWeek": "Week",
     "tabMonth": "Month",

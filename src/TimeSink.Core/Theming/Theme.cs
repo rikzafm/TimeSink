@@ -25,6 +25,8 @@ public static class StringKeys
     public const string AddApp = "addApp";
     public const string Back = "back";
     public const string GamesOnly = "gamesOnly";
+    public const string ScopeThisPc = "scopeThisPc";
+    public const string ScopeAllDevices = "scopeAllDevices";
     public const string StubComingSoon = "stubComingSoon";
 
     // Today view. Values with {0} are composed by the view (string.Format).
@@ -95,7 +97,7 @@ public static class StringKeys
 
     public static readonly IReadOnlyList<string> All =
     [
-        AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, Back, GamesOnly, StubComingSoon,
+        AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, Back, GamesOnly, ScopeThisPc, ScopeAllDevices, StubComingSoon,
         TodayCaption, TodayCombined, TodayEarlyCaption,TodayEarlyHint, TodayEmpty, RunningPill, LegendAppsOpen, LegendTypical,
         LegendAsleep, TileFirstApp, TileLongest, TileVsYesterday, TileNone, TileLongestValue, TileVsYesterdayValue,
         StatusRunning, StatusClosed, SessionsToday, SessionLine, SessionNow, VsAverage, VsAverageNone,
@@ -112,6 +114,7 @@ public static class TokenCatalog
     [
         "surface", "surfaceAlt", "panel", "border", "borderSoft",
         "text", "textSoft", "textMuted", "accent", "onAccent", "warning", "danger", "scrim",
+        "deviceA", "deviceB",
     ];
 
     public static readonly IReadOnlyList<string> FontKeys = ["ui", "numbers"];

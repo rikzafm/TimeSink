@@ -1,6 +1,6 @@
 # Header device scope control and device tokens
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 3)
 Blocked by: 05
 Design: design/mac/Main.dc.html, design/mac/TodayAll.dc.html (header; see design/mac/README.md)

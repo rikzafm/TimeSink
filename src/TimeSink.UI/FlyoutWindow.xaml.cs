@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -54,6 +54,24 @@ public partial class FlyoutWindow : Window
         Live.GamesOnly = AppSettings.ForFile(_dbPath).Get(Setting.GamesOnly);
         ShowGamesState();
         GamesButton.Click += (_, _) => ToggleGamesOnly();
+
+        var hasOtherDevice = CheckHasOtherDevice(_dbPath);
+        var syncOn = AppSettings.ForFile(_dbPath).Get(Setting.SyncEnabled);
+        var storedScope = SettingsStore.Get(_dbPath, Setting.DeviceScope.Key);
+        if (storedScope != null)
+        {
+            Live.DeviceScope = AppSettings.ForFile(_dbPath).Get(Setting.DeviceScope);
+        }
+        else
+        {
+            Live.DeviceScope = hasOtherDevice ? TimeSink.Core.Devices.DeviceScope.All : TimeSink.Core.Devices.DeviceScope.This;
+        }
+
+        UpdateDeviceScopeVisibility(hasOtherDevice || syncOn);
+        UpdateDeviceScopeButtons();
+
+        ThisDeviceRadio.Checked += (_, _) => SetDeviceScope(TimeSink.Core.Devices.DeviceScope.This);
+        AllDevicesRadio.Checked += (_, _) => SetDeviceScope(TimeSink.Core.Devices.DeviceScope.All);
 
         foreach (RadioButton b in TabBar.Children)
         {
@@ -130,6 +148,43 @@ public partial class FlyoutWindow : Window
         System.Windows.Automation.AutomationProperties.SetItemStatus(GamesButton, Live.GamesOnly ? "On" : "Off");
     }
 
+    private void SetDeviceScope(TimeSink.Core.Devices.DeviceScope scope)
+    {
+        if (Live.DeviceScope == scope) return;
+        Live.DeviceScope = scope;
+        SerialWriter.Run(() => AppSettings.ForFile(_dbPath).Set(Setting.DeviceScope, scope));
+        UpdateDeviceScopeButtons();
+        Live.NotifyDataChanged();
+    }
+
+    private void UpdateDeviceScopeButtons()
+    {
+        ThisDeviceRadio.IsChecked = Live.DeviceScope == TimeSink.Core.Devices.DeviceScope.This;
+        AllDevicesRadio.IsChecked = Live.DeviceScope == TimeSink.Core.Devices.DeviceScope.All;
+    }
+
+    private void UpdateDeviceScopeVisibility(bool visible)
+    {
+        DeviceScopeControl.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static bool CheckHasOtherDevice(string dbPath)
+    {
+        try
+        {
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM devices WHERE is_local = 0;";
+            var count = (long)(cmd.ExecuteScalar() ?? 0L);
+            return count > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>Week's "open this day" link: switch to the Today tab showing that day.</summary>
     private void OpenDayInToday(DateOnly day)
     {
@@ -181,6 +236,8 @@ public partial class FlyoutWindow : Window
             if (_settings.TryClosePicker()) return;
             TabStrip.Visibility = Visibility.Visible;
             GamesButton.Visibility = Visibility.Visible;
+            var hasOther = CheckHasOtherDevice(_dbPath) || AppSettings.ForFile(_dbPath).Get(Setting.SyncEnabled);
+            UpdateDeviceScopeVisibility(hasOther);
             Body.Content = _bodies[_current];
             if (_rendered) StartBody(_bodies[_current]); // leaving the tree stopped it (Unloaded); resume ticking and refresh
             SettingsButton.Content = new TextBlock { FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"), Text = "", FontSize = 16 };
@@ -190,6 +247,7 @@ public partial class FlyoutWindow : Window
         _settings ??= new SettingsView(_themes, _dbPath);
         TabStrip.Visibility = Visibility.Collapsed;
         GamesButton.Visibility = Visibility.Collapsed;
+        UpdateDeviceScopeVisibility(false);
         Body.Content = _settings;
         SettingsButton.SetResourceReference(ContentControl.ContentProperty, "Str.Back");
         SettingsButton.ToolTip = null;
@@ -217,6 +275,8 @@ public partial class FlyoutWindow : Window
         var signalled = DateTime.Now;
         _launch = launch;
         _revealed = true;
+        var hasOther = CheckHasOtherDevice(_dbPath) || AppSettings.ForFile(_dbPath).Get(Setting.SyncEnabled);
+        UpdateDeviceScopeVisibility(hasOther);
         Place();
         Activate();
         (Body.Content as TodayView)?.ResetToToday(); // the flyout opens on the live day

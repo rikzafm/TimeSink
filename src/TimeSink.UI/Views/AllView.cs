@@ -137,7 +137,7 @@ public sealed class AllView : UserControl, ILiveView
         root.Children.Add(frame);
         Content = root;
 
-        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly);
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw,
             isIdle: () => _window is { IsRevealed: false });
         Unloaded += (_, _) => Stop();

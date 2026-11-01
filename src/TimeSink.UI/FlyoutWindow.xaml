@@ -19,7 +19,14 @@
                     <Ellipse Width="10" Height="10" Fill="{DynamicResource Brush.Accent}" Margin="0,0,8,0"/>
                     <TextBlock Style="{StaticResource Wordmark}" Text="{DynamicResource Str.AppName}"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Border x:Name="DeviceScopeControl" BorderThickness="1" BorderBrush="{DynamicResource Brush.Border}"
+                            CornerRadius="{DynamicResource CornerRadius.Small}" Padding="2" Margin="0,0,6,0" VerticalAlignment="Center" Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="ThisDeviceRadio" GroupName="DeviceScopeGroup" Style="{StaticResource ScopeSegButton}" Content="{DynamicResource Str.ScopeThisPc}"/>
+                            <RadioButton x:Name="AllDevicesRadio" GroupName="DeviceScopeGroup" Style="{StaticResource ScopeSegButton}" Content="{DynamicResource Str.ScopeAllDevices}"/>
+                        </StackPanel>
+                    </Border>
                     <Button x:Name="GamesButton" Width="34" Height="34" Margin="0,0,2,0" AutomationProperties.Name="Games only" ToolTip="{DynamicResource Str.GamesOnly}">
                         <Button.Style>
                             <Style TargetType="Button">

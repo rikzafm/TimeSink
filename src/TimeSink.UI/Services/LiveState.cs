@@ -24,6 +24,9 @@ public sealed class LiveState : IDisposable
     /// <summary>True while the Games filter is on (set by the header button, remembered in settings); every view reads it when it queries.</summary>
     public bool GamesOnly { get; set; }
 
+    /// <summary>The current device scope (This PC vs All devices). Every view reads it when it queries.</summary>
+    public TimeSink.Core.Devices.DeviceScope DeviceScope { get; set; } = TimeSink.Core.Devices.DeviceScope.This;
+
     public event Action? Changed;
 
     /// <summary>Connects (idempotent). Called once the first frame is on screen so it never delays first paint.</summary>

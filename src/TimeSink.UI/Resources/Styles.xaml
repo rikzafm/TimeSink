@@ -102,6 +102,31 @@
         </Setter>
     </Style>
 
+    <Style x:Key="ScopeSegButton" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}"/>
+        <Setter Property="FontFamily" Value="{DynamicResource FontFamily.Ui}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Double.FontSize.Small}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Seg" Padding="8,3" Background="Transparent"
+                            CornerRadius="{DynamicResource CornerRadius.Small}">
+                        <ContentPresenter TextElement.Foreground="{TemplateBinding Foreground}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Seg" Property="Background" Value="{DynamicResource Brush.Border}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="Caption" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}"/>
         <Setter Property="FontFamily" Value="{DynamicResource FontFamily.Ui}"/>
