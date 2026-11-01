@@ -5,16 +5,55 @@
   "author": "TimeSink",
   "version": "1.0.0",
   "colors": {
-    "surface": "#11140f", "surfaceAlt": "#181d13", "panel": "#141910",
-    "border": "#2b3125", "borderSoft": "#232a1d",
-    "text": "#eef2e6", "textSoft": "#cfd6c4", "textMuted": "#9aa391",
-    "accent": "#c6f26b", "onAccent": "#11140f", "warning": "#ffb86b", "danger": "#ff8a7a", "scrim": "#000000a0",
-    "deviceA": "#c6f26b", "deviceB": "#5fa8ff",
-    "heat": ["#1b2116", "#2d3d1c", "#46691f", "#75a826", "#c6f26b"],
-    "apps": ["#8fd3ff", "#c6f26b", "#ffb86b", "#d3a6ff", "#ff9fb4", "#ffe08a"]
+    "surface": "#11140f",
+    "surfaceAlt": "#181d13",
+    "panel": "#141910",
+    "border": "#2b3125",
+    "borderSoft": "#232a1d",
+    "text": "#eef2e6",
+    "textSoft": "#cfd6c4",
+    "textMuted": "#9aa391",
+    "accent": "#c6f26b",
+    "onAccent": "#11140f",
+    "warning": "#ffb86b",
+    "danger": "#ff8a7a",
+    "scrim": "#000000a0",
+    "deviceA": "#c6f26b",
+    "deviceB": "#5fa8ff",
+    "heat": [
+      "#1b2116",
+      "#2d3d1c",
+      "#46691f",
+      "#75a826",
+      "#c6f26b"
+    ],
+    "apps": [
+      "#8fd3ff",
+      "#c6f26b",
+      "#ffb86b",
+      "#d3a6ff",
+      "#ff9fb4",
+      "#ffe08a"
+    ]
   },
-  "type": { "ui": "Segoe UI Variable Text", "numbers": "Segoe UI Variable Text", "sizes": { "small": 11, "body": 13, "title": 15, "display": 34 } },
-  "shape": { "radius": [8, 10, 12], "border": 1 },
+  "type": {
+    "ui": "Segoe UI Variable Text",
+    "numbers": "Segoe UI Variable Text",
+    "sizes": {
+      "small": 11,
+      "body": 13,
+      "title": 15,
+      "display": 34
+    }
+  },
+  "shape": {
+    "radius": [
+      8,
+      10,
+      12
+    ],
+    "border": 1
+  },
   "layout": "pulse",
   "strings": {
     "appName": "TimeSink",
@@ -196,6 +235,7 @@
     "yearSwitchPace": "Pace",
     "wrapCard1Label": "YOUR {0} SO FAR",
     "wrapEquivalent": "Your PC was on for {0} this year.",
+    "wrapEquivalentAll": "That's {0} of your apps running, back to back.",
     "wrapAnd": " and ",
     "wrapDay": "day",
     "wrapDays": "days",

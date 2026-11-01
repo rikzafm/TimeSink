@@ -7,7 +7,7 @@ public sealed record WrappedKindTop(IReadOnlyList<WrappedApp> Podium, IReadOnlyL
 }
 
 /// <summary>One app on the Wrapped podium (merged apps are one row under their canonical app).</summary>
-public sealed record WrappedApp(long AppId, string Name, long Seconds);
+public sealed record WrappedApp(long AppId, string Name, long Seconds, IReadOnlyDictionary<string, long>? DeviceSeconds = null, string? DeviceId = null);
 
 /// <summary>
 /// Everything the three Year > Wrapped cards show for the calendar year of <see cref="NowUtc"/> (year to date).
@@ -38,7 +38,9 @@ public sealed record WrappedResult(
     WrappedKindTop? GachaTop = null,
     IReadOnlyList<WrappedApp>? LongestSessions = null,
     IReadOnlyDictionary<string, long>? DeviceTotals = null,
-    long OnBothSeconds = 0)
+    long OnBothSeconds = 0,
+    IReadOnlyDictionary<string, long>? BusiestMonthDeviceSeconds = null,
+    IReadOnlyDictionary<string, long>? BeforeNoonDeviceSeconds = null)
 {
     /// <summary>"N days and M hours" the PC was on: whole days of the total.</summary>
     public int EquivalentDays => (int)(TotalSeconds / 86400);

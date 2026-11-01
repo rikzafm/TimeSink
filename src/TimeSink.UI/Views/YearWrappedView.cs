@@ -173,9 +173,22 @@ public sealed class YearWrappedView : UserControl, IYearSubView
             2 => Podium(Str(WrappedStringKeys.Card4Label), WrappedStringKeys.GamesHeadline, r.GamesTop?.Podium, r.GamesTop?.Others, WrappedStringKeys.NoGames),
             3 => Podium(Str(WrappedStringKeys.Card5Label), WrappedStringKeys.GachaHeadline, r.GachaTop?.Podium, r.GachaTop?.Others, WrappedStringKeys.NoGacha),
             4 => Habits(r),
-            5 => Podium(Str(WrappedStringKeys.Card6Label), WrappedStringKeys.LongestHeadline, r.LongestSessions, null, ""),
+            5 => Podium(Str(WrappedStringKeys.Card6Label), WrappedStringKeys.LongestHeadline, r.LongestSessions, null, "", isLongest: true),
             _ => Total(r),
         };
+    }
+
+    private (bool IsMultiDev, string DevAName, string DevBName, Dictionary<string, (string Name, bool IsLocal)> DevInfo, string? LocalId) GetDeviceInfo(WrappedResult r)
+    {
+        var scope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
+        var isMultiDev = scope == TimeSink.Core.Devices.DeviceScope.All && r.DeviceTotals is { Count: > 1 };
+        var devInfo = DeviceInfoService.Load(_dbPath);
+        var localId = _live?.LocalDeviceId;
+        var localEntry = devInfo.Values.FirstOrDefault(v => v.IsLocal);
+        var remoteEntry = devInfo.Values.FirstOrDefault(v => !v.IsLocal);
+        var devAName = !string.IsNullOrEmpty(localEntry.Name) ? localEntry.Name : "PC";
+        var devBName = !string.IsNullOrEmpty(remoteEntry.Name) ? remoteEntry.Name : "Mac";
+        return (isMultiDev, devAName, devBName, devInfo, localId);
     }
 
     private TotalCardModel Total(WrappedResult r)
@@ -186,18 +199,18 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         var highlight = string.Join(Str(WrappedStringKeys.And), parts);
         var since = r.TrackingStarted is { } s ? (s.Year == r.Year ? UsageText.ShortDate(s) : UsageText.ShortDate(s, withYear: true)) : "";
 
-        var scope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
-        var isMultiDev = scope == TimeSink.Core.Devices.DeviceScope.All && r.DeviceTotals is { Count: > 1 };
-        string? devAName = null, devBName = null;
+        var (isMultiDev, devAName, devBName, devInfo, localId) = GetDeviceInfo(r);
+
+
         long secA = 0, secB = 0;
         if (isMultiDev)
         {
-            var devInfo = DeviceInfoService.Load(_dbPath);
-            var localId = _live?.LocalDeviceId;
-            var localEntry = devInfo.Values.FirstOrDefault(v => v.IsLocal);
-            var remoteEntry = devInfo.Values.FirstOrDefault(v => !v.IsLocal);
-            devAName = !string.IsNullOrEmpty(localEntry.Name) ? localEntry.Name : "PC";
-            devBName = !string.IsNullOrEmpty(remoteEntry.Name) ? remoteEntry.Name : "Mac";
+
+
+
+
+
+
             if (localId != null && r.DeviceTotals!.TryGetValue(localId, out secA))
             {
                 foreach (var (k, v) in r.DeviceTotals)
@@ -218,7 +231,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
             Str(WrappedStringKeys.Card1Label, r.Year),
             r.TotalHours.ToString(CultureInfo.CurrentCulture),
             Str(r.TotalHours == 1 ? WrappedStringKeys.Hour : WrappedStringKeys.Hours),
-            Str(WrappedStringKeys.Equivalent, highlight), highlight,
+            Str(isMultiDev ? WrappedStringKeys.EquivalentAll : WrappedStringKeys.Equivalent, highlight), highlight,
             [
                 new WrappedTile(r.DaysTracked.ToString(CultureInfo.CurrentCulture), Str(WrappedStringKeys.TileTracked, since)),
                 new WrappedTile(r.DaysWithActivity.ToString(CultureInfo.CurrentCulture), Str(WrappedStringKeys.TileActive)),
@@ -233,10 +246,62 @@ public sealed class YearWrappedView : UserControl, IYearSubView
             TotalSeconds: r.TotalSeconds);
     }
 
-    private WrappedCardModel Podium(string label, string headlineKey, IReadOnlyList<WrappedApp>? p, IReadOnlyList<WrappedApp>? others, string emptyKey)
+    private WrappedCardModel Podium(string label, string headlineKey, IReadOnlyList<WrappedApp>? p, IReadOnlyList<WrappedApp>? others, string emptyKey, bool isLongest = false)
     {
         if (p is not { Count: > 0 }) return new EmptyCardModel(label, Str(emptyKey.Length > 0 ? emptyKey : YearStringKeys.Empty));
-        WrappedPodiumEntry E(int i) => new(LetterTile.Letter(p[i].Name), p[i].Name, Hours(p[i].Seconds), i + 1, AppIcons.Get(p[i].AppId), _themes.AppSlot(p[i].AppId));
+        var (isMultiDev, devAName, devBName, devInfo, localId) = _result != null ? GetDeviceInfo(_result) : (false, "PC", "Mac", new Dictionary<string, (string, bool)>(), null);
+
+        WrappedPodiumEntry E(int i)
+        {
+            var app = p[i];
+            long appSecA = 0, appSecB = 0;
+            string? subtext = null;
+            var isDevBOnly = false;
+
+            if (isMultiDev)
+            {
+                if (isLongest)
+                {
+                    var isLocal = DeviceInfoService.IsLocal(devInfo, app.DeviceId, localId);
+                    isDevBOnly = !isLocal;
+                    if (isLocal) appSecA = app.Seconds;
+                    else appSecB = app.Seconds;
+                    var marker = isLocal ? "●" : "■";
+                    var dName = isLocal ? devAName : devBName;
+                    subtext = $"{marker} {dName}";
+                }
+                else if (app.DeviceSeconds is { Count: > 0 })
+                {
+                    foreach (var (dev, s) in app.DeviceSeconds)
+                    {
+                        if (DeviceInfoService.IsLocal(devInfo, dev, localId)) appSecA += s;
+                        else appSecB += s;
+                    }
+
+                    if (appSecA > 0 && appSecB > 0)
+                        subtext = $"● {Hours(appSecA)} · ■ {Hours(appSecB)}";
+                    else if (appSecA > 0)
+                        subtext = $"● {Hours(appSecA)}";
+                    else if (appSecB > 0)
+                    {
+                        isDevBOnly = true;
+                        subtext = $"■ {Hours(appSecB)}";
+                    }
+                }
+            }
+
+            return new WrappedPodiumEntry(
+                LetterTile.Letter(app.Name),
+                app.Name,
+                Hours(app.Seconds),
+                i + 1,
+                AppIcons.Get(app.AppId),
+                _themes.AppSlot(app.AppId),
+                DeviceASeconds: appSecA,
+                DeviceBSeconds: appSecB,
+                DeviceSubtext: subtext,
+                IsDeviceBOnly: isDevBOnly);
+        }
         // Display order: winner in the middle, then 2nd to its left, 3rd right, 4th far left, 5th far right.
         var order = new List<int> { 0 };
         for (var i = 1; i < p.Count; i++) { if (i % 2 == 1) order.Insert(0, i); else order.Add(i); }
@@ -247,13 +312,27 @@ public sealed class YearWrappedView : UserControl, IYearSubView
             for (var i = 0; i < others.Count; i++)
             {
                 if (i > 0) then.Add((" · ", false));
-                then.Add(($"{others[i].Name} {Hours(others[i].Seconds)}", true));
+                var o = others[i];
+                var markers = "";
+                if (isMultiDev && o.DeviceSeconds is { Count: > 0 })
+                {
+                    long oSecA = 0, oSecB = 0;
+                    foreach (var (dev, s) in o.DeviceSeconds)
+                    {
+                        if (DeviceInfoService.IsLocal(devInfo, dev, localId)) oSecA += s;
+                        else oSecB += s;
+                    }
+                    if (oSecA > 0 && oSecB > 0) markers = " ●■";
+                    else if (oSecA > 0) markers = " ●";
+                    else if (oSecB > 0) markers = " ■";
+                }
+                then.Add(($"{o.Name} {Hours(o.Seconds)}{markers}", true));
             }
         }
-        return new TopAppsCardModel(label, Str(headlineKey, p[0].Name), order.Select(E).ToList(), then);
+        return new TopAppsCardModel(label, Str(headlineKey, p[0].Name), order.Select(E).ToList(), then, IsMultiDevice: isMultiDev);
     }
 
-    private static HabitsCardModel Habits(WrappedResult r)
+    private HabitsCardModel Habits(WrappedResult r)
     {
         const string none = "â";
         var streakValue = r.LongestStreakDays > 0 ? Plural(r.LongestStreakDays, WrappedStringKeys.Day, WrappedStringKeys.Days) : none;
@@ -269,14 +348,50 @@ public sealed class YearWrappedView : UserControl, IYearSubView
             : "";
 
         var peakValue = r.PeakHour is { } h ? Str(WrappedStringKeys.PeakValue, Hour(h), Hour(h + 1)) : none;
+        var noonSub = Str(r.BeforeNoonPercent >= 50 ? WrappedStringKeys.NoonSubEarly : WrappedStringKeys.NoonSub);
+
+        var (isMultiDev, devAName, devBName, devInfo, localId) = GetDeviceInfo(r);
+        double bmSplitA = 0, bmSplitB = 0;
+        double bnSplitA = 0, bnSplitB = 0;
+
+        if (isMultiDev)
+        {
+            if (r.BusiestMonthDeviceSeconds is { Count: > 0 })
+            {
+                long bmSecA = 0, bmSecB = 0;
+                foreach (var (dev, s) in r.BusiestMonthDeviceSeconds)
+                {
+                    if (DeviceInfoService.IsLocal(devInfo, dev, localId)) bmSecA += s;
+                    else bmSecB += s;
+                }
+                bmSplitA = bmSecA;
+                bmSplitB = bmSecB;
+                var splitText = $"● {devAName} {Hours(bmSecA)} · ■ {devBName} {Hours(bmSecB)}";
+                busiestSub = string.IsNullOrEmpty(busiestSub) ? splitText : $"{busiestSub}\n{splitText}";
+            }
+
+            if (r.BeforeNoonDeviceSeconds is { Count: > 0 })
+            {
+                long bnSecA = 0, bnSecB = 0;
+                foreach (var (dev, s) in r.BeforeNoonDeviceSeconds)
+                {
+                    if (DeviceInfoService.IsLocal(devInfo, dev, localId)) bnSecA += s;
+                    else bnSecB += s;
+                }
+                bnSplitA = bnSecA;
+                bnSplitB = bnSecB;
+                var splitText = $"● {devAName} {Hours(bnSecA)} · ■ {devBName} {Hours(bnSecB)}";
+                noonSub = $"{noonSub}\n{splitText}";
+            }
+        }
 
         return new HabitsCardModel(Str(WrappedStringKeys.Card3Label), Str(WrappedStringKeys.HabitsHeadline),
         [
             new WrappedHabit(Str(WrappedStringKeys.Streak), streakValue, streakSub),
-            new WrappedHabit(Str(WrappedStringKeys.Busiest), busiestValue, busiestSub),
+            new WrappedHabit(Str(WrappedStringKeys.Busiest), busiestValue, busiestSub, bmSplitA, bmSplitB),
             new WrappedHabit(Str(WrappedStringKeys.Peak), peakValue, r.PeakHour is null ? "" : Str(WrappedStringKeys.PeakSub)),
-            new WrappedHabit(Str(WrappedStringKeys.Noon), r.BeforeNoonPercent.ToString(CultureInfo.CurrentCulture) + "%",
-                Str(r.BeforeNoonPercent >= 50 ? WrappedStringKeys.NoonSubEarly : WrappedStringKeys.NoonSub)),
+            new WrappedHabit(Str(WrappedStringKeys.Noon), r.BeforeNoonPercent.ToString(CultureInfo.CurrentCulture) + "%", noonSub, bnSplitA, bnSplitB),
+
         ]);
     }
 

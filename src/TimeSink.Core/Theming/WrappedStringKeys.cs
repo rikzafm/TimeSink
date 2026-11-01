@@ -8,6 +8,7 @@ public static class WrappedStringKeys
 {
     public const string Card1Label = "wrapCard1Label";
     public const string Equivalent = "wrapEquivalent";
+    public const string EquivalentAll = "wrapEquivalentAll";
     public const string And = "wrapAnd";
     public const string Day = "wrapDay";
     public const string Days = "wrapDays";
@@ -62,7 +63,7 @@ public static class WrappedStringKeys
 
     public static readonly IReadOnlyList<string> All =
     [
-        Card1Label, Equivalent, And, Day, Days, Hour, Hours, TileTracked, TileActive, TileApps, Card2Label, TopHeadline, Then,
+        Card1Label, Equivalent, EquivalentAll, And, Day, Days, Hour, Hours, TileTracked, TileActive, TileApps, Card2Label, TopHeadline, Then,
         ShortHours, Card3Label, HabitsHeadline, Streak, StreakSpan, StreakOne, Busiest, BusiestValue, BusiestVs, BusiestOnly,
         Peak, PeakValue, PeakSub, Noon, NoonSub, NoonSubEarly, CardNameTotal, CardNameTop, CardNameHabits, Prev, Next, GoTo,
         Save, SaveDone, SaveTitle, SaveFilter,
