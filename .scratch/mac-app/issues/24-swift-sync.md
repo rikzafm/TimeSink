@@ -1,6 +1,6 @@
 # Swift sync writer and reader
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 7)
 Blocked by: 08, 18
 Needs a Mac.
