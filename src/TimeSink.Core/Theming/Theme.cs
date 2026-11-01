@@ -39,6 +39,7 @@ public static class StringKeys
     public const string LegendAppsOpen = "legendAppsOpen";
     public const string LegendTypical = "legendTypical";
     public const string LegendAsleep = "legendAsleep";
+    public const string LegendOverlapping = "legendOverlapping";
     public const string TileFirstApp = "tileFirstApp";
     public const string TileLongest = "tileLongest";
     public const string TileVsYesterday = "tileVsYesterday";
@@ -99,7 +100,7 @@ public static class StringKeys
     [
         AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, Back, GamesOnly, ScopeThisPc, ScopeAllDevices, StubComingSoon,
         TodayCaption, TodayCombined, TodayEarlyCaption,TodayEarlyHint, TodayEmpty, RunningPill, LegendAppsOpen, LegendTypical,
-        LegendAsleep, TileFirstApp, TileLongest, TileVsYesterday, TileNone, TileLongestValue, TileVsYesterdayValue,
+        LegendAsleep, LegendOverlapping, TileFirstApp, TileLongest, TileVsYesterday, TileNone, TileLongestValue, TileVsYesterdayValue,
         StatusRunning, StatusClosed, SessionsToday, SessionLine, SessionNow, VsAverage, VsAverageNone,
         DialSessions, DialLongest, DialAverage, DialBlips, DialLabel,
         WeekCaption, WeekLastCaption, WeekStreak, WeekStreakSub, WeekGridCaption, WeekEmpty, WeekVsLastUp, WeekVsLastDown, WeekAvg, WeekTrendCaption,

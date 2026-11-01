@@ -32,6 +32,10 @@ public sealed class PaceBars : FrameworkElement
     public static readonly DependencyProperty SelectedLabelBrushProperty = Reg<Brush?>(nameof(SelectedLabelBrush));
     public static readonly DependencyProperty SelectedBackBrushProperty = Reg<Brush?>(nameof(SelectedBackBrush));
     public static readonly DependencyProperty BaselineBrushProperty = Reg<Brush?>(nameof(BaselineBrush));
+    public static readonly DependencyProperty DeviceScopeProperty = Reg<TimeSink.Core.Devices.DeviceScope>(nameof(DeviceScope), TimeSink.Core.Devices.DeviceScope.This);
+    public static readonly DependencyProperty LocalDeviceIdProperty = Reg<string?>(nameof(LocalDeviceId));
+    public static readonly DependencyProperty DeviceABrushProperty = Reg<Brush?>(nameof(DeviceABrush));
+    public static readonly DependencyProperty DeviceBBrushProperty = Reg<Brush?>(nameof(DeviceBBrush));
     public static readonly DependencyProperty LabelFontFamilyProperty = Reg<FontFamily?>(nameof(LabelFontFamily));
     public static readonly DependencyProperty LabelFontSizeProperty = Reg<double>(nameof(LabelFontSize), 10.0);
 
@@ -49,6 +53,10 @@ public sealed class PaceBars : FrameworkElement
     public Brush? SelectedLabelBrush { get => (Brush?)GetValue(SelectedLabelBrushProperty); set => SetValue(SelectedLabelBrushProperty, value); }
     public Brush? SelectedBackBrush { get => (Brush?)GetValue(SelectedBackBrushProperty); set => SetValue(SelectedBackBrushProperty, value); }
     public Brush? BaselineBrush { get => (Brush?)GetValue(BaselineBrushProperty); set => SetValue(BaselineBrushProperty, value); }
+    public TimeSink.Core.Devices.DeviceScope DeviceScope { get => (TimeSink.Core.Devices.DeviceScope)GetValue(DeviceScopeProperty); set => SetValue(DeviceScopeProperty, value); }
+    public string? LocalDeviceId { get => (string?)GetValue(LocalDeviceIdProperty); set => SetValue(LocalDeviceIdProperty, value); }
+    public Brush? DeviceABrush { get => (Brush?)GetValue(DeviceABrushProperty); set => SetValue(DeviceABrushProperty, value); }
+    public Brush? DeviceBBrush { get => (Brush?)GetValue(DeviceBBrushProperty); set => SetValue(DeviceBBrushProperty, value); }
     public FontFamily? LabelFontFamily { get => (FontFamily?)GetValue(LabelFontFamilyProperty); set => SetValue(LabelFontFamilyProperty, value); }
     public double LabelFontSize { get => (double)GetValue(LabelFontSizeProperty); set => SetValue(LabelFontSizeProperty, value); }
 
@@ -107,9 +115,55 @@ public sealed class PaceBars : FrameworkElement
             if (m.Kind == YearMonthKind.BeforeTracking)
                 dc.DrawLine(dotted, new Point(bx, baseY - 1), new Point(bx + bw, baseY - 1));
 
-            if (actualH > 0.5)
-                dc.DrawRoundedRectangle(m.Kind == YearMonthKind.Current ? CurrentBrush : BarBrush, null,
-                    new Rect(bx, baseY - actualH, bw, actualH), m.Kind == YearMonthKind.Current && extraH > 0.5 ? 0 : 2, 2);
+            if (DeviceScope == TimeSink.Core.Devices.DeviceScope.All && m.DeviceSeconds is { Count: > 0 } && m.Kind != YearMonthKind.Future && m.Kind != YearMonthKind.BeforeTracking)
+            {
+                var secA = 0L;
+                var secB = 0L;
+                if (LocalDeviceId != null)
+                {
+                    m.DeviceSeconds.TryGetValue(LocalDeviceId, out secA);
+                    foreach (var (k, v) in m.DeviceSeconds)
+                        if (k != LocalDeviceId) secB += v;
+                }
+                else
+                {
+                    var first = true;
+                    foreach (var v in m.DeviceSeconds.Values)
+                    {
+                        if (first) { secA = v; first = false; }
+                        else secB += v;
+                    }
+                }
+                var hA = Px(secA);
+                var hB = Px(secB);
+
+                if (hA > 0.5 || hB > 0.5)
+                {
+                    var (back, front) = OverlapBars.Layout(bx, bw, hA, hB);
+                    void DrawDeviceBar(OverlapBarGeometry g)
+                    {
+                        if (g.Height <= 0.5) return;
+                        var b = g.IsDeviceA ? (DeviceABrush ?? (m.Kind == YearMonthKind.Current ? CurrentBrush : BarBrush))
+                                            : (DeviceBBrush ?? BarBrush);
+                        var corner = (m.Kind == YearMonthKind.Current && extraH > 0.5) ? 0 : 2;
+                        dc.DrawRoundedRectangle(b, null, new Rect(g.X, baseY - g.Height, g.Width, g.Height), corner, 2);
+                    }
+                    DrawDeviceBar(back);
+                    DrawDeviceBar(front);
+                }
+                else if (actualH > 0.5)
+                {
+                    dc.DrawRoundedRectangle(m.Kind == YearMonthKind.Current ? CurrentBrush : BarBrush, null,
+                        new Rect(bx, baseY - actualH, bw, actualH), m.Kind == YearMonthKind.Current && extraH > 0.5 ? 0 : 2, 2);
+                }
+            }
+            else
+            {
+                if (actualH > 0.5)
+                    dc.DrawRoundedRectangle(m.Kind == YearMonthKind.Current ? CurrentBrush : BarBrush, null,
+                        new Rect(bx, baseY - actualH, bw, actualH), m.Kind == YearMonthKind.Current && extraH > 0.5 ? 0 : 2, 2);
+            }
+
             if (extraH > 0.5)
             {
                 var rect = new Rect(bx, baseY - actualH - extraH, bw, extraH);

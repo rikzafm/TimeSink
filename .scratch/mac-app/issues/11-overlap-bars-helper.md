@@ -1,6 +1,6 @@
 # OverlapBars helper for HourlyBars, WeekColumns and PaceBars
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 3)
 Blocked by: 06, 10
 Design: design/mac/TodayAll.dc.html, design/mac/Week.dc.html, design/mac/YearPace.dc.html

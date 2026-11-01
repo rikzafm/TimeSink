@@ -55,6 +55,16 @@ public partial class FlyoutWindow : Window
         ShowGamesState();
         GamesButton.Click += (_, _) => ToggleGamesOnly();
 
+        try
+        {
+            using var devConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly");
+            devConn.Open();
+            using var devCmd = devConn.CreateCommand();
+            devCmd.CommandText = "SELECT value FROM settings WHERE key = 'device.id';";
+            Live.LocalDeviceId = devCmd.ExecuteScalar() as string;
+        }
+        catch { }
+
         var hasOtherDevice = CheckHasOtherDevice(_dbPath);
         var syncOn = AppSettings.ForFile(_dbPath).Get(Setting.SyncEnabled);
         var storedScope = SettingsStore.Get(_dbPath, Setting.DeviceScope.Key);

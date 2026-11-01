@@ -30,6 +30,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
     private readonly TextBlock _banner = Label("Soft");
     private readonly PaceBars _bars = new() { Height = 150 };
     private readonly TextBlock _legendTracked = Label("Small"), _legendProjected = Label("Small"), _legendAverage = Label("Small"), _hint = Label("Small");
+    private readonly FrameworkElement _deviceOverlapLegend = CreateOverlapLegendItem();
     private readonly TextBlock _panelName = Label("Number"), _panelValue = new(), _panelNote = Label("Small");
     private readonly StackPanel _panelApps = new() { Margin = new Thickness(0, 8, 0, 0) };
 
@@ -80,6 +81,8 @@ public sealed class YearPaceView : UserControl, IYearSubView
         _bars.SetResourceReference(PaceBars.SelectedLabelBrushProperty, "Brush.Text");
         _bars.SetResourceReference(PaceBars.SelectedBackBrushProperty, "Brush.SurfaceAlt");
         _bars.SetResourceReference(PaceBars.BaselineBrushProperty, "Brush.Border");
+        _bars.SetResourceReference(PaceBars.DeviceABrushProperty, "Brush.DeviceA");
+        _bars.SetResourceReference(PaceBars.DeviceBBrushProperty, "Brush.DeviceB");
         _bars.SetResourceReference(PaceBars.LabelFontFamilyProperty, "FontFamily.Numbers");
         _bars.SetResourceReference(PaceBars.LabelFontSizeProperty, "Double.FontSize.Small");
         _bars.MonthPicked += i => { _selected = i; DrawChartAndPanel(); };
@@ -87,6 +90,7 @@ public sealed class YearPaceView : UserControl, IYearSubView
         var legend = new Grid { Margin = new Thickness(0, 6, 0, 8) };
         var legendItems = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 12, 0) };
         legendItems.Children.Add(LegendItem(_legendTracked, "Brush.Heat3", dashed: false));
+        legendItems.Children.Add(_deviceOverlapLegend);
         legendItems.Children.Add(LegendItem(_legendProjected, "Brush.Heat3", dashed: true));
         legendItems.Children.Add(LegendItem(_legendAverage, "Brush.TextMuted", dashed: true, line: true));
         _hint.HorizontalAlignment = HorizontalAlignment.Right;
@@ -208,6 +212,9 @@ public sealed class YearPaceView : UserControl, IYearSubView
     private void DrawChartAndPanel()
     {
         if (_result is not { } r) return;
+        _bars.DeviceScope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
+        _bars.LocalDeviceId = _live?.LocalDeviceId;
+        _deviceOverlapLegend.Visibility = _bars.DeviceScope == TimeSink.Core.Devices.DeviceScope.All ? Visibility.Visible : Visibility.Collapsed;
         _bars.Months = r.Months;
         _bars.ValueLabels = r.Months.Select(ValueLabel).ToList();
         _bars.MonthLabels = r.Months.Select(m => UsageText.MonthAbbr(m.Month)).ToList();
@@ -282,5 +289,23 @@ public sealed class YearPaceView : UserControl, IYearSubView
             row.Children.Add(value);
             _panelApps.Children.Add(row);
         }
+    }
+
+    private static FrameworkElement CreateOverlapLegendItem()
+    {
+        var item = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 12, 0), Visibility = Visibility.Collapsed };
+        var swatchGrid = new Grid { Width = 13, Height = 9, Margin = new Thickness(0, 0, 5, 0), VerticalAlignment = VerticalAlignment.Center };
+        var rectA = new System.Windows.Shapes.Rectangle { Width = 8, Height = 9, RadiusX = 1.5, RadiusY = 1.5, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom };
+        rectA.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "Brush.DeviceA");
+        var rectB = new System.Windows.Shapes.Rectangle { Width = 8, Height = 6, RadiusX = 1.5, RadiusY = 1.5, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom };
+        rectB.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "Brush.DeviceB");
+        swatchGrid.Children.Add(rectA);
+        swatchGrid.Children.Add(rectB);
+        item.Children.Add(swatchGrid);
+        var text = new TextBlock { FontSize = 10, VerticalAlignment = VerticalAlignment.Center };
+        text.SetResourceReference(TextBlock.TextProperty, "Str.LegendOverlapping");
+        text.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+        item.Children.Add(text);
+        return item;
     }
 }

@@ -203,6 +203,9 @@ public partial class TodayView : UserControl, ILiveView
         RunningPill.Visibility = live ? Visibility.Visible : Visibility.Collapsed;
 
         var nowLocalHour = live ? TimeText.Local(r.NowUtc).Hour : -1;
+        Chart.DeviceScope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
+        Chart.LocalDeviceId = _live?.LocalDeviceId;
+        LegendOverlap.Visibility = Chart.DeviceScope == TimeSink.Core.Devices.DeviceScope.All ? Visibility.Visible : Visibility.Collapsed;
         Chart.Hours = r.Hours;
         BuildAxis();
 

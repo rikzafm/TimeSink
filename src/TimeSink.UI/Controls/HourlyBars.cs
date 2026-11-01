@@ -29,6 +29,10 @@ public sealed class HourlyBars : FrameworkElement
     public static readonly DependencyProperty LabelTextBrushProperty = Reg<Brush?>(nameof(LabelTextBrush));
     public static readonly DependencyProperty LabelFontFamilyProperty = Reg<FontFamily?>(nameof(LabelFontFamily));
     public static readonly DependencyProperty LabelFontSizeProperty = Reg<double>(nameof(LabelFontSize), 11.0);
+    public static readonly DependencyProperty DeviceScopeProperty = Reg<TimeSink.Core.Devices.DeviceScope>(nameof(DeviceScope), TimeSink.Core.Devices.DeviceScope.This);
+    public static readonly DependencyProperty LocalDeviceIdProperty = Reg<string?>(nameof(LocalDeviceId));
+    public static readonly DependencyProperty DeviceABrushProperty = Reg<Brush?>(nameof(DeviceABrush));
+    public static readonly DependencyProperty DeviceBBrushProperty = Reg<Brush?>(nameof(DeviceBBrush));
 
     public static readonly DependencyProperty SelectedHourProperty = Reg<int>(nameof(SelectedHour), -1);
 
@@ -86,6 +90,10 @@ public sealed class HourlyBars : FrameworkElement
     public Brush? LabelTextBrush { get => (Brush?)GetValue(LabelTextBrushProperty); set => SetValue(LabelTextBrushProperty, value); }
     public FontFamily? LabelFontFamily { get => (FontFamily?)GetValue(LabelFontFamilyProperty); set => SetValue(LabelFontFamilyProperty, value); }
     public double LabelFontSize { get => (double)GetValue(LabelFontSizeProperty); set => SetValue(LabelFontSizeProperty, value); }
+    public TimeSink.Core.Devices.DeviceScope DeviceScope { get => (TimeSink.Core.Devices.DeviceScope)GetValue(DeviceScopeProperty); set => SetValue(DeviceScopeProperty, value); }
+    public string? LocalDeviceId { get => (string?)GetValue(LocalDeviceIdProperty); set => SetValue(LocalDeviceIdProperty, value); }
+    public Brush? DeviceABrush { get => (Brush?)GetValue(DeviceABrushProperty); set => SetValue(DeviceABrushProperty, value); }
+    public Brush? DeviceBBrush { get => (Brush?)GetValue(DeviceBBrushProperty); set => SetValue(DeviceBBrushProperty, value); }
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -128,11 +136,50 @@ public sealed class HourlyBars : FrameworkElement
                 dc.DrawRoundedRectangle(hoverFill, null, new Rect(x - 1, plotTop, barW + 2, plotH), 2, 2);
                 dc.Pop();
             }
-            if (barH > 0.5)
+
+            if (DeviceScope == TimeSink.Core.Devices.DeviceScope.All && bucket.ByDevice != null && bucket.ByDevice.Count > 0)
             {
-                dc.DrawRoundedRectangle(i == CurrentHour ? CurrentBrush : BarBrush, null,
-                    new Rect(x, plotTop + plotH - barH, barW, barH), 1.5, 1.5);
+                long secA = 0, secB = 0;
+                if (LocalDeviceId != null)
+                {
+                    if (bucket.ByDevice.TryGetValue(LocalDeviceId, out var dhA)) secA = dhA.AppSeconds;
+                    foreach (var (devId, dh) in bucket.ByDevice)
+                    {
+                        if (devId != LocalDeviceId) secB += dh.AppSeconds;
+                    }
+                }
+                else
+                {
+                    var first = true;
+                    foreach (var dh in bucket.ByDevice.Values)
+                    {
+                        if (first) { secA = dh.AppSeconds; first = false; }
+                        else secB += dh.AppSeconds;
+                    }
+                }
+                var hA = Math.Min(1.0, secA / 3600.0 / MaxAppHours) * plotH;
+                var hB = Math.Min(1.0, secB / 3600.0 / MaxAppHours) * plotH;
+
+                var (back, front) = OverlapBars.Layout(x, barW, hA, hB);
+                void DrawDeviceBar(OverlapBarGeometry g)
+                {
+                    if (g.Height <= 0.5) return;
+                    var brush = g.IsDeviceA ? (DeviceABrush ?? (i == CurrentHour ? CurrentBrush : BarBrush))
+                                            : (DeviceBBrush ?? BarBrush);
+                    dc.DrawRoundedRectangle(brush, null, new Rect(g.X, plotTop + plotH - g.Height, g.Width, g.Height), 1.5, 1.5);
+                }
+                DrawDeviceBar(back);
+                DrawDeviceBar(front);
             }
+            else
+            {
+                if (barH > 0.5)
+                {
+                    dc.DrawRoundedRectangle(i == CurrentHour ? CurrentBrush : BarBrush, null,
+                        new Rect(x, plotTop + plotH - barH, barW, barH), 1.5, 1.5);
+                }
+            }
+
             if (i == SelectedHour && SelectedBrush is { } sel)
                 dc.DrawRoundedRectangle(null, new Pen(sel, 1.5), new Rect(x - 1, plotTop, barW + 2, plotH), 2, 2);
             if (future && bucket.TypicalAppSeconds > 0 && MutedBrush is { } m)

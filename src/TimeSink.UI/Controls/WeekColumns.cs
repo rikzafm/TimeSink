@@ -25,6 +25,10 @@ public sealed class WeekColumns : FrameworkElement
     public static readonly DependencyProperty ColumnBrushProperty = Reg<Brush?>(nameof(ColumnBrush));
     public static readonly DependencyProperty CurrentBrushProperty = Reg<Brush?>(nameof(CurrentBrush));
     public static readonly DependencyProperty FutureBrushProperty = Reg<Brush?>(nameof(FutureBrush));
+    public static readonly DependencyProperty DeviceScopeProperty = Reg<TimeSink.Core.Devices.DeviceScope>(nameof(DeviceScope), TimeSink.Core.Devices.DeviceScope.This);
+    public static readonly DependencyProperty LocalDeviceIdProperty = Reg<string?>(nameof(LocalDeviceId));
+    public static readonly DependencyProperty DeviceABrushProperty = Reg<Brush?>(nameof(DeviceABrush));
+    public static readonly DependencyProperty DeviceBBrushProperty = Reg<Brush?>(nameof(DeviceBBrush));
 
     public static readonly DependencyProperty LabelBrushProperty = Reg<Brush?>(nameof(LabelBrush));
     public static readonly DependencyProperty AverageBrushProperty = Reg<Brush?>(nameof(AverageBrush));
@@ -82,6 +86,10 @@ public sealed class WeekColumns : FrameworkElement
     public Brush? ColumnBrush { get => (Brush?)GetValue(ColumnBrushProperty); set => SetValue(ColumnBrushProperty, value); }
     public Brush? CurrentBrush { get => (Brush?)GetValue(CurrentBrushProperty); set => SetValue(CurrentBrushProperty, value); }
     public Brush? FutureBrush { get => (Brush?)GetValue(FutureBrushProperty); set => SetValue(FutureBrushProperty, value); }
+    public TimeSink.Core.Devices.DeviceScope DeviceScope { get => (TimeSink.Core.Devices.DeviceScope)GetValue(DeviceScopeProperty); set => SetValue(DeviceScopeProperty, value); }
+    public string? LocalDeviceId { get => (string?)GetValue(LocalDeviceIdProperty); set => SetValue(LocalDeviceIdProperty, value); }
+    public Brush? DeviceABrush { get => (Brush?)GetValue(DeviceABrushProperty); set => SetValue(DeviceABrushProperty, value); }
+    public Brush? DeviceBBrush { get => (Brush?)GetValue(DeviceBBrushProperty); set => SetValue(DeviceBBrushProperty, value); }
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -106,15 +114,63 @@ public sealed class WeekColumns : FrameworkElement
             var x = i * (colW + Gap);
             var barH = d.IsFuture ? 6 : Math.Max(6, d.Seconds / (double)max * plotH);
             var brush = d.IsFuture ? FutureBrush : d.IsToday ? CurrentBrush : ColumnBrush;
-            dc.DrawRoundedRectangle(brush, null, new Rect(x, baseY - barH, colW, barH), 3, 3);
+            var topH = barH;
+
+            if (DeviceScope == TimeSink.Core.Devices.DeviceScope.All && d.DeviceSeconds is { Count: > 0 } && !d.IsFuture)
+            {
+                var secA = 0L;
+                var secB = 0L;
+                if (LocalDeviceId != null)
+                {
+                    d.DeviceSeconds.TryGetValue(LocalDeviceId, out secA);
+                    foreach (var (k, v) in d.DeviceSeconds)
+                        if (k != LocalDeviceId) secB += v;
+                }
+                else
+                {
+                    var first = true;
+                    foreach (var v in d.DeviceSeconds.Values)
+                    {
+                        if (first) { secA = v; first = false; }
+                        else secB += v;
+                    }
+                }
+
+                var hA = secA > 0 ? Math.Max(6, secA / (double)max * plotH) : 0;
+                var hB = secB > 0 ? Math.Max(6, secB / (double)max * plotH) : 0;
+
+                if (hA > 0 || hB > 0)
+                {
+                    topH = Math.Max(barH, Math.Max(hA, hB));
+                    var (back, front) = OverlapBars.Layout(x, colW, hA, hB);
+                    void DrawDeviceBar(OverlapBarGeometry g)
+                    {
+                        if (g.Height <= 0) return;
+                        var b = g.IsDeviceA ? (DeviceABrush ?? (d.IsToday ? CurrentBrush : ColumnBrush))
+                                            : (DeviceBBrush ?? ColumnBrush);
+                        dc.DrawRoundedRectangle(b, null, new Rect(g.X, baseY - g.Height, g.Width, g.Height), 3, 3);
+                    }
+                    DrawDeviceBar(back);
+                    DrawDeviceBar(front);
+                }
+                else
+                {
+                    dc.DrawRoundedRectangle(brush, null, new Rect(x, baseY - barH, colW, barH), 3, 3);
+                }
+            }
+            else
+            {
+                dc.DrawRoundedRectangle(brush, null, new Rect(x, baseY - barH, colW, barH), 3, 3);
+            }
+
             if (i == SelectedIndex && SelectedBrush is { } sel)
-                dc.DrawRoundedRectangle(null, new Pen(sel, 1.5), new Rect(x - 1.5, baseY - barH - 1.5, colW + 3, barH + 3), 4, 4);
+                dc.DrawRoundedRectangle(null, new Pen(sel, 1.5), new Rect(x - 1.5, baseY - topH - 1.5, colW + 3, topH + 3), 4, 4);
 
             var text = d.IsToday ? CurrentBrush : LabelBrush;
             if (!d.IsFuture && d.Seconds > 0)
             {
                 var value = ChartSupport.Text(this, UsageText.HoursMinutes(d.Seconds), numbers, FontSize, text, FontWeights.Normal);
-                dc.DrawText(value, new Point(x + (colW - value.Width) / 2, baseY - barH - value.Height - 2));
+                dc.DrawText(value, new Point(x + (colW - value.Width) / 2, baseY - topH - value.Height - 2));
             }
             var day = ChartSupport.Text(this, CultureInfo.CurrentCulture.DateTimeFormat.GetAbbreviatedDayName(d.Date.DayOfWeek), null, FontSize, text,
                 d.IsToday ? FontWeights.SemiBold : FontWeights.Normal);

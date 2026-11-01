@@ -27,6 +27,9 @@ public sealed class LiveState : IDisposable
     /// <summary>The current device scope (This PC vs All devices). Every view reads it when it queries.</summary>
     public TimeSink.Core.Devices.DeviceScope DeviceScope { get; set; } = TimeSink.Core.Devices.DeviceScope.This;
 
+    /// <summary>The local device ID.</summary>
+    public string? LocalDeviceId { get; set; }
+
     public event Action? Changed;
 
     /// <summary>Connects (idempotent). Called once the first frame is on screen so it never delays first paint.</summary>

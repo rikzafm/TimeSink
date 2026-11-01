@@ -33,6 +33,7 @@ public sealed class WeekView : UserControl, ILiveView
     private readonly TextBlock _streakSub = Text("Small", "Double.FontSize.Body", "Brush.TextMuted");
     private readonly TextBlock _delta = Text("Small", "Double.FontSize.Body", "Brush.TextMuted");
     private readonly WeekColumns _columns = new() { Height = 96 };
+    private readonly StackPanel _deviceLegend = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
     private readonly TextBlock _gridCaption = Text("Small", "Double.FontSize.Small", "Brush.TextMuted");
     private readonly TextBlock _trendCaption = Text("Small", "Double.FontSize.Small", "Brush.TextMuted");
     private readonly WeekTrend _trend = new() { Height = 30 };
@@ -79,8 +80,23 @@ public sealed class WeekView : UserControl, ILiveView
         _columns.SetResourceReference(WeekColumns.FutureBrushProperty, "Brush.BorderSoft");
         _columns.SetResourceReference(WeekColumns.LabelBrushProperty, "Brush.TextMuted");
         _columns.SetResourceReference(WeekColumns.AverageBrushProperty, "Brush.Heat1");
+        _columns.SetResourceReference(WeekColumns.DeviceABrushProperty, "Brush.DeviceA");
+        _columns.SetResourceReference(WeekColumns.DeviceBBrushProperty, "Brush.DeviceB");
         _trend.SetResourceReference(WeekTrend.BarBrushProperty, "Brush.Heat1");
         _trend.SetResourceReference(WeekTrend.CurrentBrushProperty, "Brush.Accent");
+
+        var swatchGrid = new Grid { Width = 13, Height = 9, Margin = new Thickness(0, 0, 5, 0), VerticalAlignment = VerticalAlignment.Center };
+        var rectA = new System.Windows.Shapes.Rectangle { Width = 8, Height = 9, RadiusX = 1.5, RadiusY = 1.5, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom };
+        rectA.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "Brush.DeviceA");
+        var rectB = new System.Windows.Shapes.Rectangle { Width = 8, Height = 6, RadiusX = 1.5, RadiusY = 1.5, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom };
+        rectB.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "Brush.DeviceB");
+        swatchGrid.Children.Add(rectA);
+        swatchGrid.Children.Add(rectB);
+        _deviceLegend.Children.Add(swatchGrid);
+        var legendText = new TextBlock { FontSize = 10, VerticalAlignment = VerticalAlignment.Center };
+        legendText.SetResourceReference(TextBlock.TextProperty, "Str.LegendOverlapping");
+        legendText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+        _deviceLegend.Children.Add(legendText);
 
         var header = new Grid { Margin = new Thickness(0, 2, 0, 10) };
         var left = new StackPanel { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
@@ -110,6 +126,7 @@ public sealed class WeekView : UserControl, ILiveView
         root.Children.Add(nav);
         root.Children.Add(header);
         root.Children.Add(_columns);
+        root.Children.Add(_deviceLegend);
         root.Children.Add(_panel);
         root.Children.Add(trendHeader);
         root.Children.Add(_trend);
@@ -199,6 +216,9 @@ public sealed class WeekView : UserControl, ILiveView
         _next.IsEnabled = browse.CanLater;
         _total.Text = UsageText.HoursMinutes(r.TotalSeconds);
         _streak.Text = Str(StringKeys.WeekStreak, r.StreakDays);
+        _columns.DeviceScope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
+        _columns.LocalDeviceId = _live?.LocalDeviceId;
+        _deviceLegend.Visibility = _columns.DeviceScope == TimeSink.Core.Devices.DeviceScope.All ? Visibility.Visible : Visibility.Collapsed;
         _columns.Days = r.Days;
         _trend.Values = r.WeekTotals;
 
