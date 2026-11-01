@@ -179,7 +179,9 @@ public final class TrackingEngine: @unchecked Sendable {
                 procs.contains { p in
                     p.pid == s.pid! && abs(Int64(p.startUtc.timeIntervalSince1970) - s.procStartUtc!) <= 1
                 }
-            if alive && tracked.contains(s.appId) && n - s.lastSeenUtc <= recoveryFreshSeconds {
+            let isBg = apps.first(where: { $0.id == s.appId })?.isBackground ?? false
+            let shouldResume = isBg ? (alive && procs.contains { $0.pid == s.pid! && $0.isActive }) : alive
+            if shouldResume && tracked.contains(s.appId) && n - s.lastSeenUtc <= recoveryFreshSeconds {
                 open[s.appId] = o
             } else {
                 try close(o, end: s.lastSeenUtc, reason: EndReasons.crash)
@@ -194,17 +196,44 @@ public final class TrackingEngine: @unchecked Sendable {
         let procs = processes.snapshot()
         for app in apps {
             let matching = procs.filter { matches(app: app, proc: $0) }
+            let isTrackable: Bool
+            if app.isBackground {
+                // Background apps only track when explicitly focused (frontmost)
+                isTrackable = matching.contains { $0.isActive }
+            } else {
+                isTrackable = !matching.isEmpty
+            }
+
             if let o = open[app.id] {
-                if matching.isEmpty {
+                if !isTrackable {
                     try close(o, end: n, reason: EndReasons.exit)
                 }
-            } else if !matching.isEmpty && !blocked {
-                guard let first = matching.min(by: { $0.startUtc < $1.startUtc }) else { continue }
-                let firstStart = Int64(first.startUtc.timeIntervalSince1970)
-                let start = max(max(firstStart, floor), app.addedUtc)
-                if start > n { continue }
-                let rec = try store.openSession(appId: app.id, startUtc: start, pid: first.pid, procStartUtc: firstStart)
-                open[app.id] = Open(sessionId: rec.id, appId: app.id, start: rec.startUtc, accumulatedTo: rec.startUtc)
+            } else if isTrackable && !blocked {
+                if app.isBackground {
+                    guard let activeProc = matching.first(where: { $0.isActive }) else { continue }
+                    let actStart = activeProc.activeSinceUtc.map { Int64($0.timeIntervalSince1970) } ?? n
+                    let start = min(n, max(max(actStart, floor), app.addedUtc))
+                    if start > n { continue }
+                    let rec = try store.openSession(
+                        appId: app.id,
+                        startUtc: start,
+                        pid: activeProc.pid,
+                        procStartUtc: Int64(activeProc.startUtc.timeIntervalSince1970)
+                    )
+                    open[app.id] = Open(sessionId: rec.id, appId: app.id, start: rec.startUtc, accumulatedTo: rec.startUtc)
+                } else {
+                    guard let first = matching.min(by: { $0.startUtc < $1.startUtc }) else { continue }
+                    let firstStart = Int64(first.startUtc.timeIntervalSince1970)
+                    let start = max(max(firstStart, floor), app.addedUtc)
+                    if start > n { continue }
+                    let rec = try store.openSession(
+                        appId: app.id,
+                        startUtc: start,
+                        pid: first.pid,
+                        procStartUtc: firstStart
+                    )
+                    open[app.id] = Open(sessionId: rec.id, appId: app.id, start: rec.startUtc, accumulatedTo: rec.startUtc)
+                }
             }
         }
     }

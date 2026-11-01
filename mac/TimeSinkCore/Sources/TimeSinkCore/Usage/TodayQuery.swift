@@ -212,7 +212,6 @@ public enum TodayQuery {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = zone
 
-        let todayComps = LocalDays.dateComponents(for: nowUtc, timeZone: zone)
         let todayStr = window.todayStr
         let targetStr = (forDay != nil && forDay! < todayStr) ? forDay! : todayStr
         let isToday = (targetStr == todayStr)

@@ -12,6 +12,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var processProvider: NSWorkspaceProcessProvider!
     private var powerHub: MacPowerEventHub!
     private var iconCache: MacIconCache!
+    public private(set) var syncHost: SyncHost!
     private var appState: AppState!
     private var timer: Timer?
 
@@ -28,7 +29,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             processProvider = NSWorkspaceProcessProvider()
             powerHub = MacPowerEventHub()
             iconCache = MacIconCache(db: database)
-            appState = AppState(db: database)
+            syncHost = SyncHost(db: database, timeZone: .current)
+            appState = AppState(db: database, syncHost: syncHost)
+
+            syncHost.onSyncCompleted = { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.appState?.handleSyncCompleted()
+                    self?.updateMenuTotal()
+                }
+            }
+            syncHost.start()
 
             let settings = DbTrackingSettings(db: database)
             let clock = SystemClock()
@@ -70,6 +80,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
     public func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
+        syncHost?.stop()
         try? engine.onShutdown(Date())
     }
 

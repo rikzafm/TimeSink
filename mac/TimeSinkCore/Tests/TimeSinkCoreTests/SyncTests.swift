@@ -84,7 +84,6 @@ final class SyncTests: XCTestCase {
     func testSelfSnapshotIgnored() throws {
         let db = try SQLiteDatabase(path: ":memory:")
         try Migrator.apply(to: db)
-        let devId = try db.scalarText("SELECT device_id FROM devices LIMIT 1;") ?? "mac-1"
 
         let tempFolder = (NSTemporaryDirectory() as NSString).appendingPathComponent("sync-self-\(UUID().uuidString)")
         try FileManager.default.createDirectory(atPath: tempFolder, withIntermediateDirectories: true)
@@ -95,6 +94,43 @@ final class SyncTests: XCTestCase {
         let snapPath = try SyncWriter.write(db: db, syncFolder: tempFolder)
         let res = try SyncReader.import(syncFile: snapPath, db: db)
         XCTAssertEqual(res.status, .selfFile)
+    }
+
+    func testSyncHostLifecycleAndStateUpdates() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+
+        let tempFolder = (NSTemporaryDirectory() as NSString).appendingPathComponent("sync-host-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(atPath: tempFolder, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(atPath: tempFolder)
+        }
+
+        try db.exec("INSERT INTO settings (key, value) VALUES ('sync.enabled', 'true'), ('sync.folder', '\(tempFolder)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+
+        let host = SyncHost(db: db)
+        XCTAssertTrue(host.isEnabled)
+        XCTAssertEqual(host.syncFolder, tempFolder)
+        XCTAssertEqual(host.getDeviceStatus(), .noOtherFound)
+
+        let expectation = XCTestExpectation(description: "Sync completion callback")
+        host.onSyncCompleted = {
+            expectation.fulfill()
+        }
+
+        host.performSync()
+        wait(for: [expectation], timeout: 2.0)
+
+        // Verify settings table was populated with sync stats
+        let lastExport = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'sync.last_export_utc';")) ?? 0
+        XCTAssertGreaterThan(lastExport, 0)
+
+        let syncState = try db.scalarText("SELECT value FROM settings WHERE key = 'sync.state';")
+        XCTAssertEqual(syncState, "no_other_device")
+
+        // Test restart and stop
+        host.restart()
+        host.stop()
     }
 }
 

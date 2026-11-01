@@ -6,12 +6,19 @@ public struct SessionDialView: View {
     public let dayStartUtc: Int64
     public let dayEndUtc: Int64
     public let isAllScope: Bool
+    public let localDeviceId: String
 
-    public init(appRow: TodayAppRow, dayStartUtc: Int64, dayEndUtc: Int64, isAllScope: Bool) {
+    public init(appRow: TodayAppRow, dayStartUtc: Int64, dayEndUtc: Int64, isAllScope: Bool, localDeviceId: String = "") {
         self.appRow = appRow
         self.dayStartUtc = dayStartUtc
         self.dayEndUtc = dayEndUtc
         self.isAllScope = isAllScope
+        self.localDeviceId = localDeviceId
+    }
+
+    private func isLocalSession(_ deviceId: String) -> Bool {
+        if deviceId.isEmpty || localDeviceId.isEmpty { return true }
+        return deviceId.caseInsensitiveCompare(localDeviceId) == .orderedSame
     }
 
     public var body: some View {
@@ -37,7 +44,7 @@ public struct SessionDialView: View {
                     let dayLength = max(1, dayEndUtc - dayStartUtc)
                     let startFrac = Double(max(0, session.startUtc - dayStartUtc)) / Double(dayLength)
                     let durFrac = Double(session.seconds) / Double(dayLength)
-                    let isMac = session.deviceId.lowercased().contains("mac") || session.deviceId.isEmpty
+                    let isMac = isLocalSession(session.deviceId)
 
                     Circle()
                         .trim(from: CGFloat(startFrac), to: CGFloat(min(1.0, startFrac + durFrac)))

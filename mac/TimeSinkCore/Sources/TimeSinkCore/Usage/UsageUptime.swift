@@ -113,7 +113,7 @@ public enum UsageUptime {
         localDeviceId: String? = nil
     ) -> DeviceUptimeBreakdown {
         if segs.isEmpty {
-            if live, let on = onSince, !gamesOnly {
+            if live, onSince != nil, !gamesOnly {
                 let inters = intervals(segs: segs, from: from, to: to, live: live, onSince: onSince, gamesOnly: gamesOnly)
                 let secs = inters.reduce(0) { $0 + ($1.endUtc - $1.startUtc) }
                 let dev = localDeviceId ?? ""

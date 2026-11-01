@@ -94,6 +94,7 @@ public struct MonthResult: Sendable, Equatable {
     public let deltaSeconds: Int64
     public let dailyAverageSeconds: Double
     public let best: BestDay?
+    public var bestDay: BestDay? { best }
     public let topApps: [MonthTopApp]
     public let defaultSelected: String
     public let firstTracked: String?
@@ -152,7 +153,6 @@ public enum MonthQuery {
 
     public static func run(window: UsageWindow, year: Int, month: Int) -> MonthResult {
         let context = window.Context
-        let now = context.now
         let zone = context.zone
         let gamesOnly = context.gamesOnly
         let weekStart = context.weekStart

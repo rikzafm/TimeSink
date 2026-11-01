@@ -17,6 +17,11 @@ public final class SyncHost: @unchecked Sendable {
     private var folderFileDescriptor: Int32 = -1
     private let lock = NSLock()
 
+    // Watcher debouncing & loop prevention
+    private let debounceQueue = DispatchQueue(label: "com.timesink.sync.debounce", qos: .utility)
+    private var debounceWorkItem: DispatchWorkItem?
+    private var lastLocalWriteUtc: TimeInterval = 0
+
     public var onSyncCompleted: (@Sendable () -> Void)?
 
     public init(db: SQLiteDatabase, timeZone: TimeZone = .current) {
@@ -42,29 +47,40 @@ public final class SyncHost: @unchecked Sendable {
 
         // Periodic export/import every 5 minutes
         DispatchQueue.main.async { [weak self] in
-            self?.timer?.invalidate()
-            self?.timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
-                self?.performSync()
+            guard let self = self else { return }
+            self.timer?.invalidate()
+            let t = Timer(timeInterval: 300, repeats: true) { [weak self] _ in
+                DispatchQueue.global(qos: .utility).async {
+                    self?.performSync()
+                }
             }
+            RunLoop.main.add(t, forMode: .common)
+            self.timer = t
         }
 
-        performSync()
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            self?.performSync()
+        }
     }
 
     public func stop() {
-        timer?.invalidate()
-        timer = nil
-
-        folderSource?.cancel()
-        folderSource = nil
-        if folderFileDescriptor >= 0 {
-            close(folderFileDescriptor)
-            folderFileDescriptor = -1
+        DispatchQueue.main.async { [weak self] in
+            self?.timer?.invalidate()
+            self?.timer = nil
         }
+
+        stopWatcher()
+    }
+
+    public func restart() {
+        stop()
+        start()
     }
 
     public func syncNow() {
-        performSync()
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            self?.performSync()
+        }
     }
 
     public func performSync() {
@@ -75,9 +91,16 @@ public final class SyncHost: @unchecked Sendable {
         let fm = FileManager.default
         guard fm.fileExists(atPath: folder) else { return }
 
+        var exportSucceeded = false
+        var importSucceeded = false
+
         // 1. Export local snapshot
         do {
             _ = try SyncWriter.write(db: db, syncFolder: folder)
+            exportSucceeded = true
+            self.lastLocalWriteUtc = Date().timeIntervalSince1970
+            let nowUnix = Int64(Date().timeIntervalSince1970)
+            try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.last_export_utc', '\(nowUnix)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
         } catch {
             NSLog("SyncWriter error: \(error)")
         }
@@ -94,13 +117,36 @@ public final class SyncHost: @unchecked Sendable {
                     continue
                 }
 
-                _ = try SyncReader.import(syncFile: fullPath, db: db, timeZone: timeZone)
+                let result = try SyncReader.import(syncFile: fullPath, db: db, timeZone: timeZone)
+                if result.status == .success {
+                    importSucceeded = true
+                }
+            }
+
+            if importSucceeded {
+                let nowUnix = Int64(Date().timeIntervalSince1970)
+                try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.last_import_utc', '\(nowUnix)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
             }
         } catch {
             NSLog("SyncReader scan error: \(error)")
         }
 
-        onSyncCompleted?()
+        // 3. Update sync.state in settings
+        let status = getDeviceStatus()
+        let stateStr: String
+        switch status {
+        case .noOtherFound: stateStr = "no_other_device"
+        case .pending: stateStr = "pending"
+        case .onlyTwoDevices: stateStr = "only_two_devices"
+        case .synced, .upToDate: stateStr = "synced"
+        case .disabled: stateStr = "disabled"
+        }
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.state', '\(stateStr)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+
+        // 4. Notify on main thread
+        DispatchQueue.main.async { [weak self] in
+            self?.onSyncCompleted?()
+        }
     }
 
     public func getDeviceStatus() -> SyncDeviceStatus {
@@ -135,10 +181,7 @@ public final class SyncHost: @unchecked Sendable {
     }
 
     private func setupWatcher(folder: String) {
-        folderSource?.cancel()
-        if folderFileDescriptor >= 0 {
-            close(folderFileDescriptor)
-        }
+        stopWatcher()
 
         folderFileDescriptor = open(folder, O_EVTONLY)
         guard folderFileDescriptor >= 0 else { return }
@@ -146,22 +189,46 @@ public final class SyncHost: @unchecked Sendable {
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: folderFileDescriptor,
             eventMask: [.write, .extend, .attrib, .link],
-            queue: DispatchQueue.global(qos: .utility)
+            queue: debounceQueue
         )
 
         source.setEventHandler { [weak self] in
-            self?.performSync()
+            guard let self = self else { return }
+            self.debounceWorkItem?.cancel()
+            let item = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                // Suppress events caused by our own recent write
+                if Date().timeIntervalSince1970 - self.lastLocalWriteUtc < 3.0 {
+                    return
+                }
+                self.performSync()
+            }
+            self.debounceWorkItem = item
+            self.debounceQueue.asyncAfter(deadline: .now() + 1.5, execute: item)
         }
 
         source.setCancelHandler { [weak self] in
-            if let fd = self?.folderFileDescriptor, fd >= 0 {
-                close(fd)
-                self?.folderFileDescriptor = -1
+            guard let self = self else { return }
+            if self.folderFileDescriptor >= 0 {
+                close(self.folderFileDescriptor)
+                self.folderFileDescriptor = -1
             }
         }
 
         self.folderSource = source
         source.resume()
     }
-}
 
+    private func stopWatcher() {
+        debounceWorkItem?.cancel()
+        debounceWorkItem = nil
+
+        if let source = folderSource {
+            source.cancel()
+            folderSource = nil
+        } else if folderFileDescriptor >= 0 {
+            close(folderFileDescriptor)
+            folderFileDescriptor = -1
+        }
+    }
+}

@@ -113,6 +113,7 @@ public struct AllResult: Sendable, Equatable {
     public let apps: [AllAppRow]
     public let retired: [AllRetiredRow]
     public let totals: AllTotals
+    public var totalSeconds: Int64 { totals.seconds }
 
     public init(apps: [AllAppRow], retired: [AllRetiredRow], totals: AllTotals) {
         self.apps = apps
@@ -235,6 +236,11 @@ public enum AllQuery {
                 lastUsedUtc: g.lastUsed,
                 devices: devList.isEmpty ? nil : devList
             ))
+        }
+
+        appRows.sort { a, b in
+            if a.seconds != b.seconds { return a.seconds > b.seconds }
+            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
         }
 
         var retiredRows: [AllRetiredRow] = []

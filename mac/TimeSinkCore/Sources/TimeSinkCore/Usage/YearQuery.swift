@@ -102,7 +102,6 @@ public enum YearQuery {
 
     public static func run(window: UsageWindow) -> YearResult {
         let context = window.Context
-        let now = context.now
         let zone = context.zone
         let gamesOnly = context.gamesOnly
         let onSinceUtc = context.signInUtc

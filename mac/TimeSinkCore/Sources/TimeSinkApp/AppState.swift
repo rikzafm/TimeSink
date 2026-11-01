@@ -31,6 +31,7 @@ public enum AllSortOption: String, CaseIterable, Identifiable {
 @MainActor
 public final class AppState: ObservableObject {
     public let db: SQLiteDatabase
+    public let syncHost: SyncHost?
     public let iconCache: MacIconCache
 
     @Published public var selectedTab: AppTab = .today
@@ -82,8 +83,9 @@ public final class AppState: ObservableObject {
     @Published public var allResult: AllResult?
     @Published public var appDetailResult: AppDetailResult?
 
-    public init(db: SQLiteDatabase) {
+    public init(db: SQLiteDatabase, syncHost: SyncHost? = nil) {
         self.db = db
+        self.syncHost = syncHost
         self.iconCache = MacIconCache(db: db)
         loadDeviceInfo()
         loadSettings()
@@ -136,20 +138,29 @@ public final class AppState: ObservableObject {
         refresh()
     }
 
-    public func makeUsageContext() -> UsageContext {
+    public func makeUsageContext(running: Set<Int64>? = nil) -> UsageContext {
         let now = Date()
-        let runningPids = Set<Int64>() // Populated live or empty
         return UsageContext(
             now: now,
             zone: .current,
-            running: runningPids,
+            running: running,
             signInUtc: nil,
-            weekStart: .mon,
+            weekStart: WeekStart.parse(weekStart),
             gamesOnly: gamesOnly,
             db: db,
             deviceScope: deviceScope,
             localDeviceId: localDeviceId
         )
+    }
+
+    public func isLocalDevice(_ devId: String) -> Bool {
+        if devId.isEmpty { return true }
+        if localDeviceId.isEmpty { return true }
+        return devId.caseInsensitiveCompare(localDeviceId) == .orderedSame
+    }
+
+    public func isLocalDevice(devId: String) -> Bool {
+        isLocalDevice(devId)
     }
 
     public func refresh() {
@@ -221,8 +232,13 @@ public final class AppState: ObservableObject {
             self.lastBackupUtc = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'backup.last_utc';")) ?? 0
             self.openAtLogin = LoginItemManager.shared.isEnabled
             self.showMenuBarTime = (try db.scalarText("SELECT value FROM settings WHERE key = 'ui.showMenuBarTime';")) != "false"
-            self.pauseWhileSleep = (try db.scalarText("SELECT value FROM settings WHERE key = 'tracking.pauseWhileSleep';")) != "false"
-            self.countWhenLocked = (try db.scalarText("SELECT value FROM settings WHERE key = 'tracking.countWhenLocked';")) != "false"
+            let pauseVal = (try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.pauseOnSleep)';"))
+                ?? (try? db.scalarText("SELECT value FROM settings WHERE key = 'tracking.pauseWhileSleep';"))
+            self.pauseWhileSleep = pauseVal?.lowercased() != "false"
+            if let ws = try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.weekStart)';") {
+                self.weekStart = ws
+            }
+            self.countWhenLocked = (try db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.countWhenLocked)';")) != "false"
             if let s = try db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'tracking.minSessionSeconds';"), s > 0 {
                 self.minSessionSeconds = Int(s)
             }
@@ -235,7 +251,13 @@ public final class AppState: ObservableObject {
         if enabled {
             let now = Int64(Date().timeIntervalSince1970)
             try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.enabled_utc', '\(now)') ON CONFLICT(key) DO NOTHING;")
-            triggerSyncNow()
+            if let host = syncHost {
+                host.start()
+            } else {
+                triggerSyncNow()
+            }
+        } else {
+            syncHost?.stop()
         }
     }
 
@@ -243,7 +265,11 @@ public final class AppState: ObservableObject {
         self.syncFolder = folder
         try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.folder', '\(folder)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
         if syncEnabled {
-            triggerSyncNow()
+            if let host = syncHost {
+                host.restart()
+            } else {
+                triggerSyncNow()
+            }
         }
     }
 
@@ -257,9 +283,19 @@ public final class AppState: ObservableObject {
         try? db.exec("INSERT INTO settings (key, value) VALUES ('ui.showMenuBarTime', '\(show ? "true" : "false")') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
     }
 
+    public var pauseOnSleep: Bool {
+        get { pauseWhileSleep }
+        set { setPauseWhileSleep(newValue) }
+    }
+
+    public func setPauseOnSleep(_ pause: Bool) {
+        setPauseWhileSleep(pause)
+    }
+
     public func setPauseWhileSleep(_ pause: Bool) {
         self.pauseWhileSleep = pause
-        try? db.exec("INSERT INTO settings (key, value) VALUES ('tracking.pauseWhileSleep', '\(pause ? "true" : "false")') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.pauseOnSleep)', '\(pause ? "true" : "false")') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        try? db.exec("DELETE FROM settings WHERE key = 'tracking.pauseWhileSleep';")
     }
 
     public func setCountWhenLocked(_ count: Bool) {
@@ -382,23 +418,31 @@ public final class AppState: ObservableObject {
 
     public func triggerSyncNow() {
         guard syncEnabled, !syncFolder.isEmpty, FileManager.default.fileExists(atPath: syncFolder) else { return }
-        do {
-            _ = try SyncWriter.write(db: db, syncFolder: syncFolder)
-            let files = try FileManager.default.contentsOfDirectory(atPath: syncFolder)
-            for f in files where f.hasSuffix(SyncWriter.extension) && !f.hasSuffix(".tmp") {
-                let fullPath = (syncFolder as NSString).appendingPathComponent(f)
-                let base = (f as NSString).deletingPathExtension
-                if base.caseInsensitiveCompare(localDeviceId) == .orderedSame { continue }
-                if SyncReader.isConflictCopy(filePath: fullPath) { continue }
-                if SyncReader.isPlaceholder(filePath: fullPath) { continue }
-                _ = try SyncReader.import(syncFile: fullPath, db: db, timeZone: .current)
+        if let host = syncHost {
+            host.syncNow()
+        } else {
+            do {
+                _ = try SyncWriter.write(db: db, syncFolder: syncFolder)
+                let files = try FileManager.default.contentsOfDirectory(atPath: syncFolder)
+                for f in files where f.hasSuffix(SyncWriter.extension) && !f.hasSuffix(".tmp") {
+                    let fullPath = (syncFolder as NSString).appendingPathComponent(f)
+                    let base = (f as NSString).deletingPathExtension
+                    if base.caseInsensitiveCompare(localDeviceId) == .orderedSame { continue }
+                    if SyncReader.isConflictCopy(filePath: fullPath) { continue }
+                    if SyncReader.isPlaceholder(filePath: fullPath) { continue }
+                    _ = try SyncReader.import(syncFile: fullPath, db: db, timeZone: .current)
+                }
+                handleSyncCompleted()
+            } catch {
+                NSLog("Manual sync error: \(error)")
             }
-            loadSettings()
-            loadDeviceInfo()
-            refresh()
-        } catch {
-            NSLog("Manual sync error: \(error)")
         }
+    }
+
+    public func handleSyncCompleted() {
+        loadSettings()
+        loadDeviceInfo()
+        refresh()
     }
 
     // MARK: - Backup and Data Lifecycle

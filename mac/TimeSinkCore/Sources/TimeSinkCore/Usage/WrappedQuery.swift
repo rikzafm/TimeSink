@@ -114,7 +114,6 @@ public enum WrappedQuery {
 
     public static func run(window: UsageWindow) -> WrappedResult {
         let context = window.Context
-        let now = context.now
         let zone = context.zone
         let gamesOnly = context.gamesOnly
         let onSinceUtc = context.signInUtc
@@ -267,7 +266,7 @@ public enum WrappedQuery {
         }
 
         var daysTracked = 0
-        if let fStr = start.firstDay {
+        if start.firstDay != nil {
             let fromStr = start.since(day: String(format: "%04d-01-01", todayYear))
             let fromComps = fromStr.split(separator: "-").compactMap { Int($0) }
             let fromDate = calendar.date(from: DateComponents(year: fromComps[0], month: fromComps[1], day: fromComps[2]))!

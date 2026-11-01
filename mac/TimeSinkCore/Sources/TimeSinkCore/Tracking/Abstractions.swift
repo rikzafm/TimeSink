@@ -9,7 +9,6 @@ public struct SystemClock: Clock, Sendable {
     public var utcNow: Date { Date() }
 }
 
-/// One running process. `fullPath` is nil when it cannot be opened (elevated/protected).
 public struct ProcInfo: Sendable, Equatable {
     public let pid: Int32
     public let name: String
@@ -17,6 +16,8 @@ public struct ProcInfo: Sendable, Equatable {
     public let startUtc: Date
     public let packageFamily: String?
     public let bundleId: String?
+    public let isActive: Bool
+    public let activeSinceUtc: Date?
 
     public init(
         pid: Int32,
@@ -24,7 +25,9 @@ public struct ProcInfo: Sendable, Equatable {
         fullPath: String?,
         startUtc: Date,
         packageFamily: String? = nil,
-        bundleId: String? = nil
+        bundleId: String? = nil,
+        isActive: Bool = false,
+        activeSinceUtc: Date? = nil
     ) {
         self.pid = pid
         self.name = name
@@ -32,6 +35,8 @@ public struct ProcInfo: Sendable, Equatable {
         self.startUtc = startUtc
         self.packageFamily = packageFamily
         self.bundleId = bundleId
+        self.isActive = isActive
+        self.activeSinceUtc = activeSinceUtc
     }
 }
 
@@ -105,13 +110,22 @@ public struct TrackedApp: Sendable, Equatable {
     public let bundleId: String?
     public let packageFamily: String?
     public let addedUtc: Int64
+    public let isBackground: Bool
 
-    public init(id: Int64, exePath: String, bundleId: String? = nil, packageFamily: String? = nil, addedUtc: Int64) {
+    public init(
+        id: Int64,
+        exePath: String,
+        bundleId: String? = nil,
+        packageFamily: String? = nil,
+        addedUtc: Int64,
+        isBackground: Bool = false
+    ) {
         self.id = id
         self.exePath = exePath
         self.bundleId = bundleId
         self.packageFamily = packageFamily
         self.addedUtc = addedUtc
+        self.isBackground = isBackground
     }
 }
 

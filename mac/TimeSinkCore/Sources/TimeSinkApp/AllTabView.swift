@@ -144,7 +144,7 @@ public struct AllTabView: View {
 
                         if state.deviceScope == .all, let devs = row.devices {
                             ForEach(devs, id: \.self) { devId in
-                                let isMac = devId.lowercased().contains("mac") || devId.isEmpty
+                                let isMac = state.isLocalDevice(devId)
                                 DeviceMarker(isLocal: isMac, size: 6)
                             }
                         }

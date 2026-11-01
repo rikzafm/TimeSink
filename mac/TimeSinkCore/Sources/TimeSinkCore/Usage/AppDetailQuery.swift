@@ -124,7 +124,6 @@ public enum AppDetailQuery {
 
     internal static func run(window: UsageWindow, appId: Int64, year: Int) -> AppDetailResult? {
         let zone = window.context.zone
-        let nowUtc = window.nowUtc
         let today = window.todayStr
 
         let apps = window.allApps

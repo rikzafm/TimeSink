@@ -147,6 +147,110 @@ final class TrackingEngineTests: XCTestCase {
         try engine.reloadTrackedApps()
         XCTAssertEqual(store.appReads, baseline + 2)
     }
+
+    func testBackgroundAppOnlyTracksWhenExplicitlyFocused() throws {
+        let rig = try TrackingTestRig()
+        rig.settings.minSessionSeconds = 15
+
+        // Mark default app as background app in DB
+        try rig.externalExec("UPDATE apps SET is_background = 1 WHERE id = \(rig.defaultAppId);")
+        try rig.engine.reloadTrackedApps()
+
+        // Proc is running but NOT active (in background)
+        rig.procs.running.append(ProcInfo(
+            pid: 1,
+            name: "notepad.exe",
+            fullPath: "c:\\windows\\notepad.exe",
+            startUtc: rig.atTime(0),
+            isActive: false,
+            activeSinceUtc: nil
+        ))
+
+        // Tick from 0 to 40 while in background
+        try rig.tickEvery5(from: 0, to: 40)
+        XCTAssertTrue(try rig.getAllSessions().isEmpty, "Background app must not track when unfocused")
+
+        // User activates / focuses app at t = 50
+        rig.procs.running.removeAll()
+        rig.procs.running.append(ProcInfo(
+            pid: 1,
+            name: "notepad.exe",
+            fullPath: "c:\\windows\\notepad.exe",
+            startUtc: rig.atTime(0),
+            isActive: true,
+            activeSinceUtc: rig.atTime(50)
+        ))
+
+        try rig.tick(50)
+        let openSessions = try rig.getAllSessions().filter { $0.endUtc == nil }
+        XCTAssertEqual(openSessions.count, 1, "Session must open when background app becomes active")
+        XCTAssertEqual(openSessions[0].startUtc, unix(50))
+
+        // Keep active through 80 (30s duration)
+        try rig.tickEvery5(from: 55, to: 80)
+        let sessions = try rig.getAllSessions()
+        XCTAssertEqual(sessions.count, 1)
+
+        // Deactivate app at t = 85
+        rig.procs.running.removeAll()
+        rig.procs.running.append(ProcInfo(
+            pid: 1,
+            name: "notepad.exe",
+            fullPath: "c:\\windows\\notepad.exe",
+            startUtc: rig.atTime(0),
+            isActive: false,
+            activeSinceUtc: nil
+        ))
+
+        try rig.tick(85)
+        let closedSessions = try rig.getAllSessions()
+        XCTAssertEqual(closedSessions.count, 1)
+        XCTAssertEqual(closedSessions[0].endUtc, unix(85))
+        XCTAssertEqual(closedSessions[0].endReason, EndReasons.exit)
+
+        // Proc continues running in background through 120 -> no new session
+        try rig.tickEvery5(from: 90, to: 120)
+        let finalSessions = try rig.getAllSessions()
+        XCTAssertEqual(finalSessions.count, 1)
+    }
+
+    func testProcessProviderActivationAndDeactivation() {
+        final class SafeCounter: @unchecked Sendable {
+            var count = 0
+        }
+        let provider = NSWorkspaceProcessProvider(autoObserve: false)
+        let counter = SafeCounter()
+        provider.onProcessChanged = {
+            counter.count += 1
+        }
+
+        let p1 = ProcInfo(pid: 101, name: "AppOne", fullPath: "/AppOne", startUtc: Date())
+        let p2 = ProcInfo(pid: 102, name: "AppTwo", fullPath: "/AppTwo", startUtc: Date())
+        provider.addOrUpdate(pid: 101, info: p1)
+        provider.addOrUpdate(pid: 102, info: p2)
+
+        // Activate PID 101
+        provider.handleActivation(pid: 101)
+        let snap1 = provider.snapshot()
+        let active1 = snap1.first { $0.pid == 101 }
+        let inactive1 = snap1.first { $0.pid == 102 }
+        XCTAssertEqual(active1?.isActive, true)
+        XCTAssertEqual(inactive1?.isActive, false)
+
+        // Switch activation to PID 102
+        provider.handleActivation(pid: 102)
+        let snap2 = provider.snapshot()
+        let inactive2 = snap2.first { $0.pid == 101 }
+        let active2 = snap2.first { $0.pid == 102 }
+        XCTAssertEqual(inactive2?.isActive, false)
+        XCTAssertEqual(active2?.isActive, true)
+
+        // Deactivate PID 102
+        provider.handleDeactivation(pid: 102)
+        let snap3 = provider.snapshot()
+        XCTAssertFalse(snap3.contains { $0.isActive })
+        XCTAssertGreaterThan(counter.count, 2)
+    }
 }
 
 // MARK: - Helper Counting Store

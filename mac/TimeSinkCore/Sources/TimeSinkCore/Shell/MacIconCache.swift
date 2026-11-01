@@ -106,6 +106,18 @@ public final class MacIconCache: @unchecked Sendable {
             _ = try stmt.step()
         } catch {}
     }
+
+    public func save(key: String, data: Data) throws {
+        lock.lock()
+        memoryCache[key] = data
+        lock.unlock()
+    }
+
+    public func load(key: String) throws -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        return memoryCache[key]
+    }
 }
 
 extension NSImage {

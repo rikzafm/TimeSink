@@ -112,7 +112,6 @@ public enum WeekQuery {
 
     public static func run(window: UsageWindow, weeksBack: Int = 0) -> WeekResult {
         let context = window.Context
-        let now = context.now
         let zone = context.zone
         let gamesOnly = context.gamesOnly
         let weekStart = context.weekStart
@@ -136,7 +135,7 @@ public enum WeekQuery {
         }
 
         let currentWeekday = calendar.component(.weekday, from: todayDate)
-        var daysBack = (currentWeekday - targetWeekday + 7) % 7
+        let daysBack = (currentWeekday - targetWeekday + 7) % 7
         let thisWeekStartDate = calendar.date(byAdding: .day, value: -daysBack, to: todayDate)!
         let gridStartDate = calendar.date(byAdding: .day, value: -7 * (gridWeeks - 1), to: thisWeekStartDate)!
         let shownWeekStartDate = calendar.date(byAdding: .day, value: -7 * weeksBack, to: thisWeekStartDate)!

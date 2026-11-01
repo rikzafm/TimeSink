@@ -98,6 +98,10 @@ public final class SQLiteDatabase: @unchecked Sendable {
         return nil
     }
 
+    public func scalarInt64(_ sql: String) throws -> Int64? {
+        return try scalarInt(sql)
+    }
+
     public func scalarText(_ sql: String) throws -> String? {
         let stmt = try prepare(sql)
         if try stmt.step() {

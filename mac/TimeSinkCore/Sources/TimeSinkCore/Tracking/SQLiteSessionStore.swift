@@ -13,13 +13,11 @@ public final class SQLiteSessionStore: SessionStore, @unchecked Sendable {
 
     public func getTrackedApps() throws -> [TrackedApp] {
         let hasBundleId = (try db.scalarInt("SELECT COUNT(*) FROM pragma_table_info('apps') WHERE name = 'bundle_id';") ?? 0) > 0
-        let sql: String
-        if hasBundleId {
-            sql = "SELECT id, exe_path, bundle_id, package_family, added_utc FROM apps WHERE state = 'tracked' ORDER BY id;"
-        } else {
-            sql = "SELECT id, exe_path, NULL, package_family, added_utc FROM apps WHERE state = 'tracked' ORDER BY id;"
-        }
+        let hasIsBg = (try db.scalarInt("SELECT COUNT(*) FROM pragma_table_info('apps') WHERE name = 'is_background';") ?? 0) > 0
+        let bundleCol = hasBundleId ? "bundle_id" : "NULL"
+        let isBgCol = hasIsBg ? "is_background" : "0"
 
+        let sql = "SELECT id, exe_path, \(bundleCol), package_family, added_utc, \(isBgCol) FROM apps WHERE state = 'tracked' ORDER BY id;"
         let stmt = try db.prepare(sql)
         var apps: [TrackedApp] = []
         while try stmt.step() {
@@ -28,7 +26,15 @@ public final class SQLiteSessionStore: SessionStore, @unchecked Sendable {
             let bundleId = stmt.columnIsNull(at: 2) ? nil : stmt.columnText(at: 2)
             let pkg = stmt.columnIsNull(at: 3) ? nil : stmt.columnText(at: 3)
             let addedUtc = stmt.columnInt64(at: 4)
-            apps.append(TrackedApp(id: id, exePath: exePath, bundleId: bundleId, packageFamily: pkg, addedUtc: addedUtc))
+            let isBg = stmt.columnInt64(at: 5) != 0
+            apps.append(TrackedApp(
+                id: id,
+                exePath: exePath,
+                bundleId: bundleId,
+                packageFamily: pkg,
+                addedUtc: addedUtc,
+                isBackground: isBg
+            ))
         }
         return apps
     }

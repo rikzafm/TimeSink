@@ -53,6 +53,55 @@ public final class NSWorkspaceProcessProvider: ProcessProvider, @unchecked Senda
         return Array(processes.values)
     }
 
+    public func handleActivation(pid: pid_t, at date: Date = Date()) {
+        lock.lock()
+        for (p, info) in processes {
+            if p == pid {
+                processes[p] = ProcInfo(
+                    pid: info.pid,
+                    name: info.name,
+                    fullPath: info.fullPath,
+                    startUtc: info.startUtc,
+                    packageFamily: info.packageFamily,
+                    bundleId: info.bundleId,
+                    isActive: true,
+                    activeSinceUtc: date
+                )
+            } else if info.isActive {
+                processes[p] = ProcInfo(
+                    pid: info.pid,
+                    name: info.name,
+                    fullPath: info.fullPath,
+                    startUtc: info.startUtc,
+                    packageFamily: info.packageFamily,
+                    bundleId: info.bundleId,
+                    isActive: false,
+                    activeSinceUtc: nil
+                )
+            }
+        }
+        lock.unlock()
+        onProcessChanged?()
+    }
+
+    public func handleDeactivation(pid: pid_t) {
+        lock.lock()
+        if let info = processes[pid], info.isActive {
+            processes[pid] = ProcInfo(
+                pid: info.pid,
+                name: info.name,
+                fullPath: info.fullPath,
+                startUtc: info.startUtc,
+                packageFamily: info.packageFamily,
+                bundleId: info.bundleId,
+                isActive: false,
+                activeSinceUtc: nil
+            )
+        }
+        lock.unlock()
+        onProcessChanged?()
+    }
+
     private func setupNotificationObservers() {
         let wsCenter = NSWorkspace.shared.notificationCenter
 
@@ -75,7 +124,25 @@ public final class NSWorkspaceProcessProvider: ProcessProvider, @unchecked Senda
             self?.remove(pid: app.processIdentifier)
         }
 
-        observers.append(contentsOf: [launchObs, termObs])
+        let actObs = wsCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            self?.handleActivation(pid: app.processIdentifier)
+        }
+
+        let deactObs = wsCenter.addObserver(
+            forName: NSWorkspace.didDeactivateApplicationNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            self?.handleDeactivation(pid: app.processIdentifier)
+        }
+
+        observers.append(contentsOf: [launchObs, termObs, actObs, deactObs])
     }
 
     private func makeProcInfo(from app: NSRunningApplication) -> ProcInfo? {
@@ -84,13 +151,16 @@ public final class NSWorkspaceProcessProvider: ProcessProvider, @unchecked Senda
         let fullPath = app.executableURL?.path
         let name = app.localizedName ?? bundleId ?? app.executableURL?.lastPathComponent ?? "Unknown"
         let startUtc = app.launchDate ?? Date()
+        let isActive = app.isActive
 
         return ProcInfo(
             pid: pid,
             name: name,
             fullPath: fullPath,
             startUtc: startUtc,
-            bundleId: bundleId
+            bundleId: bundleId,
+            isActive: isActive,
+            activeSinceUtc: isActive ? Date() : nil
         )
     }
 }

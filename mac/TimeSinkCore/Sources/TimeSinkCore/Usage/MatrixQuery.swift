@@ -97,7 +97,6 @@ public enum MatrixQuery {
 
     public static func run(window: UsageWindow) -> MatrixResult {
         let context = window.Context
-        let now = context.now
         let zone = context.zone
         let gamesOnly = context.gamesOnly
         let onSinceUtc = context.signInUtc

@@ -62,8 +62,8 @@ public struct TodayTabView: View {
 
                         // Device Summary Row in All Scope
                         if state.deviceScope == .all, let uptimes = result.deviceUptimes, uptimes.count > 1 {
-                            let devA = uptimes.values.first?.uptimeSeconds ?? 0
-                            let devB = uptimes.values.dropFirst().first?.uptimeSeconds ?? 0
+                            let devA = uptimes.first(where: { state.isLocalDevice($0.key) })?.value.uptimeSeconds ?? 0
+                            let devB = uptimes.first(where: { !state.isLocalDevice($0.key) })?.value.uptimeSeconds ?? 0
                             DeviceSummaryRowView(
                                 localName: state.localDeviceName,
                                 remoteName: state.remoteDeviceName,
@@ -186,7 +186,7 @@ public struct TodayTabView: View {
 
                             if state.deviceScope == .all, let devSecs = row.deviceSeconds {
                                 ForEach(Array(devSecs.keys), id: \.self) { devId in
-                                    let isMac = devId.lowercased().contains("mac") || devId.isEmpty
+                                    let isMac = state.isLocalDevice(devId)
                                     DeviceMarker(isLocal: isMac, size: 6)
                                 }
                             }
@@ -231,7 +231,8 @@ public struct TodayTabView: View {
                         appRow: row,
                         dayStartUtc: result.dayStartUtc,
                         dayEndUtc: result.dayEndUtc,
-                        isAllScope: state.deviceScope == .all
+                        isAllScope: state.deviceScope == .all,
+                        localDeviceId: state.localDeviceId
                     )
 
                     VStack(alignment: .leading, spacing: 6) {

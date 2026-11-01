@@ -54,7 +54,7 @@ public final class PeriodNavigator: @unchecked Sendable {
 
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-        var comps = DateComponents(year: y, month: m, day: d)
+        let comps = DateComponents(year: y, month: m, day: d)
         guard let baseDate = calendar.date(from: comps) else { return anchor }
 
         let targetDate: Date?
