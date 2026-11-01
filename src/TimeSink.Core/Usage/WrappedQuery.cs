@@ -38,6 +38,8 @@ public static class WrappedQuery
         var perDay = new Dictionary<int, long>();          // DateOnly.DayNumber -> seconds (this year)
         var perHour = new long[24];                        // local hour of day -> seconds (this year)
         var perGroup = new Dictionary<long, long>();       // this year
+        var perGroupDevice = new Dictionary<long, Dictionary<string, long>>();
+        var beforeNoonDevice = new Dictionary<string, long>();
         long beforeNoon = 0, total = 0;
 
         var segs = window.Segments(windowStart);
@@ -48,12 +50,15 @@ public static class WrappedQuery
             var len = sl.End - sl.Start;
             if (sl.Day.Year != year) continue;
             perDay[sl.Day.DayNumber] = perDay.GetValueOrDefault(sl.Day.DayNumber) + len;
+            var dev = sl.Seg.DeviceId;
             perGroup[sl.Seg.Group] = perGroup.GetValueOrDefault(sl.Seg.Group) + len;
+            if (!perGroupDevice.TryGetValue(sl.Seg.Group, out var devDict)) perGroupDevice[sl.Seg.Group] = devDict = [];
+            devDict[dev] = devDict.GetValueOrDefault(dev) + len;
             total += len;
             foreach (var p in UsageDays.HourPieces(sl.Start, sl.End, zone))
             {
                 perHour[p.Hour] += p.End - p.Start;
-                if (p.Hour < 12) beforeNoon += p.End - p.Start;
+                if (p.Hour < 12) { beforeNoon += p.End - p.Start; beforeNoonDevice[dev] = beforeNoonDevice.GetValueOrDefault(dev) + (p.End - p.Start); }
             }
         }
 
@@ -72,7 +77,7 @@ public static class WrappedQuery
 
         // Background apps (Steam, Wallpaper Engine) stay out of every ranking here; their time still counts in the totals.
         var ranked = UsageRank.Rank(perGroup.Where(kv => !UsageRank.IsBackground(apps, kv.Key))
-            .Select(kv => new WrappedApp(kv.Key, UsageRank.NameOf(apps, kv.Key), kv.Value)), apps, a => a.AppId, a => a.Seconds);
+            .Select(kv => new WrappedApp(kv.Key, UsageRank.NameOf(apps, kv.Key), kv.Value, perGroupDevice.GetValueOrDefault(kv.Key))), apps, a => a.AppId, a => a.Seconds);
 
         WrappedKindTop TopOf(Apps.AppKind kind)
         {
@@ -82,7 +87,7 @@ public static class WrappedQuery
 
         // One entry per app group: its single longest session that ended this year (a session counts whole, as in All).
         var longest = UsageRank.Rank(segs.Where(s => s.End > yearStart && !UsageRank.IsBackground(apps, s.Group))
-            .GroupBy(s => s.Group).Select(g => new WrappedApp(g.Key, UsageRank.NameOf(apps, g.Key), g.Max(s => s.End - s.Start)))
+            .GroupBy(s => s.Group).Select(g => { var m = g.OrderByDescending(s => s.End - s.Start).First(); return new WrappedApp(g.Key, UsageRank.NameOf(apps, g.Key), m.End - m.Start, DeviceId: m.DeviceId); })
             .Where(a => a.Seconds > 0), apps, a => a.AppId, a => a.Seconds)
             .Take(PodiumSize).ToList();
 
@@ -104,7 +109,14 @@ public static class WrappedQuery
             if (secs > busiestSecs) { busiest = m; busiestSecs = secs; }
         }
         Change? delta = null;
-        if (busiest is { } bm) delta = Change.Between(busiestSecs, months.AppSeconds(new MonthKey(year, bm).Prev));
+        var busiestMonthDevice = new Dictionary<string, long>();
+        if (busiest is { } bm)
+        {
+            delta = Change.Between(busiestSecs, months.AppSeconds(new MonthKey(year, bm).Prev));
+            foreach (var sl in UsageDays.Slices(windowed, zone))
+                if (sl.Day.Year == year && sl.Day.Month == bm)
+                    busiestMonthDevice[sl.Seg.DeviceId] = busiestMonthDevice.GetValueOrDefault(sl.Seg.DeviceId) + (sl.End - sl.Start);
+        }
 
         int? peak = null;
         long peakSecs = 0;
@@ -126,6 +138,8 @@ public static class WrappedQuery
             busiest, busiestSecs, delta, peak, peakSecs,
             total == 0 ? 0 : (int)Math.Round(beforeNoon * 100.0 / total, MidpointRounding.AwayFromZero),
             TopOf(Apps.AppKind.Game), TopOf(Apps.AppKind.Gacha), longest,
-            wrappedDeviceTotals.Count > 0 ? wrappedDeviceTotals : null, wrappedOnBoth);
+            wrappedDeviceTotals.Count > 0 ? wrappedDeviceTotals : null, wrappedOnBoth,
+            busiestMonthDevice.Count > 0 ? busiestMonthDevice : null,
+            beforeNoonDevice.Count > 0 ? beforeNoonDevice : null);
     }
 }

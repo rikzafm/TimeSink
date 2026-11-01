@@ -282,6 +282,12 @@ public sealed class DeviceOverlapFixtureTests
             wrapped.DeviceTotals.Should().NotBeNull();
             var wrappedSum = wrapped.DeviceTotals!.Values.Sum();
             wrapped.TotalSeconds.Should().Be(wrappedSum - wrapped.OnBothSeconds);
+            wrapped.Podium.Should().NotBeEmpty();
+            wrapped.Podium.Should().Contain(a => a.DeviceSeconds != null && a.DeviceSeconds.Count > 0);
+            wrapped.LongestSessions.Should().NotBeNull();
+            wrapped.LongestSessions!.Should().Contain(a => !string.IsNullOrEmpty(a.DeviceId));
+            wrapped.BusiestMonthDeviceSeconds.Should().NotBeNull();
+            wrapped.BeforeNoonDeviceSeconds.Should().NotBeNull();
         }
         finally
         {

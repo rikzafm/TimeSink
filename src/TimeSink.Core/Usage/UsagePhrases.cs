@@ -29,9 +29,11 @@ public static class UsagePhrases
         return new Phrase(PanelStringKeys.DayFocus, f.Name, used, total, span);
     }
 
-    /// <summary>What a Today hour panel says under its title: app time and sessions, or that nothing happened.</summary>
+    /// <summary>What a Today hour panel says under its title: uptime, app time and sessions, or that nothing happened.</summary>
     public static Phrase HourSubtitle(PanelContent c) =>
-        c.TotalSeconds > 0 ? new Phrase(PanelStringKeys.HourSummary, UsageText.HoursMinutes(c.TotalSeconds), c.SessionCount) : new Phrase(PanelStringKeys.HourEmpty);
+        (c.UptimeSeconds > 0 || c.TotalSeconds > 0)
+            ? new Phrase(PanelStringKeys.HourSummary, UsageText.HoursMinutes(c.UptimeSeconds), UsageText.HoursMinutes(c.TotalSeconds), c.SessionCount)
+            : new Phrase(PanelStringKeys.HourEmpty);
 
     /// <summary>
     /// What the Year panel says about a month, as pieces the view joins with nothing between: where it stands (before

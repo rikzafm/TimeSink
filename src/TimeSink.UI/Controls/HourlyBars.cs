@@ -12,7 +12,7 @@ namespace TimeSink.UI.Controls;
 /// </summary>
 public sealed class HourlyBars : FrameworkElement
 {
-    private const double LabelBand = 16, Gap = 3;
+    private const double MaxUptimeSeconds = 3600.0, LabelBand = 16, Gap = 3;
     private static readonly Brush DefaultTypicalBrush = new SolidColorBrush(Color.FromRgb(0x46, 0x51, 0x4a));
 
     static HourlyBars()
@@ -128,8 +128,7 @@ public sealed class HourlyBars : FrameworkElement
         var col = w / 24.0;
         var barW = Math.Max(1, col - Gap);
 
-        var top = hours.Max(b => Math.Max((double)b.AppSeconds, b.TypicalAppSeconds));
-        var scale = Math.Max(3600.0, top);
+        var scale = MaxUptimeSeconds;
 
         var nowH = CurrentHour >= 0 ? CurrentHour
             : NowFraction > 0 ? Math.Min(23, (int)(NowFraction * 24)) : 24;
@@ -185,9 +184,9 @@ public sealed class HourlyBars : FrameworkElement
 
             if (isFuture)
             {
-                if (HasTypical && bucket.TypicalAppSeconds > 0)
+                if (HasTypical && bucket.TypicalUptimeSeconds > 0)
                 {
-                    var typH = Math.Max(2.0, (bucket.TypicalAppSeconds / scale) * plotH);
+                    var typH = Math.Max(2.0, (bucket.TypicalUptimeSeconds / scale) * plotH);
                     var pen = new Pen(typical ?? MutedBrush, 1.0)
                     {
                         DashStyle = new DashStyle(new double[] { 1.0, 1.5 }, 0)
@@ -198,14 +197,14 @@ public sealed class HourlyBars : FrameworkElement
             }
             else if (isAsleep)
             {
-                var appH = (bucket.AppSeconds / scale) * plotH;
-                if (appH > 0.5)
+                var upH = (bucket.UptimeSeconds / scale) * plotH;
+                if (upH > 0.5)
                 {
-                    var appBrush = GetBarBrush(bucket.AppSeconds, i);
-                    dc.DrawRoundedRectangle(appBrush, null, new Rect(x, plotTop + plotH - appH, barW, appH), 2, 2);
+                    var upBrush = GetBarBrush(bucket.UptimeSeconds, i);
+                    dc.DrawRoundedRectangle(upBrush, null, new Rect(x, plotTop + plotH - upH, barW, upH), 2, 2);
                 }
 
-                var asleepH = Math.Max(appH, plotH * 0.7);
+                var asleepH = Math.Max(upH, plotH * 0.7);
                 var rect = new Rect(x, plotTop + plotH - asleepH, barW, asleepH);
                 dc.PushClip(new RectangleGeometry(rect, 2, 2));
 
@@ -224,10 +223,10 @@ public sealed class HourlyBars : FrameworkElement
                 long secLocal = 0, secRemote = 0;
                 if (LocalDeviceId != null)
                 {
-                    if (bucket.ByDevice.TryGetValue(LocalDeviceId, out var dhA)) secLocal = dhA.AppSeconds;
+                    if (bucket.ByDevice.TryGetValue(LocalDeviceId, out var dhA)) secLocal = dhA.UptimeSeconds;
                     foreach (var (devId, dh) in bucket.ByDevice)
                     {
-                        if (devId != LocalDeviceId) secRemote += dh.AppSeconds;
+                        if (devId != LocalDeviceId) secRemote += dh.UptimeSeconds;
                     }
                 }
                 else
@@ -235,8 +234,8 @@ public sealed class HourlyBars : FrameworkElement
                     var first = true;
                     foreach (var dh in bucket.ByDevice.Values)
                     {
-                        if (first) { secLocal = dh.AppSeconds; first = false; }
-                        else secRemote += dh.AppSeconds;
+                        if (first) { secLocal = dh.UptimeSeconds; first = false; }
+                        else secRemote += dh.UptimeSeconds;
                     }
                 }
                 var hLocal = Math.Max(2.0, (secLocal / scale) * plotH);
@@ -255,8 +254,8 @@ public sealed class HourlyBars : FrameworkElement
             }
             else
             {
-                var barH = Math.Max(2.0, (bucket.AppSeconds / scale) * plotH);
-                var brush = GetBarBrush(bucket.AppSeconds, i);
+                var barH = Math.Max(2.0, (bucket.UptimeSeconds / scale) * plotH);
+                var brush = GetBarBrush(bucket.UptimeSeconds, i);
                 dc.DrawRoundedRectangle(brush, null, new Rect(x, plotTop + plotH - barH, barW, barH), 2, 2);
             }
 

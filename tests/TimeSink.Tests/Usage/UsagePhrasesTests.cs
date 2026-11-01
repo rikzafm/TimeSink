@@ -53,8 +53,8 @@ public sealed class UsagePhrasesTests
     private static string Clock(long utc) => $"c{utc}";
 
     private static PanelContent Panel(long total = 7200, long? spanStart = 100, long? spanEnd = 900, PanelFocus? focus = null,
-        int sessions = 0, params PanelComparison[] comparisons) =>
-        new(total, sessions, spanStart, spanEnd, focus, [], [], comparisons);
+        int sessions = 0, long uptime = 0, params PanelComparison[] comparisons) =>
+        new(total, sessions, spanStart, spanEnd, focus, [], [], comparisons, uptime);
 
     [Fact]
     public void A_day_subtitle_is_the_total_and_the_active_span()
@@ -91,9 +91,9 @@ public sealed class UsagePhrasesTests
     [Fact]
     public void An_hour_subtitle_counts_app_time_and_sessions_or_says_the_hour_was_empty()
     {
-        UsagePhrases.HourSubtitle(Panel(total: 1800, sessions: 3)).Should().Be(
-            new Phrase(PanelStringKeys.HourSummary, UsageText.HoursMinutes(1800), 3));
-        UsagePhrases.HourSubtitle(Panel(total: 0)).Should().Be(new Phrase(PanelStringKeys.HourEmpty));
+        UsagePhrases.HourSubtitle(Panel(total: 3600, sessions: 3, uptime: 1800)).Should().Be(
+            new Phrase(PanelStringKeys.HourSummary, UsageText.HoursMinutes(1800), UsageText.HoursMinutes(3600), 3));
+        UsagePhrases.HourSubtitle(Panel(total: 0, uptime: 0)).Should().Be(new Phrase(PanelStringKeys.HourEmpty));
     }
 
     [Fact]

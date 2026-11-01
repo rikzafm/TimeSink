@@ -9,10 +9,10 @@ namespace TimeSink.UI.Controls;
 public sealed record WrappedTile(string Value, string Caption);
 
 /// <summary>One podium column. <c>Rank</c> is 1-5; <c>Hours</c> is the pre-composed time ("165h"); <c>Icon</c> is the app's own logo, or null to show the letter.</summary>
-public sealed record WrappedPodiumEntry(string Letter, string Name, string Hours, int Rank, ImageSource? Icon = null, int? PaletteSlot = null);
+public sealed record WrappedPodiumEntry(string Letter, string Name, string Hours, int Rank, ImageSource? Icon = null, int? PaletteSlot = null, long DeviceASeconds = 0, long DeviceBSeconds = 0, string? DeviceSubtext = null, bool IsDeviceBOnly = false);
 
 /// <summary>A habit tile: small caps key, big value, one-line sub.</summary>
-public sealed record WrappedHabit(string Key, string Value, string Sub);
+public sealed record WrappedHabit(string Key, string Value, string Sub, double SplitA = 0, double SplitB = 0);
 
 /// <summary>What a <see cref="WrappedCard"/> draws. All text is composed by the view from the string table.</summary>
 public abstract record WrappedCardModel(string Label);
@@ -27,7 +27,7 @@ public sealed record TotalCardModel(
 
 /// <param name="Entries">In display order (rank 4, 2, 1, 3, 5: the winner in the middle).</param>
 /// <param name="Then">Runs of the footer line; <c>Soft</c> runs are brighter.</param>
-public sealed record TopAppsCardModel(string Label, string Headline, IReadOnlyList<WrappedPodiumEntry> Entries, IReadOnlyList<(string Text, bool Soft)> Then)
+public sealed record TopAppsCardModel(string Label, string Headline, IReadOnlyList<WrappedPodiumEntry> Entries, IReadOnlyList<(string Text, bool Soft)> Then, bool IsMultiDevice = false)
     : WrappedCardModel(Label);
 
 public sealed record HabitsCardModel(string Label, string Headline, IReadOnlyList<WrappedHabit> Habits) : WrappedCardModel(Label);
@@ -264,6 +264,11 @@ public sealed class WrappedCard : FrameworkElement
         foreach (var (text, soft) in m.Then)
         {
             if (soft) then.SetForegroundBrush(SoftBrush, pos, text.Length);
+            for (var ci = 0; ci < text.Length; ci++)
+            {
+                if (text[ci] == '●') then.SetForegroundBrush(DeviceABrush ?? AccentBrush, pos + ci, 1);
+                else if (text[ci] == '■') then.SetForegroundBrush(DeviceBBrush ?? MutedBrush, pos + ci, 1);
+            }
             pos += text.Length;
         }
         var footTop = h - PadBottom - then.Height - 10;
@@ -288,15 +293,49 @@ public sealed class WrappedCard : FrameworkElement
             var cx = x + slot / 2;
             var color = brushes is { Count: > 0 } ? brushes[(e.PaletteSlot ?? e.Rank - 1) % brushes.Count] : AccentBrush;
             var pillarH = e.Rank switch { 1 => 108.0, 2 => 84.0, 3 => 68.0, 4 => 54.0, _ => 42.0 };
-            dc.DrawGeometry(color, null, TopRounded(new Rect(x, baseY - pillarH, slot, pillarH), 8));
+            if (m.IsMultiDevice && e.IsDeviceBOnly)
+            {
+                dc.DrawGeometry(DeviceBBrush ?? MutedBrush, null, TopRounded(new Rect(x, baseY - pillarH, slot, pillarH), 8));
+            }
+            else if (m.IsMultiDevice && e.DeviceASeconds > 0 && e.DeviceBSeconds > 0)
+            {
+                var tot = (double)(e.DeviceASeconds + e.DeviceBSeconds);
+                var hA = Math.Round(pillarH * (e.DeviceASeconds / tot));
+                var hB = pillarH - hA;
+                if (hA < 4) { hA = 4; hB = pillarH - hA; }
+                if (hB < 4) { hB = 4; hA = pillarH - hB; }
+                dc.DrawRectangle(DeviceABrush ?? AccentBrush, null, new Rect(x, baseY - hA, slot, hA));
+                dc.DrawGeometry(DeviceBBrush ?? MutedBrush, null, TopRounded(new Rect(x, baseY - pillarH, slot, hB), 8));
+            }
+            else if (m.IsMultiDevice && e.DeviceASeconds > 0)
+            {
+                dc.DrawGeometry(DeviceABrush ?? AccentBrush, null, TopRounded(new Rect(x, baseY - pillarH, slot, pillarH), 8));
+            }
+            else
+            {
+                dc.DrawGeometry(color, null, TopRounded(new Rect(x, baseY - pillarH, slot, pillarH), 8));
+            }
             var rank = Text(e.Rank.ToString(CultureInfo.CurrentCulture), DisplaySize * 0.76, OnAccentBrush, bold: true, numbers: true);
             dc.DrawText(rank, new Point(cx - rank.Width / 2, baseY - pillarH + 6));
 
+            FormattedText? devSub = null;
+            if (!string.IsNullOrEmpty(e.DeviceSubtext))
+            {
+                devSub = Text(e.DeviceSubtext, SmallSize, MutedBrush, maxWidth: slot, maxLines: 1);
+                for (var ci = 0; ci < e.DeviceSubtext.Length; ci++)
+                {
+                    if (e.DeviceSubtext[ci] == '●') devSub.SetForegroundBrush(DeviceABrush ?? AccentBrush, ci, 1);
+                    else if (e.DeviceSubtext[ci] == '■') devSub.SetForegroundBrush(DeviceBBrush ?? MutedBrush, ci, 1);
+                }
+            }
+
             var hours = Text(e.Hours, SmallSize + 1, SoftBrush, numbers: true, maxWidth: slot, maxLines: 1);
-            var hoursY = baseY - pillarH - 4 - hours.Height;
+            var subY = baseY - pillarH - 4 - (devSub?.Height ?? 0);
+            var hoursY = devSub is not null ? subY - 2 - hours.Height : baseY - pillarH - 4 - hours.Height;
             dc.DrawText(hours, new Point(cx - Math.Min(slot, hours.Width) / 2, hoursY));
             var name = Text(e.Name, BodySize, TextBrush, bold: true, maxWidth: slot, maxLines: 1);
             var nameY = hoursY - 4 - name.Height;
+            if (devSub is not null) dc.DrawText(devSub, new Point(cx - Math.Min(slot, devSub.Width) / 2, subY));
             dc.DrawText(name, new Point(cx - Math.Min(slot, name.Width) / 2, nameY));
             var tileR = new Rect(cx - 18, nameY - 4 - 36, 36, 36);
             if (e.Icon is { } icon)
@@ -347,7 +386,26 @@ public sealed class WrappedCard : FrameworkElement
             dc.DrawText(Text(hb.Key, SmallSize, MutedBrush, maxWidth: tw - 24, maxLines: 1), new Point(x + 12, y + 12));
             var value = Fit(hb.Value, DisplaySize * 0.76, AccentBrush, tw - 24);
             dc.DrawText(value, new Point(x + 12, y + (th - value.Height) / 2));
-            var sub = Text(hb.Sub, SmallSize + 1, SoftBrush, maxWidth: tw - 24, maxLines: 1);
+            var sub = Text(hb.Sub, SmallSize + 1, SoftBrush, maxWidth: tw - 24, maxLines: 2);
+            for (var ci = 0; ci < hb.Sub.Length; ci++)
+            {
+                if (hb.Sub[ci] == '●') sub.SetForegroundBrush(DeviceABrush ?? AccentBrush, ci, 1);
+                else if (hb.Sub[ci] == '■') sub.SetForegroundBrush(DeviceBBrush ?? MutedBrush, ci, 1);
+            }
+            if (hb.SplitA > 0 || hb.SplitB > 0)
+            {
+                var barW = tw - 24;
+                var barH = 4.0;
+                var barY = y + th - 12 - sub.Height - 6;
+                var tot = hb.SplitA + hb.SplitB;
+                var wA = Math.Round(barW * (hb.SplitA / tot));
+                var wB = barW - wA;
+                var trackRect = new Rect(x + 12, barY, barW, barH);
+                dc.PushClip(new RectangleGeometry(trackRect, 2, 2));
+                if (wA > 0) dc.DrawRectangle(DeviceABrush ?? AccentBrush, null, new Rect(x + 12, barY, wA, barH));
+                if (wB > 0) dc.DrawRectangle(DeviceBBrush ?? MutedBrush, null, new Rect(x + 12 + wA, barY, wB, barH));
+                dc.Pop();
+            }
             dc.DrawText(sub, new Point(x + 12, y + th - 12 - sub.Height));
         }
     }
