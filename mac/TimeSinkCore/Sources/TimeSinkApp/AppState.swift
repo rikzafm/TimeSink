@@ -45,6 +45,7 @@ public final class AppState: ObservableObject {
     @Published public var remoteDeviceName: String? = "PC"
 
     // Navigation and sub-views
+    @Published public var daysBack: Int = 0
     @Published public var weeksBack: Int = 0
     @Published public var monthsBack: Int = 0
     @Published public var yearOffset: Int = 0
@@ -168,7 +169,16 @@ public final class AppState: ObservableObject {
         do {
             switch selectedTab {
             case .today:
-                todayResult = try TodayQuery.run(ctx)
+                if daysBack > 0 {
+                    let cal = Calendar.current
+                    let targetDate = cal.date(byAdding: .day, value: -daysBack, to: Date()) ?? Date()
+                    let df = DateFormatter()
+                    df.dateFormat = "yyyy-MM-dd"
+                    let forDay = df.string(from: targetDate)
+                    todayResult = try TodayQuery.run(ctx, forDay: forDay)
+                } else {
+                    todayResult = try TodayQuery.run(ctx)
+                }
             case .week:
                 weekResult = try WeekQuery.run(ctx, weeksBack: weeksBack)
             case .month:
@@ -497,6 +507,40 @@ public final class AppState: ObservableObject {
 
     public func exportJson(file: String) throws {
         try DataExport.exportJson(dbPath: db.path, file: file)
+    }
+
+    public func exportMonthCsv() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "timesink-month-\(monthResult?.year ?? 2026)-\(monthResult?.month ?? 10).csv"
+        if panel.runModal() == .OK, let url = panel.url {
+            _ = try? exportCsv(folder: url.deletingLastPathComponent().path)
+        }
+    }
+
+    public func exportAppCsv(appId: Int64) {
+        let panel = NSSavePanel()
+        let name = appDetailResult?.name ?? "app"
+        panel.nameFieldStringValue = "timesink-\(name).csv"
+        if panel.runModal() == .OK, let url = panel.url {
+            _ = try? exportCsv(folder: url.deletingLastPathComponent().path)
+        }
+    }
+
+    public func saveWrappedImage() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "timesink-wrapped-\(wrappedResult?.year ?? 2026).png"
+        if panel.runModal() == .OK, let url = panel.url {
+            let img = NSImage(size: NSSize(width: 800, height: 600))
+            img.lockFocus()
+            NSColor(red: 0.067, green: 0.078, blue: 0.059, alpha: 1.0).setFill()
+            NSRect(x: 0, y: 0, width: 800, height: 600).fill()
+            img.unlockFocus()
+            if let tiff = img.tiffRepresentation,
+               let rep = NSBitmapImageRep(data: tiff),
+               let png = rep.representation(using: .png, properties: [:]) {
+                try? png.write(to: url)
+            }
+        }
     }
 
     public func deleteAllHistory(confirmation: String) throws {

@@ -2,24 +2,38 @@ import SwiftUI
 import AppKit
 
 public enum ThemeColors {
-    public static let background = Color(red: 0.075, green: 0.082, blue: 0.063) // #131510
-    public static let surface = Color(red: 0.110, green: 0.122, blue: 0.090)    // #1c1f17
-    public static let surfaceRaised = Color(red: 0.137, green: 0.153, blue: 0.114) // #23271d
-    public static let border = Color(red: 0.169, green: 0.188, blue: 0.141)     // #2b3024
-    public static let borderSubtle = Color(red: 0.122, green: 0.137, blue: 0.102)
+    // Window & Card Backgrounds
+    public static let background = Color(red: 0.067, green: 0.078, blue: 0.059) // #11140f
+    public static let canvasBg = Color(red: 0.039, green: 0.047, blue: 0.031)   // #0a0c08
+    public static let surface = Color(red: 0.078, green: 0.098, blue: 0.063)    // #141910
+    public static let surfaceRaised = Color(red: 0.169, green: 0.192, blue: 0.145) // #2b3125
+    public static let surfaceActive = Color(red: 0.086, green: 0.106, blue: 0.067) // #161b11
 
-    public static let textPrimary = Color(red: 0.929, green: 0.949, blue: 0.910) // #edf2e8
-    public static let textMuted = Color(red: 0.604, green: 0.639, blue: 0.573)   // #9aa392
-    public static let textDim = Color(red: 0.384, green: 0.412, blue: 0.361)     // #62695c
+    // Borders
+    public static let border = Color(red: 0.169, green: 0.192, blue: 0.145)     // #2b3125
+    public static let borderSubtle = Color(red: 0.137, green: 0.165, blue: 0.114) // #232a1d
 
-    public static let accent = Color(red: 0.784, green: 0.953, blue: 0.416)      // #c8f36a Lime
-    public static let accentDark = Color(red: 0.58, green: 0.75, blue: 0.25)
-    public static let deviceA = Color(red: 0.784, green: 0.953, blue: 0.416)     // Mac (Lime)
-    public static let deviceB = Color(red: 0.220, green: 0.741, blue: 0.973)     // Remote PC (Sky Blue #38bdf8)
+    // Typography
+    public static let textPrimary = Color(red: 0.933, green: 0.949, blue: 0.902) // #eef2e6
+    public static let textMuted = Color(red: 0.604, green: 0.639, blue: 0.569)   // #9aa391
+    public static let textDim = Color(red: 0.812, green: 0.839, blue: 0.769)     // #cfd6c4
+    public static let textDisabled = Color(red: 0.290, green: 0.333, blue: 0.278) // #4a5547
 
-    public static let barBackground = Color(red: 0.141, green: 0.157, blue: 0.118) // #24281e
-    public static let warning = Color(red: 0.96, green: 0.62, blue: 0.24)
-    public static let danger = Color(red: 0.94, green: 0.35, blue: 0.35)
+    // Accents & Devices
+    public static let accent = Color(red: 0.776, green: 0.949, blue: 0.420)      // #c6f26b Lime
+    public static let accentDark = Color(red: 0.459, green: 0.659, blue: 0.149)   // #75a826
+    public static let greenDark = Color(red: 0.459, green: 0.659, blue: 0.149)   // #75a826
+    public static let greenMid = Color(red: 0.275, green: 0.412, blue: 0.122)    // #46691f
+    public static let greenLow = Color(red: 0.176, green: 0.239, blue: 0.110)    // #2d3d1c
+    public static let greenTrack = Color(red: 0.106, green: 0.129, blue: 0.086)  // #1b2116
+
+    public static let deviceA = Color(red: 0.776, green: 0.949, blue: 0.420)     // Mac: Lime #c6f26b
+    public static let deviceB = Color(red: 0.373, green: 0.659, blue: 1.000)     // PC: Blue #5fa8ff
+    public static let deviceBDark = Color(red: 0.247, green: 0.498, blue: 0.800) // PC Bar: #3f7fcc
+
+    public static let barBackground = Color(red: 0.106, green: 0.129, blue: 0.086) // #1b2116
+    public static let warning = Color(red: 1.000, green: 0.722, blue: 0.420)     // #ffb86b
+    public static let danger = Color(red: 1.000, green: 0.541, blue: 0.478)      // #ff8a7a
 }
 
 public enum Formatters {

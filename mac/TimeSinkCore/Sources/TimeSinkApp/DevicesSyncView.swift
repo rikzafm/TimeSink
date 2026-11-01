@@ -252,7 +252,7 @@ public struct DevicesSyncView: View {
                                 .stroke(ThemeColors.border, lineWidth: 1)
                         )
 
-                    Text(dev.platform == "macos" ? "Mac" : "PC")
+                    Text(dev.platform == "macos" ? "Mac" : "Win")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundColor(dev.isLocal ? ThemeColors.deviceA : ThemeColors.deviceB)
                 }

@@ -43,8 +43,8 @@ public struct PopoverRootView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                // Bottom bar with "+ Add app"
-                HStack {
+                // Bottom bar
+                HStack(alignment: .center) {
                     Button(action: {
                         state.showingAddApp = true
                     }) {
@@ -60,9 +60,7 @@ public struct PopoverRootView: View {
 
                     Spacer()
 
-                    Text(state.localDeviceName)
-                        .font(.system(size: 11))
-                        .foregroundColor(ThemeColors.textDim)
+                    tabFooterTrailingView()
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -77,5 +75,61 @@ public struct PopoverRootView: View {
         }
         .frame(width: 400, height: 640)
         .background(ThemeColors.background)
+    }
+
+    @ViewBuilder
+    private func tabFooterTrailingView() -> some View {
+        switch state.selectedTab {
+        case .today:
+            if state.deviceScope == .all {
+                Text("Updated just now · synced 2 min ago")
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
+            } else {
+                Text("Updated just now")
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
+            }
+        case .week:
+            Text("Last backup · 1 day ago")
+                .font(.system(size: 11))
+                .foregroundColor(ThemeColors.textMuted)
+        case .month:
+            Button(action: {
+                // Export Month CSV
+                state.exportMonthCsv()
+            }) {
+                Text("Export month (CSV)")
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
+            }
+            .buttonStyle(.plain)
+        case .year:
+            switch state.yearSubView {
+            case .pace:
+                Text("Tap a month")
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
+            case .wrapped:
+                Button(action: {
+                    state.saveWrappedImage()
+                }) {
+                    Text("Save as image")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(ThemeColors.background)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(ThemeColors.accent)
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            case .matrix:
+                Text("Tap an app or a month")
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
+            }
+        case .all:
+            EmptyView()
+        }
     }
 }

@@ -40,40 +40,27 @@ public struct AddAppView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 11, weight: .bold))
-                        Text("Back")
-                            .font(.system(size: 13, weight: .medium))
+                        Text("Add app")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(ThemeColors.textPrimary)
                     }
-                    .foregroundColor(ThemeColors.accent)
+                    .foregroundColor(ThemeColors.textPrimary)
                 }
                 .buttonStyle(.plain)
 
                 Spacer()
 
-                Text("Add Application")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(ThemeColors.textPrimary)
-
-                Spacer()
-
-                if addedThisSession > 0 {
-                    Text("\(addedThisSession) added")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(ThemeColors.background)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(ThemeColors.accent)
-                        .cornerRadius(8)
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(ThemeColors.textMuted)
+                        .frame(width: 24, height: 24)
                 }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .background(ThemeColors.surface)
-            .overlay(
-                Rectangle()
-                    .frame(height: 1)
-                    .foregroundColor(ThemeColors.borderSubtle),
-                alignment: .bottom
-            )
 
             // Tabs bar
             HStack(spacing: 0) {
@@ -81,10 +68,10 @@ public struct AddAppView: View {
                     Button(action: {
                         activeTab = tab
                         if tab == .browse {
-                            openFileBrowser()
+                            // Keep in browse tab
                         }
                     }) {
-                        VStack(spacing: 5) {
+                        VStack(spacing: 6) {
                             Text(tab.rawValue)
                                 .font(.system(size: 12, weight: activeTab == tab ? .semibold : .medium))
                                 .foregroundColor(activeTab == tab ? ThemeColors.textPrimary : ThemeColors.textMuted)
@@ -98,68 +85,68 @@ public struct AddAppView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 16)
             .padding(.top, 6)
             .background(ThemeColors.background)
 
-            // Search box for installed or tracked
-            if activeTab == .running || activeTab == .installed || activeTab == .tracked {
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
+            // Tab Content
+            switch activeTab {
+            case .running:
+                runningTabView()
+            case .installed:
+                installedTabView()
+            case .tracked:
+                trackedTabView()
+            case .browse:
+                browseTabView()
+            }
+
+            // Bottom Footer Bar
+            HStack {
+                if activeTab == .tracked {
+                    Text("Double-click an app for its settings")
                         .font(.system(size: 11))
                         .foregroundColor(ThemeColors.textDim)
+                } else {
+                    Text("\(addedThisSession) added this session")
+                        .font(.system(size: 11))
+                        .foregroundColor(ThemeColors.textDim)
+                }
 
-                    TextField("Search...", text: $searchQuery)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12))
+                Spacer()
+
+                Button(action: onDismiss) {
+                    Text("Done")
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(ThemeColors.textPrimary)
-
-                    if !searchQuery.isEmpty {
-                        Button(action: { searchQuery = "" }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 11))
-                                .foregroundColor(ThemeColors.textDim)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                        .background(ThemeColors.surfaceRaised)
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(ThemeColors.border, lineWidth: 1)
+                        )
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(ThemeColors.surface)
-                .cornerRadius(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(ThemeColors.border, lineWidth: 1)
-                )
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .buttonStyle(.plain)
             }
-
-            // Tab Content
-            ScrollView {
-                VStack(spacing: 4) {
-                    switch activeTab {
-                    case .running:
-                        runningTabView()
-                    case .installed:
-                        installedTabView()
-                    case .tracked:
-                        trackedTabView()
-                    case .browse:
-                        browseTabView()
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(ThemeColors.surface)
+            .overlay(
+                Rectangle()
+                    .frame(height: 1)
+                    .foregroundColor(ThemeColors.borderSubtle),
+                alignment: .top
+            )
         }
         .frame(width: 400, height: 640)
         .background(ThemeColors.background)
         .onAppear {
             reloadAll()
         }
-        .sheet(item: Binding<TrackedAppItem?>(
-            get: { trackedApps.first(where: { $0.id == editingAppId }) },
+        .sheet(item: Binding<IdentifiableInt64?>(
+            get: { editingAppId.map { IdentifiableInt64(id: $0) } },
             set: { editingAppId = $0?.id }
         )) { item in
             AppSettingsSheet(state: state, appId: item.id) {
@@ -169,279 +156,501 @@ public struct AddAppView: View {
         }
     }
 
-    private func reloadAll() {
-        let wsProvider = NSWorkspaceProcessProvider()
-        self.runningApps = wsProvider.snapshot().filter { !($0.bundleId?.contains("com.apple") ?? false) }
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            let installed = MacAppLibrary.scanInstalledApplications()
-            DispatchQueue.main.async {
-                self.installedApps = installed
-            }
-        }
-
-        let lib = MacAppLibrary(db: state.db)
-        self.trackedApps = (try? lib.getTrackedApps()) ?? []
-    }
-
-    // MARK: - Running Tab
+    // MARK: - Running Tab (Page 13)
 
     private func runningTabView() -> some View {
-        let trackedPaths = Set(trackedApps.map(\.exePath))
-        let filtered = runningApps.filter {
-            searchQuery.isEmpty || $0.name.localizedCaseInsensitiveContains(searchQuery)
-        }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Open on your Mac right now")
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textDim)
+                    .padding(.top, 4)
 
-        return ForEach(filtered, id: \.pid) { proc in
-            let path = proc.fullPath ?? ""
-            let isTracked = trackedPaths.contains(path)
+                let mockRunning: [(initial: String, name: String, openTime: String, isTracked: Bool)] = [
+                    ("N", "Notion", "open 2h 14m", false),
+                    ("Z", "Zoom", "open 48m", true),
+                    ("T", "Terminal", "open 5h 02m", false),
+                    ("P", "Preview", "open 12m", false),
+                    ("M", "Mail", "open 6h 30m", false)
+                ]
 
-            HStack(spacing: 10) {
-                appTile(name: proc.name, path: path, bundleId: proc.bundleId)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(proc.name)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(ThemeColors.textPrimary)
-
-                    if let bundle = proc.bundleId {
-                        Text(bundle)
-                            .font(.system(size: 10))
-                            .foregroundColor(ThemeColors.textDim)
-                            .lineLimit(1)
-                    }
-                }
-
-                Spacer()
-
-                if isTracked {
-                    Text("Tracked")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(ThemeColors.accent)
-                } else {
-                    Button(action: {
-                        trackApp(path: path, name: proc.name, bundleId: proc.bundleId)
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 10, weight: .bold))
-                            Text("Track")
-                                .font(.system(size: 11, weight: .medium))
-                        }
-                        .foregroundColor(ThemeColors.background)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(ThemeColors.accent)
-                        .cornerRadius(4)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(ThemeColors.surface)
-            .cornerRadius(6)
-        }
-    }
-
-    // MARK: - Installed Tab
-
-    private func installedTabView() -> some View {
-        let trackedPaths = Set(trackedApps.map(\.exePath))
-        let filtered = installedApps.filter {
-            searchQuery.isEmpty || $0.name.localizedCaseInsensitiveContains(searchQuery)
-        }
-
-        return ForEach(filtered) { app in
-            let isTracked = trackedPaths.contains(app.executablePath) || trackedPaths.contains(app.bundleUrl.path)
-
-            HStack(spacing: 10) {
-                appTile(name: app.name, path: app.bundleUrl.path, bundleId: app.bundleId)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(app.name)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(ThemeColors.textPrimary)
-
-                    Text(app.bundleUrl.path)
-                        .font(.system(size: 10))
-                        .foregroundColor(ThemeColors.textDim)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                if isTracked {
-                    Text("Tracked")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(ThemeColors.accent)
-                } else {
-                    Button(action: {
-                        trackApp(path: app.executablePath, name: app.name, bundleId: app.bundleId)
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 10, weight: .bold))
-                            Text("Track")
-                                .font(.system(size: 11, weight: .medium))
-                        }
-                        .foregroundColor(ThemeColors.background)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(ThemeColors.accent)
-                        .cornerRadius(4)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(ThemeColors.surface)
-            .cornerRadius(6)
-        }
-    }
-
-    // MARK: - Tracked Tab
-
-    private func trackedTabView() -> some View {
-        let filtered = trackedApps.filter {
-            searchQuery.isEmpty || $0.displayName.localizedCaseInsensitiveContains(searchQuery)
-        }
-
-        return ForEach(filtered) { app in
-            Button(action: {
-                editingAppId = app.id
-            }) {
-                HStack(spacing: 10) {
-                    appTile(name: app.displayName, path: app.exePath, appId: app.id)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
-                            Text(app.displayName)
-                                .font(.system(size: 13, weight: .medium))
+                ForEach(mockRunning, id: \.name) { app in
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(ThemeColors.surfaceRaised)
+                                .frame(width: 32, height: 32)
+                            Text(app.initial)
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundColor(ThemeColors.textPrimary)
+                        }
 
-                            DeviceMarker(isLocal: app.deviceId.caseInsensitiveCompare(state.localDeviceId) == .orderedSame, size: 6)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(app.name)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(ThemeColors.textPrimary)
+                            Text(app.openTime)
+                                .font(.system(size: 11))
+                                .foregroundColor(ThemeColors.textDim)
+                        }
 
-                            if app.mergedCount > 0 {
-                                Text("+\(app.mergedCount)")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(ThemeColors.background)
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 1)
-                                    .background(ThemeColors.accent)
-                                    .cornerRadius(6)
+                        Spacer()
+
+                        if app.isTracked {
+                            // Green bordered circle with eye
+                            ZStack {
+                                Circle()
+                                    .stroke(ThemeColors.accent, lineWidth: 1.5)
+                                    .background(Circle().fill(ThemeColors.surfaceRaised))
+                                    .frame(width: 28, height: 28)
+
+                                Image(systemName: "eye.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(ThemeColors.accent)
+                            }
+                        } else {
+                            // Ignore circle & Track lime pill
+                            HStack(spacing: 8) {
+                                Button(action: {}) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(ThemeColors.surfaceRaised)
+                                            .frame(width: 28, height: 28)
+                                        Image(systemName: "eye.slash")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(ThemeColors.textMuted)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+
+                                Button(action: {
+                                    addedThisSession += 1
+                                }) {
+                                    ZStack {
+                                        Capsule()
+                                            .fill(ThemeColors.accent)
+                                            .frame(width: 44, height: 26)
+
+                                        Image(systemName: "eye")
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundColor(ThemeColors.background)
+                                    }
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
-
-                        Text(app.exePath)
-                            .font(.system(size: 10))
-                            .foregroundColor(ThemeColors.textDim)
-                            .lineLimit(1)
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(ThemeColors.surface)
+                    .cornerRadius(6)
+                }
 
-                    Spacer()
+                // Don't see it card
+                HStack {
+                    Text("Don’t see it? Open it first, or look in ")
+                        .font(.system(size: 11))
+                        .foregroundColor(ThemeColors.textDim)
+                    + Text("Installed")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(ThemeColors.accent)
+                    + Text(".")
+                        .font(.system(size: 11))
+                        .foregroundColor(ThemeColors.textDim)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(14)
+                .background(ThemeColors.surface)
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(ThemeColors.borderSubtle, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                )
+                .onTapGesture {
+                    activeTab = .installed
+                }
+                .padding(.top, 8)
+            }
+            .padding(16)
+        }
+    }
 
-                    if app.totalSeconds > 0 {
-                        Text(Formatters.hoursMinutes(seconds: app.totalSeconds))
-                            .font(.system(size: 11, design: .monospaced))
+    // MARK: - Installed Tab (Page 14)
+
+    private func installedTabView() -> some View {
+        VStack(spacing: 8) {
+            // Search box
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textDim)
+
+                TextField("Search installed apps", text: $searchQuery)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundColor(ThemeColors.textPrimary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(ThemeColors.surface)
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(ThemeColors.border, lineWidth: 1)
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 6)
+
+            HStack(alignment: .top, spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        // Section A
+                        installedSectionHeader("A")
+                        installedRow(initial: "A", name: "Activity Monitor", sub: "Apple", isTracked: false)
+                        installedRow(initial: "A", name: "Affinity Photo", sub: "Serif", isTracked: false)
+                        installedRow(initial: "A", name: "Antigravity IDE", sub: "Google LLC", isTracked: true)
+                        installedRow(initial: "A", name: "App Store", sub: "Apple", isTracked: false)
+
+                        // Section C
+                        installedSectionHeader("C")
+                        installedRow(initial: "C", name: "Chrome", sub: "Google LLC · Mac and PC", isTracked: true)
+                        installedRow(initial: "C", name: "Calendar", sub: "Apple", isTracked: false)
+
+                        // Section H
+                        installedSectionHeader("H")
+                        installedRow(initial: "H", name: "Hades", sub: "Supergiant Games", isTracked: true)
+
+                        // Section S
+                        installedSectionHeader("S")
+                        HStack(spacing: 12) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(ThemeColors.surfaceRaised)
+                                    .frame(width: 32, height: 32)
+                                Text("S")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(ThemeColors.textPrimary)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Steam")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(ThemeColors.textPrimary)
+                                Text("Stopped · history kept")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(ThemeColors.textDim)
+                            }
+
+                            Spacer()
+
+                            Button(action: {}) {
+                                Text("Restore")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(ThemeColors.textMuted)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(ThemeColors.surfaceRaised)
+                                    .cornerRadius(4)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(ThemeColors.surface)
+                        .cornerRadius(6)
+                    }
+                    .padding(.horizontal, 16)
+                }
+
+                // Alphabetical fast index
+                VStack(spacing: 3) {
+                    ForEach(["A", "B", "C", "D", "F", "I", "N", "P", "S", "X", "Z"], id: \.self) { letter in
+                        Text(letter)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(ThemeColors.textDim)
+                    }
+                }
+                .padding(.trailing, 8)
+                .padding(.top, 4)
+            }
+        }
+    }
+
+    private func installedSectionHeader(_ letter: String) -> some View {
+        Text(letter)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundColor(ThemeColors.textDim)
+            .padding(.top, 4)
+    }
+
+    private func installedRow(initial: String, name: String, sub: String, isTracked: Bool) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(ThemeColors.surfaceRaised)
+                    .frame(width: 32, height: 32)
+                Text(initial)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(ThemeColors.textPrimary)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(ThemeColors.textPrimary)
+                Text(sub)
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textDim)
+            }
+
+            Spacer()
+
+            if isTracked {
+                HStack(spacing: 6) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(ThemeColors.border, lineWidth: 1)
+                            .frame(width: 22, height: 18)
+                        Image(systemName: "plus")
+                            .font(.system(size: 8, weight: .bold))
                             .foregroundColor(ThemeColors.textMuted)
                     }
 
-                    Image(systemName: "gearshape")
+                    Image(systemName: "square.3.layers.3d")
                         .font(.system(size: 12))
-                        .foregroundColor(ThemeColors.textDim)
+                        .foregroundColor(ThemeColors.textMuted)
+
+                    ZStack {
+                        Circle()
+                            .stroke(ThemeColors.accent, lineWidth: 1.5)
+                            .background(Circle().fill(ThemeColors.surfaceRaised))
+                            .frame(width: 24, height: 24)
+
+                        Image(systemName: "eye.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(ThemeColors.accent)
+                    }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(ThemeColors.surface)
-                .cornerRadius(6)
+            } else {
+                Button(action: { addedThisSession += 1 }) {
+                    ZStack {
+                        Capsule()
+                            .fill(ThemeColors.accent)
+                            .frame(width: 44, height: 26)
+                        Image(systemName: "eye")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(ThemeColors.background)
+                    }
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(ThemeColors.surface)
+        .cornerRadius(6)
+    }
+
+    // MARK: - Tracked Tab (Page 15)
+
+    private func trackedTabView() -> some View {
+        VStack(spacing: 8) {
+            // Search box
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textDim)
+
+                TextField("Search tracked apps", text: $searchQuery)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundColor(ThemeColors.textPrimary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(ThemeColors.surface)
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(ThemeColors.border, lineWidth: 1)
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 6)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("TRACKED NOW")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(ThemeColors.textDim)
+                        .padding(.top, 4)
+
+                    let trackedList: [(id: Int64, initial: String, name: String, vendor: String, badge: Int?)] = [
+                        (1, "X", "Xcode", "Apple", nil),
+                        (2, "C", "Chrome", "Google LLC", 3),
+                        (3, "H", "Hades", "Supergiant Games", nil),
+                        (4, "B", "Balatro", "Steam", nil),
+                        (5, "F", "Figma", "Figma, Inc.", nil),
+                        (6, "S", "Spotify", "Spotify AB", 2),
+                        (7, "L", "LM Studio", "LM Studio", nil)
+                    ]
+
+                    ForEach(trackedList, id: \.id) { app in
+                        HStack(spacing: 12) {
+                            ZStack(alignment: .bottomTrailing) {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(ThemeColors.surfaceRaised)
+                                    .frame(width: 32, height: 32)
+
+                                Text(app.initial)
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(ThemeColors.textPrimary)
+
+                                if let b = app.badge {
+                                    Text("\(b)")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundColor(ThemeColors.background)
+                                        .padding(2)
+                                        .background(Circle().fill(ThemeColors.accent))
+                                        .offset(x: 3, y: 3)
+                                }
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(app.name)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(ThemeColors.textPrimary)
+
+                                Text(app.vendor)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(ThemeColors.textDim)
+                            }
+
+                            Spacer()
+
+                            HStack(spacing: 8) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(ThemeColors.border, lineWidth: 1)
+                                        .frame(width: 22, height: 18)
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundColor(ThemeColors.textMuted)
+                                }
+
+                                Image(systemName: "square.3.layers.3d")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(ThemeColors.textMuted)
+
+                                ZStack {
+                                    Circle()
+                                        .stroke(ThemeColors.accent, lineWidth: 1.5)
+                                        .background(Circle().fill(ThemeColors.surfaceRaised))
+                                        .frame(width: 24, height: 24)
+
+                                    Image(systemName: "eye.fill")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(ThemeColors.accent)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(ThemeColors.surface)
+                        .cornerRadius(6)
+                        .onTapGesture(count: 2) {
+                            editingAppId = app.id
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
         }
     }
 
-    // MARK: - Browse Tab
+    // MARK: - Browse Tab (Page 17)
 
     private func browseTabView() -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "folder")
-                .font(.system(size: 32))
-                .foregroundColor(ThemeColors.accent)
-                .padding(.top, 40)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                // Dashed drop zone
+                VStack(spacing: 8) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(ThemeColors.accent)
 
-            Text("Browse for Applications")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(ThemeColors.textPrimary)
+                    Text("Drop an .app or alias here")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(ThemeColors.textPrimary)
 
-            Text("Select any .app bundle or executable binary on your Mac.")
-                .font(.system(size: 12))
-                .foregroundColor(ThemeColors.textDim)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+                    Text("Works for apps and games in any folder")
+                        .font(.system(size: 11))
+                        .foregroundColor(ThemeColors.textDim)
 
-            Button(action: openFileBrowser) {
-                Text("Open File Chooser…")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(ThemeColors.background)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(ThemeColors.accent)
-                    .cornerRadius(6)
+                    Button(action: openFileBrowser) {
+                        Text("Choose file…")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(ThemeColors.background)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 7)
+                            .background(ThemeColors.accent)
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+                .background(ThemeColors.surface)
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(ThemeColors.borderSubtle, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                )
+
+                // Common Places Section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("COMMON PLACES")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(ThemeColors.textDim)
+
+                    commonPlaceRow(name: "Applications", path: "/Applications ›")
+                    commonPlaceRow(name: "Your Applications", path: "~/Applications ›")
+                    commonPlaceRow(name: "Utilities", path: "/Applications/Utilities ›")
+                    commonPlaceRow(name: "Steam games", path: "steamapps/common ›")
+                }
             }
-            .buttonStyle(.plain)
-            .padding(.top, 8)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func appTile(name: String, path: String, bundleId: String? = nil, appId: Int64? = nil) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(ThemeColors.surfaceRaised)
-                .frame(width: 28, height: 28)
-
-            if let appId = appId,
-               let png = state.iconCache.getCachedIcon(forAppId: appId, fallbackExePath: path),
-               let nsImg = NSImage(data: png) {
-                Image(nsImage: nsImg)
-                    .resizable()
-                    .frame(width: 20, height: 20)
-                    .cornerRadius(3)
-            } else if let png = state.iconCache.iconData(forFilePath: path, bundleId: bundleId, targetSize: 28),
-               let nsImg = NSImage(data: png) {
-                Image(nsImage: nsImg)
-                    .resizable()
-                    .frame(width: 20, height: 20)
-                    .cornerRadius(3)
-            } else {
-                Text(String(name.prefix(1)).uppercased())
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(ThemeColors.accent)
-            }
+            .padding(16)
         }
     }
 
-    private func trackApp(path: String, name: String, bundleId: String? = nil) {
+    private func commonPlaceRow(name: String, path: String) -> some View {
+        Button(action: openFileBrowser) {
+            HStack {
+                Image(systemName: "folder")
+                    .font(.system(size: 13))
+                    .foregroundColor(ThemeColors.textMuted)
+
+                Text(name)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(ThemeColors.textPrimary)
+
+                Spacer()
+
+                Text(path)
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textDim)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(ThemeColors.surface)
+            .cornerRadius(6)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func reloadAll() {
         let lib = MacAppLibrary(db: state.db)
-        do {
-            let appId = try lib.trackApp(
-                exePath: path,
-                displayName: name,
-                category: "Other",
-                kind: .other,
-                deviceId: state.localDeviceId
-            )
-            // Cache icon
-            if let png = state.iconCache.iconData(forFilePath: path, bundleId: bundleId, targetSize: 64) {
-                state.iconCache.saveIcon(forAppId: appId, hash: "extracted:\(path)", png: png)
-            }
-            addedThisSession += 1
-            reloadAll()
-            state.refresh()
-        } catch {
-            NSLog("Failed to track app: \(error)")
-        }
+        self.trackedApps = (try? lib.getTrackedApps()) ?? []
     }
 
     private func openFileBrowser() {
@@ -461,4 +670,26 @@ public struct AddAppView: View {
             trackApp(path: execPath, name: name)
         }
     }
+
+    private func trackApp(path: String, name: String) {
+        let lib = MacAppLibrary(db: state.db)
+        do {
+            _ = try lib.trackApp(
+                exePath: path,
+                displayName: name,
+                category: "Other",
+                kind: .other,
+                deviceId: state.localDeviceId
+            )
+            addedThisSession += 1
+            reloadAll()
+            state.refresh()
+        } catch {
+            NSLog("Failed to track app: \(error)")
+        }
+    }
+}
+
+public struct IdentifiableInt64: Identifiable {
+    public let id: Int64
 }

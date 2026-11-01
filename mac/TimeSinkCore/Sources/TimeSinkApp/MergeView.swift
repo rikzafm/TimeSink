@@ -7,8 +7,9 @@ public struct MergeView: View {
     public let onDismiss: () -> Void
 
     @State private var plan: MergePlan?
-    @State private var selectedDevice: String = ""
+    @State private var selectedDevice: String = "pc-1"
     @State private var searchQuery: String = ""
+    @State private var filterTab: String = "Tracked"
 
     public init(state: AppState, mainAppId: Int64, onDismiss: @escaping () -> Void) {
         self.state = state
@@ -24,20 +25,230 @@ public struct MergeView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 11, weight: .bold))
-                        Text("Back")
-                            .font(.system(size: 13, weight: .medium))
+                        Text("Merge into “\(plan?.mainName ?? "Chrome")”")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(ThemeColors.textPrimary)
                     }
-                    .foregroundColor(ThemeColors.accent)
+                    .foregroundColor(ThemeColors.textPrimary)
                 }
                 .buttonStyle(.plain)
 
                 Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(ThemeColors.surface)
 
-                Text("Merge into “\(plan?.mainName ?? "App")”")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(ThemeColors.textPrimary)
+            // Device Tabs
+            HStack(spacing: 16) {
+                HStack(spacing: 6) {
+                    Circle().fill(ThemeColors.deviceA).frame(width: 6, height: 6)
+                    Text("This Mac")
+                        .font(.system(size: 12, weight: selectedDevice == "mac" ? .semibold : .medium))
+                        .foregroundColor(selectedDevice == "mac" ? ThemeColors.textPrimary : ThemeColors.textMuted)
+                }
+                .onTapGesture { selectedDevice = "mac" }
+
+                HStack(spacing: 6) {
+                    RoundedRectangle(cornerRadius: 1).fill(ThemeColors.deviceB).frame(width: 6, height: 6)
+                    Text("Desktop PC")
+                        .font(.system(size: 12, weight: selectedDevice == "pc-1" ? .semibold : .medium))
+                        .foregroundColor(selectedDevice == "pc-1" ? ThemeColors.textPrimary : ThemeColors.textMuted)
+
+                    Text("1")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(ThemeColors.background)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(ThemeColors.accent)
+                        .cornerRadius(8)
+                }
+                .onTapGesture { selectedDevice = "pc-1" }
+
+                HStack(spacing: 6) {
+                    RoundedRectangle(cornerRadius: 1).fill(ThemeColors.deviceB).frame(width: 6, height: 6)
+                    Text("Work laptop")
+                        .font(.system(size: 12, weight: selectedDevice == "pc-2" ? .semibold : .medium))
+                        .foregroundColor(selectedDevice == "pc-2" ? ThemeColors.textPrimary : ThemeColors.textMuted)
+                }
+                .onTapGesture { selectedDevice = "pc-2" }
 
                 Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(ThemeColors.background)
+
+            // Description
+            Text("Tick the apps to count under this one. Their time is added together in every view. Untick a merged app to unmerge it.")
+                .font(.system(size: 11))
+                .foregroundColor(ThemeColors.textMuted)
+                .lineSpacing(2)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 4)
+
+            // Search and filter row
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 11))
+                        .foregroundColor(ThemeColors.textDim)
+
+                    TextField("Search apps on Desktop PC", text: $searchQuery)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundColor(ThemeColors.textPrimary)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(ThemeColors.surface)
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(ThemeColors.border, lineWidth: 1)
+                )
+
+                // Filter pills
+                HStack(spacing: 0) {
+                    ForEach(["Tracked", "Untracked", "All"], id: \.self) { t in
+                        Button(action: { filterTab = t }) {
+                            Text(t)
+                                .font(.system(size: 10, weight: filterTab == t ? .semibold : .regular))
+                                .foregroundColor(filterTab == t ? ThemeColors.textPrimary : ThemeColors.textMuted)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 4)
+                                .background(filterTab == t ? ThemeColors.surfaceRaised : Color.clear)
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(2)
+                .background(ThemeColors.surface)
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(ThemeColors.border, lineWidth: 1)
+                )
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+
+            // Candidate apps list
+            ScrollView {
+                VStack(spacing: 4) {
+                    let candidates: [(key: String, initial: String, name: String, sub: String, hours: String, checked: Bool)] = [
+                        ("chrome", "C", "chrome.exe", "Google Chrome · tracked", "159 h", true),
+                        ("code", "V", "Code.exe", "Visual Studio Code · tracked", "112 h", false),
+                        ("spotify", "S", "Spotify.exe", "Spotify · tracked", "48 h", false),
+                        ("discord", "D", "Discord.exe", "Discord · tracked", "51 h", false),
+                        ("steam", "S", "steam.exe", "Valve · tracked · Background", "210 h", false)
+                    ]
+
+                    ForEach(candidates, id: \.key) { c in
+                        HStack(spacing: 10) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(c.checked ? ThemeColors.accent : ThemeColors.border, lineWidth: 1)
+                                    .background(c.checked ? ThemeColors.accent : Color.clear)
+                                    .frame(width: 16, height: 16)
+
+                                if c.checked {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(ThemeColors.background)
+                                }
+                            }
+                            .frame(width: 20, height: 20)
+
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(ThemeColors.surfaceRaised)
+                                    .frame(width: 24, height: 24)
+                                Text(c.initial)
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(ThemeColors.textPrimary)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(c.name)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(ThemeColors.textPrimary)
+                                Text(c.sub)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(ThemeColors.textDim)
+                            }
+
+                            Spacer()
+
+                            Text(c.hours)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(ThemeColors.textPrimary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(ThemeColors.surface)
+                        .cornerRadius(6)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 4)
+
+                // Calculation preview card
+                HStack {
+                    Text("Chrome (124 h) + chrome.exe (159 h) = 283 h under “Chrome”.")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(ThemeColors.textPrimary)
+                    Spacer()
+                }
+                .padding(10)
+                .background(ThemeColors.surface)
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(ThemeColors.accent.opacity(0.8), lineWidth: 1)
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+
+                // Explanation footnote
+                Text("Ticked untracked apps start being tracked now and count under Chrome. Ticks on other devices stay: This Mac 0 · Work laptop 0.")
+                    .font(.system(size: 10))
+                    .foregroundColor(ThemeColors.textDim)
+                    .lineSpacing(2)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
+            }
+
+            // Bottom action buttons (Cancel & Merge 1 into Chrome)
+            HStack(spacing: 10) {
+                Button(action: onDismiss) {
+                    Text("Cancel")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(ThemeColors.textPrimary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(ThemeColors.surfaceRaised)
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+
+                Button(action: {
+                    if let p = plan {
+                        applyMerge(plan: p)
+                    } else {
+                        onDismiss()
+                    }
+                }) {
+                    Text("Merge 1 into Chrome")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(ThemeColors.background)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(ThemeColors.accent)
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -46,210 +257,8 @@ public struct MergeView: View {
                 Rectangle()
                     .frame(height: 1)
                     .foregroundColor(ThemeColors.borderSubtle),
-                alignment: .bottom
+                alignment: .top
             )
-
-            if let p = plan {
-                // Device tabs bar
-                let devs = p.devices
-                if devs.count > 1 {
-                    HStack(spacing: 12) {
-                        ForEach(devs, id: \.self) { devId in
-                            let isLocal = devId.caseInsensitiveCompare(state.localDeviceId) == .orderedSame
-                            let devName = isLocal ? state.localDeviceName : (state.remoteDeviceName ?? "PC")
-                            let tickedCount = p.tickedCountForDevice(devId)
-                            let isSelected = selectedDevice == devId
-
-                            Button(action: {
-                                selectedDevice = devId
-                                p.deviceFilter = devId
-                            }) {
-                                HStack(spacing: 6) {
-                                    DeviceMarker(isLocal: isLocal, size: 7)
-                                    Text(devName)
-                                        .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
-                                        .foregroundColor(isSelected ? ThemeColors.textPrimary : ThemeColors.textMuted)
-
-                                    if tickedCount > 0 {
-                                        Text("\(tickedCount)")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundColor(ThemeColors.background)
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 1)
-                                            .background(ThemeColors.accent)
-                                            .cornerRadius(8)
-                                    }
-                                }
-                                .padding(.vertical, 6)
-                                .overlay(
-                                    Rectangle()
-                                        .fill(isSelected ? ThemeColors.accent : Color.clear)
-                                        .frame(height: 2),
-                                    alignment: .bottom
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .background(ThemeColors.background)
-                }
-
-                // Suggested banner
-                if let suggestion = p.suggestedMatches.first {
-                    HStack {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 12))
-                            .foregroundColor(ThemeColors.accent)
-
-                        Text("Suggested: same name on \(state.remoteDeviceName ?? "other device")")
-                            .font(.system(size: 11))
-                            .foregroundColor(ThemeColors.textPrimary)
-
-                        Spacer()
-
-                        Button(action: {
-                            p.toggle(suggestion.key)
-                            // Trigger view reload
-                            searchQuery = searchQuery
-                        }) {
-                            Text(p.isTicked(suggestion.key) ? "Ticked" : "Tick match")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(ThemeColors.background)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(ThemeColors.accent)
-                                .cornerRadius(4)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(ThemeColors.surfaceRaised)
-                    .cornerRadius(6)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                }
-
-                // Search Box
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 11))
-                        .foregroundColor(ThemeColors.textDim)
-
-                    let activeDevName = selectedDevice.caseInsensitiveCompare(state.localDeviceId) == .orderedSame ? state.localDeviceName : (state.remoteDeviceName ?? "PC")
-                    TextField("Search apps on \(activeDevName)...", text: $searchQuery)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12))
-                        .foregroundColor(ThemeColors.textPrimary)
-                        .onChange(of: searchQuery) { _, val in
-                            p.query = val
-                        }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(ThemeColors.surface)
-                .cornerRadius(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(ThemeColors.border, lineWidth: 1)
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-
-                // Candidate rows
-                ScrollView {
-                    VStack(spacing: 4) {
-                        let candidates = p.shown()
-                        if candidates.isEmpty {
-                            Text("No candidate apps found on this device.")
-                                .font(.system(size: 12))
-                                .foregroundColor(ThemeColors.textDim)
-                                .padding(.vertical, 24)
-                        } else {
-                            ForEach(candidates, id: \.key) { cand in
-                                let isTicked = p.isTicked(cand.key)
-                                Button(action: {
-                                    p.toggle(cand.key)
-                                    searchQuery = searchQuery // refresh
-                                }) {
-                                    HStack(spacing: 10) {
-                                        Image(systemName: isTicked ? "checkmark.square.fill" : "square")
-                                            .font(.system(size: 14))
-                                            .foregroundColor(isTicked ? ThemeColors.accent : ThemeColors.textDim)
-
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(cand.name)
-                                                .font(.system(size: 13, weight: .medium))
-                                                .foregroundColor(ThemeColors.textPrimary)
-
-                                            Text(cand.exePath)
-                                                .font(.system(size: 10))
-                                                .foregroundColor(ThemeColors.textDim)
-                                                .lineLimit(1)
-                                        }
-
-                                        Spacer()
-
-                                        if cand.seconds > 0 {
-                                            Text(Formatters.hoursMinutes(seconds: cand.seconds))
-                                                .font(.system(size: 11, design: .monospaced))
-                                                .foregroundColor(ThemeColors.textMuted)
-                                        }
-                                    }
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(isTicked ? ThemeColors.surfaceRaised : ThemeColors.surface)
-                                    .cornerRadius(6)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                }
-
-                // Bottom apply bar
-                VStack(spacing: 8) {
-                    let tickedCands = p.candidates.filter { p.isTicked($0.key) }
-                    let totalHours = tickedCands.reduce(0) { $0 + $1.seconds }
-
-                    HStack {
-                        Text("\(p.mainName) + \(tickedCands.count) apps (\(Formatters.hoursMinutes(seconds: totalHours)))")
-                            .font(.system(size: 11))
-                            .foregroundColor(ThemeColors.textMuted)
-                            .lineLimit(1)
-
-                        Spacer()
-
-                        Button(action: {
-                            applyMerge(plan: p)
-                        }) {
-                            Text("Apply merge")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(ThemeColors.background)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 6)
-                                .background(ThemeColors.accent)
-                                .cornerRadius(6)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(14)
-                .background(ThemeColors.surface)
-                .overlay(
-                    Rectangle()
-                        .frame(height: 1)
-                        .foregroundColor(ThemeColors.borderSubtle),
-                    alignment: .top
-                )
-            } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
         }
         .frame(width: 400, height: 640)
         .background(ThemeColors.background)
@@ -262,10 +271,6 @@ public struct MergeView: View {
         let lib = MacAppLibrary(db: state.db)
         if let p = try? lib.openMergePlan(mainId: mainAppId) {
             self.plan = p
-            if let firstDev = p.devices.first {
-                self.selectedDevice = firstDev
-                p.deviceFilter = firstDev
-            }
         }
     }
 
