@@ -10,34 +10,22 @@ public struct TabBarView: View {
     public var body: some View {
         HStack(spacing: 0) {
             ForEach(AppTab.allCases) { tab in
+                let selected = state.selectedTab == tab
                 Button(action: {
                     state.selectedTab = tab
                     state.refresh()
                 }) {
-                    VStack(spacing: 6) {
-                        Text(tab.rawValue)
-                            .font(.system(size: 13, weight: state.selectedTab == tab ? .semibold : .medium))
-                            .foregroundColor(state.selectedTab == tab ? ThemeColors.textPrimary : ThemeColors.textMuted)
-
-                        Rectangle()
-                            .fill(state.selectedTab == tab ? ThemeColors.accent : Color.clear)
-                            .frame(height: 2)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
+                    Text(tab.rawValue)
+                        .font(.system(size: 15, weight: selected ? .semibold : .regular))
+                        .foregroundColor(selected ? ThemeColors.accent : ThemeColors.textMuted)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 40)
+                        .overlay(Rectangle().fill(selected ? ThemeColors.accent : .clear).frame(height: 2), alignment: .bottom)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 6)
-        .background(ThemeColors.background)
-        .overlay(
-            Rectangle()
-                .frame(height: 1)
-                .foregroundColor(ThemeColors.borderSubtle),
-            alignment: .bottom
-        )
+        .bottomRule()
     }
 }
-

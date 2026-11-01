@@ -3,287 +3,214 @@ import TimeSinkCore
 
 public struct MonthTabView: View {
     @ObservedObject var state: AppState
-    @State private var selectedDayDate: String = "2026-10-21"
+    @State private var selectedDate: String?
 
     public init(state: AppState) {
         self.state = state
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 12) {
                 if let result = state.monthResult {
-                    // Month Navigator & total
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Button(action: {
-                                state.monthsBack += 1
-                                state.refresh()
-                            }) {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(ThemeColors.textDim)
-                                    .frame(width: 20, height: 20)
-                            }
-                            .buttonStyle(.plain)
-
-                            Spacer()
-
-                            Text(monthTitle(year: result.year, month: result.month))
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundColor(ThemeColors.textPrimary)
-
-                            Spacer()
-
-                            Button(action: {
-                                if state.monthsBack > 0 {
-                                    state.monthsBack -= 1
-                                    state.refresh()
-                                }
-                            }) {
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(state.monthsBack > 0 ? ThemeColors.textDim : ThemeColors.border)
-                                    .frame(width: 20, height: 20)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(state.monthsBack == 0)
-                        }
-
-                        // 3 Top stats columns
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(state.deviceScope == .all ? "Month total · all devices" : "Month total · Mac")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(ThemeColors.textDim)
-                                Text(Formatters.hoursMinutes(seconds: result.totalSeconds))
-                                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                                    .foregroundColor(ThemeColors.textPrimary)
-                            }
-
-                            Spacer()
-
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Daily average")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(ThemeColors.textDim)
-                                Text(Formatters.hoursMinutes(seconds: Int64(result.dailyAverageSeconds)))
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundColor(ThemeColors.textPrimary)
-                            }
-
-                            Spacer()
-
-                            VStack(alignment: .trailing, spacing: 3) {
-                                Text("Best day")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(ThemeColors.textDim)
-                                if let best = result.best {
-                                    let dStr = best.date.split(separator: "-").last.map(String.init) ?? "14"
-                                    let mShort = DateFormatter().shortMonthSymbols[max(0, min(11, result.month - 1))]
-                                    Text("\(mShort) \(dStr) · \(Formatters.hoursOrMinutes(seconds: best.seconds))")
-                                        .font(.system(size: 14, weight: .bold))
-                                        .foregroundColor(ThemeColors.textPrimary)
-                                } else {
-                                    Text("—")
-                                        .font(.system(size: 14, weight: .bold))
-                                        .foregroundColor(ThemeColors.textPrimary)
-                                }
-                            }
-                        }
-
-                        // Comparison row
-                        let prevName = DateFormatter().monthSymbols[max(0, min(11, result.month - 2))]
-                        Text("+8% vs \(prevName) over the same 31 days")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(ThemeColors.accent)
-
-                        // Multi-device breakdown in All scope
-                        if state.deviceScope == .all, let totals = result.deviceTotals, totals.count > 1 {
-                            let devA = totals.values.first ?? 0
-                            let devB = totals.values.dropFirst().first ?? 0
-
-                            HStack(spacing: 8) {
-                                HStack(spacing: 4) {
-                                    Circle().fill(ThemeColors.deviceA).frame(width: 6, height: 6)
-                                    Text("Mac \(Formatters.hoursMinutes(seconds: devA))")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(ThemeColors.textPrimary)
-                                }
-
-                                HStack(spacing: 4) {
-                                    RoundedRectangle(cornerRadius: 1).fill(ThemeColors.deviceB).frame(width: 6, height: 6)
-                                    Text("PC \(Formatters.hoursMinutes(seconds: devB))")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(ThemeColors.textPrimary)
-                                }
-
-                                Text("\(Formatters.hoursMinutes(seconds: result.onBothSeconds)) on both")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(ThemeColors.textMuted)
-                            }
-                            .padding(.top, 2)
-                        }
+                    navigator(result)
+                    stats(result)
+                    if let text = comparison(result) {
+                        Text(text.0)
+                            .font(.system(size: 11))
+                            .foregroundColor(text.1 ? ThemeColors.accent : ThemeColors.warning)
                     }
-
-                    // Calendar Grid Card
-                    monthCalendarGridView(weeks: result.weeks)
-                        .padding(10)
-                        .background(ThemeColors.surface)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(ThemeColors.border, lineWidth: 1)
+                    if state.showsDeviceSplit {
+                        let t = state.deviceSplit(result.deviceTotals)
+                        DeviceLegend(
+                            mac: "Mac \(Formatters.paddedHM(t.mac))",
+                            pc: "PC \(Formatters.paddedHM(t.pc))",
+                            both: "\(Formatters.paddedHM(result.onBothSeconds)) on both"
                         )
-
-                    // Selected Day Detail Card
-                    selectedDayDetailCard()
-                } else {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, minHeight: 200)
-                }
-            }
-            .padding(16)
-        }
-        .background(ThemeColors.background)
-    }
-
-    private func monthTitle(year: Int, month: Int) -> String {
-        let df = DateFormatter()
-        let monthName = df.monthSymbols[max(0, min(11, month - 1))]
-        return "\(monthName) \(year)"
-    }
-
-    private func monthCalendarGridView(weeks: [MonthWeek]) -> some View {
-        let dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Week"]
-
-        return VStack(spacing: 4) {
-            // Header labels
-            HStack(spacing: 4) {
-                ForEach(0..<8, id: \.self) { idx in
-                    Text(dayLabels[idx])
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(ThemeColors.textDim)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .padding(.bottom, 2)
-
-            ForEach(Array(weeks.enumerated()), id: \.offset) { _, week in
-                let weekSecs = week.days.compactMap { $0?.seconds }.reduce(0, +)
-                let weekHours = max(1, (weekSecs + 1800) / 3600)
-
-                HStack(spacing: 4) {
-                    ForEach(0..<7, id: \.self) { dayIdx in
-                        let day = dayIdx < week.days.count ? week.days[dayIdx] : nil
-                        cellView(day: day)
                     }
+                    calendar(result)
+                    dayCard(result)
+                } else {
+                    ProgressView().frame(maxWidth: .infinity, minHeight: 200)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+        }
+    }
 
-                    // Right column: Week total
-                    Text("\(weekHours)h")
-                        .font(.system(size: 11, weight: .medium))
+    private func navigator(_ result: MonthResult) -> some View {
+        HStack(spacing: 30) {
+            PeriodArrow(left: true, enabled: true, box: 22, iconSize: 10) {
+                state.monthsBack += 1
+                selectedDate = nil
+                state.refresh()
+            }
+            Text("\(Formatters.monthName(result.month)) \(String(result.year))")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundColor(ThemeColors.textPrimary)
+            PeriodArrow(left: false, enabled: state.monthsBack > 0, box: 22, iconSize: 10) {
+                state.monthsBack -= 1
+                selectedDate = nil
+                state.refresh()
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 30)
+    }
+
+    private func stats(_ result: MonthResult) -> some View {
+        GeometryReader { geo in
+            let unit = (geo.size.width - 16) / 3.4
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 0) {
+                    label("Month total · \(state.deviceScope == .all ? "all devices" : "this Mac")")
+                    Text(Formatters.paddedHM(result.totalSeconds))
+                        .font(.system(size: 26, weight: .semibold))
+                        .tracking(-0.4)
                         .foregroundColor(ThemeColors.textPrimary)
-                        .frame(maxWidth: .infinity)
+                }
+                .frame(width: unit * 1.4, alignment: .leading)
+
+                small("Daily average", Formatters.paddedHM(Int64(result.dailyAverageSeconds))).frame(width: unit, alignment: .leading)
+
+                small("Best day", result.best.map {
+                    "\(Formatters.dayText($0.date, format: "MMM d")) · \(($0.seconds + 1800) / 3600)h"
+                } ?? "—").frame(width: unit, alignment: .leading)
+            }
+        }
+        .frame(height: 46)
+    }
+
+    private func label(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11))
+            .foregroundColor(ThemeColors.textMuted)
+            .lineLimit(1)
+    }
+
+    private func small(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            label(title)
+            Text(value)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(ThemeColors.textPrimary)
+                .lineLimit(1)
+        }
+    }
+
+    private func comparison(_ result: MonthResult) -> (String, Bool)? {
+        guard result.previousSeconds > 0 else { return nil }
+        let pct = Int((Double(result.deltaSeconds) / Double(result.previousSeconds) * 100).rounded())
+        let prev = Formatters.monthName(result.month == 1 ? 12 : result.month - 1)
+        return ("\(pct >= 0 ? "+" : "")\(pct)% vs \(prev) over the same \(result.daysCounted) day\(result.daysCounted == 1 ? "" : "s")", pct >= 0)
+    }
+
+    private func calendar(_ result: MonthResult) -> some View {
+        let days = weekdayLabels(result)
+        return VStack(spacing: 4) {
+            HStack(spacing: 4) {
+                ForEach(Array(days.enumerated()), id: \.offset) { _, d in
+                    Text(d).frame(maxWidth: .infinity)
+                }
+                Text("Week").frame(width: 40)
+            }
+            .font(.system(size: 10))
+            .foregroundColor(ThemeColors.textMuted)
+
+            ForEach(Array(result.weeks.enumerated()), id: \.offset) { _, week in
+                HStack(spacing: 4) {
+                    ForEach(0..<7, id: \.self) { i in
+                        cell(i < week.days.count ? week.days[i] : nil, result: result)
+                    }
+                    Text(week.totalSeconds > 0 ? "\((week.totalSeconds + 1800) / 3600)h" : "")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(ThemeColors.textDim)
+                        .frame(width: 40, height: 40, alignment: .bottomLeading)
+                        .padding(.bottom, 8)
                 }
             }
         }
     }
 
-    private func cellView(day: MonthDay?) -> some View {
-        Button(action: {
-            if let d = day {
-                selectedDayDate = d.date
+    private func weekdayLabels(_ result: MonthResult) -> [String] {
+        let start = WeekStart.parse(state.weekStart)
+        let names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        let shift = start == .mon ? 0 : start == .sun ? 6 : 5
+        return (0..<7).map { names[($0 + shift) % 7] }
+    }
+
+    @ViewBuilder
+    private func cell(_ day: MonthDay?, result: MonthResult) -> some View {
+        if let day, !day.isFuture {
+            let selected = (selectedDate ?? result.defaultSelected) == day.date
+            let fg = day.heat == 0 ? ThemeColors.textMuted : day.heat >= 3 ? ThemeColors.background : ThemeColors.textPrimary
+            Button(action: { selectedDate = day.date }) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("\(Int(day.date.suffix(2)) ?? 0)")
+                        .font(.system(size: 10))
+                        .opacity(0.85)
+                    Spacer(minLength: 0)
+                    Text(day.seconds > 0 ? "\((day.seconds + 1800) / 3600)h" : "")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .foregroundColor(fg)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: 40)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Tokens.heat(day.heat)))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(selected ? ThemeColors.accent : .clear, lineWidth: 1))
+                .contentShape(Rectangle())
             }
-        }) {
-            ZStack(alignment: .topLeading) {
-                if let d = day {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(heatColor(level: d.heat, isToday: d.isToday))
-                        .frame(height: 36)
+            .buttonStyle(.plain)
+        } else {
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .dashedCard(color: ThemeColors.borderSubtle, radius: 6)
+        }
+    }
 
-                    let dayNum = d.date.split(separator: "-").last.map(String.init) ?? ""
-                    let hours = max(1, (d.seconds + 1800) / 3600)
+    @ViewBuilder
+    private func dayCard(_ result: MonthResult) -> some View {
+        let date = selectedDate ?? result.defaultSelected
+        if let day = result.days.first(where: { $0.date == date }) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text(Formatters.dayText(day.date, format: "EEE, MMM d"))
+                    Spacer()
+                    Text(Formatters.paddedHM(day.seconds))
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(ThemeColors.textPrimary)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(dayNum)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(d.heat >= 2 ? ThemeColors.background : ThemeColors.textPrimary)
-
-                        if d.seconds > 0 {
-                            Text("\(hours)h")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(d.heat >= 2 ? ThemeColors.background : ThemeColors.textPrimary)
+                GeometryReader { geo in
+                    let total = max(1, day.apps.reduce(0) { $0 + $1.seconds })
+                    let shown = Array(day.apps.prefix(6))
+                    let room = geo.size.width - CGFloat(max(0, shown.count - 1)) * 2
+                    HStack(spacing: 2) {
+                        ForEach(shown, id: \.appId) { app in
+                            Rectangle()
+                                .fill(Tokens.appColor(app.name))
+                                .frame(width: room * CGFloat(app.seconds) / CGFloat(total))
                         }
                     }
-                    .padding(3)
-                } else {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.clear)
-                        .frame(height: 36)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(height: 8)
+                .background(ThemeColors.barBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .padding(.top, 8)
+                .padding(.bottom, 6)
+
+                Text(day.apps.first.map { "Mostly \($0.name) · \(Formatters.paddedHM($0.seconds))" } ?? "No apps tracked")
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
             }
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .card()
         }
-        .buttonStyle(.plain)
-    }
-
-    private func heatColor(level: Int, isToday: Bool) -> Color {
-        switch level {
-        case 0: return ThemeColors.barBackground
-        case 1: return ThemeColors.greenLow
-        case 2: return ThemeColors.greenMid
-        case 3: return ThemeColors.greenDark
-        default: return ThemeColors.accent
-        }
-    }
-
-    private func selectedDayDetailCard() -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Wed, Oct 21")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(ThemeColors.textPrimary)
-
-                Spacer()
-
-                Text("7h 20m")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(ThemeColors.textPrimary)
-            }
-
-            // Stacked multi-app colored bar
-            GeometryReader { geo in
-                HStack(spacing: 2) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(ThemeColors.deviceB)
-                        .frame(width: geo.size.width * 0.48, height: 6)
-
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(ThemeColors.accent)
-                        .frame(width: geo.size.width * 0.28, height: 6)
-
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color(red: 0.65, green: 0.55, blue: 0.95))
-                        .frame(width: geo.size.width * 0.14, height: 6)
-
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color(red: 0.95, green: 0.65, blue: 0.4))
-                        .frame(width: geo.size.width * 0.10, height: 6)
-                }
-            }
-            .frame(height: 6)
-
-            Text("Mostly Xcode · 3h 31m")
-                .font(.system(size: 11))
-                .foregroundColor(ThemeColors.textMuted)
-        }
-        .padding(12)
-        .background(ThemeColors.surface)
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(ThemeColors.border, lineWidth: 1)
-        )
     }
 }
-

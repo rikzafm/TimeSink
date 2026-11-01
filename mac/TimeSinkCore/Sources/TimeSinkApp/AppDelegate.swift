@@ -62,9 +62,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             popover = NSPopover()
             popover.contentSize = NSSize(width: 400, height: 640)
             popover.behavior = .transient
+            popover.appearance = NSAppearance(named: .darkAqua)
             popover.contentViewController = NSHostingController(rootView: PopoverRootView(state: appState))
 
             statusBarController = StatusBarController(popover: popover)
+            statusBarController.showsTime = appState.showMenuBarTime
 
             // Heartbeat timer every 15s
             timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
@@ -87,6 +89,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private func tick() {
         let now = Date()
         try? engine.onTick(now)
+        statusBarController.showsTime = appState.showMenuBarTime
         updateMenuTotal()
         appState?.refresh()
     }

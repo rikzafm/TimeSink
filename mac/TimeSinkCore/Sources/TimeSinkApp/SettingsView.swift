@@ -48,40 +48,30 @@ public struct SettingsView: View {
     private var mainSettingsView: some View {
         VStack(spacing: 0) {
             // Header
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button(action: {
                     state.showingSettings = false
                 }) {
                     HStack(spacing: 4) {
-                        Text("‹")
-                            .font(.system(size: 16, weight: .bold))
-                        Text("Back")
-                            .font(.system(size: 13, weight: .medium))
+                        Text("‹").font(.system(size: 16))
+                        Text("Back").font(.system(size: 13))
                     }
                     .foregroundColor(ThemeColors.accent)
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .frame(height: 28)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-
-                Spacer()
 
                 Text("Settings")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(ThemeColors.textPrimary)
-                    .offset(x: -24)
-
-                Spacer()
+                    .frame(maxWidth: .infinity)
+                    .padding(.trailing, 56)
             }
-            .frame(height: 44)
             .padding(.horizontal, 10)
-            .background(ThemeColors.surface)
-            .overlay(
-                Rectangle()
-                    .frame(height: 1)
-                    .foregroundColor(ThemeColors.border),
-                alignment: .bottom
-            )
+            .frame(height: 44)
+            .bottomRule()
 
             // Scrollable Settings Sections
             ScrollView(.vertical, showsIndicators: false) {
@@ -96,11 +86,11 @@ public struct SettingsView: View {
                                 set: { state.setOpenAtLogin($0) }
                             )
                         )
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
                         settingValueRow(
                             label: "Week starts on",
                             desc: "",
-                            value: "Monday"
+                            value: state.weekStart
                         )
                     }
 
@@ -114,7 +104,7 @@ public struct SettingsView: View {
                                 set: { state.setPauseWhileSleep($0) }
                             )
                         )
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
                         settingSwitchRow(
                             label: "Keep counting when locked",
                             desc: "",
@@ -123,7 +113,7 @@ public struct SettingsView: View {
                                 set: { state.setCountWhenLocked($0) }
                             )
                         )
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
                         settingValueRow(
                             label: "Ignore short sessions",
                             desc: "Shorter than this are dropped",
@@ -138,13 +128,13 @@ public struct SettingsView: View {
                             desc: "Follows macOS when set to System",
                             value: "System"
                         )
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
                         settingValueRow(
                             label: "Accent",
                             desc: "",
                             value: "Lime"
                         )
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
                         settingSwitchRow(
                             label: "Show time in the menu bar",
                             desc: "Today’s total next to the icon",
@@ -168,7 +158,9 @@ public struct SettingsView: View {
                                     let syncDesc: String = {
                                         if !state.syncEnabled { return "Off" }
                                         if state.syncFolder.isEmpty { return "No sync folder set" }
-                                        return URL(fileURLWithPath: state.syncFolder).lastPathComponent
+                                        let name = URL(fileURLWithPath: state.syncFolder).lastPathComponent
+                                        let isOneDrive = state.syncFolder.contains("OneDrive")
+                                        return isOneDrive ? "OneDrive · \(name) folder" : "\(name) folder"
                                     }()
                                     Text(syncDesc)
                                         .font(.system(size: 11))
@@ -180,16 +172,17 @@ public struct SettingsView: View {
                                         .font(.system(size: 12))
                                         .foregroundColor(ThemeColors.textDim)
                                     Text("›")
-                                        .font(.system(size: 14))
+                                        .font(.system(size: 12))
                                         .foregroundColor(ThemeColors.textMuted)
                                 }
                             }
                             .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, 6)
+                            .frame(minHeight: 44)
                         }
                         .buttonStyle(.plain)
 
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
 
                         Button(action: {
                             renameMacText = state.localDeviceName
@@ -210,12 +203,13 @@ public struct SettingsView: View {
                                         .font(.system(size: 12))
                                         .foregroundColor(ThemeColors.textDim)
                                     Text("›")
-                                        .font(.system(size: 14))
+                                        .font(.system(size: 12))
                                         .foregroundColor(ThemeColors.textMuted)
                                 }
                             }
                             .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, 6)
+                            .frame(minHeight: 44)
                         }
                         .buttonStyle(.plain)
                     }
@@ -227,7 +221,7 @@ public struct SettingsView: View {
                             desc: "Keeps the last 7 plus one per month",
                             value: "Daily"
                         )
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
 
                         // Back up now
                         HStack {
@@ -250,9 +244,10 @@ public struct SettingsView: View {
                             .disabled(isBackingUp)
                         }
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 44)
 
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
 
                         // Restore
                         HStack {
@@ -273,9 +268,10 @@ public struct SettingsView: View {
                             .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 44)
 
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
 
                         // Export data
                         HStack {
@@ -296,9 +292,10 @@ public struct SettingsView: View {
                             .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 44)
 
-                        Divider().background(ThemeColors.borderSubtle)
+                        settingsRule
 
                         // Delete all history
                         HStack {
@@ -322,7 +319,8 @@ public struct SettingsView: View {
                             .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 44)
                     }
 
                     // ABOUT
@@ -334,9 +332,15 @@ public struct SettingsView: View {
                         )
                     }
                 }
-                .padding(14)
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 14)
             }
         }
+    }
+
+    private var settingsRule: some View {
+        Rectangle().fill(ThemeColors.borderSubtle).frame(height: 1)
     }
 
     // MARK: - Row Helpers
@@ -345,66 +349,54 @@ public struct SettingsView: View {
     private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(ThemeColors.textMuted)
+                .caps(10)
                 .padding(.horizontal, 4)
 
             VStack(spacing: 0) {
                 content()
             }
-            .background(ThemeColors.surface)
-            .cornerRadius(10)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(ThemeColors.border, lineWidth: 1)
-            )
+            .card()
+        }
+    }
+
+    private func rowLabels(_ label: String, _ desc: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(ThemeColors.textPrimary)
+            if !desc.isEmpty {
+                Text(desc)
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
+            }
         }
     }
 
     @ViewBuilder
     private func settingSwitchRow(label: String, desc: String, isOn: Binding<Bool>) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(.system(size: 13))
-                    .foregroundColor(ThemeColors.textPrimary)
-                if !desc.isEmpty {
-                    Text(desc)
-                        .font(.system(size: 11))
-                        .foregroundColor(ThemeColors.textMuted)
-                }
-            }
+        HStack(spacing: 10) {
+            rowLabels(label, desc)
             Spacer()
-            Toggle("", isOn: isOn)
-                .toggleStyle(SwitchToggleStyle(tint: ThemeColors.accent))
-                .labelsHidden()
+            TSSwitch(isOn: isOn)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
+        .frame(minHeight: 44)
     }
 
     @ViewBuilder
     private func settingValueRow(label: String, desc: String, value: String) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(.system(size: 13))
-                    .foregroundColor(ThemeColors.textPrimary)
-                if !desc.isEmpty {
-                    Text(desc)
-                        .font(.system(size: 11))
-                        .foregroundColor(ThemeColors.textMuted)
-                }
-            }
+        HStack(spacing: 10) {
+            rowLabels(label, desc)
             Spacer()
             if !value.isEmpty {
-                Text(value)
+                (Text(value).foregroundColor(ThemeColors.textDim) + Text(" ›").foregroundColor(ThemeColors.textMuted))
                     .font(.system(size: 12))
-                    .foregroundColor(ThemeColors.textDim)
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
+        .frame(minHeight: 44)
     }
 
     // MARK: - Handlers

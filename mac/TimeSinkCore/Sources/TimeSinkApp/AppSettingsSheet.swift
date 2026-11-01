@@ -6,16 +6,19 @@ public struct AppSettingsSheet: View {
     public let appId: Int64
     public let onDismiss: () -> Void
 
-    @State private var displayName: String = "Chrome"
+    @State private var displayName = ""
     @State private var kind: AppKind = .other
-    @State private var isBackground: Bool = false
+    @State private var isBackground = false
+    @State private var main: TrackedAppItem?
     @State private var mergedChildren: [TrackedAppItem] = []
-    @State private var showingMerge: Bool = false
-    @State private var showingStopConfirm: Bool = false
-    @State private var showingClearConfirm: Bool = false
-    @State private var appPath: String = "/Applications/Google Chrome.app"
-    @State private var firstTrackedDate: String = "14 Mar 2026"
-    @State private var totalTrackedHours: String = "283 h"
+    @State private var showingMerge = false
+    @State private var showingStopConfirm = false
+    @State private var showingClearConfirm = false
+    @State private var appPath = ""
+    @State private var addedUtc: Int64 = 0
+    @State private var deviceId = ""
+    @State private var totalSeconds: Int64 = 0
+    @State private var loaded = false
 
     public init(state: AppState, appId: Int64, onDismiss: @escaping () -> Void) {
         self.state = state
@@ -23,355 +26,45 @@ public struct AppSettingsSheet: View {
         self.onDismiss = onDismiss
     }
 
+    private var addedDate: Date { Date(timeIntervalSince1970: TimeInterval(addedUtc)) }
+
+    private func dateText(_ format: String) -> String {
+        let df = DateFormatter()
+        df.dateFormat = format
+        return df.string(from: addedDate)
+    }
+
     public var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Button(action: onDismiss) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 11, weight: .bold))
-                        Text("App settings")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(ThemeColors.textPrimary)
+        ZStack {
+            VStack(spacing: 0) {
+                header
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        hero
+                        settingsCard
+                        mergedSection
+                        aboutSection
                     }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 4)
+                    .padding(.bottom, 10)
                 }
-                .buttonStyle(.plain)
-
-                Spacer()
-
-                Text("Changes save as you make them")
-                    .font(.system(size: 11))
-                    .foregroundColor(ThemeColors.textDim)
+                dangerBar
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(ThemeColors.surface)
+            .background(ThemeColors.background)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    // Top App Hero Row
-                    HStack(spacing: 12) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(ThemeColors.accent)
-                                .frame(width: 40, height: 40)
-
-                            Text(String(displayName.prefix(1)).uppercased())
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundColor(ThemeColors.background)
-                        }
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            TextField("App Name", text: $displayName)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundColor(ThemeColors.textPrimary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(ThemeColors.surface)
-                                .cornerRadius(6)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(ThemeColors.border, lineWidth: 1)
-                                )
-                                .onChange(of: displayName) { _, _ in
-                                    saveChanges()
-                                }
-
-                            Text("\(totalTrackedHours) tracked · since \(firstTrackedDate)")
-                                .font(.system(size: 11))
-                                .foregroundColor(ThemeColors.textDim)
-                        }
-
-                        Spacer()
-                    }
-                    .padding(.top, 4)
-
-                    // Setting item: Game type
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Game type")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(ThemeColors.textPrimary)
-                                Text("Used by Year › Wrapped")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(ThemeColors.textDim)
-                            }
-
-                            Spacer()
-
-                            HStack(spacing: 0) {
-                                ForEach([("Other", AppKind.other), ("Game", AppKind.game), ("Gacha", AppKind.gacha)], id: \.0) { item in
-                                    Button(action: {
-                                        kind = item.1
-                                        saveChanges()
-                                    }) {
-                                        Text(item.0)
-                                            .font(.system(size: 11, weight: kind == item.1 ? .semibold : .regular))
-                                            .foregroundColor(kind == item.1 ? ThemeColors.textPrimary : ThemeColors.textMuted)
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 4)
-                                            .background(kind == item.1 ? ThemeColors.surfaceRaised : Color.clear)
-                                            .cornerRadius(4)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .padding(2)
-                            .background(ThemeColors.surface)
-                            .cornerRadius(6)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(ThemeColors.border, lineWidth: 1)
-                            )
-                        }
-                    }
-                    .padding(10)
-                    .background(ThemeColors.surface)
-                    .cornerRadius(6)
-
-                    // Setting item: Background
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Background")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(ThemeColors.textPrimary)
-                            Text("Runs all day. Still counted, but ranked after your other apps")
-                                .font(.system(size: 11))
-                                .foregroundColor(ThemeColors.textDim)
-                        }
-
-                        Spacer()
-
-                        Toggle("", isOn: $isBackground)
-                            .toggleStyle(SwitchToggleStyle(tint: ThemeColors.accent))
-                            .labelsHidden()
-                            .onChange(of: isBackground) { _, _ in
-                                saveChanges()
-                            }
-                    }
-                    .padding(10)
-                    .background(ThemeColors.surface)
-                    .cornerRadius(6)
-
-                    // Setting item: Icon
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Icon")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(ThemeColors.textPrimary)
-                            Text("3 icons found for this app")
-                                .font(.system(size: 11))
-                                .foregroundColor(ThemeColors.textDim)
-                        }
-
-                        Spacer()
-
-                        Button(action: {}) {
-                            Text("Change")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(ThemeColors.accent)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(10)
-                    .background(ThemeColors.surface)
-                    .cornerRadius(6)
-
-                    // MERGED APPS Section
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("MERGED APPS")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(ThemeColors.textDim)
-
-                            Spacer()
-
-                            Button(action: {
-                                showingMerge = true
-                            }) {
-                                Text("Merge…")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(ThemeColors.accent)
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        // Main app row
-                        HStack(spacing: 8) {
-                            Circle().fill(ThemeColors.deviceA).frame(width: 6, height: 6)
-
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("Google Chrome")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(ThemeColors.textPrimary)
-                                Text("Mac · com.google.Chrome · main app")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(ThemeColors.textDim)
-                            }
-
-                            Spacer()
-
-                            Text("124 h")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(ThemeColors.textPrimary)
-                        }
-                        .padding(8)
-                        .background(ThemeColors.surface)
-                        .cornerRadius(6)
-
-                        // Child 1
-                        HStack(spacing: 8) {
-                            RoundedRectangle(cornerRadius: 1).fill(ThemeColors.deviceB).frame(width: 6, height: 6)
-
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("chrome.exe")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(ThemeColors.textPrimary)
-                                Text("PC · Desktop PC · merged")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(ThemeColors.textDim)
-                            }
-
-                            Spacer()
-
-                            Text("159 h")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(ThemeColors.textPrimary)
-
-                            Button(action: {}) {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(ThemeColors.textDim)
-                                    .frame(width: 16, height: 16)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(8)
-                        .background(ThemeColors.surface)
-                        .cornerRadius(6)
-
-                        // Child 2
-                        HStack(spacing: 8) {
-                            Circle().fill(ThemeColors.deviceA).frame(width: 6, height: 6)
-
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("Chrome Beta")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(ThemeColors.textPrimary)
-                                Text("Mac · com.google.Chrome.beta · merged")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(ThemeColors.textDim)
-                            }
-
-                            Spacer()
-
-                            Text("0 h")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(ThemeColors.textPrimary)
-
-                            Button(action: {}) {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(ThemeColors.textDim)
-                                    .frame(width: 16, height: 16)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(8)
-                        .background(ThemeColors.surface)
-                        .cornerRadius(6)
-
-                        Text("Merged time is added together in every view. Sessions keep their own device.")
-                            .font(.system(size: 10))
-                            .foregroundColor(ThemeColors.textDim)
-                            .lineSpacing(2)
-                    }
-
-                    // ABOUT Section
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("ABOUT")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(ThemeColors.textDim)
-
-                        VStack(spacing: 6) {
-                            HStack {
-                                Text("Path")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(ThemeColors.textDim)
-                                Spacer()
-                                Text(appPath)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(ThemeColors.textPrimary)
-                            }
-
-                            Divider().background(ThemeColors.borderSubtle)
-
-                            HStack {
-                                Text("First tracked")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(ThemeColors.textDim)
-                                Spacer()
-                                Text(firstTrackedDate)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(ThemeColors.textPrimary)
-                            }
-                        }
-                        .padding(10)
-                        .background(ThemeColors.surface)
-                        .cornerRadius(6)
-                    }
-
-                    // Danger Actions
-                    HStack(spacing: 10) {
-                        Button(action: {
-                            showingStopConfirm = true
-                        }) {
-                            Text("Stop tracking")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(Color(red: 0.95, green: 0.45, blue: 0.45))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(ThemeColors.surfaceRaised)
-                                .cornerRadius(6)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button(action: {
-                            showingClearConfirm = true
-                        }) {
-                            Text("Clear history…")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(Color(red: 0.95, green: 0.45, blue: 0.45))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(ThemeColors.surfaceRaised)
-                                .cornerRadius(6)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.top, 4)
+            if showingMerge {
+                MergeView(state: state, mainAppId: appId) {
+                    showingMerge = false
+                    loadDetails()
                 }
-                .padding(16)
             }
         }
         .frame(width: 400, height: 640)
-        .background(ThemeColors.background)
-        .onAppear {
-            loadDetails()
-        }
-        .sheet(isPresented: $showingMerge) {
-            MergeView(state: state, mainAppId: appId) {
-                showingMerge = false
-                loadDetails()
-            }
-        }
+        .onAppear(perform: loadDetails)
         .alert("Stop tracking?", isPresented: $showingStopConfirm) {
             Button("Stop tracking", role: .destructive) {
-                let lib = MacAppLibrary(db: state.db)
-                try? lib.stopTracking(appId: appId)
+                try? MacAppLibrary(db: state.db).stopTracking(appId: appId)
                 state.refresh()
                 onDismiss()
             }
@@ -381,8 +74,7 @@ public struct AppSettingsSheet: View {
         }
         .alert("Clear history?", isPresented: $showingClearConfirm) {
             Button("Clear all history", role: .destructive) {
-                let lib = MacAppLibrary(db: state.db)
-                try? lib.clearHistory(appId: appId)
+                try? MacAppLibrary(db: state.db).clearHistory(appId: appId)
                 state.refresh()
                 loadDetails()
             }
@@ -392,28 +84,255 @@ public struct AppSettingsSheet: View {
         }
     }
 
+    private var header: some View {
+        HStack(spacing: 8) {
+            Button(action: onDismiss) {
+                IconView(.back, size: 16, weight: 1.8, color: ThemeColors.textPrimary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Text("App settings")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundColor(ThemeColors.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("Changes save as you make them")
+                .font(.system(size: 10))
+                .foregroundColor(ThemeColors.textMuted)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 50)
+    }
+
+    private var hero: some View {
+        HStack(spacing: 12) {
+            AppTile(name: displayName, png: state.iconCache.getCachedIcon(forAppId: appId, fallbackExePath: appPath), size: 48, radius: 12, fontSize: 22)
+            VStack(alignment: .leading, spacing: 4) {
+                TextField("App name", text: $displayName)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(ThemeColors.textPrimary)
+                    .fixedSize()
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(ThemeColors.accent, lineWidth: 1))
+                    .onChange(of: displayName) { _, _ in saveChanges() }
+                Text("\(Formatters.hours(totalSeconds)) tracked · since \(dateText("MMM yyyy"))")
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 6)
+    }
+
+    private func row<Trailing: View>(_ title: String, _ sub: String, divider: Bool = true, @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 13))
+                    .foregroundColor(ThemeColors.textPrimary)
+                Text(sub)
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            trailing()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(minHeight: 46)
+        .topRule(divider ? ThemeColors.borderSubtle : .clear)
+    }
+
+    private var settingsCard: some View {
+        VStack(spacing: 0) {
+            row("Game type", "Used by Year › Wrapped", divider: false) {
+                Segmented(
+                    options: [(AppKind.other, "Other"), (.game, "Game"), (.gacha, "Gacha")],
+                    selection: Binding(get: { kind }, set: { kind = $0; saveChanges() }),
+                    hPad: 9,
+                    radius: 7,
+                    fill: Tokens.well,
+                    border: ThemeColors.borderSubtle
+                )
+            }
+            row("Background", "Runs all day. Still counted, but ranked after your other apps") {
+                TSSwitch(isOn: Binding(get: { isBackground }, set: { isBackground = $0; saveChanges() }))
+            }
+            row("Icon", loaded ? "Detected from the app" : "") {
+                Text("Change")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(ThemeColors.accent)
+            }
+        }
+        .card()
+    }
+
+    private func deviceLabel(_ id: String) -> String {
+        if state.isLocalDevice(id) { return "Mac" }
+        return "PC · \(state.remoteDeviceName ?? "PC")"
+    }
+
+    private func bundleText(_ path: String) -> String {
+        if let bundle = MacIconCache.resolveBundlePath(from: path).flatMap({ Bundle(path: $0) }), let id = bundle.bundleIdentifier {
+            return id
+        }
+        return (path as NSString).lastPathComponent
+    }
+
+    private func mergedRow(name: String, device: String, path: String, seconds: Int64, role: String, divider: Bool, childId: Int64?) -> some View {
+        HStack(spacing: 10) {
+            DeviceMarker(isLocal: state.isLocalDevice(device), size: 7)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(name)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(ThemeColors.textPrimary)
+                Text(state.isLocalDevice(device) ? "Mac · \(bundleText(path)) · \(role)" : "\(deviceLabel(device)) · \(role)")
+                    .font(.system(size: 10))
+                    .foregroundColor(ThemeColors.textMuted)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Text(Formatters.hours(seconds))
+                .font(.system(size: 12))
+                .foregroundColor(ThemeColors.textDim)
+            if let childId {
+                Button(action: {
+                    try? MacAppLibrary(db: state.db).unmerge(appId: childId)
+                    state.refresh()
+                    loadDetails()
+                }) {
+                    IconView(.close, size: 10, weight: 1.6, color: ThemeColors.textMuted)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Unmerge")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .topRule(divider ? ThemeColors.borderSubtle : .clear)
+    }
+
+    private var mergedSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("MERGED APPS").caps(10)
+                Spacer()
+                Button(action: { showingMerge = true }) {
+                    Text("Merge…")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(ThemeColors.accent)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 4)
+
+            VStack(spacing: 0) {
+                mergedRow(
+                    name: displayName,
+                    device: deviceId,
+                    path: appPath,
+                    seconds: totalSeconds - mergedChildren.reduce(0) { $0 + $1.totalSeconds },
+                    role: "main app",
+                    divider: false,
+                    childId: nil
+                )
+                ForEach(mergedChildren) { child in
+                    mergedRow(name: child.displayName, device: child.deviceId, path: child.exePath, seconds: child.totalSeconds, role: "merged", divider: true, childId: child.id)
+                }
+            }
+            .card()
+
+            Text("Merged time is added together in every view. Sessions keep their own device.")
+                .font(.system(size: 10))
+                .foregroundColor(ThemeColors.textMuted)
+                .padding(.horizontal, 4)
+        }
+    }
+
+    private var aboutSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("ABOUT").caps(10).padding(.horizontal, 4)
+            VStack(spacing: 0) {
+                aboutRow("Path", MacIconCache.resolveBundlePath(from: appPath) ?? appPath, divider: false)
+                aboutRow("First tracked", dateText("d MMM yyyy"), divider: true)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .card()
+        }
+    }
+
+    private func aboutRow(_ label: String, _ value: String, divider: Bool) -> some View {
+        HStack {
+            Text(label).foregroundColor(ThemeColors.textMuted)
+            Spacer()
+            Text(value)
+                .foregroundColor(ThemeColors.textDim)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .font(.system(size: 11))
+        .padding(.vertical, 6)
+        .topRule(divider ? ThemeColors.borderSubtle : .clear)
+    }
+
+    private func dangerButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(ThemeColors.danger)
+                .frame(maxWidth: .infinity)
+                .frame(height: 32)
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Tokens.dangerBorder, lineWidth: 1))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var dangerBar: some View {
+        HStack(spacing: 10) {
+            dangerButton("Stop tracking") { showingStopConfirm = true }
+            dangerButton("Clear history…") { showingClearConfirm = true }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .topRule()
+    }
+
     private func loadDetails() {
         let lib = MacAppLibrary(db: state.db)
         do {
-            let stmt = try state.db.prepare("SELECT display_name, kind, is_background, exe_path, first_seen_utc FROM apps WHERE id = ?1;")
+            let stmt = try state.db.prepare("SELECT display_name, kind, is_background, exe_path, added_utc, device_id FROM apps WHERE id = ?1;")
             try stmt.bind(int64: appId, at: 1)
             if try stmt.step() {
-                if let name = stmt.columnText(at: 0), !name.isEmpty {
-                    self.displayName = name
-                }
-                self.kind = AppKind(rawValue: stmt.columnInt64(at: 1)) ?? .other
-                self.isBackground = stmt.columnInt64(at: 2) == 1
-                if let path = stmt.columnText(at: 3), !path.isEmpty {
-                    self.appPath = path
-                }
+                displayName = stmt.columnText(at: 0) ?? ""
+                kind = AppKind(rawValue: stmt.columnInt64(at: 1)) ?? .other
+                isBackground = stmt.columnInt64(at: 2) == 1
+                appPath = stmt.columnText(at: 3) ?? ""
+                addedUtc = stmt.columnInt64(at: 4)
+                deviceId = stmt.columnText(at: 5) ?? ""
             }
-            self.mergedChildren = try lib.getMergedChildren(mainId: appId)
-        } catch {}
+            mergedChildren = try lib.getMergedChildren(mainId: appId)
+            let usage = try state.db.prepare("SELECT COALESCE(SUM(seconds), 0) FROM daily_usage WHERE app_id = ?1 OR app_id IN (SELECT id FROM apps WHERE canonical_id = ?1);")
+            try usage.bind(int64: appId, at: 1)
+            if try usage.step() { totalSeconds = usage.columnInt64(at: 0) }
+            loaded = true
+        } catch {
+            NSLog("Failed to load app settings: \(error)")
+        }
     }
 
     private func saveChanges() {
-        let lib = MacAppLibrary(db: state.db)
-        try? lib.updateApp(appId: appId, displayName: displayName, kind: kind, isBackground: isBackground)
+        guard loaded, !displayName.isEmpty else { return }
+        try? MacAppLibrary(db: state.db).updateApp(appId: appId, displayName: displayName, kind: kind, isBackground: isBackground)
         state.refresh()
     }
 }

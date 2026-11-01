@@ -51,6 +51,7 @@ public final class AppState: ObservableObject {
     @Published public var yearOffset: Int = 0
     @Published public var yearSubView: YearSubView = .pace
     @Published public var wrappedCardIndex: Int = 0
+    @Published public var detailYear: Int = Calendar.current.component(.year, from: Date())
 
     @Published public var selectedAppDetailId: Int64?
     @Published public var showingAddApp: Bool = false
@@ -164,6 +165,16 @@ public final class AppState: ObservableObject {
         isLocalDevice(devId)
     }
 
+    /// Splits per-device seconds into this Mac and the other device. Only two devices are drawn.
+    public func deviceSplit(_ seconds: [String: Int64]?) -> (mac: Int64, pc: Int64) {
+        guard let seconds else { return (0, 0) }
+        let mac = seconds.filter { isLocalDevice($0.key) }.values.reduce(0, +)
+        let pc = seconds.filter { !isLocalDevice($0.key) }.values.max() ?? 0
+        return (mac, pc)
+    }
+
+    public var showsDeviceSplit: Bool { deviceScope == .all && hasMultipleDevices }
+
     public func refresh() {
         let ctx = makeUsageContext()
         do {
@@ -208,8 +219,7 @@ public final class AppState: ObservableObject {
             }
 
             if let appId = selectedAppDetailId {
-                let currentYear = Calendar.current.component(.year, from: Date())
-                appDetailResult = AppDetailQuery.run(context: ctx, appId: appId, year: currentYear)
+                appDetailResult = AppDetailQuery.run(context: ctx, appId: appId, year: detailYear)
             }
         } catch {
             NSLog("Error executing query for \(selectedTab): \(error)")
@@ -218,9 +228,8 @@ public final class AppState: ObservableObject {
 
     public func openAppDetail(appId: Int64) {
         self.selectedAppDetailId = appId
-        let ctx = makeUsageContext()
-        let currentYear = Calendar.current.component(.year, from: Date())
-        self.appDetailResult = AppDetailQuery.run(context: ctx, appId: appId, year: currentYear)
+        self.detailYear = Calendar.current.component(.year, from: Date())
+        self.appDetailResult = AppDetailQuery.run(context: makeUsageContext(), appId: appId, year: detailYear)
     }
 
     public func closeAppDetail() {
@@ -527,19 +536,15 @@ public final class AppState: ObservableObject {
     }
 
     public func saveWrappedImage() {
+        guard let result = wrappedResult else { return }
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "timesink-wrapped-\(wrappedResult?.year ?? 2026).png"
-        if panel.runModal() == .OK, let url = panel.url {
-            let img = NSImage(size: NSSize(width: 800, height: 600))
-            img.lockFocus()
-            NSColor(red: 0.067, green: 0.078, blue: 0.059, alpha: 1.0).setFill()
-            NSRect(x: 0, y: 0, width: 800, height: 600).fill()
-            img.unlockFocus()
-            if let tiff = img.tiffRepresentation,
-               let rep = NSBitmapImageRep(data: tiff),
-               let png = rep.representation(using: .png, properties: [:]) {
-                try? png.write(to: url)
-            }
+        panel.nameFieldStringValue = "timesink-wrapped-\(result.year).png"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let renderer = ImageRenderer(content: WrappedCardView(state: self, result: result, index: wrappedCardIndex).frame(width: 368, height: 470))
+        renderer.scale = 2
+        if let cg = renderer.cgImage,
+           let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+            try? png.write(to: url)
         }
     }
 

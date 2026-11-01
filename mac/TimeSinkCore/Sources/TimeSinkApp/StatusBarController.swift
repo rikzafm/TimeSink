@@ -7,6 +7,10 @@ public final class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
     private let popover: NSPopover
     private var eventMonitor: Any?
+    private var lastText = ""
+    public var showsTime = true {
+        didSet { applyTitle() }
+    }
 
     public init(popover: NSPopover) {
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -16,14 +20,39 @@ public final class StatusBarController: NSObject {
         if let button = statusItem.button {
             button.target = self
             button.action = #selector(togglePopover)
-            button.title = "TimeSink"
+            button.image = Self.clockImage()
+            button.imagePosition = .imageLeading
         }
     }
 
     public func updateTitle(_ text: String) {
-        if let button = statusItem.button {
-            button.title = text
+        lastText = text
+        applyTitle()
+    }
+
+    private func applyTitle() {
+        statusItem.button?.title = showsTime ? lastText : ""
+    }
+
+    /// The board's lime clock glyph.
+    private static func clockImage() -> NSImage {
+        let img = NSImage(size: NSSize(width: 12, height: 12), flipped: true) { _ in
+            let lime = NSColor(red: 0.776, green: 0.949, blue: 0.420, alpha: 1)
+            lime.setStroke()
+            let ring = NSBezierPath(ovalIn: NSRect(x: 1.5, y: 1.5, width: 9, height: 9))
+            ring.lineWidth = 1.6
+            ring.stroke()
+            let hand = NSBezierPath()
+            hand.move(to: NSPoint(x: 6, y: 3.5))
+            hand.line(to: NSPoint(x: 6, y: 6))
+            hand.line(to: NSPoint(x: 7.8, y: 7))
+            hand.lineWidth = 1.4
+            hand.lineCapStyle = .round
+            hand.stroke()
+            return true
         }
+        img.isTemplate = false
+        return img
     }
 
     public func updateTodayTotal(seconds: Int64) {

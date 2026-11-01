@@ -21,40 +21,30 @@ public struct DevicesSyncView: View {
     public var body: some View {
         VStack(spacing: 0) {
             // Header
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button(action: {
                     state.showingDevicesSync = false
                 }) {
                     HStack(spacing: 4) {
-                        Text("‹")
-                            .font(.system(size: 16, weight: .bold))
-                        Text("Settings")
-                            .font(.system(size: 13, weight: .medium))
+                        Text("‹").font(.system(size: 16))
+                        Text("Settings").font(.system(size: 13))
                     }
                     .foregroundColor(ThemeColors.accent)
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .frame(height: 28)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-
-                Spacer()
 
                 Text("Devices and sync")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(ThemeColors.textPrimary)
-                    .offset(x: -30)
-
-                Spacer()
+                    .frame(maxWidth: .infinity)
+                    .padding(.trailing, 76)
             }
-            .frame(height: 44)
             .padding(.horizontal, 10)
-            .background(ThemeColors.surface)
-            .overlay(
-                Rectangle()
-                    .frame(height: 1)
-                    .foregroundColor(ThemeColors.border),
-                alignment: .bottom
-            )
+            .frame(height: 44)
+            .bottomRule()
 
             // Scrollable Content
             ScrollView(.vertical, showsIndicators: false) {
@@ -73,27 +63,22 @@ public struct DevicesSyncView: View {
 
                             Spacer()
 
-                            Toggle("", isOn: Binding(
+                            TSSwitch(isOn: Binding(
                                 get: { state.syncEnabled },
                                 set: { state.setSyncEnabled($0) }
                             ))
-                            .toggleStyle(SwitchToggleStyle(tint: ThemeColors.accent))
-                            .labelsHidden()
                         }
 
                         // Path Box
                         HStack(spacing: 8) {
-                            Image(systemName: "folder")
-                                .font(.system(size: 12))
-                                .foregroundColor(ThemeColors.textMuted)
+                            IconView(.folder, size: 14, weight: 1.5, color: ThemeColors.textMuted)
 
-                            Text(state.syncFolder.isEmpty ? "No sync folder selected" : state.syncFolder)
+                            Text(state.syncFolder.isEmpty ? "No sync folder selected" : (state.syncFolder as NSString).abbreviatingWithTildeInPath)
                                 .font(.system(size: 11))
                                 .foregroundColor(state.syncFolder.isEmpty ? ThemeColors.textMuted : ThemeColors.textDim)
                                 .lineLimit(1)
-                                .truncationMode(.middle)
-
-                            Spacer()
+                                .truncationMode(.tail)
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
                             Button(action: chooseSyncFolder) {
                                 Text("Change…")
@@ -104,26 +89,15 @@ public struct DevicesSyncView: View {
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
-                        .background(ThemeColors.background)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(ThemeColors.border, lineWidth: 1)
-                        )
+                        .card(fill: Tokens.well, radius: 8)
                     }
                     .padding(12)
-                    .background(ThemeColors.surface)
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(ThemeColors.border, lineWidth: 1)
-                    )
+                    .card()
 
                     // 2. Devices Section
                     VStack(alignment: .leading, spacing: 6) {
                         Text("DEVICES")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(ThemeColors.textMuted)
+                            .caps(10)
                             .padding(.horizontal, 4)
 
                         let devices = state.readDevices()
@@ -134,17 +108,11 @@ public struct DevicesSyncView: View {
                                 deviceRowView(dev: dev, index: index, activeRemoteCount: activeRemoteCount)
 
                                 if index < devices.count - 1 {
-                                    Divider()
-                                        .background(ThemeColors.borderSubtle)
+                                    Rectangle().fill(ThemeColors.borderSubtle).frame(height: 1)
                                 }
                             }
                         }
-                        .background(ThemeColors.surface)
-                        .cornerRadius(10)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(ThemeColors.border, lineWidth: 1)
-                        )
+                        .card()
                     }
 
                     // 3. Cross-device Merge Hint
@@ -152,16 +120,16 @@ public struct DevicesSyncView: View {
                     if !matchingApps.isEmpty {
                         HStack(spacing: 10) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("\(matchingApps.count) apps exist on both devices")
+                                Text("\(matchingApps.count) app\(matchingApps.count == 1 ? "" : "s") exist\(matchingApps.count == 1 ? "s" : "") on both devices")
                                     .font(.system(size: 12, weight: .semibold))
                                     .foregroundColor(ThemeColors.warning)
 
-                                Text("Merge \(matchingApps.prefix(3).joined(separator: ", ")) so they count as one app.")
+                                Text("Merge \(listText(matchingApps)) so they count as one app.")
                                     .font(.system(size: 11))
                                     .foregroundColor(ThemeColors.textDim)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-
-                            Spacer()
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
                             Button(action: {
                                 state.showingDevicesSync = false
@@ -172,7 +140,7 @@ public struct DevicesSyncView: View {
                                     .font(.system(size: 12, weight: .semibold))
                                     .foregroundColor(ThemeColors.background)
                                     .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
+                                    .frame(height: 28)
                                     .background(ThemeColors.warning)
                                     .cornerRadius(7)
                             }
@@ -180,12 +148,7 @@ public struct DevicesSyncView: View {
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
-                        .background(ThemeColors.surface)
-                        .cornerRadius(10)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(ThemeColors.warning.opacity(0.6), lineWidth: 1)
-                        )
+                        .card(fill: Tokens.warnBg, border: Tokens.warnBorder)
                     }
 
                     // 4. Footnote
@@ -195,7 +158,9 @@ public struct DevicesSyncView: View {
                         .lineSpacing(3)
                         .padding(.horizontal, 2)
                 }
-                .padding(14)
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
             }
 
             // Footer
@@ -211,22 +176,16 @@ public struct DevicesSyncView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(ThemeColors.background)
                         .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
+                        .frame(height: 28)
                         .background(ThemeColors.accent)
                         .cornerRadius(7)
                 }
                 .buttonStyle(.plain)
                 .disabled(isSyncing)
             }
-            .frame(height: 44)
             .padding(.horizontal, 14)
-            .background(ThemeColors.surface)
-            .overlay(
-                Rectangle()
-                    .frame(height: 1)
-                    .foregroundColor(ThemeColors.border),
-                alignment: .top
-            )
+            .frame(height: 44)
+            .topRule()
         }
         .frame(width: 400, height: 640)
         .background(ThemeColors.background)
@@ -238,104 +197,84 @@ public struct DevicesSyncView: View {
         }
     }
 
+    private func listText(_ names: [String]) -> String {
+        let shown = Array(names.prefix(3))
+        guard shown.count > 1 else { return shown.first ?? "" }
+        return shown.dropLast().joined(separator: ", ") + " and " + shown.last!
+    }
+
+    private func platformLine(_ dev: DeviceRow) -> String {
+        if dev.isLocal {
+            let v = ProcessInfo.processInfo.operatingSystemVersion
+            let running = state.todayResult?.runningCount ?? 0
+            return "macOS \(v.majorVersion) · \(running) app\(running == 1 ? "" : "s") running"
+        }
+        return dev.platform == "macos" ? "macOS" : "Windows"
+    }
+
+    private func statusLine(_ dev: DeviceRow) -> String {
+        if dev.isLocal {
+            return state.lastSyncUtc > 0 ? "Wrote its file \(timeAgo(state.lastSyncUtc))" : "Ready to write file"
+        }
+        if dev.state == "forgotten" { return "Sync paused · forgotten" }
+        if let imp = dev.lastImportUtc {
+            return "Read its file \(timeAgo(imp)) · \(Formatters.grouped(dev.totalHours))h"
+        }
+        return state.syncFolder.contains("OneDrive") ? "Waiting for OneDrive to download its file" : "Waiting for its file to download"
+    }
+
     @ViewBuilder
     private func deviceRowView(dev: DeviceRow, index: Int, activeRemoteCount: Int) -> some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 12) {
-                // Platform Badge
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(ThemeColors.surfaceRaised)
-                        .frame(width: 34, height: 34)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(ThemeColors.border, lineWidth: 1)
-                        )
+        let status = deviceStatus(dev: dev, index: index, activeRemoteCount: activeRemoteCount)
+        HStack(spacing: 12) {
+            Text(dev.platform == "macos" ? "Mac" : "Win")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(dev.platform == "macos" ? ThemeColors.deviceA : Tokens.winBlue)
+                .frame(width: 34, height: 34)
+                .card(fill: ThemeColors.barBackground, border: ThemeColors.border, radius: 9)
 
-                    Text(dev.platform == "macos" ? "Mac" : "Win")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(dev.isLocal ? ThemeColors.deviceA : ThemeColors.deviceB)
-                }
-
-                // Info Lines
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(dev.name + (dev.isLocal ? " · this Mac" : ""))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(ThemeColors.textPrimary)
-
-                    Text("\(dev.platform == "macos" ? "macOS" : "Windows") · \(dev.appCount) apps")
-                        .font(.system(size: 11))
-                        .foregroundColor(ThemeColors.textMuted)
-
-                    let line2Text: String = {
-                        if dev.isLocal {
-                            return state.lastSyncUtc > 0 ? "Wrote its file \(timeAgo(state.lastSyncUtc))" : "Ready to write file"
-                        } else if dev.state == "forgotten" {
-                            return "Sync paused · forgotten"
-                        } else if let imp = dev.lastImportUtc {
-                            return "Read its file \(timeAgo(imp)) · \(dev.totalHours)h"
-                        } else if state.syncState == "pending" {
-                            return "Waiting for OneDrive to download its file"
-                        } else {
-                            return "Waiting for file to download"
-                        }
-                    }()
-
-                    Text(line2Text)
-                        .font(.system(size: 11))
-                        .foregroundColor(ThemeColors.textMuted)
-                }
-
-                Spacer()
-
-                // Status Indicator
-                VStack(alignment: .trailing, spacing: 4) {
-                    let status = deviceStatus(dev: dev, index: index, activeRemoteCount: activeRemoteCount)
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(status.color)
-                            .frame(width: 6, height: 6)
-                        Text(status.text)
-                            .font(.system(size: 11))
-                            .foregroundColor(status.color)
-                    }
-
-                    // Actions
-                    HStack(spacing: 8) {
-                        Button("Rename") {
-                            renamingDevice = dev
-                            renameText = dev.name
-                            showingRenameSheet = true
-                        }
-                        .font(.system(size: 11))
-                        .foregroundColor(ThemeColors.textMuted)
-                        .buttonStyle(.plain)
-
-                        if !dev.isLocal {
-                            if dev.state == "active" {
-                                Button("Forget") {
-                                    state.forgetDevice(deviceId: dev.deviceId)
-                                }
-                                .font(.system(size: 11))
-                                .foregroundColor(ThemeColors.textMuted)
-                                .buttonStyle(.plain)
-                            }
-
-                            Button("Delete history…") {
-                                deletingDevice = dev
-                                deleteConfirmText = ""
-                                showingDeleteSheet = true
-                            }
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(ThemeColors.danger)
-                            .buttonStyle(.plain)
-                        }
-                    }
+            VStack(alignment: .leading, spacing: 0) {
+                Text(dev.name + (dev.isLocal ? " · this Mac" : ""))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(ThemeColors.textPrimary)
+                Text(platformLine(dev))
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
                     .padding(.top, 2)
-                }
+                Text(statusLine(dev))
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 5) {
+                Circle().fill(status.color).frame(width: 6, height: 6)
+                Text(status.text)
+                    .font(.system(size: 11))
+                    .foregroundColor(status.color)
+                    .lineLimit(1)
             }
         }
         .padding(12)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button("Rename…") {
+                renamingDevice = dev
+                renameText = dev.name
+                showingRenameSheet = true
+            }
+            if !dev.isLocal {
+                if dev.state == "active" {
+                    Button("Forget") { state.forgetDevice(deviceId: dev.deviceId) }
+                }
+                Button("Delete history…", role: .destructive) {
+                    deletingDevice = dev
+                    deleteConfirmText = ""
+                    showingDeleteSheet = true
+                }
+            }
+        }
     }
 
     private struct StatusInfo {

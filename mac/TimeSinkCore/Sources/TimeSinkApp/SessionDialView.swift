@@ -1,235 +1,191 @@
 import SwiftUI
 import TimeSinkCore
 
+/// One ring of the 24-hour dial, 12 am at the top.
+private struct DialRing: View {
+    let diameter: CGFloat
+    let width: CGFloat
+    let segments: [(CGFloat, CGFloat)]
+    let color: Color
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Tokens.track, lineWidth: width)
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
+                Circle()
+                    .trim(from: seg.0, to: seg.1)
+                    .stroke(color, style: StrokeStyle(lineWidth: width, lineCap: .butt))
+                    .rotationEffect(.degrees(-90))
+            }
+        }
+        .frame(width: diameter - width, height: diameter - width)
+    }
+}
+
 public struct SessionDialView: View {
     public let appRow: TodayAppRow
     public let dayStartUtc: Int64
     public let dayEndUtc: Int64
+    public let nowUtc: Int64
     public let isAllScope: Bool
     public let localDeviceId: String
 
-    public init(appRow: TodayAppRow, dayStartUtc: Int64, dayEndUtc: Int64, isAllScope: Bool, localDeviceId: String = "") {
+    public init(appRow: TodayAppRow, dayStartUtc: Int64, dayEndUtc: Int64, nowUtc: Int64, isAllScope: Bool, localDeviceId: String = "") {
         self.appRow = appRow
         self.dayStartUtc = dayStartUtc
         self.dayEndUtc = dayEndUtc
+        self.nowUtc = nowUtc
         self.isAllScope = isAllScope
         self.localDeviceId = localDeviceId
     }
 
-    private func isLocalSession(_ deviceId: String) -> Bool {
-        if deviceId.isEmpty || localDeviceId.isEmpty { return true }
-        return deviceId.caseInsensitiveCompare(localDeviceId) == .orderedSame
+    private var appColor: Color { Tokens.appColor(appRow.name) }
+    private var dayLength: CGFloat { CGFloat(max(1, dayEndUtc - dayStartUtc)) }
+    private var nowFraction: CGFloat { min(1, CGFloat(nowUtc - dayStartUtc) / dayLength) }
+    private var average: Double { appRow.sevenDayAverageSeconds ?? 0 }
+    private var longest: Int64 { appRow.sessions.map(\.seconds).max() ?? 0 }
+
+    private func isLocal(_ deviceId: String) -> Bool {
+        deviceId.isEmpty || localDeviceId.isEmpty || deviceId.caseInsensitiveCompare(localDeviceId) == .orderedSame
     }
 
-    private var longestSessionSeconds: Int64 {
-        appRow.sessions.map(\.seconds).max() ?? appRow.seconds
-    }
-
-    private var percentVsAverage: Int {
-        if let avg = appRow.sevenDayAverageSeconds, avg > 0 {
-            let pct = (Double(appRow.seconds) - avg) / avg * 100.0
-            return Int(pct)
+    private func segments(_ sessions: [TodaySession]) -> [(CGFloat, CGFloat)] {
+        sessions.map {
+            (CGFloat(max(0, $0.startUtc - dayStartUtc)) / dayLength, min(1, CGFloat($0.endUtc - dayStartUtc) / dayLength))
         }
-        return 0
+    }
+
+    private var percentText: String {
+        guard average > 0 else { return "—" }
+        let pct = Int(((Double(appRow.seconds) - average) / average * 100).rounded())
+        return "\(pct >= 0 ? "+" : "")\(pct)%"
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 20) {
-                // Circular Gauge
-                ZStack {
-                    // Top 12 am marker
-                    VStack {
-                        Text("12 am")
-                            .font(.system(size: 8))
-                            .foregroundColor(ThemeColors.textDim)
-                        Spacer()
-                    }
-                    .frame(width: 90, height: 110)
-
-                    if isAllScope {
-                        // Outer Ring: Mac
-                        Circle()
-                            .stroke(ThemeColors.barBackground, lineWidth: 6)
-                            .frame(width: 86, height: 86)
-
-                        // Middle Ring: PC
-                        Circle()
-                            .stroke(ThemeColors.barBackground, lineWidth: 6)
-                            .frame(width: 72, height: 72)
-
-                        // Outer ring sessions (Mac)
-                        ForEach(Array(appRow.sessions.filter { isLocalSession($0.deviceId) }.enumerated()), id: \.offset) { _, session in
-                            let dayLength = max(1, dayEndUtc - dayStartUtc)
-                            let startFrac = Double(max(0, session.startUtc - dayStartUtc)) / Double(dayLength)
-                            let durFrac = Double(session.seconds) / Double(dayLength)
-
-                            Circle()
-                                .trim(from: CGFloat(startFrac), to: CGFloat(min(1.0, startFrac + durFrac)))
-                                .stroke(ThemeColors.deviceA, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                                .rotationEffect(.degrees(-90))
-                                .frame(width: 86, height: 86)
-                        }
-
-                        // Middle ring sessions (PC)
-                        ForEach(Array(appRow.sessions.filter { !isLocalSession($0.deviceId) }.enumerated()), id: \.offset) { _, session in
-                            let dayLength = max(1, dayEndUtc - dayStartUtc)
-                            let startFrac = Double(max(0, session.startUtc - dayStartUtc)) / Double(dayLength)
-                            let durFrac = Double(session.seconds) / Double(dayLength)
-
-                            Circle()
-                                .trim(from: CGFloat(startFrac), to: CGFloat(min(1.0, startFrac + durFrac)))
-                                .stroke(ThemeColors.deviceB, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                                .rotationEffect(.degrees(-90))
-                                .frame(width: 72, height: 72)
-                        }
-                    } else {
-                        // Single ring (This Mac)
-                        Circle()
-                            .stroke(ThemeColors.barBackground, lineWidth: 8)
-                            .frame(width: 84, height: 84)
-
-                        ForEach(Array(appRow.sessions.enumerated()), id: \.offset) { _, session in
-                            let dayLength = max(1, dayEndUtc - dayStartUtc)
-                            let startFrac = Double(max(0, session.startUtc - dayStartUtc)) / Double(dayLength)
-                            let durFrac = Double(session.seconds) / Double(dayLength)
-
-                            Circle()
-                                .trim(from: CGFloat(startFrac), to: CGFloat(min(1.0, startFrac + durFrac)))
-                                .stroke(ThemeColors.accent, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                                .rotationEffect(.degrees(-90))
-                                .frame(width: 84, height: 84)
-                        }
-                    }
-
-                    // Inside Gauge Text: "+9% vs 7-day avg"
-                    VStack(spacing: 1) {
-                        let pct = percentVsAverage
-                        Text("\(pct >= 0 ? "+" : "")\(pct)%")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(pct >= 0 ? ThemeColors.accent : ThemeColors.warning)
-
-                        Text("vs 7-day avg")
-                            .font(.system(size: 8))
-                            .foregroundColor(ThemeColors.textDim)
-                    }
-                }
-                .frame(width: 96, height: 96)
-
-                // Stats on Right Side
-                if isAllScope {
-                    let localSessions = appRow.sessions.filter { isLocalSession($0.deviceId) }
-                    let remoteSessions = appRow.sessions.filter { !isLocalSession($0.deviceId) }
-                    let localSecs = localSessions.reduce(0) { $0 + $1.seconds }
-                    let remoteSecs = remoteSessions.reduce(0) { $0 + $1.seconds }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 4) {
-                                Circle().fill(ThemeColors.deviceA).frame(width: 5, height: 5)
-                                Text("MAC · OUTER RING")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(ThemeColors.textDim)
-                            }
-                            Text("\(Formatters.hoursMinutes(seconds: localSecs)) · \(localSessions.count) sessions")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(ThemeColors.textPrimary)
-                        }
-
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 4) {
-                                RoundedRectangle(cornerRadius: 1).fill(ThemeColors.deviceB).frame(width: 5, height: 5)
-                                Text("PC · MIDDLE RING")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(ThemeColors.textDim)
-                            }
-                            Text("\(Formatters.hoursMinutes(seconds: remoteSecs)) · \(remoteSessions.count) session\(remoteSessions.count == 1 ? "" : "s")")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(ThemeColors.textPrimary)
-                        }
-
-                        if appRow.onBothSeconds > 0 {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("OVERLAP")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(ThemeColors.textDim)
-                                Text("\(Formatters.hoursMinutes(seconds: appRow.onBothSeconds)) on both")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(ThemeColors.textPrimary)
-                            }
-                        }
-
-                        if let avg = appRow.sevenDayAverageSeconds, avg > 0 {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("7-DAY AVG")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(ThemeColors.textDim)
-                                Text(Formatters.hoursMinutes(seconds: Int64(avg)))
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(ThemeColors.textPrimary)
-                            }
-                        }
-                    }
-                } else {
-                    // This Mac stats
-                    VStack(alignment: .leading, spacing: 6) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("SESSIONS")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(ThemeColors.textDim)
-                            Text("\(appRow.sessions.count)")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(ThemeColors.textPrimary)
-                        }
-
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("LONGEST")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(ThemeColors.textDim)
-                            Text(Formatters.hoursMinutes(seconds: longestSessionSeconds))
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(ThemeColors.textPrimary)
-                        }
-
-                        if let avg = appRow.sevenDayAverageSeconds, avg > 0 {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("7-DAY AVG")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(ThemeColors.textDim)
-                                Text(Formatters.hoursMinutes(seconds: Int64(avg)))
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(ThemeColors.textPrimary)
-                            }
-                        }
-                    }
-                }
-
-                Spacer()
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 14) {
+                if isAllScope { dualDial } else { singleDial }
+                if isAllScope { dualStats } else { singleStats }
+                Spacer(minLength: 0)
             }
+            if !isAllScope { sessionChips }
+        }
+        .padding(.top, 4)
+        .padding(.horizontal, 4)
+    }
 
-            // Session ranges below dial (e.g. 8:04 am → 11:45 am · 3h 41m    1:10 pm → now)
-            if !appRow.sessions.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(Array(appRow.sessions.prefix(2).enumerated()), id: \.offset) { _, s in
-                        let startStr = formatSessionTime(s.startUtc)
-                        let endStr = s.isOpen ? "now" : formatSessionTime(s.endUtc)
-                        Text("\(startStr) → \(endStr) · \(Formatters.hoursMinutes(seconds: s.seconds))")
-                            .font(.system(size: 10))
-                            .foregroundColor(ThemeColors.textMuted)
-                    }
-                }
+    private func center(_ size: CGFloat) -> some View {
+        VStack(spacing: 1) {
+            Text(percentText)
+                .font(.system(size: size, weight: .bold))
+                .foregroundColor(ThemeColors.accent)
+            Text("vs 7-day avg")
+                .font(.system(size: 9))
+                .foregroundColor(ThemeColors.textMuted)
+        }
+    }
+
+    private func nowDot(_ size: CGFloat, inset: CGFloat) -> some View {
+        Circle()
+            .fill(ThemeColors.accent)
+            .overlay(Circle().strokeBorder(ThemeColors.surfaceActive, lineWidth: 2))
+            .frame(width: 12, height: 12)
+            .offset(y: -(size / 2 - inset))
+            .rotationEffect(.degrees(Double(nowFraction) * 360))
+    }
+
+    private func tick(_ size: CGFloat, top: CGFloat, length: CGFloat) -> some View {
+        Rectangle()
+            .fill(ThemeColors.textPrimary)
+            .frame(width: 2, height: length)
+            .offset(y: -(size / 2 - top - length / 2))
+            .rotationEffect(.degrees(average / 86400 * 360))
+    }
+
+    private var totalFraction: CGFloat { min(1, CGFloat(appRow.seconds) / 86400) }
+
+    private var singleDial: some View {
+        ZStack {
+            DialRing(diameter: 150, width: 11, segments: segments(appRow.sessions), color: appColor)
+            DialRing(diameter: 116, width: 11, segments: [(0, totalFraction)], color: appColor.opacity(0.32))
+            if average > 0 { tick(150, top: 12, length: 22) }
+            nowDot(150, inset: 6)
+            center(20)
+            Text("12 am")
+                .font(.system(size: 9))
+                .foregroundColor(ThemeColors.textMuted)
+                .offset(y: -82)
+        }
+        .frame(width: 150, height: 150)
+        .padding(.top, 6)
+    }
+
+    private var dualDial: some View {
+        let mac = appRow.sessions.filter { isLocal($0.deviceId) }
+        let pc = appRow.sessions.filter { !isLocal($0.deviceId) }
+        return ZStack {
+            DialRing(diameter: 156, width: 10, segments: segments(mac), color: ThemeColors.deviceA)
+            DialRing(diameter: 130, width: 10, segments: segments(pc), color: ThemeColors.deviceB)
+            DialRing(diameter: 104, width: 10, segments: [(0, totalFraction)], color: appColor.opacity(0.32))
+            if average > 0 { tick(156, top: 24, length: 16) }
+            nowDot(156, inset: 5)
+            center(18)
+        }
+        .frame(width: 156, height: 156)
+    }
+
+    private func stat(_ label: String, _ value: String, size: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(label).caps(9)
+            Text(value)
+                .font(.system(size: size, weight: .bold))
+                .foregroundColor(ThemeColors.textPrimary)
+                .lineLimit(1)
+        }
+    }
+
+    private var singleStats: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            stat("SESSIONS", "\(appRow.sessions.count)", size: 16)
+            stat("LONGEST", Formatters.paddedHM(longest), size: 16)
+            stat("7-DAY AVG", average > 0 ? Formatters.paddedHM(Int64(average)) : "—", size: 16)
+        }
+    }
+
+    private func deviceLine(_ sessions: [TodaySession]) -> String {
+        let total = sessions.reduce(0) { $0 + $1.seconds }
+        return "\(Formatters.paddedHM(total)) · \(sessions.count) session\(sessions.count == 1 ? "" : "s")"
+    }
+
+    private var dualStats: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 6) {
+                Circle().fill(ThemeColors.deviceA).frame(width: 8, height: 8)
+                stat("MAC · OUTER RING", deviceLine(appRow.sessions.filter { isLocal($0.deviceId) }), size: 13)
+            }
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 2).fill(ThemeColors.deviceB).frame(width: 8, height: 8)
+                stat("PC · MIDDLE RING", deviceLine(appRow.sessions.filter { !isLocal($0.deviceId) }), size: 13)
+            }
+            stat("OVERLAP", "\(Formatters.paddedHM(appRow.onBothSeconds)) on both", size: 13)
+            stat("7-DAY AVG", average > 0 ? Formatters.paddedHM(Int64(average)) : "—", size: 13)
+        }
+    }
+
+    private var sessionChips: some View {
+        HStack(spacing: 6) {
+            ForEach(Array(appRow.sessions.prefix(2).enumerated()), id: \.offset) { i, s in
+                let text = s.isOpen
+                    ? "\(Formatters.clock12(s.startUtc)) → now"
+                    : "\(Formatters.clock12(s.startUtc)) → \(Formatters.clock12(s.endUtc)) · \(Formatters.paddedHM(s.seconds))"
+                Text(text)
+                    .font(.system(size: 10))
+                    .foregroundColor(i == 0 ? appColor : ThemeColors.textDim)
+                    .lineLimit(1)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(i == 0 ? appColor : ThemeColors.border, lineWidth: 1))
             }
         }
-        .padding(12)
-        .background(ThemeColors.surface)
-        .cornerRadius(8)
-    }
-
-    private func formatSessionTime(_ utc: Int64) -> String {
-        let df = DateFormatter()
-        df.dateFormat = "h:mm a"
-        let date = Date(timeIntervalSince1970: TimeInterval(utc))
-        return df.string(from: date).lowercased()
     }
 }
-
