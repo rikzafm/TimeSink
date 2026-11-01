@@ -1,6 +1,6 @@
 # SwiftUI Add app, per-app settings and Merge
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 6)
 Blocked by: 21
 Design: design/mac/Add, AddApps, AddTracked, AddChoose, AppSettings and Merge (each `.dc.html`)

@@ -10,13 +10,17 @@ public struct PopoverRootView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Main Header
-            HeaderView(state: state)
-
-            if state.selectedAppDetailId != nil {
+            if state.showingAddApp {
+                AddAppView(state: state) {
+                    state.showingAddApp = false
+                }
+            } else if state.selectedAppDetailId != nil {
                 // App Detail View takes over content
                 AppDetailView(state: state)
             } else {
+                // Main Header
+                HeaderView(state: state)
+
                 // Tab Selection Bar
                 TabBarView(state: state)
 
