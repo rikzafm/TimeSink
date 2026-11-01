@@ -57,7 +57,8 @@ public class DeviceSummaryRow : WrapPanel
                 VerticalAlignment = VerticalAlignment.Center,
                 FontSize = 11,
             };
-            txt.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextSoft");
+            txt.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+            txt.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
             devItem.Children.Add(txt);
             Children.Add(devItem);
         }
@@ -72,6 +73,7 @@ public class DeviceSummaryRow : WrapPanel
                 FontSize = 11,
             };
             bothText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+            bothText.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
             Children.Add(bothText);
         }
     }

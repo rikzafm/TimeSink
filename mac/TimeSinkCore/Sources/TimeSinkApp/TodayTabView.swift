@@ -60,7 +60,7 @@ public struct TodayTabView: View {
                             HStack(alignment: .firstTextBaseline, spacing: 4) {
                                 Text(Formatters.hoursMinutes(seconds: result.uptimeSeconds))
                                     .font(.system(size: 32, weight: .bold, design: .rounded))
-                                    .foregroundColor(ThemeColors.textPrimary)
+                                    .foregroundColor(ThemeColors.accent)
 
                                 Text("47s")
                                     .font(.system(size: 15, weight: .medium))

@@ -89,6 +89,22 @@ public partial class App : Application
             }, null, keep ? Timeout.InfiniteTimeSpan : StandbyTimeout, true);
         }
 
+#if DEBUG
+        if (Environment.GetEnvironmentVariable("TS_SCREENSHOT_SETTINGS") is { Length: > 0 } outPath)
+        {
+            window.Loaded += async (_, _) =>
+            {
+                await Task.Delay(500);
+                var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                    (int)window.ActualWidth, (int)window.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                rtb.Render(window);
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
+                using (var fs = File.Create(outPath)) encoder.Save(fs);
+                Shutdown();
+            };
+        }
+#endif
         window.Show();
     }
 

@@ -29,6 +29,7 @@ public sealed class WeekColumns : FrameworkElement
     public static readonly DependencyProperty LocalDeviceIdProperty = Reg<string?>(nameof(LocalDeviceId));
     public static readonly DependencyProperty DeviceABrushProperty = Reg<Brush?>(nameof(DeviceABrush));
     public static readonly DependencyProperty DeviceBBrushProperty = Reg<Brush?>(nameof(DeviceBBrush));
+    public static readonly DependencyProperty DeviceAPastBrushProperty = Reg<Brush?>(nameof(DeviceAPastBrush));
 
     public static readonly DependencyProperty LabelBrushProperty = Reg<Brush?>(nameof(LabelBrush));
     public static readonly DependencyProperty AverageBrushProperty = Reg<Brush?>(nameof(AverageBrush));
@@ -90,6 +91,7 @@ public sealed class WeekColumns : FrameworkElement
     public string? LocalDeviceId { get => (string?)GetValue(LocalDeviceIdProperty); set => SetValue(LocalDeviceIdProperty, value); }
     public Brush? DeviceABrush { get => (Brush?)GetValue(DeviceABrushProperty); set => SetValue(DeviceABrushProperty, value); }
     public Brush? DeviceBBrush { get => (Brush?)GetValue(DeviceBBrushProperty); set => SetValue(DeviceBBrushProperty, value); }
+    public Brush? DeviceAPastBrush { get => (Brush?)GetValue(DeviceAPastBrushProperty); set => SetValue(DeviceAPastBrushProperty, value); }
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -103,7 +105,7 @@ public sealed class WeekColumns : FrameworkElement
         var baseY = h - LetterH;
         var numbers = TryFindResource("FontFamily.Numbers") as FontFamily;
         var counted = days.Where(d => !d.IsFuture && d.Seconds > 0).ToList();
-        if (counted.Count > 0 && AverageBrush is { } avg)
+        if (DeviceScope != TimeSink.Core.Devices.DeviceScope.All && counted.Count > 0 && AverageBrush is { } avg)
         {
             var y = baseY - counted.Average(d => d.Seconds) / max * plotH;
             dc.DrawLine(new Pen(avg, 1) { DashStyle = new DashStyle([3, 3], 0) }, new Point(0, y), new Point(w, y));
@@ -146,7 +148,7 @@ public sealed class WeekColumns : FrameworkElement
                     void DrawDeviceBar(OverlapBarGeometry g)
                     {
                         if (g.Height <= 0) return;
-                        var b = g.IsDeviceA ? (DeviceABrush ?? (d.IsToday ? CurrentBrush : ColumnBrush))
+                        var b = g.IsDeviceA ? (d.IsToday ? (CurrentBrush ?? DeviceABrush) : (DeviceAPastBrush ?? DeviceABrush ?? ColumnBrush))
                                             : (DeviceBBrush ?? ColumnBrush);
                         dc.DrawRoundedRectangle(b, null, new Rect(g.X, baseY - g.Height, g.Width, g.Height), 3, 3);
                     }
@@ -169,7 +171,8 @@ public sealed class WeekColumns : FrameworkElement
             var text = d.IsToday ? CurrentBrush : LabelBrush;
             if (!d.IsFuture && d.Seconds > 0)
             {
-                var value = ChartSupport.Text(this, UsageText.HoursMinutes(d.Seconds), numbers, FontSize, text, FontWeights.Normal);
+                var label = DeviceScope == TimeSink.Core.Devices.DeviceScope.All ? UsageText.CompactHoursMinutes(d.Seconds) : UsageText.HoursMinutes(d.Seconds);
+                var value = ChartSupport.Text(this, label, numbers, FontSize, text, FontWeights.Normal);
                 dc.DrawText(value, new Point(x + (colW - value.Width) / 2, baseY - topH - value.Height - 2));
             }
             var day = ChartSupport.Text(this, CultureInfo.CurrentCulture.DateTimeFormat.GetAbbreviatedDayName(d.Date.DayOfWeek), null, FontSize, text,

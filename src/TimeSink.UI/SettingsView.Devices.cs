@@ -27,6 +27,7 @@ public sealed partial class SettingsView
         CloseDevicesSync();
         var view = BuildDevicesSyncView();
         _devicesSyncOverlay = view;
+        Grid.SetRowSpan(view, 2);
         Panel.SetZIndex(view, 5);
         Children.Add(view);
     }

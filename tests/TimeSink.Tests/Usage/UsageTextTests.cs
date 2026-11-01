@@ -63,6 +63,16 @@ public class UsageTextTests
     public void HoursMinutes_is_Xh_YYm(long seconds, string expected) => UsageText.HoursMinutes(seconds).Should().Be(expected);
 
     [Theory]
+    [InlineData(0, "0m")]
+    [InlineData(2700, "45m")]
+    [InlineData(3600, "1h")]
+    [InlineData(21600, "6h")]
+    [InlineData(22500, "6h 15m")]
+    [InlineData(25200, "7h")]
+    public void CompactHoursMinutes_omits_zero_minutes_and_keeps_nonzero(long seconds, string expected) =>
+        UsageText.CompactHoursMinutes(seconds).Should().Be(expected);
+
+    [Theory]
     [InlineData(38 * 60, "+38m")]
     [InlineData(-90 * 60, "-1h 30m")]
     [InlineData(0, "+0m")]

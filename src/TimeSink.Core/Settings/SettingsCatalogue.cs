@@ -33,32 +33,32 @@ public static class SettingsCatalogue
 
     public static readonly IReadOnlyList<SettingRow> Rows =
     [
-        new("startup", General, "Start with Windows", "Launch TimeSink quietly when you sign in.", SettingKind.Switch, Setting.Startup),
+        new("startup", General, "Open at login", "Starts quietly in the menu bar", SettingKind.Switch, Setting.Startup),
         new("weekStart", General, "Week starts on", "Used by the Week tab and weekly totals.", SettingKind.Segmented, Setting.WeekStartsOn, Options(Setting.WeekStartsOn)),
 
         new("pauseOnSleep", Tracking, "Pause while the PC sleeps", "Time stops counting while the computer is asleep.", SettingKind.Switch, Setting.PauseOnSleep),
         new("countWhenLocked", Tracking, "Keep counting when locked", "Apps still running behind the lock screen keep adding up.", SettingKind.Switch, Setting.CountWhenLocked),
-        new("minSession", Tracking, "Ignore short sessions", "Sessions shorter than this are dropped.", SettingKind.Segmented, Setting.MinSessionSeconds, Options(Setting.MinSessionSeconds, v => v + "s")),
+        new("minSession", Tracking, "Ignore short sessions", "Shorter than this are dropped", SettingKind.Segmented, Setting.MinSessionSeconds, Options(Setting.MinSessionSeconds, v => v + "s")),
         new("suggestApps", Tracking, "Suggest apps I use", "Offer running apps you have not added yet.", SettingKind.Switch, Setting.SuggestApps),
 
         new("steamAutoTrack", Tracking, "Track Steam games", "Add newly installed Steam games automatically.", SettingKind.Switch, Setting.SteamAutoTrack),
 
-        new("theme", Appearance, "Theme", "Follows Windows when set to System.", SettingKind.Segmented, Setting.Theme, Options(Setting.Theme)),
+        new("theme", Appearance, "Theme", "Follows Windows when set to System", SettingKind.Segmented, Setting.Theme, Options(Setting.Theme)),
         new("accent", Appearance, "Accent", "The highlight colour used across the app.", SettingKind.Segmented, Setting.Accent, Options(Setting.Accent)),
         new("compact", Appearance, "Compact lists", "Tighter rows in app lists.", SettingKind.Switch, Setting.Compact),
         new("appIcon", Appearance, "App icon", "How TimeSink looks in the tray.", SettingKind.Icon, Setting.AppIcon),
 
         new("devicesSync", DevicesAndSync, "Sync with other devices", "Works with OneDrive, Google Drive or any synced folder.", SettingKind.Button),
-        new("deviceName", DevicesAndSync, "This device is called", "Shown on combined reports.", SettingKind.Info),
+        new("deviceName", DevicesAndSync, "This PC is called", "Shown on combined reports", SettingKind.Info),
 
         new("goalAlerts", Notifications, "Goal and limit alerts", "A notification when a goal or limit is reached.", SettingKind.Switch, Setting.GoalAlerts),
         new("weeklySummary", Notifications, "Weekly summary", "A short recap at the start of each week.", SettingKind.Switch, Setting.WeeklySummary),
 
-        new("backupMode", BackupAndData, "Automatic backup", "Keeps the last 7 plus one per month.", SettingKind.Segmented, Setting.BackupMode, Options(Setting.BackupMode)),
+        new("backupMode", BackupAndData, "Automatic backup", "Keeps the last 7 plus one per month", SettingKind.Segmented, Setting.BackupMode, Options(Setting.BackupMode)),
         new("backupNow", BackupAndData, "Back up now", "", SettingKind.Button),
-        new("restore", BackupAndData, "Restore from backup", "Merge or replace from a backup file.", SettingKind.Button),
-        new("export", BackupAndData, "Export all data", "CSV or JSON.", SettingKind.Button),
-        new("deleteHistory", BackupAndData, "Delete all history", "Removes every recorded session. Your app list stays.", SettingKind.Button, Danger: true),
+        new("restore", BackupAndData, "Restore from backup", "Replace or merge data from a .timesink file", SettingKind.Button),
+        new("export", BackupAndData, "Export data", "Export sessions and daily totals as CSV or JSON", SettingKind.Button),
+        new("deleteHistory", BackupAndData, "Delete all history", "Apps and settings are kept", SettingKind.Button, Danger: true),
 
         new("resourceUse", About, "Resource use", "What the tracking Agent costs right now.", SettingKind.Info),
         new("trackingSince", About, "Tracking since", "", SettingKind.Info),

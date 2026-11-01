@@ -109,11 +109,14 @@ public partial class MonthView : UserControl, ILiveView
         var scope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
         if (scope == TimeSink.Core.Devices.DeviceScope.All)
         {
+            Total.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
             TotalCaption.Text = Str(StringKeys.MonthCombinedAll);
+            DeviceSummary.LoadDeviceInfo(_dbPath);
             DeviceSummary.Update(r.DeviceTotals, r.OnBothSeconds, _live?.LocalDeviceId);
         }
         else
         {
+            Total.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
             TotalCaption.Text = Str(StringKeys.MonthCombined);
             DeviceSummary.Visibility = Visibility.Collapsed;
         }

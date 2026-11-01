@@ -51,7 +51,7 @@ public struct WeekTabView: View {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
                             Text(Formatters.hoursMinutes(seconds: result.totalSeconds))
                                 .font(.system(size: 32, weight: .bold, design: .rounded))
-                                .foregroundColor(ThemeColors.textPrimary)
+                                .foregroundColor(ThemeColors.accent)
 
                             let delta = result.totalSeconds - result.previousWeekTotalSeconds
                             if delta != 0 || result.previousWeekTotalSeconds > 0 {

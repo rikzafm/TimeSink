@@ -89,9 +89,12 @@ public partial class FlyoutWindow : Window
             b.IsChecked = tab == initialTab;
             b.Checked += (_, _) => Select(tab, persist: true);
         }
+        UpdateFooterStatus();
+        Live.Changed += () => Dispatcher.InvokeAsync(UpdateFooterStatus);
         Select(initialTab, persist: false);
         Closed += (_, _) => _live?.Dispose();
 #if DEBUG
+        if (Environment.GetEnvironmentVariable("TS_OPENSETTINGS") == "1") Loaded += (_, _) => ToggleSettings();
         if (Environment.GetEnvironmentVariable("TS_OPENICON") == "1") Loaded += (_, _) => { ToggleSettings(); _settings!.OpenIconPicker(); }; // test aid
         if (Environment.GetEnvironmentVariable("TS_OPENADD") == "1") Loaded += (_, _) => ShowAddApp(); // test aid (decision 115)
 #endif
@@ -164,7 +167,39 @@ public partial class FlyoutWindow : Window
         Live.DeviceScope = scope;
         SerialWriter.Run(() => AppSettings.ForFile(_dbPath).Set(Setting.DeviceScope, scope));
         UpdateDeviceScopeButtons();
+        UpdateFooterStatus();
         Live.NotifyDataChanged();
+    }
+
+    private static string Str(string key, params object[] args) => TimeText.Str(key, args);
+
+    private void UpdateFooterStatus()
+    {
+        var updated = Str(StringKeys.FooterUpdatedJustNow);
+        var syncOn = AppSettings.ForFile(_dbPath).Get(Setting.SyncEnabled);
+        if (syncOn || Live.DeviceScope == TimeSink.Core.Devices.DeviceScope.All)
+        {
+            var lastExport = AppSettings.ForFile(_dbPath).Get(Setting.SyncLastExportUtc);
+            var lastImport = AppSettings.ForFile(_dbPath).Get(Setting.SyncLastImportUtc);
+            var lastSyncUtc = Math.Max(lastExport, lastImport);
+            if (lastSyncUtc > 0)
+            {
+                var ago = TimeAgo(lastSyncUtc);
+                FooterStatusText.Text = $"{updated} · {Str(StringKeys.FooterSynced, ago)}";
+                return;
+            }
+        }
+        FooterStatusText.Text = updated;
+    }
+
+    private static string TimeAgo(long utcSeconds)
+    {
+        if (utcSeconds <= 0) return "never";
+        var span = DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeSeconds(utcSeconds);
+        if (span.TotalSeconds < 60) return "just now";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes} min ago";
+        if (span.TotalHours < 24) return $"{(int)span.TotalHours} h ago";
+        return $"{(int)span.TotalDays} d ago";
     }
 
     private void UpdateDeviceScopeButtons()
@@ -223,7 +258,7 @@ public partial class FlyoutWindow : Window
 
     public void OpenAddAppTracked()
     {
-        if (_settings is not null && ReferenceEquals(Body.Content, _settings))
+        if (_settings is not null && (ReferenceEquals(Overlay.Content, _settings) || ReferenceEquals(Body.Content, _settings)))
             ToggleSettings();
         ShowAddApp();
         _addApp?.ShowTracked();
@@ -246,31 +281,18 @@ public partial class FlyoutWindow : Window
     private SettingsView? _settings;
     private ShellTab _current;
 
-    // The Settings page replaces the tab body (and hides the tab bar); the header button becomes "Back".
+    // The Settings page covers the full flyout as an overlay with its own header (< Back, Settings).
     private void ToggleSettings()
     {
-        if (_settings is not null && ReferenceEquals(Body.Content, _settings))
+        if (_settings is not null && (ReferenceEquals(Overlay.Content, _settings) || ReferenceEquals(Body.Content, _settings)))
         {
             if (_settings.TryCloseSubView()) return;
-            TabStrip.Visibility = Visibility.Visible;
-            GamesButton.Visibility = Visibility.Visible;
-            var hasOther = CheckHasOtherDevice(_dbPath) || AppSettings.ForFile(_dbPath).Get(Setting.SyncEnabled);
-            UpdateDeviceScopeVisibility(hasOther);
-            Body.Content = _bodies[_current];
-            if (_rendered) StartBody(_bodies[_current]); // leaving the tree stopped it (Unloaded); resume ticking and refresh
-            SettingsButton.Content = new TextBlock { FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"), Text = "", FontSize = 16 };
-            SettingsButton.SetResourceReference(FrameworkElement.ToolTipProperty, "Str.Settings");
+            SetOverlay(null);
             return;
         }
-        _settings ??= new SettingsView(_themes, _dbPath);
-        TabStrip.Visibility = Visibility.Collapsed;
-        GamesButton.Visibility = Visibility.Collapsed;
-        UpdateDeviceScopeVisibility(false);
-        Body.Content = _settings;
-        SettingsButton.SetResourceReference(ContentControl.ContentProperty, "Str.Back");
-        SettingsButton.ToolTip = null;
+        _settings ??= new SettingsView(_themes, _dbPath, () => ToggleSettings());
+        SetOverlay(_settings);
     }
-
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         StartupTrace.Mark("sourceInit");

@@ -58,7 +58,7 @@ public struct MonthTabView: View {
                                     .foregroundColor(ThemeColors.textDim)
                                 Text(Formatters.hoursMinutes(seconds: result.totalSeconds))
                                     .font(.system(size: 26, weight: .bold, design: .rounded))
-                                    .foregroundColor(ThemeColors.textPrimary)
+                                    .foregroundColor(ThemeColors.accent)
                             }
 
                             Spacer()

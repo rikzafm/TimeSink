@@ -34,6 +34,7 @@ public sealed class SessionStrip : FrameworkElement
         var bestGap = double.MaxValue;
         for (var i = 0; i < Segments.Count; i++)
         {
+            if (Segments[i].End <= Segments[i].Start) continue;
             var x0 = Math.Clamp(Segments[i].Start, 0, 1) * ActualWidth;
             var x1 = Math.Max(x0 + ActualHeight, Math.Clamp(Segments[i].End, 0, 1) * ActualWidth);
             var gap = p.X < x0 ? x0 - p.X : p.X > x1 ? p.X - x1 : 0;
@@ -80,6 +81,7 @@ public sealed class SessionStrip : FrameworkElement
         for (var i = 0; i < Segments.Count; i++)
         {
             var (s, e) = Segments[i];
+            if (e <= s) continue;
             var x0 = Math.Clamp(s, 0, 1) * w;
             var x1 = Math.Clamp(e, 0, 1) * w;
             var dim = HighlightIndex >= 0 && i != HighlightIndex;

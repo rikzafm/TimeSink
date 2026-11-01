@@ -264,7 +264,26 @@ public partial class TodayView : UserControl, ILiveView
         var nowLocalHour = live ? TimeText.Local(r.NowUtc).Hour : -1;
         Chart.DeviceScope = scope;
         Chart.LocalDeviceId = _live?.LocalDeviceId;
-        LegendOverlap.Visibility = scope == TimeSink.Core.Devices.DeviceScope.All ? Visibility.Visible : Visibility.Collapsed;
+        if (scope == TimeSink.Core.Devices.DeviceScope.All)
+        {
+            LegendAppsOpen.Visibility = Visibility.Collapsed;
+            LegendDeviceA.Visibility = Visibility.Visible;
+            LegendDeviceB.Visibility = Visibility.Visible;
+            LegendOverlap.Visibility = Visibility.Visible;
+            LegendDeviceAText.Text = Str(StringKeys.LegendDeviceOn, GetDeviceName(_live?.LocalDeviceId, isLocal: true));
+            LegendDeviceBText.Text = Str(StringKeys.LegendDeviceOn, GetOtherDeviceName(_live?.LocalDeviceId));
+            LegendAsleepText.Text = Str(StringKeys.LegendAsleepGeneric);
+            StatTilesGrid.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            LegendAppsOpen.Visibility = Visibility.Visible;
+            LegendDeviceA.Visibility = Visibility.Collapsed;
+            LegendDeviceB.Visibility = Visibility.Collapsed;
+            LegendOverlap.Visibility = Visibility.Collapsed;
+            LegendAsleepText.Text = Str(StringKeys.LegendAsleep);
+            StatTilesGrid.Visibility = Visibility.Visible;
+        }
         Chart.Hours = r.Hours;
         BuildAxis();
 
@@ -445,6 +464,12 @@ public partial class TodayView : UserControl, ILiveView
             {
                 status.Text = Str(StringKeys.StatusRunning, UsageText.HoursMinutes(r.NowUtc + elapsed - row.RunningSinceUtc!.Value));
             }
+        }
+        else if (scope == TimeSink.Core.Devices.DeviceScope.All && row.Sessions.FirstOrDefault(s => s.IsOpen && !IsLocalDevice(s.DeviceId)) is { } remoteOpen)
+        {
+            var remoteDevName = GetDeviceName(remoteOpen.DeviceId, isLocal: false);
+            status.Text = Str(StringKeys.StatusRunningOn, remoteDevName, UsageText.HoursMinutes(r.NowUtc + elapsed - remoteOpen.StartUtc));
+            status.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
         }
         else
         {

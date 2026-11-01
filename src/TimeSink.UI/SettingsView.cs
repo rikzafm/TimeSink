@@ -3,7 +3,10 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Threading;
+using TimeSink.Core.Data;
+using TimeSink.Core.Devices;
 using TimeSink.Core.Icons;
 using TimeSink.Core.Ipc;
 using TimeSink.Core.Settings;
@@ -21,40 +24,68 @@ public sealed partial class SettingsView : Grid
     private readonly string _dbPath;
     private readonly ThemeService _themes;
     private readonly Autostart? _autostart;
+    private readonly Action? _close;
     private readonly Dictionary<string, TextBlock> _info = new();
+    private readonly Dictionary<string, TextBlock> _values = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly AgentSampler _sampler = new();
     private string _theme, _accent;
     private bool _compact;
+    private TextBlock? _syncDesc;
+    private TextBlock? _syncStatusText;
+    private TextBlock? _deviceNameText;
+    private Action<string>? _showIcon;
 
-    public SettingsView(ThemeService themes, string dbPath)
+    public SettingsView(ThemeService themes, string dbPath) : this(themes, dbPath, null) { }
+
+    public SettingsView(ThemeService themes, string dbPath, Action? close)
     {
         _themes = themes;
         _dbPath = dbPath;
+        _close = close;
         _theme = SettingsCatalogue.Read(dbPath, SettingsCatalogue.Find("theme"));
         _accent = SettingsCatalogue.Read(dbPath, SettingsCatalogue.Find("accent"));
         _compact = SettingsCatalogue.Read(dbPath, SettingsCatalogue.Find("compact")) == "true";
         _autostart = TryCreateAutostart();
 
+        SetResourceReference(Panel.BackgroundProperty, "Brush.Surface");
+
+        RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Header (44px)
+        RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Content
+
+        var header = BuildHeader();
+        Grid.SetRow(header, 0);
+        Children.Add(header);
+
         _scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
         _scroll.Focusable = false;
-        var root = new StackPanel { Margin = new Thickness(16, 8, 16, 16) };
+
+        var content = new StackPanel { Margin = new Thickness(14, 8, 14, 20) };
         foreach (var section in SettingsCatalogue.Sections)
         {
-            var header = new TextBlock { Text = section.ToUpperInvariant(), Margin = new Thickness(0, 14, 0, 4), FontWeight = FontWeights.SemiBold };
-            header.SetResourceReference(TextBlock.StyleProperty, "Caption");
-            header.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
-            root.Children.Add(header);
-            foreach (var row in SettingsCatalogue.InSection(section)) root.Children.Add(BuildRow(row));
+            var rows = SettingsCatalogue.InSection(section).ToList();
+            if (rows.Count == 0) continue;
+            content.Children.Add(BuildSection(section, rows));
         }
-        _scroll.Content = root;
+
+        _scroll.Content = content;
+        Grid.SetRow(_scroll, 1);
         Children.Add(_scroll);
 
         RefreshInfo();
         RefreshLastBackup();
-        Loaded += (_, _) => { RefreshInfo(); _timer.Start(); };
+        Loaded += (_, _) => { RefreshInfo(); _timer.Start(); Focus(); };
         Unloaded += (_, _) => _timer.Stop();
         _timer.Tick += (_, _) => RefreshInfo();
+
+        Focusable = true;
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Escape || Keyboard.FocusedElement is TextBox) return;
+            e.Handled = true;
+            if (TryCloseSubView()) return;
+            _close?.Invoke();
+        };
     }
 
     private static Autostart? TryCreateAutostart()
@@ -63,39 +94,177 @@ public sealed partial class SettingsView : Grid
         return exe is null ? null : new Autostart(new RegistryRunKey(), exe);
     }
 
-    private UIElement BuildRow(SettingRow row)
+    private UIElement BuildHeader()
     {
-        var grid = new Grid { Margin = new Thickness(0, 6, 0, 6) };
+        var header = new Grid { Height = 44, Margin = new Thickness(10, 0, 10, 0) };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var backBtn = new Button
+        {
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(6, 4, 6, 4),
+        };
+        backBtn.SetResourceReference(StyleProperty, "LinkButton");
+
+        var backPanel = new StackPanel { Orientation = Orientation.Horizontal };
+        var chevron = new TextBlock
+        {
+            Text = "‹",
+            FontSize = 16,
+            FontWeight = FontWeights.Bold,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, -1, 4, 0),
+        };
+        chevron.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
+
+        var backText = new TextBlock
+        {
+            Text = "Back",
+            FontSize = 13,
+            FontWeight = FontWeights.Medium,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        backText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
+
+        backPanel.Children.Add(chevron);
+        backPanel.Children.Add(backText);
+        backBtn.Content = backPanel;
+        backBtn.Click += (_, _) =>
+        {
+            if (TryCloseSubView()) return;
+            _close?.Invoke();
+        };
+        Grid.SetColumn(backBtn, 0);
+        header.Children.Add(backBtn);
+
+        var title = new TextBlock
+        {
+            Text = "Settings",
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 14,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        title.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+        Grid.SetColumn(title, 0);
+        Grid.SetColumnSpan(title, 3);
+        header.Children.Add(title);
+
+        var border = new Border
+        {
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Child = header,
+        };
+        border.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
+        return border;
+    }
+
+    private UIElement BuildSection(string section, List<SettingRow> rows)
+    {
+        var sectionPanel = new StackPanel { Margin = new Thickness(0, 6, 0, 8) };
+
+        var header = new TextBlock
+        {
+            Text = section.ToUpperInvariant(),
+            Margin = new Thickness(6, 4, 0, 6),
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 10,
+        };
+        header.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+        sectionPanel.Children.Add(header);
+
+        var card = new Border
+        {
+            CornerRadius = new CornerRadius(10),
+            BorderThickness = new Thickness(1),
+            ClipToBounds = true,
+        };
+        card.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+        card.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
+
+        var rowsPanel = new StackPanel();
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var isFirst = i == 0;
+            rowsPanel.Children.Add(BuildCardRow(rows[i], isFirst));
+        }
+
+        card.Child = rowsPanel;
+        sectionPanel.Children.Add(card);
+        return sectionPanel;
+    }
+
+    private UIElement BuildCardRow(SettingRow row, bool isFirst)
+    {
+        var rowBorder = new Border
+        {
+            Padding = new Thickness(12, 8, 12, 8),
+            BorderThickness = new Thickness(0, isFirst ? 0 : 1, 0, 0),
+        };
+        rowBorder.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
+
+        var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
-        var label = new TextBlock { Text = row.Label, TextWrapping = TextWrapping.Wrap };
-        label.SetResourceReference(TextBlock.StyleProperty, "Caption");
-        label.SetResourceReference(TextBlock.ForegroundProperty, row.Danger ? "Brush.Danger" : "Brush.Text");
-        text.Children.Add(label);
-        if (row.Description.Length > 0 || row.Id == "backupNow")
+        var textPanel = new StackPanel
         {
-            var desc = new TextBlock { Text = row.Description, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 0) };
-            desc.SetResourceReference(TextBlock.StyleProperty, "Caption");
-            desc.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
-            if (row.Id == "backupNow") _backupDesc = desc;
-            text.Children.Add(desc);
-        }
-        grid.Children.Add(text);
-
-        var control = row.Kind switch
-        {
-            SettingKind.Switch => BuildSwitch(row),
-            SettingKind.Segmented => BuildSegmented(row),
-            SettingKind.Button => BuildButton(row),
-            SettingKind.Icon => BuildIconRow(row),
-            _ => BuildInfo(row),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0),
         };
+
+        var label = new TextBlock
+        {
+            Text = row.Label,
+            FontSize = 13,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        label.SetResourceReference(TextBlock.ForegroundProperty, row.Danger ? "Brush.Danger" : "Brush.Text");
+        textPanel.Children.Add(label);
+
+        if (!string.IsNullOrEmpty(row.Description) || row.Id == "backupNow" || row.Id == "devicesSync")
+        {
+            var desc = new TextBlock
+            {
+                Text = row.Description,
+                FontSize = 11,
+                Margin = new Thickness(0, 2, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+            };
+            desc.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+            if (row.Id == "backupNow") _backupDesc = desc;
+            if (row.Id == "devicesSync") _syncDesc = desc;
+            textPanel.Children.Add(desc);
+        }
+        grid.Children.Add(textPanel);
+
+        var control = BuildControl(row);
         control.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(control, 1);
         grid.Children.Add(control);
-        return grid;
+
+        rowBorder.Child = grid;
+        return rowBorder;
+    }
+
+    private FrameworkElement BuildControl(SettingRow row)
+    {
+        return row.Id switch
+        {
+            "devicesSync" => BuildDevicesSyncControl(row),
+            "deviceName" => BuildDeviceNameControl(row),
+            _ => row.Kind switch
+            {
+                SettingKind.Switch => BuildSwitch(row),
+                SettingKind.Segmented => BuildPicker(row),
+                SettingKind.Button => BuildButton(row),
+                SettingKind.Icon => BuildIconRow(row),
+                _ => BuildInfo(row),
+            }
+        };
     }
 
     private FrameworkElement BuildSwitch(SettingRow row)
@@ -119,60 +288,300 @@ public sealed partial class SettingsView : Grid
         return toggle;
     }
 
-    // The Run key is the truth for Start with Windows (the installer may have written it); fall back to the stored flag.
     private bool StartupIsOn(SettingRow row)
     {
         try { if (_autostart is not null) return _autostart.IsEnabled; } catch (Exception ex) when (ex is System.Security.SecurityException or IOException) { }
         return SettingsCatalogue.Read(_dbPath, row) == "true";
     }
 
-    private FrameworkElement BuildSegmented(SettingRow row)
+    private FrameworkElement BuildPicker(SettingRow row)
     {
         var current = SettingsCatalogue.Read(_dbPath, row);
-        var panel = new StackPanel { Orientation = Orientation.Horizontal };
-        foreach (var o in row.OptionList)
+        var valueText = new TextBlock
         {
-            var b = new RadioButton { Content = o.Label, GroupName = row.Id, IsChecked = o.Value == current };
-            b.SetResourceReference(StyleProperty, "SegButton");
-            b.Checked += (_, _) => { Persist(row, o.Value); ApplyAppearance(row, o.Value); };
-            panel.Children.Add(b);
+            Text = FormatOptionLabel(row, current),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        valueText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+        _values[row.Id] = valueText;
+
+        var chevron = new TextBlock
+        {
+            Text = "›",
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(4, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        chevron.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        panel.Children.Add(valueText);
+        panel.Children.Add(chevron);
+
+        var btn = new Button
+        {
+            Content = panel,
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(4, 2, 4, 2),
+        };
+        btn.SetResourceReference(StyleProperty, "LinkButton");
+
+        void OpenMenu()
+        {
+            var menu = new ContextMenu();
+            menu.SetResourceReference(Control.BackgroundProperty, "Brush.Surface");
+            menu.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");
+            menu.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
+
+            var currentVal = SettingsCatalogue.Read(_dbPath, row);
+            foreach (var opt in row.OptionList)
+            {
+                var item = new MenuItem
+                {
+                    Header = FormatOptionLabel(row, opt.Value),
+                    IsChecked = opt.Value == currentVal,
+                    IsCheckable = true,
+                };
+                item.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
+                var optVal = opt.Value;
+                item.Click += (_, _) =>
+                {
+                    Persist(row, optVal);
+                    ApplyAppearance(row, optVal);
+                    valueText.Text = FormatOptionLabel(row, optVal);
+                };
+                menu.Items.Add(item);
+            }
+            menu.PlacementTarget = btn;
+            menu.Placement = PlacementMode.Bottom;
+            menu.IsOpen = true;
         }
-        return panel;
+
+        btn.Click += (_, _) => OpenMenu();
+        return btn;
     }
 
-    // The App icon row shows the applied icon and opens the picker over the Settings page.
+    private static string FormatOptionLabel(SettingRow row, string value)
+    {
+        if (row.Id == "weekStart")
+        {
+            return value switch
+            {
+                "Mon" => "Monday",
+                "Sun" => "Sunday",
+                _ => value
+            };
+        }
+        if (row.Id == "minSession")
+        {
+            return $"{value.TrimEnd('s')} s";
+        }
+        return row.OptionList.FirstOrDefault(o => o.Value == value)?.Label ?? value;
+    }
+
+    private FrameworkElement BuildDevicesSyncControl(SettingRow row)
+    {
+        var statusText = new TextBlock
+        {
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        statusText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+        _syncStatusText = statusText;
+
+        var chevron = new TextBlock
+        {
+            Text = "›",
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(4, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        chevron.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        panel.Children.Add(statusText);
+        panel.Children.Add(chevron);
+
+        var btn = new Button
+        {
+            Content = panel,
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(4, 2, 4, 2),
+        };
+        btn.SetResourceReference(StyleProperty, "LinkButton");
+        btn.Click += (_, _) => OpenDevicesSync();
+
+        UpdateSyncStatus();
+        return btn;
+    }
+
+    private void UpdateSyncStatus()
+    {
+        var syncOn = AppSettings.ForFile(_dbPath).Get(Setting.SyncEnabled);
+        var syncFolder = AppSettings.ForFile(_dbPath).Get(Setting.SyncFolder);
+
+        if (_syncStatusText is not null)
+        {
+            _syncStatusText.Text = syncOn ? "On" : "Off";
+        }
+
+        if (_syncDesc is not null)
+        {
+            if (!syncOn)
+            {
+                _syncDesc.Text = "Off";
+            }
+            else if (string.IsNullOrWhiteSpace(syncFolder))
+            {
+                _syncDesc.Text = "No sync folder set";
+            }
+            else
+            {
+                var parent = Path.GetFileName(Path.GetDirectoryName(syncFolder.TrimEnd('\\', '/')));
+                var folderName = Path.GetFileName(syncFolder.TrimEnd('\\', '/'));
+                if (!string.IsNullOrEmpty(parent) && parent.Contains("OneDrive", StringComparison.OrdinalIgnoreCase))
+                    _syncDesc.Text = $"OneDrive · {folderName} folder";
+                else if (!string.IsNullOrEmpty(parent) && parent.Contains("Google", StringComparison.OrdinalIgnoreCase))
+                    _syncDesc.Text = $"Google Drive · {folderName} folder";
+                else if (!string.IsNullOrEmpty(folderName))
+                    _syncDesc.Text = $"{folderName} folder";
+                else
+                    _syncDesc.Text = syncFolder;
+            }
+        }
+    }
+
+    private FrameworkElement BuildDeviceNameControl(SettingRow row)
+    {
+        var nameText = new TextBlock
+        {
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        nameText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+        _deviceNameText = nameText;
+
+        var chevron = new TextBlock
+        {
+            Text = "›",
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(4, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        chevron.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        panel.Children.Add(nameText);
+        panel.Children.Add(chevron);
+
+        var btn = new Button
+        {
+            Content = panel,
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(4, 2, 4, 2),
+        };
+        btn.SetResourceReference(StyleProperty, "LinkButton");
+        btn.Click += (_, _) =>
+        {
+            var localDev = LoadLocalDevice();
+            if (localDev is not null) PromptRenameDevice(localDev, RefreshInfo);
+        };
+
+        UpdateDeviceName();
+        return btn;
+    }
+
+    private DeviceRecord? LoadLocalDevice()
+    {
+        try
+        {
+            using var db = Db.Open(_dbPath);
+            var devInfo = DeviceInfoService.Load(_dbPath);
+            var local = devInfo.FirstOrDefault(kv => kv.Value.IsLocal);
+            var name = !string.IsNullOrWhiteSpace(local.Value.Name) ? local.Value.Name : Environment.MachineName;
+            var id = local.Key ?? "local";
+            return new DeviceRecord(id, name, "Windows", true, DateTimeOffset.UtcNow, null, null, "active");
+        }
+        catch
+        {
+            return new DeviceRecord("local", Environment.MachineName, "Windows", true, DateTimeOffset.UtcNow, null, null, "active");
+        }
+    }
+
+    private void UpdateDeviceName()
+    {
+        if (_deviceNameText is null) return;
+        var name = AppSettings.ForFile(_dbPath).Get(Setting.DeviceName);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            var devInfo = DeviceInfoService.Load(_dbPath);
+            name = devInfo.FirstOrDefault(kv => kv.Value.IsLocal).Value.Name;
+        }
+        _deviceNameText.Text = !string.IsNullOrWhiteSpace(name) ? name : Environment.MachineName;
+    }
+
     private FrameworkElement BuildIconRow(SettingRow row)
     {
-        var name = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
-        name.SetResourceReference(TextBlock.StyleProperty, "Caption");
         var thumb = new ContentControl { VerticalAlignment = VerticalAlignment.Center };
+        var name = new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0),
+            FontSize = 12,
+        };
+        name.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+
+        var chevron = new TextBlock
+        {
+            Text = "›",
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(4, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        chevron.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(thumb);
         panel.Children.Add(name);
+        panel.Children.Add(chevron);
 
         void Show(string id)
         {
-            thumb.Content = IconPickerView.Thumb(id, 24, new Thickness(0));
+            thumb.Content = IconPickerView.Thumb(id, 20, new Thickness(0));
             name.Text = IconCatalogue.Find(id).Name;
         }
         Show(SettingsCatalogue.Read(_dbPath, row));
         _showIcon = Show;
 
-        var b = new Button { Content = panel, Cursor = System.Windows.Input.Cursors.Hand };
+        var b = new Button
+        {
+            Content = panel,
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(4, 2, 4, 2),
+        };
         b.SetResourceReference(StyleProperty, "LinkButton");
         b.Click += (_, _) => OpenIconPicker();
         return b;
     }
 
-    private Action<string>? _showIcon;
-
     public void OpenIconPicker()
     {
         var pipe = PipeNames.For(Environment.GetEnvironmentVariable("TIMESINK_DB"));
-        Children.Add(new IconPickerView(_dbPath, pipe, id => _showIcon?.Invoke(id)));
+        var picker = new IconPickerView(_dbPath, pipe, id => _showIcon?.Invoke(id));
+        Grid.SetRowSpan(picker, 2);
+        Panel.SetZIndex(picker, 5);
+        Children.Add(picker);
     }
 
-    /// <summary>The flyout's Back button closes the icon picker first, if it is open. False when there was nothing to close.</summary>
     public bool TryClosePicker()
     {
         if (Children.OfType<IconPickerView>().LastOrDefault() is not { } picker) return false;
@@ -182,6 +591,7 @@ public sealed partial class SettingsView : Grid
 
     public bool TryCloseSubView()
     {
+        if (_overlay is not null) { CloseDialog(); return true; }
         if (TryClosePicker()) return true;
         if (TryCloseDevicesSync()) return true;
         return false;
@@ -189,12 +599,29 @@ public sealed partial class SettingsView : Grid
 
     private FrameworkElement BuildButton(SettingRow row)
     {
-        var b = new Button { Content = Str(row.Id switch { "devicesSync" => SettingsStrings.DevicesSyncButton, "backupNow" => SettingsStrings.BackUp, "restore" => SettingsStrings.ChooseFile, "export" => SettingsStrings.ExportButton, "installFolder" => SettingsStrings.OpenButton, "uninstall" => SettingsStrings.UninstallButton, _ => SettingsStrings.DeleteButton }) };
+        string label = row.Id switch
+        {
+            "backupNow" => "Run",
+            "restore" => "Choose file…",
+            "export" => "Export…",
+            "installFolder" => "Open",
+            "uninstall" => "Uninstall…",
+            _ => "Delete…"
+        };
+
+        var b = new Button
+        {
+            Content = label,
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 12,
+            Padding = new Thickness(6, 3, 6, 3),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         b.SetResourceReference(StyleProperty, "LinkButton");
-        if (row.Danger) b.SetResourceReference(Control.ForegroundProperty, "Brush.Danger");
+        b.SetResourceReference(Control.ForegroundProperty, row.Danger ? "Brush.Danger" : "Brush.Accent");
+
         switch (row.Id)
         {
-            case "devicesSync": b.Click += (_, _) => OpenDevicesSync(); break;
             case "backupNow": b.Click += (_, _) => BackUpNow(b); break;
             case "restore": b.Click += (_, _) => ChooseRestoreFile(); break;
             case "export": b.Click += (_, _) => ChooseExport(); break;
@@ -207,9 +634,13 @@ public sealed partial class SettingsView : Grid
 
     private FrameworkElement BuildInfo(SettingRow row)
     {
-        var t = new TextBlock { HorizontalAlignment = HorizontalAlignment.Right };
-        t.SetResourceReference(TextBlock.StyleProperty, "Caption");
-        t.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextSoft");
+        var t = new TextBlock
+        {
+            HorizontalAlignment = HorizontalAlignment.Right,
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        t.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
         _info[row.Id] = t;
         return t;
     }
@@ -238,16 +669,8 @@ public sealed partial class SettingsView : Grid
             Task.Run(() => TrackingSummary.Read(path).Describe())
                 .ContinueWith(t => ts.Text = t.Result, TaskScheduler.FromCurrentSynchronizationContext());
         }
-        if (_info.TryGetValue("deviceName", out var dn))
-        {
-            var name = AppSettings.ForFile(_dbPath).Get(Setting.DeviceName);
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                var devInfo = DeviceInfoService.Load(_dbPath);
-                name = devInfo.FirstOrDefault(kv => kv.Value.IsLocal).Value.Name;
-            }
-            dn.Text = !string.IsNullOrWhiteSpace(name) ? name : Environment.MachineName;
-        }
+        UpdateSyncStatus();
+        UpdateDeviceName();
     }
 }
 

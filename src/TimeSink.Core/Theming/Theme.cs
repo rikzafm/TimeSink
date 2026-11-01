@@ -42,6 +42,10 @@ public static class StringKeys
     public const string LegendTypical = "legendTypical";
     public const string LegendAsleep = "legendAsleep";
     public const string LegendOverlapping = "legendOverlapping";
+    public const string LegendAsleepGeneric = "legendAsleepGeneric";
+    public const string LegendDeviceOn = "legendDeviceOn";
+    public const string FooterUpdatedJustNow = "footerUpdatedJustNow";
+    public const string FooterSynced = "footerSynced";
     public const string TileFirstApp = "tileFirstApp";
     public const string TileLongest = "tileLongest";
     public const string TileVsYesterday = "tileVsYesterday";
@@ -110,7 +114,7 @@ public static class StringKeys
     [
         AppName, Settings, TabToday, TabWeek, TabMonth, TabYear, TabAll, AddApp, Back, GamesOnly, ScopeThisPc, ScopeAllDevices, StubComingSoon,
         TodayCaption, TodayCaptionAll, TodayCombined, TodayEarlyCaption, TodayEarlyHint, TodayEmpty, RunningPill, RunningPillDevice, LegendAppsOpen, LegendTypical,
-        LegendAsleep, LegendOverlapping, TileFirstApp, TileLongest, TileVsYesterday, TileNone, TileLongestValue, TileVsYesterdayValue,
+        LegendAsleep, LegendAsleepGeneric, LegendOverlapping, LegendDeviceOn, FooterUpdatedJustNow, FooterSynced, TileFirstApp, TileLongest, TileVsYesterday, TileNone, TileLongestValue, TileVsYesterdayValue,
         StatusRunning, StatusRunningOn, StatusClosed, SessionsToday, SessionLine, SessionNow, VsAverage, VsAverageNone,
         DialSessions, DialLongest, DialAverage, DialBlips, DialLabel, DialOuterRing, DialMiddleRing, DialOverlap, DialOnBoth, DialVsAverage, SummaryOnBoth,
         WeekCaption, WeekLastCaption, WeekStreak, WeekStreakSub, WeekGridCaption, WeekEmpty, WeekVsLastUp, WeekVsLastDown, WeekAvg, WeekTrendCaption,

@@ -21,7 +21,8 @@
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <Border x:Name="DeviceScopeControl" BorderThickness="1" BorderBrush="{DynamicResource Brush.Border}"
-                            CornerRadius="{DynamicResource CornerRadius.Small}" Padding="2" Margin="0,0,6,0" VerticalAlignment="Center" Visibility="Collapsed">
+                            Background="{DynamicResource Brush.SurfaceAlt}"
+                            CornerRadius="13" Padding="2" Margin="0,0,8,0" VerticalAlignment="Center" Visibility="Collapsed">
                         <StackPanel Orientation="Horizontal">
                             <RadioButton x:Name="ThisDeviceRadio" GroupName="DeviceScopeGroup" Style="{StaticResource ScopeSegButton}" Content="{DynamicResource Str.ScopeThisPc}"/>
                             <RadioButton x:Name="AllDevicesRadio" GroupName="DeviceScopeGroup" Style="{StaticResource ScopeSegButton}" Content="{DynamicResource Str.ScopeAllDevices}"/>
@@ -87,9 +88,14 @@
             <ContentPresenter x:Name="Body" Grid.Row="2"/>
 
             <!-- Footer -->
-            <Border Grid.Row="3" BorderBrush="{DynamicResource Brush.BorderSoft}" BorderThickness="0,1,0,0" Padding="10,6">
-                <Button x:Name="AddAppButton" Style="{StaticResource LinkButton}" HorizontalAlignment="Left"
-                        Foreground="{DynamicResource Brush.Accent}" Content="{DynamicResource Str.AddApp}"/>
+            <Border Grid.Row="3" BorderBrush="{DynamicResource Brush.BorderSoft}" BorderThickness="0,1,0,0" Padding="14,6">
+                <Grid>
+                    <Button x:Name="AddAppButton" Style="{StaticResource LinkButton}" HorizontalAlignment="Left"
+                            Foreground="{DynamicResource Brush.Accent}" Content="{DynamicResource Str.AddApp}"/>
+                    <TextBlock x:Name="FooterStatusText" HorizontalAlignment="Right" VerticalAlignment="Center"
+                               FontSize="{DynamicResource Double.FontSize.Small}" FontFamily="{DynamicResource FontFamily.Ui}"
+                               Foreground="{DynamicResource Brush.TextMuted}"/>
+                </Grid>
             </Border>
 
             <!-- Full-flyout overlay screens (Add app) -->

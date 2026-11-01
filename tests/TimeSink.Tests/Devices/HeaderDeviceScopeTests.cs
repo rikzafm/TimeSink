@@ -53,6 +53,11 @@ public sealed class HeaderDeviceScopeTests : IDisposable
 
         theme.Strings.Get(StringKeys.ScopeThisPc).Should().Be("This PC");
         theme.Strings.Get(StringKeys.ScopeAllDevices).Should().Be("All devices");
+
+        theme.Strings.Has(StringKeys.LegendDeviceOn).Should().BeTrue();
+        theme.Strings.Has(StringKeys.LegendAsleepGeneric).Should().BeTrue();
+        theme.Strings.Has(StringKeys.FooterUpdatedJustNow).Should().BeTrue();
+        theme.Strings.Has(StringKeys.FooterSynced).Should().BeTrue();
     }
 
     [Fact]

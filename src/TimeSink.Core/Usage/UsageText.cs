@@ -42,6 +42,17 @@ public static class UsageText
             : string.Create(Inv, $"{minutes}m");
     }
 
+    /// <summary>Compact duration omitting zero minutes (e.g. <c>6h</c>, <c>6h 15m</c>, or <c>45m</c> under an hour).</summary>
+    public static string CompactHoursMinutes(long seconds)
+    {
+        var minutes = Math.Max(0, seconds) / 60;
+        var h = minutes / 60;
+        var m = minutes % 60;
+        if (h == 0) return string.Create(Inv, $"{m}m");
+        if (m == 0) return string.Create(Inv, $"{h}h");
+        return string.Create(Inv, $"{h}h {m}m");
+    }
+
     /// <summary>A delta with an explicit sign, e.g. <c>+38m</c> or <c>-1h 30m</c>.</summary>
     public static string SignedHoursMinutes(long seconds) => (seconds < 0 ? "-" : "+") + HoursMinutes(Math.Abs(seconds));
 

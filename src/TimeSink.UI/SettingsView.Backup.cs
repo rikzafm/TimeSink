@@ -266,6 +266,7 @@ public sealed partial class SettingsView
         border.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Large");
 
         _overlay = new Grid();
+        Grid.SetRowSpan(_overlay, 2);
         _overlay.SetResourceReference(Panel.BackgroundProperty, "Brush.Scrim");
         _overlay.Children.Add(border);
         Panel.SetZIndex(_overlay, 10);

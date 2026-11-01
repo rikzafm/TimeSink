@@ -70,7 +70,7 @@ public struct YearTabView: View {
                     HStack(alignment: .firstTextBaseline) {
                         Text(Formatters.hoursOrMinutes(seconds: result.totalSeconds))
                             .font(.system(size: 34, weight: .bold, design: .rounded))
-                            .foregroundColor(ThemeColors.textPrimary)
+                            .foregroundColor(ThemeColors.accent)
 
                         Spacer()
 
