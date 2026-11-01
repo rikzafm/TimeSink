@@ -10,6 +10,10 @@ let package = Package(
         .library(
             name: "TimeSinkCore",
             targets: ["TimeSinkCore"]
+        ),
+        .executable(
+            name: "TimeSinkApp",
+            targets: ["TimeSinkApp"]
         )
     ],
     dependencies: [],
@@ -18,6 +22,11 @@ let package = Package(
             name: "TimeSinkCore",
             dependencies: [],
             path: "Sources/TimeSinkCore"
+        ),
+        .executableTarget(
+            name: "TimeSinkApp",
+            dependencies: ["TimeSinkCore"],
+            path: "Sources/TimeSinkApp"
         ),
         .testTarget(
             name: "TimeSinkCoreTests",

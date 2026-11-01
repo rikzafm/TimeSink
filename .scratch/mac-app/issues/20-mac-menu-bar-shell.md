@@ -1,6 +1,6 @@
 # Mac menu-bar shell and tracking
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md · Plan: ../plan.md (phase 5)
 Blocked by: 18
 Needs a Mac.
