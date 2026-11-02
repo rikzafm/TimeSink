@@ -15,6 +15,7 @@ public struct TrackedAppItem: Sendable, Identifiable, Equatable {
     public let mergedCount: Int
     public let totalSeconds: Int64
     public let mergedNames: [String]
+    public let mergedDeviceIds: [String]
 
     public var isTracked: Bool { state == "tracked" }
 
@@ -31,7 +32,8 @@ public struct TrackedAppItem: Sendable, Identifiable, Equatable {
         deviceId: String,
         mergedCount: Int,
         totalSeconds: Int64,
-        mergedNames: [String] = []
+        mergedNames: [String] = [],
+        mergedDeviceIds: [String] = []
     ) {
         self.id = id
         self.canonicalId = canonicalId
@@ -46,6 +48,7 @@ public struct TrackedAppItem: Sendable, Identifiable, Equatable {
         self.mergedCount = mergedCount
         self.totalSeconds = totalSeconds
         self.mergedNames = mergedNames
+        self.mergedDeviceIds = mergedDeviceIds
     }
 }
 
@@ -185,7 +188,8 @@ public final class MacAppLibrary: @unchecked Sendable {
                    a.added_utc, a.is_background, a.kind, a.device_id,
                    (SELECT COUNT(*) FROM apps m WHERE m.canonical_id = a.id) as merged_count,
                    (SELECT COALESCE(SUM(u.seconds), 0) FROM daily_usage u WHERE u.app_id = a.id OR u.app_id IN (SELECT m.id FROM apps m WHERE m.canonical_id = a.id)) as total_sec,
-                   (SELECT GROUP_CONCAT(m.display_name, '||') FROM apps m WHERE m.canonical_id = a.id) as merged_names
+                   (SELECT GROUP_CONCAT(m.display_name, '||') FROM apps m WHERE m.canonical_id = a.id) as merged_names,
+                   (SELECT GROUP_CONCAT(COALESCE(m.device_id, ''), '||') FROM apps m WHERE m.canonical_id = a.id) as merged_device_ids
             FROM apps a
             WHERE a.state = 'tracked' AND a.canonical_id IS NULL
             """
@@ -212,6 +216,8 @@ public final class MacAppLibrary: @unchecked Sendable {
             let sec = merged > 0 ? ((try? getActiveSeconds(appId: id)) ?? stmt.columnInt64(at: 11)) : stmt.columnInt64(at: 11)
             let mergedNamesStr = stmt.columnText(at: 12)
             let mergedNames = mergedNamesStr.flatMap { $0.isEmpty ? nil : $0.components(separatedBy: "||") } ?? []
+            let mergedDevsStr = stmt.columnText(at: 13)
+            let mergedDevs = mergedDevsStr.flatMap { $0.isEmpty ? nil : $0.components(separatedBy: "||") } ?? []
 
             items.append(TrackedAppItem(
                 id: id,
@@ -226,7 +232,8 @@ public final class MacAppLibrary: @unchecked Sendable {
                 deviceId: dev,
                 mergedCount: merged,
                 totalSeconds: sec,
-                mergedNames: mergedNames
+                mergedNames: mergedNames,
+                mergedDeviceIds: mergedDevs
             ))
         }
         return items

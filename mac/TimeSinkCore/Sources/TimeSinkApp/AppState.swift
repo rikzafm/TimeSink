@@ -59,6 +59,9 @@ public final class AppState: ObservableObject {
     @Published public var showingAddApp: Bool = false
     @Published public var showingSettings: Bool = false
     @Published public var showingDevicesSync: Bool = false
+    @Published public var addAppInitialTab: AddAppTab = .running
+    @Published public var addAppInitialDeviceFilter: String? = nil
+    @Published public var returnToDevicesSyncOnDismiss: Bool = false
 
     // Settings & Sync State
     @Published public var syncEnabled: Bool = false
@@ -849,6 +852,7 @@ public final class AppState: ObservableObject {
     }
 
     public func handleSyncCompleted() {
+        self.isSyncing = false
         loadSettings()
         loadDeviceInfo()
         refresh()

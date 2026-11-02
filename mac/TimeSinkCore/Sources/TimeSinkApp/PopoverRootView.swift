@@ -15,6 +15,11 @@ public struct PopoverRootView: View {
             } else if state.showingAddApp {
                 AddAppView(state: state) {
                     state.showingAddApp = false
+                    if state.returnToDevicesSyncOnDismiss {
+                        state.returnToDevicesSyncOnDismiss = false
+                        state.showingSettings = true
+                        state.showingDevicesSync = true
+                    }
                 }
             } else if state.selectedAppDetailId != nil {
                 AppDetailView(state: state)

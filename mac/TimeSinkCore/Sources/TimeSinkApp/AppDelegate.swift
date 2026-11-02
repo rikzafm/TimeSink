@@ -31,12 +31,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             iconCache = MacIconCache(db: database)
             syncHost = SyncHost(db: database, timeZone: .current)
             appState = AppState(db: database, syncHost: syncHost)
-
-            syncHost.onSyncCompleted = { [weak self] in
-                Task { @MainActor [weak self] in
-                    self?.appState?.handleSyncCompleted()
-                }
-            }
             syncHost.start()
 
             let settings = DbTrackingSettings(db: database)

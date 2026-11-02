@@ -181,5 +181,44 @@ final class MacAppLibraryTests: XCTestCase {
         XCTAssertEqual(today.rows.first?.seconds, 1500)
         XCTAssertEqual(today.totalSeconds, 1500)
     }
+
+    func testCrossDeviceMergedAppsTrackedQuery() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+        let devMac = try db.scalarText("SELECT device_id FROM devices LIMIT 1;") ?? "mac-1"
+        let devPC = "pc-synced-2"
+
+        try db.exec("""
+            INSERT INTO devices (device_id, name, platform, is_local, first_seen_utc, state)
+            VALUES ('\(devPC)', 'Gaming PC', 'windows', 0, '2026-10-01T00:00:00Z', 'active');
+            """)
+
+        let lib = MacAppLibrary(db: db)
+        let macApp = try lib.trackApp(
+            exePath: "/Applications/Chrome.app",
+            displayName: "Google Chrome",
+            category: "Productivity",
+            kind: .other,
+            deviceId: devMac
+        )
+        let pcApp = try lib.trackApp(
+            exePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+            displayName: "Chrome (PC)",
+            category: "Productivity",
+            kind: .other,
+            deviceId: devPC
+        )
+
+        try lib.merge(mainId: macApp, candidateIds: [pcApp])
+
+        let allTracked = try lib.getTrackedApps()
+        XCTAssertEqual(allTracked.count, 1)
+        let main = try XCTUnwrap(allTracked.first)
+        XCTAssertEqual(main.id, macApp)
+        XCTAssertEqual(main.deviceId, devMac)
+        XCTAssertEqual(main.mergedCount, 1)
+        XCTAssertEqual(main.mergedNames, ["Chrome (PC)"])
+        XCTAssertEqual(main.mergedDeviceIds, [devPC])
+    }
 }
 

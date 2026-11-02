@@ -116,6 +116,40 @@ public struct DevicesSyncView: View {
                         .card()
                     }
 
+                    // Manage Synced Apps Card
+                    let allDevices = state.readDevices()
+                    let hasRemote = allDevices.contains { !$0.isLocal && $0.state == "active" }
+                    if state.syncEnabled || hasRemote {
+                        Button(action: {
+                            state.showingSettings = false
+                            state.showingDevicesSync = true
+                            state.returnToDevicesSyncOnDismiss = true
+                            state.addAppInitialTab = .tracked
+                            state.addAppInitialDeviceFilter = "synced"
+                            state.showingAddApp = true
+                        }) {
+                            HStack(spacing: 10) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Manage synced apps")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(ThemeColors.textPrimary)
+                                    Text("View and configure apps tracked across your devices")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(ThemeColors.textMuted)
+                                }
+                                Spacer()
+                                Text("›")
+                                    .font(.system(size: 18, weight: .regular))
+                                    .foregroundColor(ThemeColors.textMuted)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .card()
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     // 3. Cross-device Merge Hint
                     let matchingApps = state.findMatchingCrossDeviceApps()
                     if !matchingApps.isEmpty {

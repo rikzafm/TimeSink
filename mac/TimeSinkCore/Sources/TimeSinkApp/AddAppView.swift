@@ -12,6 +12,13 @@ public enum AddAppTab: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
+private enum TrackedDeviceFilter: String, CaseIterable, Identifiable {
+    case local
+    case synced
+
+    public var id: String { rawValue }
+}
+
 private struct RunningApp: Identifiable {
     var id: String { path }
     let name: String
@@ -37,6 +44,7 @@ public struct AddAppView: View {
     @State private var hiddenThisSession: Set<String> = []
     @State private var hoveredId: Int64?
     @State private var dropTargeted = false
+    @State private var deviceFilter: TrackedDeviceFilter = .local
 
     @State private var runningApps: [RunningApp] = []
     @State private var installedApps: [InstalledAppItem] = []
@@ -80,7 +88,19 @@ public struct AddAppView: View {
             }
         }
         .frame(width: 400, height: 640)
-        .onAppear(perform: reloadAll)
+        .onAppear {
+            if let filter = state.addAppInitialDeviceFilter {
+                deviceFilter = filter == "synced" ? .synced : .local
+                state.addAppInitialDeviceFilter = nil
+            } else {
+                deviceFilter = .local
+            }
+            if state.addAppInitialTab != .running {
+                activeTab = state.addAppInitialTab
+                state.addAppInitialTab = .running
+            }
+            reloadAll()
+        }
     }
 
     private var header: some View {
@@ -408,19 +428,57 @@ public struct AddAppView: View {
 
     // MARK: - Tracked
 
+    private func hasLocalPresence(_ app: TrackedAppItem) -> Bool {
+        if state.isLocalDevice(app.deviceId) { return true }
+        return app.mergedDeviceIds.contains { state.isLocalDevice($0) }
+    }
+
+    private func hasRemotePresence(_ app: TrackedAppItem) -> Bool {
+        if !app.deviceId.isEmpty && !state.isLocalDevice(app.deviceId) { return true }
+        return app.mergedDeviceIds.contains { !$0.isEmpty && !state.isLocalDevice($0) }
+    }
+
+    private var hasSyncedApps: Bool {
+        state.hasMultipleDevices || trackedApps.contains { hasRemotePresence($0) }
+    }
+
+    private var filteredTrackedApps: [TrackedAppItem] {
+        if !hasSyncedApps { return trackedApps }
+        return trackedApps.filter { app in
+            switch deviceFilter {
+            case .local: return hasLocalPresence(app)
+            case .synced: return hasRemotePresence(app)
+            }
+        }
+    }
+
     private var trackedTab: some View {
         let q = searchQuery.trimmingCharacters(in: .whitespaces)
-        let shown = TrackedSearch.apply(trackedApps, query: q, publisherOf: { AppVendor.name(executable: $0) })
+        let appsToFilter = filteredTrackedApps
+        let shown = TrackedSearch.apply(appsToFilter, query: q, publisherOf: { AppVendor.name(executable: $0) })
         let headerText = q.isEmpty ? "TRACKED NOW" : "\(shown.count) APPS TRACKED"
 
         return VStack(alignment: .leading, spacing: 10) {
             searchField("Search tracked apps")
-            Text(headerText).caps(10, tracking: 1)
+            HStack(alignment: .center) {
+                Text(headerText).caps(10, tracking: 1)
+                Spacer()
+                if hasSyncedApps {
+                    Segmented(
+                        options: [(TrackedDeviceFilter.local, "This Mac"), (TrackedDeviceFilter.synced, "Synced")],
+                        selection: $deviceFilter,
+                        hPad: 6,
+                        vPad: 2,
+                        radius: 6
+                    )
+                }
+            }
             ScrollView(.vertical, showsIndicators: false) {
-                if trackedApps.isEmpty {
-                    Text("Nothing is tracked yet. Add an app from Running or Installed.")
+                if appsToFilter.isEmpty {
+                    Text(deviceFilter == .synced ? "No tracked apps from synced devices." : "Nothing is tracked yet. Add an app from Running or Installed.")
                         .font(.system(size: 12))
                         .foregroundColor(ThemeColors.textDim)
+                        .frame(maxWidth: .infinity, alignment: deviceFilter == .synced ? .center : .leading)
                         .padding(.vertical, 16)
                 } else if shown.isEmpty {
                     Text("No installed app matches “\(q)”")
@@ -441,6 +499,15 @@ public struct AddAppView: View {
 
     private func trackedRow(_ app: TrackedAppItem) -> some View {
         let hot = hoveredId == app.id
+        let allDevs = ([app.deviceId] + app.mergedDeviceIds).filter { !$0.isEmpty }
+        var distinctDevs: [String] = []
+        for d in allDevs {
+            if !distinctDevs.contains(where: { $0.caseInsensitiveCompare(d) == .orderedSame }) {
+                distinctDevs.append(d)
+            }
+        }
+        let showDeviceMarkers = distinctDevs.count > 1
+
         return HStack(spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
                 tile(app.displayName, png: state.iconCache.getCachedIcon(forAppId: app.id, fallbackExePath: app.exePath))
@@ -455,10 +522,18 @@ public struct AddAppView: View {
                 }
             }
             VStack(alignment: .leading, spacing: 0) {
-                Text(app.displayName)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(ThemeColors.textPrimary)
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    Text(app.displayName)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(ThemeColors.textPrimary)
+                        .lineLimit(1)
+                    if showDeviceMarkers {
+                        let sortedDevs = distinctDevs.sorted { state.isLocalDevice($0) && !state.isLocalDevice($1) }
+                        ForEach(sortedDevs, id: \.self) { dev in
+                            DeviceMarker(isLocal: state.isLocalDevice(dev), size: 6)
+                        }
+                    }
+                }
                 Text(AppVendor.name(executable: app.exePath))
                     .font(.system(size: 11))
                     .foregroundColor(ThemeColors.textMuted)
@@ -560,7 +635,7 @@ public struct AddAppView: View {
     // MARK: - Actions
 
     private func reloadAll() {
-        trackedApps = (try? library.getTrackedApps(deviceId: state.localDeviceId)) ?? []
+        trackedApps = (try? library.getTrackedApps()) ?? []
 
         var allTracked: Set<String> = Set(trackedApps.map { ($0.exePath as NSString).standardizingPath.lowercased() })
         var allBundleIds = Set<String>()
