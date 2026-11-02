@@ -232,14 +232,10 @@ public partial class MonthView : UserControl, ILiveView
             name.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Ui");
             name.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Body");
 
-            var time = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+            var time = new TextBlock { Text = UsageText.HoursMinutes(app.Seconds), VerticalAlignment = VerticalAlignment.Center };
             time.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextSoft");
             time.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
             time.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
-            time.Inlines.Add(new System.Windows.Documents.Run(UsageText.HoursMinutes(app.Seconds) + " "));
-            var deltaRun = new System.Windows.Documents.Run(app.Delta is { } p ? UsageText.Delta(p) : Str(StringKeys.MonthNewApp)) { FontWeight = FontWeights.SemiBold };
-            deltaRun.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, Tones.Of(app.Delta).Key());
-            time.Inlines.Add(deltaRun);
 
             var top = new Grid();
             top.ColumnDefinitions.Add(new ColumnDefinition());
