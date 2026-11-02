@@ -139,4 +139,21 @@ public sealed class AppGroupsTests : IDisposable
         UsageRank.KindOf(groups, 1).Should().Be(AppKind.Gacha);
         UsageRank.IsBackground(groups, 1).Should().BeTrue();
     }
+
+    [Fact]
+    public void OnlyDevice_re_roots_merged_apps_when_main_app_is_on_another_device()
+    {
+        var remoteMain = new GroupedApp(19, 19, "Antigravity", 0, DeviceId: "pc-1");
+        var localAlias = new GroupedApp(65, 19, "Antigravity", 0, DeviceId: "mac-1");
+
+        var allGroups = AppGroups.From([remoteMain, localAlias]);
+        allGroups.GroupOf(65).Should().Be(19);
+
+        var thisMacGroups = allGroups.OnlyDevice("mac-1");
+        thisMacGroups.ContainsKey(19).Should().BeFalse();
+        thisMacGroups.ContainsKey(65).Should().BeTrue();
+        thisMacGroups.GroupOf(65).Should().Be(65);
+        UsageRank.NameOf(thisMacGroups, 65).Should().Be("Antigravity");
+        UsageRank.NameOf(thisMacGroups, 19).Should().Be("Antigravity");
+    }
 }

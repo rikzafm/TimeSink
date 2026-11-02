@@ -218,14 +218,13 @@ The portable copy still keeps its data in `%LocalAppData%\TimeSink`.
 
 ### Option C · macOS (Apple Silicon)
 
-1. Open `mac/TimeSinkCore` and build with Swift 6:
+1. Build and package as a standard macOS application bundle:
    ```bash
-   cd mac/TimeSinkCore
-   swift build -c release
+   ./mac/build-app.sh --install
    ```
-2. The executable `TimeSinkApp` runs as a native menu bar accessory (`LSUIElement`).
-3. To launch on a second Mac with ad-hoc signing: right-click `TimeSinkApp` › **Open** to approve macOS Gatekeeper.
-4. Settings includes **Open at login** to run quietly in the menu bar at system startup.
+   This compiles `TimeSinkApp` in release mode, packages it into `artifacts/mac/TimeSink.app`, ad-hoc code-signs it, and installs it to `/Applications/TimeSink.app`.
+2. TimeSink runs as a native menu bar accessory (`LSUIElement`): no dock icon or terminal window needed.
+3. Settings includes **Open at login** to run quietly in the menu bar on system startup.
 
 ### 🔄 Multi-Device Sync (PC + Mac)
 
@@ -283,7 +282,10 @@ Output goes to `artifacts\` (gitignored): `TimeSink-portable-win-x64.zip` and, i
 ```bash
 cd mac/TimeSinkCore
 swift test                                   # run the test suite (50 tests)
-swift build -c release                       # compile TimeSinkApp executable
+
+# Build a standalone macOS .app bundle
+./mac/build-app.sh                           # builds artifacts/mac/TimeSink.app
+./mac/build-app.sh --install                 # ...and installs to /Applications
 ```
 
 

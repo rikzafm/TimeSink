@@ -54,8 +54,17 @@ internal sealed class AppGroups
     {
         var d = new Dictionary<long, GroupedApp>();
         foreach (var a in rows) d[a.Id] = a;
-        foreach (var a in d.Values.ToList())
-            if (a.Group != a.Id && (!d.TryGetValue(a.Group, out var main) || (main.Retired && !a.Retired))) d[a.Id] = a with { Group = a.Id };
+        var remappedGroups = new Dictionary<long, long>();
+        foreach (var a in d.Values.OrderBy(x => x.Id).ToList())
+            if (a.Group != a.Id && (!d.TryGetValue(a.Group, out var main) || (main.Retired && !a.Retired)))
+            {
+                if (!remappedGroups.TryGetValue(a.Group, out var newGrp))
+                {
+                    newGrp = a.Id;
+                    remappedGroups[a.Group] = newGrp;
+                }
+                d[a.Id] = a with { Group = newGrp };
+            }
 
         // Inherit highest classification specificity across merged group members
         var groups = d.Values.GroupBy(a => a.Group).ToList();
@@ -113,8 +122,11 @@ internal sealed class AppGroups
         try { return cmd.ExecuteScalar() as string; } catch { return null; }
     }
 
-    internal AppGroups OnlyDevice(string deviceId) =>
-        new(_apps.Where(p => string.IsNullOrEmpty(p.Value.DeviceId) || p.Value.DeviceId == deviceId).ToDictionary(p => p.Key, p => p.Value));
+    internal AppGroups OnlyDevice(string deviceId)
+    {
+        var filtered = _apps.Values.Where(p => string.IsNullOrEmpty(p.DeviceId) || string.Equals(p.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase));
+        return From(filtered);
+    }
 
     /// <summary>The groups whose Main app is a Game or Gacha game; a Merged app follows its Main app.</summary>
     internal AppGroups OnlyGames() =>

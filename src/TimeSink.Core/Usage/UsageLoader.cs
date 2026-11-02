@@ -13,11 +13,17 @@ internal static class UsageRank
     /// <summary>The name comparison Ranking breaks ties with, for the one list (Today's live day) that ranks by its own keys first.</summary>
     public static StringComparer ByName => StringComparer.CurrentCultureIgnoreCase;
 
-    public static AppKind KindOf(AppGroups apps, long group) => apps.TryGetValue(group, out var a) ? a.Kind : AppKind.Other;
+    public static AppKind KindOf(AppGroups apps, long group) =>
+        apps.TryGetValue(group, out var a) ? a.Kind :
+        (apps.Members(group).FirstOrDefault()?.Kind ?? AppKind.Other);
 
-    public static bool IsBackground(AppGroups apps, long group) => apps.TryGetValue(group, out var a) && a.Background;
+    public static bool IsBackground(AppGroups apps, long group) =>
+        apps.TryGetValue(group, out var a) ? a.Background :
+        (apps.Members(group).FirstOrDefault()?.Background ?? false);
 
-    public static string NameOf(AppGroups apps, long group) => apps.TryGetValue(group, out var a) ? a.Name : group.ToString();
+    public static string NameOf(AppGroups apps, long group) =>
+        apps.TryGetValue(group, out var a) ? a.Name :
+        (apps.Members(group).FirstOrDefault()?.Name ?? group.ToString());
 
     /// <summary>Ranks <paramref name="items"/> by their app group and amount. Ties keep the input order once the name is equal.</summary>
     public static List<T> Rank<T>(IEnumerable<T> items, AppGroups apps, Func<T, long> groupOf, Func<T, long> amountOf) =>
