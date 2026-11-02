@@ -72,17 +72,22 @@ public final class AppGroups: @unchecked Sendable {
     public static func from(rows: [GroupedApp]) -> AppGroups {
         var dict: [Int64: GroupedApp] = [:]
         for a in rows { dict[a.id] = a }
-        for a in dict.values {
+        var remappedGroups: [Int64: Int64] = [:]
+        for a in dict.values.sorted(by: { $0.id < $1.id }) {
             if a.group != a.id {
                 if let main = dict[a.group] {
                     if main.isRetired && !a.isRetired {
+                        let newGrp = remappedGroups[a.group] ?? a.id
+                        remappedGroups[a.group] = newGrp
                         var updated = a
-                        updated.group = a.id
+                        updated.group = newGrp
                         dict[a.id] = updated
                     }
                 } else {
+                    let newGrp = remappedGroups[a.group] ?? a.id
+                    remappedGroups[a.group] = newGrp
                     var updated = a
-                    updated.group = a.id
+                    updated.group = newGrp
                     dict[a.id] = updated
                 }
             }
@@ -167,8 +172,10 @@ public final class AppGroups: @unchecked Sendable {
     }
 
     public func onlyDevice(_ deviceId: String) -> AppGroups {
-        let filtered = apps.filter { $0.value.deviceId.isEmpty || $0.value.deviceId == deviceId }
-        return AppGroups(apps: Dictionary(uniqueKeysWithValues: filtered.map { ($0.key, $0.value) }))
+        let filtered = apps.values.filter {
+            $0.deviceId.isEmpty || $0.deviceId.caseInsensitiveCompare(deviceId) == .orderedSame
+        }
+        return AppGroups.from(rows: Array(filtered))
     }
 
     public func onlyGames() -> AppGroups {

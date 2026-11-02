@@ -324,8 +324,8 @@ public struct DevicesSyncView: View {
                     }
                     .padding(12)
                     .card()
-                    .onChange(of: passphraseInput) { _ in updatePassphraseValidation() }
-                    .onChange(of: confirmPassphraseInput) { _ in updatePassphraseValidation() }
+                    .onChange(of: passphraseInput) { updatePassphraseValidation() }
+                    .onChange(of: confirmPassphraseInput) { updatePassphraseValidation() }
 
                     // 2. Devices Section
                     VStack(alignment: .leading, spacing: 6) {

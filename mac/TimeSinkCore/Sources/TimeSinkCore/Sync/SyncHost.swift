@@ -62,7 +62,8 @@ public final class SyncHost: @unchecked Sendable {
             guard let self = self else { return }
             self.timer?.invalidate()
             let t = Timer(timeInterval: 300, repeats: true) { [weak self] _ in
-                DispatchQueue.global(qos: .utility).async {
+                guard let self = self else { return }
+                DispatchQueue.global(qos: .utility).async { [weak self] in
                     self?.performSync()
                 }
             }
@@ -113,14 +114,12 @@ public final class SyncHost: @unchecked Sendable {
             self?.onSyncStarted?()
         }
 
-        var exportSucceeded = false
         var importSucceeded = false
         var encryptionError: SyncStatus? = nil
 
         // 1. Export local snapshot
         do {
             _ = try SyncWriter.write(db: db, syncFolder: folder, keyManager: keyManager)
-            exportSucceeded = true
             self.lastLocalWriteUtc = Date().timeIntervalSince1970
             let nowUnix = Int64(Date().timeIntervalSince1970)
             try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.last_export_utc', '\(nowUnix)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")

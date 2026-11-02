@@ -370,5 +370,51 @@ final class AppStateTests: XCTestCase {
         let resRecent = AutoBackup.runIfDue(db: db, folder: tempDir, now: now)
         XCTAssertNil(resRecent)
     }
+
+    func testCrossDeviceMergedAppDisplaysNameInsteadOfIdInThisDeviceScope() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+
+        let devMac = try db.scalarText("SELECT device_id FROM devices LIMIT 1;") ?? "mac-local"
+        let devWin = "pc-remote-win"
+
+        try db.exec("""
+            INSERT INTO devices (device_id, name, platform, is_local, first_seen_utc, state)
+            VALUES ('\(devWin)', 'Windows PC', 'windows', 0, '2026-10-01T00:00:00Z', 'active');
+
+            -- App 19 is on Windows PC (canonical app)
+            INSERT INTO apps (id, exe_path, display_name, category, added_utc, device_id)
+            VALUES (19, 'C:\\Users\\User\\AppData\\Local\\Programs\\Antigravity\\antigravity.exe', 'Antigravity', 'Developer Tools', 1000, '\(devWin)');
+
+            -- App 65 is on Mac (cross-device merged into App 19)
+            INSERT INTO apps (id, canonical_id, exe_path, display_name, category, added_utc, device_id)
+            VALUES (65, 19, '/Applications/Antigravity.app', 'Antigravity', 'Developer Tools', 1000, '\(devMac)');
+
+            -- Live open session for local Mac app (65)
+            INSERT INTO sessions (id, app_id, start_utc, end_utc, last_seen_utc, end_reason)
+            VALUES (1, 65, 1793500000 - 180, NULL, 1793500000, NULL);
+            """)
+
+        let ctxThis = UsageContext(
+            now: Date(timeIntervalSince1970: 1793500000),
+            zone: .current,
+            db: db,
+            deviceScope: .this,
+            localDeviceId: devMac
+        )
+
+        let todayRes = try TodayQuery.run(ctxThis)
+        XCTAssertEqual(todayRes.rows.count, 1)
+        XCTAssertEqual(todayRes.rows.first?.name, "Antigravity", "App name must be 'Antigravity', not '19'")
+        XCTAssertEqual(todayRes.longestSession?.appName, "Antigravity")
+
+        let allRes = try AllQuery.run(ctxThis)
+        XCTAssertEqual(allRes.apps.count, 1)
+        XCTAssertEqual(allRes.apps.first?.name, "Antigravity")
+
+        let detailRes = AppDetailQuery.run(context: ctxThis, appId: todayRes.rows.first?.appId ?? 0, year: 2026)
+        XCTAssertNotNil(detailRes)
+        XCTAssertEqual(detailRes?.name, "Antigravity")
+    }
 }
 

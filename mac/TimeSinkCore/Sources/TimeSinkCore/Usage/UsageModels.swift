@@ -104,15 +104,17 @@ public struct HourPiece: Sendable, Equatable {
 
 public enum UsageRank {
     public static func kindOf(apps: AppGroups, group: Int64) -> AppKind {
-        apps[group]?.kind ?? .other
+        apps[group]?.kind ?? apps.members(group: group).first?.kind ?? .other
     }
 
     public static func isBackground(apps: AppGroups, group: Int64) -> Bool {
-        apps[group]?.background ?? false
+        apps[group]?.background ?? apps.members(group: group).first?.background ?? false
     }
 
     public static func nameOf(apps: AppGroups, group: Int64) -> String {
-        apps[group]?.name ?? String(group)
+        if let app = apps[group] { return app.name }
+        if let member = apps.members(group: group).first { return member.name }
+        return String(group)
     }
 
     public static func rank<T>(
