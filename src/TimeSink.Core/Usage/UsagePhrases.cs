@@ -35,6 +35,29 @@ public static class UsagePhrases
             ? new Phrase(PanelStringKeys.HourSummary, UsageText.HoursMinutes(c.UptimeSeconds), UsageText.HoursMinutes(c.TotalSeconds), c.SessionCount)
             : new Phrase(PanelStringKeys.HourEmpty);
 
+    /// <summary>Summary phrase below the apps list in the hour card.</summary>
+    public static string HourSessionSummary(PanelContent c, Func<long, string> clock)
+    {
+        if (c.Sessions.Count == 0) return "";
+        var minStart = c.Sessions.Min(s => s.StartUtc);
+        var maxEnd = c.Sessions.Max(s => s.EndUtc);
+        var allSpanEqual = c.Sessions.All(s => s.StartUtc == minStart && s.EndUtc == maxEnd);
+        if (allSpanEqual && c.Apps.Count > 0)
+        {
+            var total = Math.Max(1, c.TotalSeconds);
+            var share = (int)Math.Round((double)c.Apps[0].Seconds / total * 100);
+            return $"Every session ran {clock(minStart)} → {clock(maxEnd)} · each app {share}%";
+        }
+        var spanText = $"Active {clock(minStart)} → {clock(maxEnd)}";
+        if (c.Apps.Count > 0)
+        {
+            var top = c.Apps[0];
+            var pct = (int)Math.Round((double)top.Seconds / Math.Max(1, c.TotalSeconds) * 100);
+            return $"{spanText} · Top app: {top.Name} ({UsageText.HoursMinutes(top.Seconds)}, {pct}%)";
+        }
+        return spanText;
+    }
+
     /// <summary>
     /// What the Year panel says about a month, as pieces the view joins with nothing between: where it stands (before
     /// tracking, projected, on pace, against the month before, the first month tracked), then "your best month" for a

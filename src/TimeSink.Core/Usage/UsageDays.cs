@@ -50,12 +50,29 @@ internal static class UsageDays
         var d0 = LocalDays.StartOf(day, zone);
         var d1 = LocalDays.StartOf(day.AddDays(1), zone);
         var sums = new long[24];
-        foreach (var s in segs)
+        var byGroup = segs.GroupBy(s => s.Group);
+        foreach (var groupSegs in byGroup)
         {
-            var a = Math.Max(s.Start, d0);
-            var b = Math.Min(s.End, d1);
-            if (b <= a) continue;
-            foreach (var p in HourPieces(a, b, zone)) sums[p.Hour] += p.End - p.Start;
+            var sorted = groupSegs.Where(s => s.End > d0 && s.Start < d1).OrderBy(s => s.Start).ToList();
+            var unioned = new List<(long Start, long End)>();
+            foreach (var s in sorted)
+            {
+                var st = Math.Max(s.Start, d0);
+                var en = Math.Min(s.End, d1);
+                if (en <= st) continue;
+                if (unioned.Count > 0 && st <= unioned[^1].End)
+                    unioned[^1] = (unioned[^1].Start, Math.Max(unioned[^1].End, en));
+                else
+                    unioned.Add((st, en));
+            }
+            foreach (var interval in unioned)
+            {
+                foreach (var p in HourPieces(interval.Start, interval.End, zone))
+                {
+                    if (p.Hour >= 0 && p.Hour < 24)
+                        sums[p.Hour] += p.End - p.Start;
+                }
+            }
         }
         return sums;
     }

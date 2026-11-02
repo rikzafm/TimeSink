@@ -66,8 +66,7 @@ public partial class FlyoutWindow : Window
 
         try
         {
-            using var devConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly");
-            devConn.Open();
+            using var devConn = Db.CreateConnection(_dbPath, Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly);
             using var devCmd = devConn.CreateCommand();
             devCmd.CommandText = "SELECT value FROM settings WHERE key = 'device.id';";
             Live.LocalDeviceId = devCmd.ExecuteScalar() as string;
@@ -356,8 +355,7 @@ public partial class FlyoutWindow : Window
     {
         try
         {
-            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
-            conn.Open();
+            using var conn = Db.CreateConnection(dbPath, Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT COUNT(*) FROM devices WHERE is_local = 0;";
             var count = (long)(cmd.ExecuteScalar() ?? 0L);

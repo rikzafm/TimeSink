@@ -160,6 +160,47 @@ public final class MacAppLibrary: @unchecked Sendable {
         _ = try stmt.step()
     }
 
+    /// Makes a merged app the main app of its group: the old main (and every other alias) is merged under it.
+    public func makeMain(aliasId: Int64) throws -> Bool {
+        var success = false
+        try db.transaction {
+            let findStmt = try db.prepare("SELECT canonical_id FROM apps WHERE id = ?1 AND state = 'tracked';")
+            try findStmt.bind(int64: aliasId, at: 1)
+            guard try findStmt.step() else { return }
+            if findStmt.columnIsNull(at: 0) { return }
+            let oldMain = findStmt.columnInt64(at: 0)
+            guard oldMain > 0 else { return }
+
+            let moveStmt = try db.prepare("""
+                UPDATE apps SET
+                    is_background = (SELECT is_background FROM apps WHERE id = ?1),
+                    kind = (SELECT kind FROM apps WHERE id = ?1),
+                    added_utc = MIN(added_utc, (SELECT added_utc FROM apps WHERE id = ?1))
+                WHERE id = ?2;
+                """)
+            try moveStmt.bind(int64: oldMain, at: 1)
+            try moveStmt.bind(int64: aliasId, at: 2)
+            _ = try moveStmt.step()
+
+            let reparentStmt = try db.prepare("UPDATE apps SET canonical_id = ?2 WHERE id = ?1 OR canonical_id = ?1;")
+            try reparentStmt.bind(int64: oldMain, at: 1)
+            try reparentStmt.bind(int64: aliasId, at: 2)
+            _ = try reparentStmt.step()
+
+            let clearStmt = try db.prepare("UPDATE apps SET canonical_id = NULL WHERE id = ?1;")
+            try clearStmt.bind(int64: aliasId, at: 1)
+            _ = try clearStmt.step()
+
+            let goalsStmt = try db.prepare("UPDATE OR IGNORE goals SET app_id = ?2 WHERE app_id = ?1;")
+            try goalsStmt.bind(int64: oldMain, at: 1)
+            try goalsStmt.bind(int64: aliasId, at: 2)
+            _ = try goalsStmt.step()
+
+            success = true
+        }
+        return success
+    }
+
     public func getActiveSeconds(appId: Int64) throws -> Int64 {
         let stmt = try db.prepare("""
             SELECT start_utc, COALESCE(end_utc, last_seen_utc)

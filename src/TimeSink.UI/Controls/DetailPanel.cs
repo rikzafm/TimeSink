@@ -136,6 +136,162 @@ public sealed class DetailPanel : Border
         Visibility = Visibility.Visible;
     }
 
+    public void ShowHourCard(
+        string title,
+        int sessionCount,
+        string subtitle,
+        IReadOnlyList<(string Name, long Seconds, int Palette)> apps,
+        string summaryPhrase,
+        IReadOnlyList<(string Label, string Value, bool Good)> compares)
+    {
+        _body.Children.Clear();
+        Padding = new Thickness(14, 12, 14, 12);
+        Visibility = Visibility.Visible;
+
+        // Header: Title on left, session count badge on right
+        var head = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var titles = new StackPanel();
+        var titleText = Text(title, "Brush.Text", "Double.FontSize.Title", FontWeights.Bold);
+        titleText.FontSize = 18;
+        titles.Children.Add(titleText);
+
+        var subText = Text(subtitle, "Brush.TextMuted", "Double.FontSize.Small");
+        subText.Margin = new Thickness(0, 2, 0, 0);
+        titles.Children.Add(subText);
+
+        Grid.SetColumn(titles, 0);
+        head.Children.Add(titles);
+
+        if (sessionCount > 0)
+        {
+            var badgeText = Text($"{sessionCount} {(sessionCount == 1 ? "session" : "sessions")}", "Brush.TextMuted", "Double.FontSize.Small");
+            badgeText.VerticalAlignment = VerticalAlignment.Top;
+            badgeText.Margin = new Thickness(0, 4, 0, 0);
+            Grid.SetColumn(badgeText, 1);
+            head.Children.Add(badgeText);
+        }
+
+        _body.Children.Add(head);
+
+        // Segmented bar
+        if (apps.Count > 0)
+        {
+            var barContainer = new Border
+            {
+                Height = 8,
+                Margin = new Thickness(0, 4, 0, 12),
+                CornerRadius = new CornerRadius(4),
+                ClipToBounds = true
+            };
+            barContainer.SetResourceReference(Border.BackgroundProperty, "Brush.BorderSoft");
+
+            var barGrid = new Grid();
+            for (var i = 0; i < apps.Count; i++)
+            {
+                barGrid.ColumnDefinitions.Add(new ColumnDefinition
+                {
+                    Width = new GridLength(Math.Max(1, apps[i].Seconds), GridUnitType.Star)
+                });
+                var seg = new Border { Margin = new Thickness(i > 0 ? 1 : 0, 0, i < apps.Count - 1 ? 1 : 0, 0) };
+                seg.SetResourceReference(Border.BackgroundProperty, "Brush.App" + apps[i].Palette);
+                Grid.SetColumn(seg, i);
+                barGrid.Children.Add(seg);
+            }
+            barContainer.Child = barGrid;
+            _body.Children.Add(barContainer);
+
+            // 2-column app list
+            var grid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16, GridUnitType.Pixel) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var rowCount = (apps.Count + 1) / 2;
+            for (var r = 0; r < rowCount; r++)
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            for (var i = 0; i < apps.Count; i++)
+            {
+                var (name, seconds, palette) = apps[i];
+                var col = (i % 2) * 2;
+                var row = i / 2;
+
+                var item = new Grid { Margin = new Thickness(0, 3, 0, 3) };
+                item.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                item.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                item.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var dot = new System.Windows.Shapes.Ellipse
+                {
+                    Width = 8,
+                    Height = 8,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 8, 0)
+                };
+                dot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "Brush.App" + palette);
+
+                var appLabel = Text(name, "Brush.Text", "Double.FontSize.Body", FontWeights.SemiBold);
+                appLabel.TextTrimming = TextTrimming.CharacterEllipsis;
+                appLabel.VerticalAlignment = VerticalAlignment.Center;
+
+                var duration = Text(UsageText.HoursMinutes(seconds), "Brush.Text", "Double.FontSize.Body", FontWeights.Bold);
+                duration.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
+                duration.VerticalAlignment = VerticalAlignment.Center;
+                duration.Margin = new Thickness(8, 0, 0, 0);
+
+                Grid.SetColumn(dot, 0);
+                Grid.SetColumn(appLabel, 1);
+                Grid.SetColumn(duration, 2);
+
+                item.Children.Add(dot);
+                item.Children.Add(appLabel);
+                item.Children.Add(duration);
+
+                Grid.SetColumn(item, col);
+                Grid.SetRow(item, row);
+                grid.Children.Add(item);
+            }
+            _body.Children.Add(grid);
+        }
+
+        // Summary phrase
+        if (!string.IsNullOrWhiteSpace(summaryPhrase))
+        {
+            var summary = Text(summaryPhrase, "Brush.TextMuted", "Double.FontSize.Small");
+            summary.Margin = new Thickness(0, 10, 0, 12);
+            _body.Children.Add(summary);
+        }
+
+        // Comparison (Typical for this hour)
+        if (compares.Count > 0)
+        {
+            var divider = new Border { Height = 1, Margin = new Thickness(0, 4, 0, 10) };
+            divider.SetResourceReference(Border.BackgroundProperty, "Brush.BorderSoft");
+            _body.Children.Add(divider);
+
+            foreach (var (label, value, good) in compares)
+            {
+                var compGrid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+                compGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                compGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var compLabel = Text(label, "Brush.TextMuted", "Double.FontSize.Small");
+                var compVal = Text(value, good ? "Brush.Accent" : "Brush.Warning", "Double.FontSize.Small", FontWeights.SemiBold);
+                compVal.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
+
+                Grid.SetColumn(compLabel, 0);
+                Grid.SetColumn(compVal, 1);
+                compGrid.Children.Add(compLabel);
+                compGrid.Children.Add(compVal);
+
+                _body.Children.Add(compGrid);
+            }
+        }
+    }
+
     private static TextBlock Text(string text, string brush, string size, FontWeight? weight = null, Thickness? margin = null)
     {
         var t = new TextBlock { Text = text };

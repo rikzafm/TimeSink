@@ -95,9 +95,21 @@ final class MacAppLibraryTests: XCTestCase {
         XCTAssertEqual(children.count, 1)
         XCTAssertEqual(children.first?.id, pcChrome)
 
+        // Make main
+        let didMakeMain = try lib.makeMain(aliasId: pcChrome)
+        XCTAssertTrue(didMakeMain)
+
+        let pcChildren = try lib.getMergedChildren(mainId: pcChrome)
+        XCTAssertEqual(pcChildren.count, 1)
+        XCTAssertEqual(pcChildren.first?.id, macChrome)
+
+        // Old main (macChrome) has pcChrome as its canonical_id
+        let macCanon = try db.scalarInt64("SELECT canonical_id FROM apps WHERE id = \(macChrome);")
+        XCTAssertEqual(macCanon, pcChrome)
+
         // Unmerge
-        try lib.unmerge(appId: pcChrome)
-        let childrenAfter = try lib.getMergedChildren(mainId: macChrome)
+        try lib.unmerge(appId: macChrome)
+        let childrenAfter = try lib.getMergedChildren(mainId: pcChrome)
         XCTAssertTrue(childrenAfter.isEmpty)
     }
 

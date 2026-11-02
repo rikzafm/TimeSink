@@ -127,6 +127,18 @@ public extension Formatters {
         let h2 = hour12(hour + 1)
         return "\(h1) – \(h2)"
     }
+
+    static func hour24Range(_ hour: Int) -> String {
+        let h1 = (hour % 24 + 24) % 24
+        let h2 = ((hour + 1) % 24 + 24) % 24
+        return String(format: "%02d:00 – %02d:00", h1, h2)
+    }
+
+    static func clock24(_ utc: Int64) -> String {
+        let df = DateFormatter()
+        df.dateFormat = "HH:mm"
+        return df.string(from: Date(timeIntervalSince1970: TimeInterval(utc)))
+    }
 }
 
 public struct FlowLayout: Layout {

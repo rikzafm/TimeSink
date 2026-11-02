@@ -235,7 +235,6 @@ public partial class TodayView : UserControl, ILiveView
         var uptime = r.UptimeAt(nowUtc, _day is null); // the PC is on while the view is live
         TotalMain.Text = UsageText.HoursMinutes(uptime);
         TotalSeconds.Text = $"{uptime % 60}s";
-        CombinedText.Text = Str(StringKeys.TodayCombined, UsageText.HoursMinutes(r.CombinedSecondsAt(nowUtc)));
         Chart.NowFraction = _day is null ? r.DayFraction(nowUtc) : 0;
         Chart.NowLabel = Clock(nowUtc);
         Chart.CurrentHour = _day is null ? TimeText.Local(nowUtc).Hour : -1;
@@ -412,19 +411,23 @@ public partial class TodayView : UserControl, ILiveView
         if (_result is not { } r) return;
         var c = PanelContents.ForHour(r, h);
         var compares = UsagePhrases.PanelLines(c).Select(l => (Str(l.Label), Str(l.Value), l.Good)).ToList();
-        Panel.Show(
+        var subtitle = (c.UptimeSeconds > 0 || c.TotalSeconds > 0)
+            ? $"{UsageText.HoursMinutes(c.UptimeSeconds)} uptime · {UsageText.HoursMinutes(c.TotalSeconds)} app time"
+            : Str(PanelStringKeys.HourEmpty);
+        var summary = UsagePhrases.HourSessionSummary(c, Clock);
+        Panel.ShowHourCard(
             HourRange(h),
-            Str(UsagePhrases.HourSubtitle(c)),
+            c.SessionCount,
+            subtitle,
             c.Apps.Select(a => (a.Name, a.Seconds, _themes.AppSlot(a.AppId))).ToList(),
-            c.Sessions.Select(s => (s.AppName, Str(StringKeys.SessionLine, Clock(s.StartUtc), Clock(s.EndUtc)), UsageText.HoursMinutes(s.Seconds))).ToList(),
+            summary,
             compares);
     }
 
-    /// <summary>The "Tracked today" line carries the combined app time; its label only shows under the untracked card.</summary>
+    /// <summary>The "Tracked today" label only shows under the untracked card.</summary>
     private void UpdateTrackedHeader()
     {
-        TrackedHeader.Visibility = _result?.Apps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        TrackedLabel.Visibility = _untracked.HasCard ? Visibility.Visible : Visibility.Collapsed;
+        TrackedHeader.Visibility = _untracked.HasCard && _result?.Apps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void BuildAxis()

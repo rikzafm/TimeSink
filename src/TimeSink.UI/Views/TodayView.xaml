@@ -143,8 +143,6 @@
             <StackPanel x:Name="UntrackedHost"/>
             <Grid x:Name="TrackedHeader" Margin="0,0,0,4" Visibility="Collapsed">
                 <TextBlock x:Name="TrackedLabel" Style="{StaticResource Small}" HorizontalAlignment="Left" Text="{DynamicResource Str.TodayTrackedHeader}"/>
-                <TextBlock x:Name="CombinedText" Style="{StaticResource Small}" HorizontalAlignment="Right"
-                           FontFamily="{DynamicResource FontFamily.Numbers}"/>
             </Grid>
             <StackPanel x:Name="Rows"/>
         </StackPanel>

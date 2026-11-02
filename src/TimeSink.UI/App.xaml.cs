@@ -16,6 +16,7 @@ public partial class App : Application
     private Mutex? _mutex;
     private EventWaitHandle? _closeEvent, _showEvent;
     private RegisteredWaitHandle? _closeWait, _showWait;
+    private System.Diagnostics.Process? _parentProcess;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -51,6 +52,19 @@ public partial class App : Application
         var standby = e.Args.Contains(FlyoutProtocol.StandbyArg);
         var keep = e.Args.Contains(FlyoutProtocol.KeepArg);
 
+        var parentPid = FlyoutProtocol.TryGetParentPid(e.Args);
+        if (!parentPid.HasValue && standby)
+        {
+            var agents = System.Diagnostics.Process.GetProcessesByName("TimeSink.Agent");
+            if (agents.Length > 0)
+                parentPid = agents[0].Id;
+            else
+            {
+                Shutdown();
+                return;
+            }
+        }
+
         if (!FlyoutLaunchArgs.TryParse(e.Args, out var launch))
         {
             // Started by hand (or standby, before the Agent says where): bottom-right of the primary work area.
@@ -67,6 +81,33 @@ public partial class App : Application
 
         var window = new FlyoutWindow(launch, themes, prepared.DbPath, prepared.Tab, standby);
         StartupTrace.Mark("windowBuilt");
+
+        if (parentPid.HasValue)
+        {
+            try
+            {
+                _parentProcess = System.Diagnostics.Process.GetProcessById(parentPid.Value);
+                if (_parentProcess.HasExited)
+                {
+                    Shutdown();
+                    return;
+                }
+                _parentProcess.EnableRaisingEvents = true;
+                _parentProcess.Exited += (_, _) =>
+                {
+                    Dispatcher.BeginInvoke(() =>
+                    {
+                        try { window.Close(); } catch { }
+                        Shutdown();
+                    });
+                };
+            }
+            catch (ArgumentException)
+            {
+                Shutdown();
+                return;
+            }
+        }
 
         _closeEvent = new EventWaitHandle(false, EventResetMode.AutoReset, FlyoutProtocol.CloseEventName);
         _closeWait = ThreadPool.RegisterWaitForSingleObject(_closeEvent,
@@ -114,6 +155,7 @@ public partial class App : Application
         _showWait?.Unregister(null);
         _closeEvent?.Dispose();
         _showEvent?.Dispose();
+        _parentProcess?.Dispose();
         if (_mutex is not null)
         {
             _mutex.ReleaseMutex();

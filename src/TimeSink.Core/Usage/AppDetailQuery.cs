@@ -78,11 +78,11 @@ public static class AppDetailQuery
         }
 
         var deviceSeconds = new Dictionary<string, long>();
-        foreach (var s in segs)
+        var byDev = segs.GroupBy(s => string.IsNullOrEmpty(s.DeviceId) ? (apps.TryGetValue(s.AppId, out var ga) ? ga.DeviceId : "") : s.DeviceId);
+        foreach (var devGroup in byDev)
         {
-            var dev = string.IsNullOrEmpty(s.DeviceId) ? (apps.TryGetValue(s.AppId, out var ga) ? ga.DeviceId : "") : s.DeviceId;
-            if (!string.IsNullOrEmpty(dev))
-                deviceSeconds[dev] = deviceSeconds.GetValueOrDefault(dev) + (s.End - s.Start);
+            if (string.IsNullOrEmpty(devGroup.Key)) continue;
+            deviceSeconds[devGroup.Key] = UsageUptime.OpenSeconds(devGroup.ToList(), 0, long.MaxValue);
         }
 
         return new AppDetailResult(appId, name, exe ?? "", first, lastOpened, total, segs.Count,

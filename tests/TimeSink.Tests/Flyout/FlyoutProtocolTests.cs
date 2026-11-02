@@ -11,6 +11,7 @@ public class FlyoutProtocolTests
         FlyoutProtocol.ShowEventName.Should().Be(@"Local\TimeSink.UI.Show");
         FlyoutProtocol.StandbyArg.Should().Be("--standby");
         FlyoutProtocol.KeepArg.Should().Be("--keep");
+        FlyoutProtocol.ParentPidArg.Should().Be("--parent-pid");
         FlyoutProtocol.HandoffPath.Should().EndWith(Path.Combine("TimeSink", "flyout.args"));
     }
 
@@ -19,5 +20,17 @@ public class FlyoutProtocolTests
     {
         FlyoutProtocol.StandbyArgs(keep: false).Should().Equal("--standby");
         FlyoutProtocol.StandbyArgs(keep: true).Should().Equal("--standby", "--keep");
+    }
+
+    [Fact]
+    public void Parent_pid_is_extracted_when_present()
+    {
+        FlyoutProtocol.TryGetParentPid(["--standby", "--parent-pid", "1234"]).Should().Be(1234);
+        FlyoutProtocol.TryGetParentPid(["--parent-pid", "42"]).Should().Be(42);
+        FlyoutProtocol.TryGetParentPid(["--standby"]).Should().BeNull();
+        FlyoutProtocol.TryGetParentPid(["--parent-pid"]).Should().BeNull();
+        FlyoutProtocol.TryGetParentPid(["--parent-pid", "not-a-number"]).Should().BeNull();
+        FlyoutProtocol.TryGetParentPid(["--parent-pid", "-5"]).Should().BeNull();
+        FlyoutProtocol.TryGetParentPid([]).Should().BeNull();
     }
 }

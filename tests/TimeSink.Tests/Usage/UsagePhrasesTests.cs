@@ -182,4 +182,40 @@ public sealed class UsagePhrasesTests
         lines.Should().Equal(new PanelLine(new Phrase(PanelStringKeys.HourTypical),
             new Phrase(PanelStringKeys.HourTypicalValue, UsageText.HoursMinutes(2400), UsageText.SignedHoursMinutes(-300)), false));
     }
+
+    [Fact]
+    public void Hour_session_summary_formats_all_full_and_mixed_sessions()
+    {
+        // Empty sessions
+        var empty = new PanelContent(0, 0, null, null, null, [], [], []);
+        UsagePhrases.HourSessionSummary(empty, Clock).Should().BeEmpty();
+
+        // All full sessions: all span 100 to 200
+        var fullSessions = new List<BarSession>
+        {
+            new(1, "AppA", 100, 200),
+            new(2, "AppB", 100, 200)
+        };
+        var fullApps = new List<BarApp>
+        {
+            new(1, "AppA", 100),
+            new(2, "AppB", 100)
+        };
+        var full = new PanelContent(200, 2, null, null, null, fullApps, fullSessions, []);
+        UsagePhrases.HourSessionSummary(full, Clock).Should().Be("Every session ran c100 → c200 · each app 50%");
+
+        // Mixed sessions
+        var mixedSessions = new List<BarSession>
+        {
+            new(1, "AppA", 100, 180),
+            new(2, "AppB", 150, 200)
+        };
+        var mixedApps = new List<BarApp>
+        {
+            new(1, "AppA", 80),
+            new(2, "AppB", 50)
+        };
+        var mixed = new PanelContent(130, 2, null, null, null, mixedApps, mixedSessions, []);
+        UsagePhrases.HourSessionSummary(mixed, Clock).Should().Be("Active c100 → c200 · Top app: AppA (1m, 62%)");
+    }
 }

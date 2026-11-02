@@ -6,6 +6,10 @@ public struct AppSettingsSheet: View {
     public let appId: Int64
     public let onDismiss: () -> Void
 
+    @State private var currentAppId: Int64 = 0
+    @State private var candidateForMain: TrackedAppItem? = nil
+    @State private var showChangeMainConfirm = false
+
     @State private var displayName = ""
     @State private var kind: AppKind = .other
     @State private var isBackground = false
@@ -21,6 +25,7 @@ public struct AppSettingsSheet: View {
     public init(state: AppState, appId: Int64, onDismiss: @escaping () -> Void) {
         self.state = state
         self.appId = appId
+        self._currentAppId = State(initialValue: appId)
         self.onDismiss = onDismiss
     }
 
@@ -52,7 +57,7 @@ public struct AppSettingsSheet: View {
             .background(ThemeColors.background)
 
             if state.appSettingsShowingMerge {
-                MergeView(state: state, mainAppId: appId) {
+                MergeView(state: state, mainAppId: currentAppId) {
                     state.appSettingsShowingMerge = false
                     loadDetails()
                 }
@@ -62,7 +67,7 @@ public struct AppSettingsSheet: View {
         .onAppear(perform: loadDetails)
         .alert("Stop tracking?", isPresented: $state.appSettingsShowingStopConfirm) {
             Button("Stop tracking", role: .destructive) {
-                try? MacAppLibrary(db: state.db).stopTracking(appId: appId)
+                try? MacAppLibrary(db: state.db).stopTracking(appId: currentAppId)
                 state.refresh()
                 onDismiss()
             }
@@ -72,13 +77,27 @@ public struct AppSettingsSheet: View {
         }
         .alert("Clear history?", isPresented: $state.appSettingsShowingClearConfirm) {
             Button("Clear all history", role: .destructive) {
-                try? MacAppLibrary(db: state.db).clearHistory(appId: appId)
+                try? MacAppLibrary(db: state.db).clearHistory(appId: currentAppId)
                 state.refresh()
                 loadDetails()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will permanently delete all recorded sessions and daily usage for this app.")
+        }
+        .alert(candidateForMain != nil ? "Make \(candidateForMain!.displayName) the main app?" : "Make main app?", isPresented: $showChangeMainConfirm) {
+            Button("Make main") {
+                if let candidate = candidateForMain {
+                    if (try? MacAppLibrary(db: state.db).makeMain(aliasId: candidate.id)) == true {
+                        currentAppId = candidate.id
+                        state.refresh()
+                        loadDetails()
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Existing history stays with each app. Merged settings and goals will follow the new main app.")
         }
     }
 
@@ -106,7 +125,7 @@ public struct AppSettingsSheet: View {
 
     private var hero: some View {
         HStack(spacing: 12) {
-            AppTile(name: displayName, png: state.iconCache.getCachedIcon(forAppId: appId, fallbackExePath: appPath), size: 48, radius: 12, fontSize: 22)
+            AppTile(name: displayName, png: state.iconCache.getCachedIcon(forAppId: currentAppId, fallbackExePath: appPath), size: 48, radius: 12, fontSize: 22)
             VStack(alignment: .leading, spacing: 4) {
                 TextField("App name", text: $displayName)
                     .textFieldStyle(.plain)
@@ -219,9 +238,24 @@ public struct AppSettingsSheet: View {
 
     private var mergedSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 8) {
                 Text("MERGED APPS").caps(10)
                 Spacer()
+                if !mergedChildren.isEmpty {
+                    Menu {
+                        ForEach(mergedChildren) { child in
+                            Button(child.displayName) {
+                                candidateForMain = child
+                                showChangeMainConfirm = true
+                            }
+                        }
+                    } label: {
+                        Text("Change main…")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(ThemeColors.accent)
+                    }
+                    .menuStyle(.borderlessButton)
+                }
                 Button(action: { state.appSettingsShowingMerge = true }) {
                     Text("Merge…")
                         .font(.system(size: 11, weight: .semibold))
@@ -308,7 +342,7 @@ public struct AppSettingsSheet: View {
         let lib = MacAppLibrary(db: state.db)
         do {
             let stmt = try state.db.prepare("SELECT display_name, kind, is_background, exe_path, added_utc, device_id FROM apps WHERE id = ?1;")
-            try stmt.bind(int64: appId, at: 1)
+            try stmt.bind(int64: currentAppId, at: 1)
             if try stmt.step() {
                 displayName = stmt.columnText(at: 0) ?? ""
                 let rawKind = stmt.columnIsNull(at: 1) ? nil : stmt.columnInt64(at: 1)
@@ -318,11 +352,11 @@ public struct AppSettingsSheet: View {
                 deviceId = stmt.columnText(at: 5) ?? ""
                 kind = AppKinds.resolve(kind: rawKind, exePath: appPath, displayName: displayName)
             }
-            mergedChildren = try lib.getMergedChildren(mainId: appId)
-            totalSeconds = (try? lib.getActiveSeconds(appId: appId)) ?? 0
+            mergedChildren = try lib.getMergedChildren(mainId: currentAppId)
+            totalSeconds = (try? lib.getActiveSeconds(appId: currentAppId)) ?? 0
             if totalSeconds == 0 {
                 let usage = try state.db.prepare("SELECT COALESCE(SUM(seconds), 0) FROM daily_usage WHERE app_id = ?1 OR app_id IN (SELECT id FROM apps WHERE canonical_id = ?1);")
-                try usage.bind(int64: appId, at: 1)
+                try usage.bind(int64: currentAppId, at: 1)
                 if try usage.step() { totalSeconds = usage.columnInt64(at: 0) }
             }
             loaded = true
@@ -333,7 +367,7 @@ public struct AppSettingsSheet: View {
 
     private func saveChanges() {
         guard loaded, !displayName.isEmpty else { return }
-        try? MacAppLibrary(db: state.db).updateApp(appId: appId, displayName: displayName, kind: kind, isBackground: isBackground)
+        try? MacAppLibrary(db: state.db).updateApp(appId: currentAppId, displayName: displayName, kind: kind, isBackground: isBackground)
         state.refresh()
     }
 }

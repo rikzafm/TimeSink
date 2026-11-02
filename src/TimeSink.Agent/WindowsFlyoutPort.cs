@@ -21,6 +21,11 @@ internal sealed class WindowsFlyoutPort : IFlyoutPort
 
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false };
         foreach (var a in args) psi.ArgumentList.Add(a);
+        if (!args.Contains(FlyoutProtocol.ParentPidArg))
+        {
+            psi.ArgumentList.Add(FlyoutProtocol.ParentPidArg);
+            psi.ArgumentList.Add(Environment.ProcessId.ToString());
+        }
 
         var p = Process.Start(psi);
         if (p is null) return null;
