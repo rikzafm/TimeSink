@@ -402,6 +402,26 @@ public partial class FlyoutWindow : Window
         _addApp?.ShowTracked();
     }
 
+    public void OpenAddAppTrackedSynced(bool returnToDevicesSync = false)
+    {
+        _addApp = new AddAppView(_themes, _dbPath, () =>
+        {
+            if (returnToDevicesSync)
+            {
+                SetOverlay(_settings);
+                _settings?.OpenDevicesSync();
+            }
+            else
+            {
+                SetOverlay(null);
+            }
+            Live.NotifyDataChanged();
+        });
+        _addApp.OnShown();
+        SetOverlay(_addApp);
+        _addApp.ShowTrackedSynced();
+    }
+
     /// <summary>
     /// Shows or clears a full-flyout screen. The tab body underneath is collapsed while one is up: WPF would otherwise
     /// recompose it on every scroll frame of the overlay (Year > Wrapped's card is expensive to redraw).

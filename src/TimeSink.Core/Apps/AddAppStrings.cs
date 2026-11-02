@@ -40,6 +40,8 @@ public static class AddAppStrings
     public const string TrackedSearch = "addTrackedSearch";
     public const string TrackedHeader = "addTrackedHeader";
     public const string TrackedEmpty = "addTrackedEmpty";
+    public const string TrackedEmptySynced = "addTrackedEmptySynced";
+    public const string ScopeSynced = "scopeSynced";
     public const string TrackedNoPublisher = "addTrackedNoPublisher";
     public const string TrackedCount = "addTrackedCount";
     public const string Manage = "addManage";
@@ -131,7 +133,7 @@ public static class AddAppStrings
         HintBefore, HintLink, HintAfter, AddedCount, Done, RunningEmpty, Close,
         Search, NoMatch, InstalledLoading, InstalledEmpty, StopTracking, StopTip, Restore, RetiredHeader,
         NotThisOne, DropTitle, DropSub, Choose, Places, NotAnApp, TargetMissing, NoFolder,
-        TabTracked, TrackedSearch, TrackedHeader, TrackedEmpty, TrackedNoPublisher, TrackedCount, Manage, Rename, Merge, Stop,
+        TabTracked, TrackedSearch, TrackedHeader, TrackedEmpty, TrackedEmptySynced, ScopeSynced, TrackedNoPublisher, TrackedCount, Manage, Rename, Merge, Stop,
         RenameLabel, Save, Cancel, MergeTitle, MergeSub, MergePreview, MergePick, MergeInto, Unmerge, StopTitle, StopBody, KeepTracking,
         FilterUntracked, FilterAll, SubStopped, SubInstalled, MergeStarts, MergeCount, SaveChanges,
         Background, BackgroundTip, BackgroundApp, Kind, KindTip, KindOther, KindGame, KindGacha,

@@ -18,29 +18,43 @@ namespace TimeSink.UI.Views;
 public sealed partial class AddAppView
 {
     private enum BtnKind { Primary, Outline, Danger, DangerFill, Ghost }
+    public enum TrackedDeviceFilter { Local, Synced }
 
     private IReadOnlyList<TrackedEntry> _tracked = [];
     private readonly Dictionary<long, byte[]?> _trackedIcons = new();
     private IReadOnlySet<long> _chosenIcons = new HashSet<long>();
     private string _trackedQuery = "";
+    private TrackedDeviceFilter _deviceFilter = TrackedDeviceFilter.Local;
     private StackPanel _trackedList = null!;
     private ScrollViewer _trackedScroll = null!;
     private TextBlock _trackedHeader = null!;
+    private Grid _trackedHeaderRow = null!;
+    private Border _deviceScopeSeg = null!;
+    private RadioButton _deviceLocalRadio = null!;
+    private RadioButton _deviceSyncedRadio = null!;
     private static readonly object TrackedRowTag = new(); // marks a row's card, so a click can tell a row from empty list space
     private string _draft = "";
     private MergePlan? _mergePlan;      // the open merge screen's plan (Candidates, ticks, confirm) lives in AppCatalogue; which screen shows is in _nav
     private double _listOffset;            // Tracked list scroll position when Merge… was opened
 
-    public void ShowTracked()
+    public void ShowTracked(TrackedDeviceFilter initialFilter = TrackedDeviceFilter.Local)
     {
         if (_nav.State.Merge == MergeStage.Ready && _mergePlan is { } plan)
             Content = BuildMergeScreen(plan);
         else
-            _body.Content = BuildTrackedTab();
+            _body.Content = BuildTrackedTab(initialFilter);
     }
 
-    private UIElement BuildTrackedTab()
+    public void ShowTrackedSynced()
     {
+        if (_tabButtons.TryGetValue("Tracked", out var btn))
+            btn.IsChecked = true;
+        ShowTracked(TrackedDeviceFilter.Synced);
+    }
+
+    private UIElement BuildTrackedTab(TrackedDeviceFilter initialFilter = TrackedDeviceFilter.Local)
+    {
+        _deviceFilter = initialFilter;
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -50,7 +64,19 @@ public sealed partial class AddAppView
         root.Children.Add(search);
 
         _trackedHeader = Text(null, "Double.FontSize.Small", "Brush.TextMuted");
-        _trackedHeader.Margin = new Thickness(8, 8, 0, 8);
+        _trackedHeader.Margin = new Thickness(8, 0, 0, 0);
+        _trackedHeader.VerticalAlignment = VerticalAlignment.Center;
+
+        _deviceScopeSeg = BuildDeviceToggle();
+
+        _trackedHeaderRow = new Grid { Margin = new Thickness(0, 8, 0, 8) };
+        _trackedHeaderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        _trackedHeaderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(_trackedHeader, 0);
+        Grid.SetColumn(_deviceScopeSeg, 1);
+        _trackedHeaderRow.Children.Add(_trackedHeader);
+        _trackedHeaderRow.Children.Add(_deviceScopeSeg);
+
         _trackedList = new StackPanel { Margin = new Thickness(12, 4, 12, 8) };
         _trackedScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false, Content = _trackedList, Background = Brushes.Transparent };
         _trackedScroll.PreviewMouseLeftButtonDown += (_, e) => // a click on empty list space deselects the open row
@@ -72,6 +98,60 @@ public sealed partial class AddAppView
             _trackedScroll.Loaded += (_, _) => Dispatcher.BeginInvoke(() => _trackedScroll.ScrollToVerticalOffset(offset), DispatcherPriority.Loaded);
         }
         return root;
+    }
+
+    private Border BuildDeviceToggle()
+    {
+        var segBorder = new Border
+        {
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(2),
+            Background = Brushes.Transparent,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        segBorder.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
+
+        var segPanel = new StackPanel { Orientation = Orientation.Horizontal };
+        var style = TryFindResource("ScopeSegButton") as Style ?? Application.Current?.TryFindResource("ScopeSegButton") as Style;
+
+        _deviceLocalRadio = new RadioButton
+        {
+            Content = TimeText.Str(TimeSink.Core.Theming.StringKeys.ScopeThisPc),
+            GroupName = "TrackedTabDeviceFilter",
+            Style = style,
+            IsChecked = _deviceFilter == TrackedDeviceFilter.Local,
+            Padding = new Thickness(8, 2, 8, 2),
+            FontSize = 11,
+        };
+        _deviceSyncedRadio = new RadioButton
+        {
+            Content = TimeText.Str(AddAppStrings.ScopeSynced),
+            GroupName = "TrackedTabDeviceFilter",
+            Style = style,
+            IsChecked = _deviceFilter == TrackedDeviceFilter.Synced,
+            Padding = new Thickness(8, 2, 8, 2),
+            FontSize = 11,
+        };
+
+        _deviceLocalRadio.Checked += (_, _) =>
+        {
+            if (_deviceFilter == TrackedDeviceFilter.Local) return;
+            _deviceFilter = TrackedDeviceFilter.Local;
+            RenderTracked(reload: false);
+        };
+        _deviceSyncedRadio.Checked += (_, _) =>
+        {
+            if (_deviceFilter == TrackedDeviceFilter.Synced) return;
+            _deviceFilter = TrackedDeviceFilter.Synced;
+            RenderTracked(reload: false);
+        };
+
+        segPanel.Children.Add(_deviceLocalRadio);
+        segPanel.Children.Add(_deviceSyncedRadio);
+        segBorder.Child = segPanel;
+        return segBorder;
     }
 
     private Border SearchBox(string hintKey, string automationKey, string initial, Action<string> changed) =>
@@ -149,6 +229,18 @@ public sealed partial class AddAppView
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
+    private static bool HasLocalPresence(TrackedEntry a, IReadOnlyDictionary<string, (string Name, bool IsLocal)> devInfo, string? localDev)
+    {
+        if (DeviceInfoService.IsLocal(devInfo, a.DeviceId, localDev)) return true;
+        return a.Merged.Any(m => DeviceInfoService.IsLocal(devInfo, m.DeviceId, localDev));
+    }
+
+    private static bool HasRemotePresence(TrackedEntry a, IReadOnlyDictionary<string, (string Name, bool IsLocal)> devInfo, string? localDev)
+    {
+        if (!string.IsNullOrEmpty(a.DeviceId) && !DeviceInfoService.IsLocal(devInfo, a.DeviceId, localDev)) return true;
+        return a.Merged.Any(m => !string.IsNullOrEmpty(m.DeviceId) && !DeviceInfoService.IsLocal(devInfo, m.DeviceId, localDev));
+    }
+
     private void RenderTracked() => RenderTracked(reload: true);
 
     /// <param name="reload">Re-read the tracked apps from the database; a search keystroke reuses the last read.</param>
@@ -160,14 +252,31 @@ public sealed partial class AddAppView
         _trackedList.Children.Clear();
         var q = _trackedQuery.Trim();
         if (_catalogue.LastInstalled is null) LoadInstalled(); // publishers come from the installed-apps scan
-        var shown = TrackedSearch.Apply(_tracked, q, path => _catalogue.InstalledBy(path)?.Byline);
+
+        var devInfo = DeviceInfoService.Load(_dbPath);
+        var localDev = DeviceInfoService.GetLocalDeviceId(_dbPath) ?? devInfo.FirstOrDefault(kv => kv.Value.IsLocal).Key;
+        var hasSynced = devInfo.Values.Any(v => !v.IsLocal) || _tracked.Any(a => HasRemotePresence(a, devInfo, localDev)) || SettingsView.HasRemoteAppsInDb(_dbPath);
+
+        if (_deviceScopeSeg is not null)
+        {
+            _deviceScopeSeg.Visibility = hasSynced ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        var appsForDevice = hasSynced
+            ? _tracked.Where(a => _deviceFilter == TrackedDeviceFilter.Synced ? HasRemotePresence(a, devInfo, localDev) : HasLocalPresence(a, devInfo, localDev)).ToList()
+            : _tracked;
+
+        var shown = TrackedSearch.Apply(appsForDevice, q, path => _catalogue.InstalledBy(path)?.Byline);
 
         _trackedHeader.Text = q.Length == 0 ? TimeText.Str(AddAppStrings.TrackedHeader).ToUpperInvariant() : TimeText.Str(AddAppStrings.TrackedCount, shown.Count);
-        _trackedList.Children.Add(_trackedHeader);
+        _trackedList.Children.Add(_trackedHeaderRow);
 
-        if (_tracked.Count == 0)
+        if (appsForDevice.Count == 0)
         {
-            var empty = Text("Str.AddTrackedEmpty", "Double.FontSize.Body", "Brush.TextMuted");
+            var empty = Text(null, "Double.FontSize.Body", "Brush.TextMuted");
+            empty.Text = _deviceFilter == TrackedDeviceFilter.Synced
+                ? TimeText.Str(AddAppStrings.TrackedEmptySynced)
+                : TimeText.Str(AddAppStrings.TrackedEmpty);
             empty.Margin = new Thickness(8, 8, 8, 8);
             empty.TextWrapping = TextWrapping.Wrap;
             _trackedList.Children.Add(empty);
@@ -249,7 +358,7 @@ public sealed partial class AddAppView
         if (distinctDevs.Count > 1)
         {
             var devInfo = DeviceInfoService.Load(_dbPath);
-            var localDev = devInfo.FirstOrDefault(kv => kv.Value.IsLocal).Key;
+            var localDev = DeviceInfoService.GetLocalDeviceId(_dbPath) ?? devInfo.FirstOrDefault(kv => kv.Value.IsLocal).Key;
             var ordered = distinctDevs.OrderByDescending(d => DeviceInfoService.IsLocal(devInfo, d, localDev)).ToList();
             foreach (var d in ordered)
             {

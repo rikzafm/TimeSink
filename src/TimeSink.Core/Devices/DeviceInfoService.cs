@@ -13,6 +13,7 @@ public static class DeviceInfoService
             conn.Open();
 
             var shortNames = true;
+            string? localDevId = null;
             using (var sCmd = conn.CreateCommand())
             {
                 sCmd.CommandText = "SELECT value FROM settings WHERE key = 'devices.shortNames';";
@@ -21,6 +22,12 @@ public static class DeviceInfoService
                 {
                     shortNames = false;
                 }
+            }
+
+            using (var lCmd = conn.CreateCommand())
+            {
+                lCmd.CommandText = "SELECT COALESCE((SELECT value FROM settings WHERE key = 'device.id'), (SELECT device_id FROM devices WHERE is_local = 1));";
+                localDevId = lCmd.ExecuteScalar() as string;
             }
 
             var rawDevices = new List<(string Id, string Name, string Platform, bool IsLocal, string FirstSeen)>();
@@ -33,7 +40,7 @@ public static class DeviceInfoService
                     var id = reader.GetString(0);
                     var name = reader.GetString(1);
                     var platform = reader.GetString(2);
-                    var isLocal = reader.GetInt64(3) == 1;
+                    var isLocal = reader.GetInt64(3) == 1 || (!string.IsNullOrEmpty(localDevId) && string.Equals(id, localDevId, StringComparison.OrdinalIgnoreCase));
                     var firstSeen = !reader.IsDBNull(4) ? reader.GetString(4) : "";
                     rawDevices.Add((id, name, platform, isLocal, firstSeen));
                 }
@@ -45,9 +52,27 @@ public static class DeviceInfoService
                 var disp = displayNames.TryGetValue(dev.Id, out var dn) ? dn : (!string.IsNullOrEmpty(dev.Name) ? dev.Name : (string.Equals(dev.Platform, "macos", StringComparison.OrdinalIgnoreCase) ? "Mac" : "PC"));
                 dict[dev.Id] = (disp, dev.IsLocal);
             }
+
+            if (!string.IsNullOrEmpty(localDevId) && !dict.ContainsKey(localDevId))
+            {
+                dict[localDevId] = ("PC", true);
+            }
         }
         catch { }
         return dict;
+    }
+
+    public static string? GetLocalDeviceId(string dbPath)
+    {
+        try
+        {
+            using var conn = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COALESCE((SELECT value FROM settings WHERE key = 'device.id'), (SELECT device_id FROM devices WHERE is_local = 1));";
+            return cmd.ExecuteScalar() as string;
+        }
+        catch { return null; }
     }
 
     public static Dictionary<string, string> ComputeDisplayNames(
@@ -110,8 +135,8 @@ public static class DeviceInfoService
     {
         if (string.IsNullOrEmpty(deviceId)) return true;
         if (info.TryGetValue(deviceId, out var item)) return item.IsLocal;
-        if (localDeviceId != null) return string.Equals(deviceId, localDeviceId, StringComparison.OrdinalIgnoreCase);
-        return true;
+        if (!string.IsNullOrEmpty(localDeviceId)) return string.Equals(deviceId, localDeviceId, StringComparison.OrdinalIgnoreCase);
+        return false;
     }
 
     public static string GetName(IReadOnlyDictionary<string, (string Name, bool IsLocal)> info, string? deviceId, bool isLocal)

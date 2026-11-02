@@ -493,6 +493,72 @@ public sealed partial class SettingsView
             devicesCard.Child = devicesList;
             stack.Children.Add(devicesCard);
 
+            // Card: Manage synced apps (visible when sync is enabled, remote devices exist, or synced apps exist)
+            var hasRemote = devices.Any(d => !d.IsLocal && d.State != "forgotten");
+            var hasSyncedApps = HasRemoteAppsInDb(_dbPath);
+            if (enabled || hasRemote || hasSyncedApps)
+            {
+                var syncedAppsCard = new Border
+                {
+                    Padding = new Thickness(14, 12, 14, 12),
+                    BorderThickness = new Thickness(1),
+                    Margin = new Thickness(0, 0, 0, 14),
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                };
+                syncedAppsCard.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
+                syncedAppsCard.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
+                syncedAppsCard.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
+
+                var cardGrid = new Grid();
+                cardGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                cardGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var textStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                var cardTitle = new TextBlock
+                {
+                    Text = "Manage synced apps",
+                    FontWeight = FontWeights.SemiBold,
+                };
+                cardTitle.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+                var cardDesc = new TextBlock
+                {
+                    Text = "View and configure apps tracked across your devices",
+                    Margin = new Thickness(0, 2, 0, 0),
+                };
+                cardDesc.SetResourceReference(TextBlock.StyleProperty, "Caption");
+                cardDesc.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+                cardDesc.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+
+                textStack.Children.Add(cardTitle);
+                textStack.Children.Add(cardDesc);
+                Grid.SetColumn(textStack, 0);
+                cardGrid.Children.Add(textStack);
+
+                var chevron = new TextBlock
+                {
+                    Text = "›",
+                    FontSize = 18,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(8, 0, 0, 0),
+                };
+                chevron.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+                Grid.SetColumn(chevron, 1);
+                cardGrid.Children.Add(chevron);
+
+                syncedAppsCard.Child = cardGrid;
+
+                syncedAppsCard.MouseEnter += (_, _) => syncedAppsCard.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+                syncedAppsCard.MouseLeave += (_, _) => syncedAppsCard.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
+
+                syncedAppsCard.MouseLeftButtonUp += (_, _) =>
+                {
+                    var win = Window.GetWindow(this) as FlyoutWindow;
+                    win?.OpenAddAppTrackedSynced(returnToDevicesSync: true);
+                };
+
+                stack.Children.Add(syncedAppsCard);
+            }
+
             // Card 3: Merge hint banner (if non-merged apps with same name exist on multiple devices)
             var matchingApps = FindMatchingCrossDeviceApps();
             if (matchingApps.Count > 0)
@@ -693,6 +759,50 @@ public sealed partial class SettingsView
         box.Focus();
     }
 
+    internal static bool HasRemoteAppsInDb(string dbPath)
+    {
+        try
+        {
+            using var conn = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
+            conn.Open();
+
+            var localDevId = DeviceInfoService.GetLocalDeviceId(dbPath);
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT 1 FROM apps
+                WHERE (
+                    (device_id IS NOT NULL AND device_id != '' AND ($localId IS NULL OR device_id != $localId))
+                    OR id IN (
+                        SELECT canonical_id FROM apps
+                        WHERE canonical_id IS NOT NULL
+                          AND device_id IS NOT NULL
+                          AND device_id != ''
+                          AND ($localId IS NULL OR device_id != $localId)
+                    )
+                )
+                AND state = 'tracked'
+                LIMIT 1;
+                """;
+            cmd.Parameters.AddWithValue("$localId", (object?)localDevId ?? DBNull.Value);
+            var res = cmd.ExecuteScalar();
+            return res != null && res != DBNull.Value;
+        }
+        catch { return false; }
+    }
+
+    private static DateTimeOffset? SafeParseDate(object? val)
+    {
+        if (val is null or DBNull) return null;
+        if (val is long l) return DateTimeOffset.FromUnixTimeSeconds(l);
+        if (val is int i) return DateTimeOffset.FromUnixTimeSeconds(i);
+        var str = val.ToString();
+        if (string.IsNullOrWhiteSpace(str)) return null;
+        if (long.TryParse(str, out var unixSecs)) return DateTimeOffset.FromUnixTimeSeconds(unixSecs);
+        if (DateTimeOffset.TryParse(str, out var dto)) return dto;
+        return null;
+    }
+
     private IReadOnlyList<DeviceRecord> ReadDevices()
     {
         var list = new List<DeviceRecord>();
@@ -705,14 +815,14 @@ public sealed partial class SettingsView
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
-                var id = r.GetString(0);
-                var name = r.GetString(1);
-                var platform = r.GetString(2);
-                var isLocal = r.GetInt64(3) == 1;
-                var firstSeen = DateTimeOffset.Parse(r.GetString(4));
-                DateTimeOffset? lastImport = r.IsDBNull(5) ? null : DateTimeOffset.Parse(r.GetString(5));
-                DateTimeOffset? lastFile = r.IsDBNull(6) ? null : DateTimeOffset.Parse(r.GetString(6));
-                var state = r.GetString(7);
+                var id = r.IsDBNull(0) ? "" : r.GetString(0);
+                var name = r.IsDBNull(1) ? "" : r.GetString(1);
+                var platform = r.IsDBNull(2) ? "windows" : r.GetString(2);
+                var isLocal = !r.IsDBNull(3) && r.GetInt64(3) == 1;
+                var firstSeen = SafeParseDate(r.GetValue(4)) ?? DateTimeOffset.UtcNow;
+                DateTimeOffset? lastImport = SafeParseDate(r.GetValue(5));
+                DateTimeOffset? lastFile = SafeParseDate(r.GetValue(6));
+                var state = r.IsDBNull(7) ? "active" : r.GetString(7);
                 list.Add(new DeviceRecord(id, name, platform, isLocal, firstSeen, lastImport, lastFile, state));
             }
         }

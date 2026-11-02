@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Apps;
 using TimeSink.Core.Data;
 using TimeSink.Core.Devices;
 
@@ -216,6 +217,29 @@ public static class SyncWriter
                 """;
             cmd.Parameters.AddWithValue("$devId", localDeviceId);
             cmd.ExecuteNonQuery();
+
+            // Resolve any NULL kind so destination devices receive detected classification (e.g. Gacha/Game)
+            using (var selectCmd = sourceConn.CreateCommand())
+            {
+                selectCmd.CommandText = "SELECT id, exe_path, display_name FROM snap.apps WHERE kind IS NULL;";
+                var appsToResolve = new List<(long Id, string ExePath, string DisplayName)>();
+                using (var r = selectCmd.ExecuteReader())
+                {
+                    while (r.Read())
+                    {
+                        appsToResolve.Add((r.GetInt64(0), r.GetString(1), r.GetString(2)));
+                    }
+                }
+                foreach (var app in appsToResolve)
+                {
+                    var resolvedKind = (int)AppKinds.Resolve(null, app.ExePath, app.DisplayName);
+                    using var updCmd = sourceConn.CreateCommand();
+                    updCmd.CommandText = "UPDATE snap.apps SET kind = $k WHERE id = $id;";
+                    updCmd.Parameters.AddWithValue("$k", resolvedKind);
+                    updCmd.Parameters.AddWithValue("$id", app.Id);
+                    updCmd.ExecuteNonQuery();
+                }
+            }
         }
         finally
         {

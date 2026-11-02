@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Apps;
 using TimeSink.Core.Data;
 using TimeSink.Core.Devices;
 using TimeSink.Core.Tracking;
@@ -276,6 +277,7 @@ public static partial class SyncReader
                         var retiredUtc = a[10] as long?;
                         var isBackground = Convert.ToInt32(a[11] ?? 0);
                         var kind = a[12] as long?;
+                        var effectiveKind = kind ?? (long)AppKinds.Detect(exePath, displayName);
 
                         long dstId;
                         using (var findCmd = conn.CreateCommand())
@@ -312,7 +314,7 @@ public static partial class SyncReader
                                 updCmd.Parameters.AddWithValue("$s", state);
                                 updCmd.Parameters.AddWithValue("$r", (object?)retiredUtc ?? DBNull.Value);
                                 updCmd.Parameters.AddWithValue("$bg", isBackground);
-                                updCmd.Parameters.AddWithValue("$k", (object?)kind ?? DBNull.Value);
+                                updCmd.Parameters.AddWithValue("$k", effectiveKind);
                                 updCmd.Parameters.AddWithValue("$id", dstId);
                                 updCmd.ExecuteNonQuery();
                             }
@@ -337,7 +339,7 @@ public static partial class SyncReader
                                 insCmd.Parameters.AddWithValue("$a", addedUtc);
                                 insCmd.Parameters.AddWithValue("$r", (object?)retiredUtc ?? DBNull.Value);
                                 insCmd.Parameters.AddWithValue("$bg", isBackground);
-                                insCmd.Parameters.AddWithValue("$k", (object?)kind ?? DBNull.Value);
+                                insCmd.Parameters.AddWithValue("$k", effectiveKind);
                                 dstId = (long)insCmd.ExecuteScalar()!;
                                 appsAdded++;
                                 newlyInsertedApps.Add((srcId, dstId, canonicalId));

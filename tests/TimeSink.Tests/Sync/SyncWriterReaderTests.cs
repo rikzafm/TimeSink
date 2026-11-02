@@ -482,6 +482,29 @@ public sealed class SyncWriterReaderTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Sync_AutoDetects_And_CarriesOver_GachaGameKind_When_Source_Kind_Is_Null()
+    {
+        using var rig = new BackupTestRig();
+        var syncFolder = rig.P("sync");
+        var now = DateTimeOffset.Parse("2026-11-01T12:00:00Z");
+
+        var srcDb = rig.NewDb("source.db", (@"c:\games\Wuthering Waves\Client-Win64-Shipping.exe", 1761984000, 1761987600));
+        SetDevice(rig, srcDb, "dev-pc-001", "Gaming PC", "windows");
+        rig.Exec(srcDb, "UPDATE apps SET display_name = 'Wuthering Waves', kind = NULL WHERE exe_path = 'c:\\games\\Wuthering Waves\\Client-Win64-Shipping.exe'");
+
+        var snap = SyncWriter.Write(srcDb, syncFolder, now);
+
+        var dstDb = rig.NewDb("dest.db");
+        SetDevice(rig, dstDb, "dev-mac-001", "MacBook Pro", "macos");
+
+        var res = SyncReader.Import(snap, dstDb, TimeZoneInfo.Utc);
+        res.Status.Should().Be(SyncStatus.Success);
+
+        // Verification: Even though source kind was NULL in DB, sync resolves it as Gacha (2)
+        rig.Scalar<long>(dstDb, "SELECT kind FROM apps WHERE display_name = 'Wuthering Waves'").Should().Be(2);
+    }
+
+    [Fact]
     public void Sync_Propagates_IntraDevice_And_CrossDevice_Merges_And_Unmerges()
     {
         using var rig = new BackupTestRig();
