@@ -284,7 +284,7 @@ final class AppStateTests: XCTestCase {
             (id: "dev-mac", name: "Rikza’s MacBook Pro", platform: "macos", isLocal: true, firstSeen: "2026-01-01"),
             (id: "dev-win", name: "DESKTOP-B9N00S8", platform: "windows", isLocal: false, firstSeen: "2026-01-02"),
         ]
-        let mixedNames = AppState.computeDisplayNames(devices: mixed, shortNames: true)
+        let mixedNames = DeviceInfoService.computeDisplayNames(devices: mixed, shortNames: true)
         XCTAssertEqual(mixedNames["dev-mac"], "Mac")
         XCTAssertEqual(mixedNames["dev-win"], "PC")
 
@@ -293,7 +293,7 @@ final class AppStateTests: XCTestCase {
             (id: "win-remote", name: "Living Room PC", platform: "windows", isLocal: false, firstSeen: "2026-01-01"),
             (id: "win-local", name: "DESKTOP-B9N00S8", platform: "windows", isLocal: true, firstSeen: "2026-01-02"),
         ]
-        let pcNames = AppState.computeDisplayNames(devices: twoPCs, shortNames: true)
+        let pcNames = DeviceInfoService.computeDisplayNames(devices: twoPCs, shortNames: true)
         XCTAssertEqual(pcNames["win-local"], "PC 1")
         XCTAssertEqual(pcNames["win-remote"], "PC 2")
 
@@ -302,7 +302,7 @@ final class AppStateTests: XCTestCase {
             (id: "mac-remote", name: "Studio Mac", platform: "macos", isLocal: false, firstSeen: "2026-01-01"),
             (id: "mac-local", name: "MacBook Pro", platform: "macos", isLocal: true, firstSeen: "2026-01-02"),
         ]
-        let macNames = AppState.computeDisplayNames(devices: twoMacs, shortNames: true)
+        let macNames = DeviceInfoService.computeDisplayNames(devices: twoMacs, shortNames: true)
         XCTAssertEqual(macNames["mac-local"], "Mac 1")
         XCTAssertEqual(macNames["mac-remote"], "Mac 2")
 
@@ -312,13 +312,13 @@ final class AppStateTests: XCTestCase {
             (id: "win-2", name: "Office PC", platform: "windows", isLocal: false, firstSeen: "2026-01-02"),
             (id: "mac-1", name: "MacBook Pro", platform: "macos", isLocal: false, firstSeen: "2026-01-03"),
         ]
-        let multiNames = AppState.computeDisplayNames(devices: multi, shortNames: true)
+        let multiNames = DeviceInfoService.computeDisplayNames(devices: multi, shortNames: true)
         XCTAssertEqual(multiNames["win-1"], "PC 1")
         XCTAssertEqual(multiNames["win-2"], "PC 2")
         XCTAssertEqual(multiNames["mac-1"], "Mac")
 
         // Short names disabled -> full device names
-        let fullNames = AppState.computeDisplayNames(devices: mixed, shortNames: false)
+        let fullNames = DeviceInfoService.computeDisplayNames(devices: mixed, shortNames: false)
         XCTAssertEqual(fullNames["dev-mac"], "Rikza’s MacBook Pro")
         XCTAssertEqual(fullNames["dev-win"], "DESKTOP-B9N00S8")
     }

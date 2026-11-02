@@ -46,15 +46,6 @@ public struct PopoverRootView: View {
         .font(.system(size: 12).monospacedDigit())
     }
 
-    private var isTall: Bool {
-        state.selectedTab == .today || (state.selectedTab == .year && state.yearSubView == .wrapped) || state.selectedTab == .all
-    }
-
-    private var footerHeight: CGFloat {
-        if state.selectedTab == .all { return 42 }
-        return isTall ? 46 : 44
-    }
-
     private var footer: some View {
         HStack {
             Button(action: { state.showingAddApp = true }) {
@@ -68,8 +59,8 @@ public struct PopoverRootView: View {
 
             footerTrailing
         }
-        .padding(.horizontal, isTall ? 16 : 14)
-        .frame(height: footerHeight)
+        .padding(.horizontal, 14)
+        .frame(height: 44)
         .topRule()
     }
 
@@ -91,8 +82,7 @@ struct FooterSyncStatusView: View {
     var body: some View {
         Button(action: handleClick) {
             HStack(spacing: 5) {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 11, weight: .medium))
+                IconView(.sync, size: 12, weight: 2.0, color: statusColor)
                     .rotationEffect(.degrees(isSpinning ? 360 : 0))
                     .animation(
                         state.isSyncing
@@ -105,8 +95,8 @@ struct FooterSyncStatusView: View {
                     .font(.system(size: 11))
             }
             .foregroundColor(statusColor)
-            .padding(.vertical, 4)
-            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .padding(.horizontal, 4)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -152,7 +142,7 @@ struct FooterSyncStatusView: View {
             return ThemeColors.accent
         }
         if !state.syncEnabled {
-            return ThemeColors.textDim
+            return ThemeColors.textMuted
         }
         if state.syncState.lowercased().contains("error") {
             return ThemeColors.warning

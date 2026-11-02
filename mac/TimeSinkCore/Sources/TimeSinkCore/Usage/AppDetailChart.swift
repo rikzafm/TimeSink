@@ -92,7 +92,7 @@ public enum AppDetailChart {
                 let end = String(format: "%04d-%02d-%02d", y, m, daysInMonth[m - 1])
                 bars.append(bar(label: monthNames[m - 1], from: start, to: end, daySeconds: daySeconds, opens: opens))
             }
-        case .month, .week:
+        case .matrix, .month, .week:
             var cur = from
             var cal = Calendar(identifier: .gregorian)
             cal.timeZone = TimeZone(secondsFromGMT: 0)!

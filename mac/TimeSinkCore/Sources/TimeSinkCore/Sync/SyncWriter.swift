@@ -147,17 +147,19 @@ public enum SyncWriter {
 
         let escapedDev = localDeviceId.replacingOccurrences(of: "'", with: "''")
         try sourceDb.exec("""
-            INSERT INTO snap.apps (
+            INSERT OR IGNORE INTO snap.apps (
                 id, canonical_id, exe_path, bundle_id, device_id,
                 package_family, display_name, category, state,
                 added_utc, retired_utc, is_background, kind
             )
-            SELECT
+            SELECT DISTINCT
                 id, canonical_id, exe_path, bundle_id, device_id,
                 package_family, display_name, category, state,
                 added_utc, retired_utc, is_background, kind
             FROM main.apps
-            WHERE device_id = '\(escapedDev)';
+            WHERE device_id = '\(escapedDev)'
+               OR id IN (SELECT canonical_id FROM main.apps WHERE device_id = '\(escapedDev)' AND canonical_id IS NOT NULL)
+               OR canonical_id IN (SELECT id FROM main.apps WHERE device_id = '\(escapedDev)');
 
             INSERT INTO snap.sessions (
                 id, app_id, start_utc, end_utc, last_seen_utc, pid, proc_start_utc, end_reason

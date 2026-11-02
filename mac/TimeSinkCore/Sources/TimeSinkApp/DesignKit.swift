@@ -91,7 +91,7 @@ public extension Formatters {
         if span < 3600 { return "\(Int(span / 60)) min ago" }
         if span < 86400 { return "\(Int(span / 3600)) h ago" }
         let days = Int(span / 86400)
-        return "\(days) day\(days == 1 ? "" : "s") ago"
+        return "\(days) d ago"
     }
 
     /// Parses a local "yyyy-MM-dd" day string.
@@ -182,11 +182,11 @@ public struct FlowLayout: Layout {
 
 public enum TSIcon {
     case gamepad, gear, gearLarge, eye, eyeSlash, lashes, layers, back, close, search, searchSmall
-    case folder, upload, clock, history, tableOptions, triangleLeft, triangleRight
+    case folder, upload, clock, history, tableOptions, triangleLeft, triangleRight, sync
 
     var box: CGFloat {
         switch self {
-        case .gamepad, .gear, .gearLarge: return 24
+        case .gamepad, .gear, .gearLarge, .sync: return 24
         case .eye, .eyeSlash, .layers: return 18
         case .lashes: return 20
         case .close: return 14
@@ -275,6 +275,8 @@ public enum TSIcon {
             p.move(to: pt(6, 1)); p.addLine(to: pt(1, 5)); p.addLine(to: pt(6, 9)); p.closeSubpath()
         case .triangleRight:
             p.move(to: pt(1, 1)); p.addLine(to: pt(6, 5)); p.addLine(to: pt(1, 9)); p.closeSubpath()
+        case .sync:
+            p = SVGPath.parse("M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3L21.5 8M22 12.5a10 10 0 0 1-18.8 4.2L2.5 16")
         }
         return p
     }

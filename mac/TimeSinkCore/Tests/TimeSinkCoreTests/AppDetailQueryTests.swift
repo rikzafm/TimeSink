@@ -56,10 +56,11 @@ final class AppDetailQueryTests: XCTestCase {
     }
 
     func testAppDetailChartRangeCycling() {
+        XCTAssertEqual(AppDetailChart.nextRange(.matrix), .all)
         XCTAssertEqual(AppDetailChart.nextRange(.all), .year)
         XCTAssertEqual(AppDetailChart.nextRange(.year), .month)
         XCTAssertEqual(AppDetailChart.nextRange(.month), .week)
-        XCTAssertEqual(AppDetailChart.nextRange(.week), .all)
+        XCTAssertEqual(AppDetailChart.nextRange(.week), .matrix)
     }
 }
 

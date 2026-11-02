@@ -133,11 +133,11 @@ public final class AppState: ObservableObject {
             let stmt = try db.prepare("SELECT device_id, name, platform, is_local, first_seen_utc FROM devices WHERE state != 'forgotten' ORDER BY is_local DESC, first_seen_utc ASC, device_id ASC;")
             var remoteFound = false
             while try stmt.step() {
-                let id = stmt.columnText(at: 0)
-                let name = stmt.columnText(at: 1)
-                let platform = stmt.columnText(at: 2)
+                guard let id = stmt.columnText(at: 0) else { continue }
+                let name = stmt.columnText(at: 1) ?? ""
+                let platform = stmt.columnText(at: 2) ?? ""
                 let isLocal = stmt.columnInt64(at: 3) == 1
-                let firstSeen = stmt.columnText(at: 4)
+                let firstSeen = stmt.columnText(at: 4) ?? ""
                 rawDevices.append((id: id, name: name, platform: platform, isLocal: isLocal, firstSeen: firstSeen))
                 if !isLocal && !remoteFound {
                     self.remoteDeviceId = id
@@ -164,54 +164,7 @@ public final class AppState: ObservableObject {
         devices: [(id: String, name: String, platform: String, isLocal: Bool, firstSeen: String)],
         shortNames: Bool
     ) -> [String: String] {
-        var result: [String: String] = [:]
-        if !shortNames {
-            for d in devices {
-                let fallback = d.platform.lowercased() == "windows" ? "PC" : "Mac"
-                let trimmed = d.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                result[d.id] = !trimmed.isEmpty ? trimmed : fallback
-            }
-            return result
-        }
-
-        let winDevices = devices.filter { $0.platform.lowercased() == "windows" }
-        let macDevices = devices.filter { $0.platform.lowercased() != "windows" }
-
-        if winDevices.count == 1 && macDevices.count == 1 {
-            result[winDevices[0].id] = "PC"
-            result[macDevices[0].id] = "Mac"
-            return result
-        }
-
-        // Windows devices
-        if winDevices.count == 1 {
-            result[winDevices[0].id] = "PC"
-        } else if winDevices.count > 1 {
-            let sorted = winDevices.sorted {
-                if $0.isLocal != $1.isLocal { return $0.isLocal && !$1.isLocal }
-                if $0.firstSeen != $1.firstSeen { return $0.firstSeen < $1.firstSeen }
-                return $0.id < $1.id
-            }
-            for (idx, dev) in sorted.enumerated() {
-                result[dev.id] = "PC \(idx + 1)"
-            }
-        }
-
-        // Mac devices
-        if macDevices.count == 1 {
-            result[macDevices[0].id] = "Mac"
-        } else if macDevices.count > 1 {
-            let sorted = macDevices.sorted {
-                if $0.isLocal != $1.isLocal { return $0.isLocal && !$1.isLocal }
-                if $0.firstSeen != $1.firstSeen { return $0.firstSeen < $1.firstSeen }
-                return $0.id < $1.id
-            }
-            for (idx, dev) in sorted.enumerated() {
-                result[dev.id] = "Mac \(idx + 1)"
-            }
-        }
-
-        return result
+        DeviceInfoService.computeDisplayNames(devices: devices, shortNames: shortNames)
     }
 
     public func deviceDisplayName(_ deviceId: String?) -> String {
@@ -477,7 +430,7 @@ public final class AppState: ObservableObject {
         if let y = yearResult {
             return y.canPrev
         }
-        guard let start = todayResult?.firstTracked ?? monthResult?.firstTracked else { return false }
+        guard let start = todayResult?.firstTrackedDay ?? monthResult?.firstTracked else { return false }
         guard let firstYear = Int(start.prefix(4)) else { return false }
         let currentYear = Calendar.current.component(.year, from: Date()) - yearOffset
         return currentYear > firstYear

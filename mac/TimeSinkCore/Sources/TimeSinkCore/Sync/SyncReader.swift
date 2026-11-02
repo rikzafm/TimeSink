@@ -201,7 +201,6 @@ public enum SyncReader {
 
             var newlyInsertedApps: [(srcId: Int64, dstId: Int64, canonicalId: Int64?)] = []
             var allSnapshotApps: [(srcId: Int64, dstId: Int64, canonicalId: Int64?)] = []
-
             for a in srcApps {
                 var dstId: Int64 = 0
                 if let bundle = a.bundleId, !bundle.isEmpty {
@@ -245,7 +244,7 @@ public enum SyncReader {
                     dstId = db.lastInsertRowid
                     appsAdded += 1
                     newlyInsertedApps.append((a.id, dstId, a.canonicalId))
-                } else {
+                } else if a.deviceId.caseInsensitiveCompare(manifest.deviceId) == .orderedSame {
                     let updStmt = try db.prepare("""
                         UPDATE main.apps SET
                             display_name = ?1,
@@ -259,9 +258,9 @@ public enum SyncReader {
                     try updStmt.bind(text: a.displayName, at: 1)
                     try updStmt.bind(text: a.category, at: 2)
                     try updStmt.bind(text: a.state, at: 3)
-                    if let r = a.retiredUtc { try updStmt.bind(int64: r, at: 4) }
+                    if let r = a.retiredUtc { try updStmt.bind(int64: r, at: 4) } else { try updStmt.bindNull(at: 4) }
                     try updStmt.bind(int64: a.isBackground, at: 5)
-                    if let k = a.kind { try updStmt.bind(int64: k, at: 6) }
+                    if let k = a.kind { try updStmt.bind(int64: k, at: 6) } else { try updStmt.bindNull(at: 6) }
                     try updStmt.bind(int64: dstId, at: 7)
                     _ = try updStmt.step()
                 }
