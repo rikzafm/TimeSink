@@ -351,5 +351,65 @@ final class SyncTests: XCTestCase {
         XCTAssertNotNil(winMacCode)
         XCTAssertEqual(winCodeCanonical, winMacCode)
     }
+
+    func testEncryptedDatabaseSyncRoundTrip() throws {
+        let tempDir = (NSTemporaryDirectory() as NSString).appendingPathComponent("sync-enc-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(atPath: tempDir)
+        }
+
+        let syncFolder = (tempDir as NSString).appendingPathComponent("sync")
+        let macDbPath = (tempDir as NSString).appendingPathComponent("mac.db")
+        let winDbPath = (tempDir as NSString).appendingPathComponent("win.db")
+
+        let macKey = Data(repeating: 0x11, count: 32)
+        let winKey = Data(repeating: 0x22, count: 32)
+
+        let dbMac = try SQLiteDatabase(path: macDbPath, key: macKey)
+        try Migrator.apply(to: dbMac)
+        let macId = "mac-encrypted-1"
+        try dbMac.exec("""
+            UPDATE settings SET value = '\(macId)' WHERE key = 'device.id';
+            UPDATE devices SET device_id = '\(macId)', name = 'Encrypted Mac', platform = 'macos';
+            """)
+
+        let macLib = MacAppLibrary(db: dbMac)
+        let safariId = try macLib.trackApp(
+            exePath: "/Applications/Safari.app",
+            displayName: "Safari",
+            category: "Browser",
+            deviceId: macId
+        )
+        try dbMac.exec("""
+            INSERT INTO sessions (id, app_id, start_utc, end_utc, last_seen_utc, end_reason)
+            VALUES (1, \(safariId), 1000, 2000, 2000, 'exit');
+            """)
+
+        // Export from encrypted Mac database
+        let snapPath = try SyncWriter.write(db: dbMac, syncFolder: syncFolder)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: snapPath))
+
+        // Target encrypted Windows database with completely different encryption key
+        let dbWin = try SQLiteDatabase(path: winDbPath, key: winKey)
+        try Migrator.apply(to: dbWin)
+        let winId = "win-encrypted-2"
+        try dbWin.exec("""
+            UPDATE settings SET value = '\(winId)' WHERE key = 'device.id';
+            UPDATE devices SET device_id = '\(winId)', name = 'Encrypted Windows', platform = 'windows';
+            """)
+
+        // Import into encrypted Windows database
+        let res = try SyncReader.import(syncFile: snapPath, db: dbWin)
+        XCTAssertEqual(res.status, .success)
+        XCTAssertEqual(res.appsAdded, 1)
+        XCTAssertEqual(res.sessionsAdded, 1)
+
+        let importedAppCount = (try dbWin.scalarInt("SELECT COUNT(*) FROM apps WHERE device_id = '\(macId)';")) ?? 0
+        XCTAssertEqual(importedAppCount, 1)
+
+        dbMac.close()
+        dbWin.close()
+    }
 }
 

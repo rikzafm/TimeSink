@@ -1,4 +1,5 @@
 using TimeSink.Core.Data;
+using TimeSink.Core.Devices;
 using TimeSink.Core.Security;
 using TimeSink.Core.Settings;
 
@@ -192,6 +193,18 @@ public sealed class SyncHost : IDisposable
             {
                 HandleError(ex, "import");
                 return;
+            }
+
+            if (anyRemoteFound)
+            {
+                try
+                {
+                    DeviceIdentity.MergeMatchingCrossDeviceApps(db);
+                }
+                catch (Exception ex)
+                {
+                    _log?.Invoke($"sync: auto-merge matching apps error: {ex.Message}");
+                }
             }
 
             // 3. Update sync state and check 10-minute discovery window

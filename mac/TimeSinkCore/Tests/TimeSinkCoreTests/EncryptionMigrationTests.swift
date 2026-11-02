@@ -45,7 +45,7 @@ final class EncryptionMigrationTests: XCTestCase {
             VALUES ('/Applications/Safari.app', 'Safari', 'Browsers', 'tracked', 1700000000, 'dev-1');
             INSERT INTO sessions (app_id, start_utc, end_utc, last_seen_utc, end_reason)
             VALUES (1, 1700000000, 1700001800, 1700001800, 'exit');
-            INSERT INTO settings (key, value) VALUES ('device.id', 'dev-1');
+            INSERT INTO settings (key, value) VALUES ('device.id', 'dev-1') ON CONFLICT(key) DO UPDATE SET value = excluded.value;
         """)
         let originalVersion = plainDb.userVersion
         plainDb.close()

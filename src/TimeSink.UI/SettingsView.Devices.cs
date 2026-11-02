@@ -933,6 +933,8 @@ public sealed partial class SettingsView
                         if (SyncReader.IsPlaceholder(file)) continue;
                         SyncReader.Import(file, _dbPath, TimeZoneInfo.Local);
                     }
+                    using var autoMergeDb = Db.Open(_dbPath);
+                    DeviceIdentity.MergeMatchingCrossDeviceApps(autoMergeDb);
                 }
             }
         }
@@ -1123,7 +1125,7 @@ public sealed partial class SettingsView
                 SELECT display_name FROM apps
                 WHERE canonical_id IS NULL AND state = 'tracked'
                 GROUP BY display_name
-                HAVING COUNT(DISTINCT device_id) > 1;
+                HAVING COUNT(*) > 1;
                 """;
             using var r = cmd.ExecuteReader();
             while (r.Read())

@@ -78,9 +78,7 @@ public enum SyncWriter {
         try manifestData.write(to: URL(fileURLWithPath: manifestPath))
 
         // 4. Create ZIP archive using /usr/bin/zip
-        if fm.fileExists(atPath: tmpFile) {
-            try fm.removeItem(atPath: tmpFile)
-        }
+        try? fm.removeItem(atPath: tmpFile)
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
@@ -94,9 +92,7 @@ public enum SyncWriter {
         }
 
         // 5. Atomic rename to targetFile
-        if fm.fileExists(atPath: targetFile) {
-            try fm.removeItem(atPath: targetFile)
-        }
+        try? fm.removeItem(atPath: targetFile)
         try fm.moveItem(atPath: tmpFile, toPath: targetFile)
 
         return targetFile
@@ -164,6 +160,7 @@ public enum SyncWriter {
         }
 
         let schemaSql = """
+            PRAGMA journal_mode = DELETE;
             PRAGMA user_version = 5;
 
             CREATE TABLE apps (

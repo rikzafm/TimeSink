@@ -137,6 +137,7 @@ public final class AppState: ObservableObject {
         loadDeviceInfo()
         loadSettings()
         healUntypedGachaApps()
+        mergeMatchingCrossDeviceApps(triggerSync: false)
         refresh()
     }
 
@@ -794,7 +795,7 @@ public final class AppState: ObservableObject {
                 SELECT display_name FROM apps
                 WHERE canonical_id IS NULL AND state = 'tracked'
                 GROUP BY display_name
-                HAVING COUNT(DISTINCT device_id) > 1;
+                HAVING COUNT(*) > 1;
             """)
             while try stmt.step() {
                 if let n = stmt.columnText(at: 0), !n.isEmpty {
@@ -805,7 +806,7 @@ public final class AppState: ObservableObject {
         return names
     }
 
-    public func mergeMatchingCrossDeviceApps() {
+    public func mergeMatchingCrossDeviceApps(triggerSync: Bool = true) {
         let matchingNames = findMatchingCrossDeviceApps()
         guard !matchingNames.isEmpty else { return }
 
@@ -851,7 +852,9 @@ public final class AppState: ObservableObject {
                 }
             }
 
-            triggerSyncNow()
+            if triggerSync {
+                triggerSyncNow()
+            }
             loadDeviceInfo()
             refresh()
             objectWillChange.send()
@@ -903,6 +906,7 @@ public final class AppState: ObservableObject {
 
     public func handleSyncCompleted() {
         self.isSyncing = false
+        mergeMatchingCrossDeviceApps(triggerSync: false)
         loadSettings()
         loadDeviceInfo()
         refresh()
@@ -1018,6 +1022,7 @@ public final class AppState: ObservableObject {
         loadDeviceInfo()
         loadSettings()
         healUntypedGachaApps()
+        mergeMatchingCrossDeviceApps(triggerSync: false)
         refresh()
     }
 }
@@ -1034,9 +1039,11 @@ public struct DeviceRow: Identifiable {
     public let state: String
     public let appCount: Int
     public let totalHours: Int64
+}
 
-    // MARK: - Keyboard Navigation & ESC Hierarchy
+// MARK: - Keyboard Navigation & ESC Hierarchy
 
+extension AppState {
     public func handleEscape() {
         // 1. Text field focus (AppKit)
         if checkAndHandleTextFieldEscape() {
