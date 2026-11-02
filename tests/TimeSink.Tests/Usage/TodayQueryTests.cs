@@ -170,7 +170,7 @@ public sealed class TodayQueryTests : IDisposable
         var r = Run();
         r.Apps.Should().ContainSingle();
         r.Apps[0].Name.Should().Be("Chrome");
-        r.Apps[0].Seconds.Should().Be(21000);
+        r.Apps[0].Seconds.Should().Be(17400); // 21000 minus 3600s overlapping time between merged Chrome & Code
     }
 
     [Fact]

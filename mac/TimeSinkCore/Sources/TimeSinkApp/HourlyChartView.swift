@@ -174,86 +174,41 @@ public struct HourlyChartView: View {
 
     private func detailPanel(_ hour: Int) -> some View {
         let d = BarDetail.forHour(result: result, hour: hour)
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 12) {
             // Header
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Formatters.hourRange(hour))
-                        .font(.system(size: 13, weight: .bold))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Formatters.hour24Range(hour))
+                        .font(.system(size: 18, weight: .bold))
                         .foregroundColor(ThemeColors.textPrimary)
                     Text(d.uptimeSeconds > 0 || d.appSeconds > 0
-                         ? "\(Formatters.paddedHM(d.uptimeSeconds)) uptime · \(Formatters.paddedHM(d.appSeconds)) app time · \(d.sessions.count) session\(d.sessions.count == 1 ? "" : "s")"
+                         ? "\(Formatters.paddedHM(d.uptimeSeconds)) uptime · \(Formatters.paddedHM(d.appSeconds)) app time"
                          : "No activity this hour")
-                        .font(.system(size: 10))
+                        .font(.system(size: 11))
                         .foregroundColor(ThemeColors.textMuted)
                 }
                 Spacer()
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.18)) { selectedHour = nil }
-                }) {
-                    Text("✕")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(ThemeColors.textMuted)
-                        .padding(4)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-
-            // Apps with share progress bars
-            if !d.apps.isEmpty {
-                VStack(spacing: 7) {
-                    ForEach(d.apps, id: \.appId) { app in
-                        let sharePct = d.appSeconds > 0 ? Int((Double(app.seconds) / Double(d.appSeconds) * 100).rounded()) : 0
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack {
-                                Text(app.name)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(ThemeColors.textPrimary)
-                                    .lineLimit(1)
-                                Spacer()
-                                Text("\(Formatters.paddedHM(app.seconds)) · \(sharePct)%")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(ThemeColors.textMuted)
-                            }
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    RoundedRectangle(cornerRadius: 3).fill(ThemeColors.barBackground)
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .fill(Tokens.appColor(app.name))
-                                        .frame(width: max(4, geo.size.width * CGFloat(app.seconds) / CGFloat(max(1, d.appSeconds))))
-                                }
-                            }
-                            .frame(height: 6)
-                        }
-                    }
-                }
-            }
-
-            // Sessions
-            if !d.sessions.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Sessions")
-                        .font(.system(size: 10, weight: .semibold))
+                if !d.sessions.isEmpty {
+                    Text("\(d.sessions.count) session\(d.sessions.count == 1 ? "" : "s")")
+                        .font(.system(size: 11))
                         .foregroundColor(ThemeColors.textMuted)
                         .padding(.top, 2)
-                    ForEach(Array(d.sessions.enumerated()), id: \.offset) { _, s in
-                        HStack {
-                            Text(s.appName)
-                                .font(.system(size: 11))
-                                .foregroundColor(ThemeColors.textPrimary)
-                                .lineLimit(1)
-                            Spacer()
-                            Text("\(Formatters.clock12(s.startUtc)) – \(Formatters.clock12(s.endUtc))")
-                                .font(.system(size: 10))
-                                .foregroundColor(ThemeColors.textMuted)
-                            Text(Formatters.paddedHM(s.seconds))
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(ThemeColors.textPrimary)
-                                .frame(width: 54, alignment: .trailing)
-                        }
-                    }
                 }
+            }
+
+            // Segmented app time bar & 2-column app list
+            if !d.apps.isEmpty {
+                segmentedBar(d.apps, totalSeconds: d.appSeconds)
+                twoColumnAppList(d.apps)
+            }
+
+            // Session summary note
+            let summary = sessionSummaryText(d)
+            if !summary.isEmpty {
+                Text(summary)
+                    .font(.system(size: 11))
+                    .foregroundColor(ThemeColors.textMuted)
+                    .padding(.top, 2)
             }
 
             // Comparison (Typical for this hour)
@@ -272,9 +227,90 @@ public struct HourlyChartView: View {
                 }
             }
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(ThemeColors.surfaceActive))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ThemeColors.accent, lineWidth: 1))
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 12).fill(ThemeColors.surfaceActive))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(ThemeColors.accent, lineWidth: 1))
+    }
+
+    private func segmentedBar(_ apps: [BarApp], totalSeconds: Int64) -> some View {
+        GeometryReader { geo in
+            let total = max(1, totalSeconds)
+            let spacing: CGFloat = 2
+            let totalSpacing = spacing * CGFloat(max(0, apps.count - 1))
+            let availableWidth = max(0, geo.size.width - totalSpacing)
+            HStack(spacing: spacing) {
+                ForEach(apps, id: \.appId) { app in
+                    let w = max(2, availableWidth * CGFloat(app.seconds) / CGFloat(total))
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Tokens.appColor(app.name))
+                        .frame(width: w, height: 8)
+                }
+            }
+        }
+        .frame(height: 8)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+
+    private func twoColumnAppList(_ apps: [BarApp]) -> some View {
+        let pairs = stride(from: 0, to: apps.count, by: 2).map { i -> (BarApp, BarApp?) in
+            (apps[i], i + 1 < apps.count ? apps[i + 1] : nil)
+        }
+        return VStack(spacing: 7) {
+            ForEach(Array(pairs.enumerated()), id: \.offset) { _, pair in
+                HStack(spacing: 16) {
+                    appRow(pair.0)
+                        .frame(maxWidth: .infinity)
+                    if let second = pair.1 {
+                        appRow(second)
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Spacer()
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func appRow(_ app: BarApp) -> some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(Tokens.appColor(app.name))
+                .frame(width: 8, height: 8)
+            Text(app.name)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(ThemeColors.textPrimary)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Text(Formatters.paddedHM(app.seconds))
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(ThemeColors.textPrimary)
+        }
+    }
+
+    private func sessionSummaryText(_ d: HourDetail) -> String {
+        guard !d.sessions.isEmpty else { return "" }
+        let hourStart = d.startUtc
+        let hourEnd = d.endUtc
+
+        let allFull = d.sessions.allSatisfy { $0.startUtc == hourStart && $0.endUtc == hourEnd }
+        if allFull && !d.apps.isEmpty {
+            let totalSec = max(1, d.appSeconds)
+            let share = Int((Double(d.apps[0].seconds) / Double(totalSec) * 100).rounded())
+            let startStr = Formatters.clock24(hourStart)
+            let endStr = Formatters.clock24(hourEnd)
+            return "Every session ran \(startStr) → \(endStr) · each app \(share)%"
+        }
+
+        let minStart = d.sessions.map(\.startUtc).min() ?? hourStart
+        let maxEnd = d.sessions.map(\.endUtc).max() ?? hourEnd
+        let spanStr = "Active \(Formatters.clock24(minStart)) → \(Formatters.clock24(maxEnd))"
+        if let top = d.apps.first {
+            let pct = d.appSeconds > 0 ? Int((Double(top.seconds) / Double(d.appSeconds) * 100).rounded()) : 0
+            return "\(spanStr) · Top app: \(top.name) (\(Formatters.paddedHM(top.seconds)), \(pct)%)"
+        }
+        return spanStr
     }
 
     private func swatch(_ color: Color) -> some View {

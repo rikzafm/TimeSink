@@ -139,7 +139,7 @@ public sealed class AllView : UserControl, ILiveView
         root.Children.Add(frame);
         Content = root;
 
-        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope);
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope, () => _live.LocalDeviceId);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw,
             isIdle: () => _window is { IsRevealed: false });
         Unloaded += (_, _) => Stop();
@@ -153,7 +153,19 @@ public sealed class AllView : UserControl, ILiveView
     public async void Refresh()
     {
         _deviceInfo = DeviceInfoService.Load(_dbPath);
-        if (await _loader.Refresh(c => AllQuery.Run(c), r => _result = r)) Redraw();
+        var applied = await _loader.Refresh(c => AllQuery.Run(c), r => _result = r);
+        if (applied)
+        {
+            Redraw();
+        }
+        else if (_result is null && _driver.Started)
+        {
+            _ = Dispatcher.InvokeAsync(async () =>
+            {
+                await Task.Delay(300);
+                if (_result is null && _driver.Started) Refresh();
+            }, System.Windows.Threading.DispatcherPriority.Background);
+        }
     }
 
     private void SetLayout(bool icons)

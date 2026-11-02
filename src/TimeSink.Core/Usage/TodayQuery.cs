@@ -109,20 +109,51 @@ public static class TodayQuery
             }
         }
 
-        foreach (var s in segs)
+        var byGroupForHours = segs.GroupBy(s => s.Group);
+        foreach (var groupSegs in byGroupForHours)
         {
-            var a = Math.Max(s.Start, d0);
-            var b = Math.Min(s.End, d1);
-            if (b <= a) continue;
-            var dev = string.IsNullOrEmpty(s.DeviceId) ? (apps.TryGetValue(s.AppId, out var ga) ? ga.DeviceId : "") : s.DeviceId;
-            foreach (var p in UsageDays.HourPieces(a, b, zone))
+            var byDev = groupSegs.GroupBy(s => string.IsNullOrEmpty(s.DeviceId) ? (apps.TryGetValue(s.AppId, out var ga) ? ga.DeviceId : "") : s.DeviceId);
+            foreach (var devGroup in byDev)
             {
-                var h = p.Hour;
-                if (h < 0 || h >= Hours) continue;
-                hourlyDeviceSeconds[h][dev] = hourlyDeviceSeconds[h].GetValueOrDefault(dev) + (p.End - p.Start);
-                if (!hourlyDeviceApps[h].TryGetValue(dev, out var appSet))
-                    hourlyDeviceApps[h][dev] = appSet = [];
-                appSet.Add(s.AppId);
+                var dev = devGroup.Key;
+                var sorted = devGroup.Where(s => s.End > d0 && s.Start < d1).OrderBy(s => s.Start).ToList();
+                var unioned = new List<(long Start, long End)>();
+                foreach (var s in sorted)
+                {
+                    var st = Math.Max(s.Start, d0);
+                    var en = Math.Min(s.End, d1);
+                    if (en <= st) continue;
+                    if (unioned.Count > 0 && st <= unioned[^1].End)
+                        unioned[^1] = (unioned[^1].Start, Math.Max(unioned[^1].End, en));
+                    else
+                        unioned.Add((st, en));
+                }
+                foreach (var interval in unioned)
+                {
+                    foreach (var p in UsageDays.HourPieces(interval.Start, interval.End, zone))
+                    {
+                        var h = p.Hour;
+                        if (h >= 0 && h < Hours)
+                            hourlyDeviceSeconds[h][dev] = hourlyDeviceSeconds[h].GetValueOrDefault(dev) + (p.End - p.Start);
+                    }
+                }
+            }
+            foreach (var s in groupSegs)
+            {
+                var a = Math.Max(s.Start, d0);
+                var b = Math.Min(s.End, d1);
+                if (b <= a) continue;
+                var dev = string.IsNullOrEmpty(s.DeviceId) ? (apps.TryGetValue(s.AppId, out var ga) ? ga.DeviceId : "") : s.DeviceId;
+                foreach (var p in UsageDays.HourPieces(a, b, zone))
+                {
+                    var h = p.Hour;
+                    if (h >= 0 && h < Hours)
+                    {
+                        if (!hourlyDeviceApps[h].TryGetValue(dev, out var appSet))
+                            hourlyDeviceApps[h][dev] = appSet = [];
+                        appSet.Add(s.AppId);
+                    }
+                }
             }
         }
 
@@ -159,22 +190,22 @@ public static class TodayQuery
                     s.Start < d0 ? s.Start : null,
                     string.IsNullOrEmpty(s.DeviceId) ? (apps.TryGetValue(s.AppId, out var ga) ? ga.DeviceId : "") : s.DeviceId)).ToList();
             var open = isToday ? groupSegs.Where(s => s.Open).ToList() : [];
-            var seconds = groupSegs.Sum(s => UsageDays.Overlap(s, d0, d1));
+            var seconds = UsageUptime.OpenSeconds(groupSegs, d0, d1);
             if (seconds == 0 && open.Count == 0) continue;
 
             var devSecs = new Dictionary<string, long>();
-            foreach (var s in groupSegs)
+            var byDev = groupSegs.GroupBy(s => string.IsNullOrEmpty(s.DeviceId) ? (apps.TryGetValue(s.AppId, out var ga) ? ga.DeviceId : "") : s.DeviceId);
+            foreach (var devGroup in byDev)
             {
-                var dev = string.IsNullOrEmpty(s.DeviceId) ? (apps.TryGetValue(s.AppId, out var ga) ? ga.DeviceId : "") : s.DeviceId;
-                var sec = UsageDays.Overlap(s, d0, d1);
+                var sec = UsageUptime.OpenSeconds(devGroup.ToList(), d0, d1);
                 if (sec > 0)
-                    devSecs[dev] = devSecs.GetValueOrDefault(dev) + sec;
+                    devSecs[devGroup.Key] = sec;
             }
             long rowOnBoth = 0;
             if (devSecs.Count > 1)
             {
                 var union = UsageUptime.OpenSeconds(groupSegs, d0, d1);
-                rowOnBoth = Math.Max(0, seconds - union);
+                rowOnBoth = Math.Max(0, devSecs.Values.Sum() - union);
             }
 
             var closedToday = groupSegs.Where(s => !s.Open && s.End >= d0 && s.End < d1).ToList();
@@ -189,7 +220,7 @@ public static class TodayQuery
                 avgDays++;
                 var a = LocalDays.StartOf(day, zone);
                 var b = LocalDays.StartOf(day.AddDays(1), zone);
-                avgSum += groupSegs.Sum(s => UsageDays.Overlap(s, a, b));
+                avgSum += UsageUptime.OpenSeconds(groupSegs, a, b);
             }
             if (avgDays > 0) avg = avgSum / (double)avgDays;
 
@@ -223,7 +254,8 @@ public static class TodayQuery
         // Same wall-clock time yesterday (a DST change makes elapsed time differ from clock time).
         // A past day is compared with the whole day before it.
         var cut = isToday ? Math.Min(LocalDays.AtTime(date.AddDays(-1), TimeZoneInfo.ConvertTime(now, zone).TimeOfDay, zone), d0) : d0;
-        var yesterdayByNow = segs.Sum(s => UsageDays.Overlap(s, y0, cut));
+        var yesterdayByGroup = segs.GroupBy(s => s.Group);
+        var yesterdayByNow = yesterdayByGroup.Sum(g => UsageUptime.OpenSeconds(g.ToList(), y0, cut));
 
         // PC uptime: shown from the sign-in time when known, but compared like-for-like (first activity) with yesterday.
 

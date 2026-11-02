@@ -18,6 +18,9 @@ public static class FlyoutProtocol
     /// <summary>With <see cref="StandbyArg"/>: wait for the Show signal for as long as the UI lives.</summary>
     public const string KeepArg = "--keep";
 
+    /// <summary>Identifies the parent Agent process ID that owns this UI instance.</summary>
+    public const string ParentPidArg = "--parent-pid";
+
     public const string HandoffFileName = "flyout.args";
 
     /// <summary>Where the Agent leaves the launch geometry for a standby UI (see <see cref="FlyoutLaunchArgs.ToFileText"/>).</summary>
@@ -26,4 +29,15 @@ public static class FlyoutProtocol
 
     /// <summary>The command line that starts a standby UI.</summary>
     public static string[] StandbyArgs(bool keep) => keep ? [StandbyArg, KeepArg] : [StandbyArg];
+
+    /// <summary>Extracts the parent process ID from the command-line arguments, if present.</summary>
+    public static int? TryGetParentPid(string[] args)
+    {
+        for (var i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i] == ParentPidArg && int.TryParse(args[i + 1], out var pid) && pid > 0)
+                return pid;
+        }
+        return null;
+    }
 }
