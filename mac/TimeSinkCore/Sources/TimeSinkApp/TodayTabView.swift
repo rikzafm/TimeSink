@@ -160,10 +160,20 @@ public struct TodayTabView: View {
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ThemeColors.border, lineWidth: 1))
     }
 
+    private func remoteRunningSession(_ row: TodayAppRow) -> TodaySession? {
+        guard state.deviceScope == .all else { return nil }
+        return row.sessions.first { $0.isOpen && !state.isLocalDevice($0.deviceId) }
+    }
+
     private func subtitle(_ row: TodayAppRow, result: TodayResult) -> String {
         if row.isRunning, let since = row.runningSinceUtc {
-            let where_ = state.deviceScope == .all ? "Running on Mac" : "Running"
+            let devName = state.deviceADisplayName()
+            let where_ = state.deviceScope == .all ? "Running on \(devName)" : "Running"
             return "\(where_) · \(Formatters.paddedHM(max(0, result.nowUtc - since))) session"
+        }
+        if let remote = remoteRunningSession(row) {
+            let devName = state.deviceBDisplayName()
+            return "Running on \(devName) · \(Formatters.paddedHM(max(0, result.nowUtc - remote.startUtc))) session"
         }
         if let closed = row.lastClosedUtc {
             return "Closed \(Formatters.clock12(closed))"
@@ -179,6 +189,7 @@ public struct TodayTabView: View {
     private func appRow(_ row: TodayAppRow, result: TodayResult) -> some View {
         let expanded = isExpanded(row, result: result)
         let activeIdx = activeSessions[row.appId]
+        let isMultiDev = state.showsDeviceSplit && (row.deviceSeconds?.count ?? 0) > 1
         let rowActiveBinding = Binding<Int?>(
             get: { activeSessions[row.appId] },
             set: { activeSessions[row.appId] = $0 }
@@ -203,12 +214,12 @@ public struct TodayTabView: View {
 
                         Text(subtitle(row, result: result))
                             .font(.system(size: 10))
-                            .foregroundColor(row.isRunning ? ThemeColors.accent : ThemeColors.textMuted)
+                            .foregroundColor((row.isRunning || remoteRunningSession(row) != nil) ? ThemeColors.accent : ThemeColors.textMuted)
 
                         timelines(row, result: result, expanded: expanded, activeSession: activeIdx).padding(.top, 4)
                     }
                 }
-                .frame(height: 50)
+                .frame(height: isMultiDev ? 54 : 50)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -233,12 +244,11 @@ public struct TodayTabView: View {
     @ViewBuilder
     private func timelines(_ row: TodayAppRow, result: TodayResult, expanded: Bool, activeSession: Int?) -> some View {
         let shown = RowDetails.shownSessions(row)
-        if state.showsDeviceSplit {
-            if expanded {
-                VStack(spacing: 2) {
-                    strip(row.sessions.filter { state.isLocalDevice($0.deviceId) }, allShown: shown, result: result, color: ThemeColors.deviceA, height: 3, activeSession: activeSession)
-                    strip(row.sessions.filter { !state.isLocalDevice($0.deviceId) }, allShown: shown, result: result, color: ThemeColors.deviceB, height: 3, activeSession: activeSession)
-                }
+        let isMultiDev = state.showsDeviceSplit && (row.deviceSeconds?.count ?? 0) > 1
+        if isMultiDev {
+            VStack(spacing: 2) {
+                strip(row.sessions.filter { state.isLocalDevice($0.deviceId) }, allShown: shown, result: result, color: ThemeColors.deviceA, height: 3, activeSession: activeSession)
+                strip(row.sessions.filter { !state.isLocalDevice($0.deviceId) }, allShown: shown, result: result, color: ThemeColors.deviceB, height: 3, activeSession: activeSession)
             }
         } else {
             strip(row.sessions, allShown: shown, result: result, color: Tokens.appColor(row.name), height: 4, activeSession: activeSession)
