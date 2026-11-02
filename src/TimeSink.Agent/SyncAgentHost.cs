@@ -52,6 +52,16 @@ internal sealed class SyncAgentHost : IDisposable
         _sync.SyncNow();
     }
 
+    public void OnSyncPassphraseCleared()
+    {
+        _keyManager.ClearSyncPassphrase();
+        using (var db = Db.Open(_dbPath))
+        {
+            db.SetSetting(Setting.SyncEncrypted.Key, "false");
+        }
+        _sync.SyncNow();
+    }
+
     public void Start()
     {
         try

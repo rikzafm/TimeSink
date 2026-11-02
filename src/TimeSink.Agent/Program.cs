@@ -137,6 +137,17 @@ internal static class Program
                 Log.Error($"sync passphrase set: {ex.Message}");
             }
         };
+        s_ipc.SyncPassphraseCleared += () =>
+        {
+            try
+            {
+                s_sync?.OnSyncPassphraseCleared();
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"sync passphrase clear: {ex.Message}");
+            }
+        };
         s_sync.Start();
 
         MSG msg;

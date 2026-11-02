@@ -10,6 +10,7 @@ namespace TimeSink.Core.Ipc;
 [JsonDerivedType(typeof(SetIconMessage), "setIcon")]
 [JsonDerivedType(typeof(SyncNowMessage), "syncNow")]
 [JsonDerivedType(typeof(SetSyncPassphraseMessage), "setSyncPassphrase")]
+[JsonDerivedType(typeof(ClearSyncPassphraseMessage), "clearSyncPassphrase")]
 public abstract record IpcMessage;
 
 /// <summary>UI to Agent: send me the current state.</summary>
@@ -23,6 +24,7 @@ public sealed record SyncNowMessage : IpcMessage;
 
 /// <summary>UI to Agent: configure or update sync encryption passphrase.</summary>
 public sealed record SetSyncPassphraseMessage(string Passphrase) : IpcMessage;
+public sealed record ClearSyncPassphraseMessage : IpcMessage;
 
 public sealed record RunningApp(long AppId, long SessionStartUtc);
 
@@ -35,6 +37,7 @@ public sealed record StateMessage(bool Paused, IReadOnlyList<RunningApp> Running
 [JsonSerializable(typeof(SetIconMessage))]
 [JsonSerializable(typeof(SyncNowMessage))]
 [JsonSerializable(typeof(SetSyncPassphraseMessage))]
+[JsonSerializable(typeof(ClearSyncPassphraseMessage))]
 internal sealed partial class IpcJson : JsonSerializerContext;
 
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]

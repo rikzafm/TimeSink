@@ -14,8 +14,18 @@ public struct DevicesSyncView: View {
     @State private var deletingDevice: DeviceRow?
     @State private var deleteConfirmText: String = ""
     @State private var showingMergeSheet: Bool = false
+    private enum PassphraseField {
+        case primary
+        case confirm
+    }
+    @FocusState private var focusedPassphraseField: PassphraseField?
     @State private var passphraseInput: String = ""
+    @State private var confirmPassphraseInput: String = ""
+    @State private var isPassphraseRevealed: Bool = false
+    @State private var isConfirmRevealed: Bool = false
     @State private var passphraseFeedback: String?
+    @State private var isFeedbackDanger: Bool = false
+    @State private var shakeAttempts: Int = 0
 
     public init(state: AppState) {
         self.state = state
@@ -169,49 +179,137 @@ public struct DevicesSyncView: View {
                             .foregroundColor(ThemeColors.textMuted)
                             .lineSpacing(2)
 
-                        // Passphrase Input Row
-                        HStack(spacing: 8) {
-                            SecureField("Enter sync passphrase…", text: $passphraseInput)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 12))
-                                .foregroundColor(ThemeColors.textPrimary)
-                                .padding(.horizontal, 10)
-                                .frame(height: 28)
-                                .background(Tokens.well)
-                                .cornerRadius(7)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 7)
-                                        .stroke(Tokens.fieldBorder, lineWidth: 1)
-                                )
+                        // 1. Passphrase Input
+                        HStack(spacing: 0) {
+                            if isPassphraseRevealed {
+                                TextField("Enter sync passphrase…", text: $passphraseInput)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(ThemeColors.textPrimary)
+                                    .focused($focusedPassphraseField, equals: .primary)
+                                    .onSubmit {
+                                        focusedPassphraseField = .confirm
+                                    }
+                            } else {
+                                SecureField("Enter sync passphrase…", text: $passphraseInput)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(ThemeColors.textPrimary)
+                                    .focused($focusedPassphraseField, equals: .primary)
+                                    .onSubmit {
+                                        focusedPassphraseField = .confirm
+                                    }
+                            }
 
                             Button(action: {
-                                guard !passphraseInput.isEmpty else { return }
-                                do {
-                                    try state.setSyncPassphrase(passphraseInput)
-                                    passphraseInput = ""
-                                    passphraseFeedback = "Passphrase saved"
-                                } catch {
-                                    passphraseFeedback = "Failed to save: \(error.localizedDescription)"
+                                let savedRange = (NSApp.keyWindow?.firstResponder as? NSTextView)?.selectedRange() ?? NSRange(location: passphraseInput.count, length: 0)
+                                isPassphraseRevealed.toggle()
+                                focusedPassphraseField = .primary
+                                DispatchQueue.main.async {
+                                    if let textView = NSApp.keyWindow?.firstResponder as? NSTextView {
+                                        textView.setSelectedRange(savedRange)
+                                    }
                                 }
+                            }) {
+                                IconView(isPassphraseRevealed ? .eyeSlash : .eye, size: 14, weight: 1.4, color: isPassphraseRevealed ? ThemeColors.accent : ThemeColors.textMuted)
+                                    .padding(.horizontal, 6)
+                                    .frame(maxHeight: .infinity)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.leading, 10)
+                        .frame(height: 28)
+                        .background(Tokens.well)
+                        .cornerRadius(7)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(Tokens.fieldBorder, lineWidth: 1)
+                        )
+
+                        // 2. Confirm Passphrase Input
+                        HStack(spacing: 0) {
+                            if isConfirmRevealed {
+                                TextField("Confirm sync passphrase…", text: $confirmPassphraseInput)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(ThemeColors.textPrimary)
+                                    .focused($focusedPassphraseField, equals: .confirm)
+                                    .onSubmit {
+                                        submitPassphrase()
+                                    }
+                            } else {
+                                SecureField("Confirm sync passphrase…", text: $confirmPassphraseInput)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(ThemeColors.textPrimary)
+                                    .focused($focusedPassphraseField, equals: .confirm)
+                                    .onSubmit {
+                                        submitPassphrase()
+                                    }
+                            }
+
+                            Button(action: {
+                                let savedRange = (NSApp.keyWindow?.firstResponder as? NSTextView)?.selectedRange() ?? NSRange(location: confirmPassphraseInput.count, length: 0)
+                                isConfirmRevealed.toggle()
+                                focusedPassphraseField = .confirm
+                                DispatchQueue.main.async {
+                                    if let textView = NSApp.keyWindow?.firstResponder as? NSTextView {
+                                        textView.setSelectedRange(savedRange)
+                                    }
+                                }
+                            }) {
+                                IconView(isConfirmRevealed ? .eyeSlash : .eye, size: 14, weight: 1.4, color: isConfirmRevealed ? ThemeColors.accent : ThemeColors.textMuted)
+                                    .padding(.horizontal, 6)
+                                    .frame(maxHeight: .infinity)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.leading, 10)
+                        .frame(height: 28)
+                        .background(Tokens.well)
+                        .cornerRadius(7)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(confirmHasError ? ThemeColors.danger : Tokens.fieldBorder, lineWidth: 1)
+                        )
+                        .modifier(ShakeEffect(animatableData: CGFloat(shakeAttempts)))
+
+                        if let feedback = passphraseFeedback {
+                            Text(feedback)
+                                .font(.system(size: 10))
+                                .foregroundColor(isFeedbackDanger ? ThemeColors.danger : (feedback == "Passphrase saved" || feedback == "Passphrase cleared" ? ThemeColors.accent : ThemeColors.warning))
+                                .padding(.horizontal, 2)
+                        }
+
+                        // Action Row
+                        HStack(spacing: 8) {
+                            Button(action: {
+                                submitPassphrase()
                             }) {
                                 Text(state.hasSyncPassphrase ? "Update" : "Set Passphrase")
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundColor(ThemeColors.background)
                                     .padding(.horizontal, 12)
                                     .frame(height: 28)
-                                    .background(ThemeColors.accent)
+                                    .background(isPassphraseValid ? ThemeColors.accent : ThemeColors.textDisabled)
                                     .cornerRadius(7)
                             }
                             .buttonStyle(.plain)
-                            .disabled(passphraseInput.isEmpty)
+                            .disabled(!isPassphraseValid)
 
                             if state.hasSyncPassphrase {
                                 Button(action: {
                                     do {
                                         try state.clearSyncPassphrase()
+                                        passphraseInput = ""
+                                        confirmPassphraseInput = ""
                                         passphraseFeedback = "Passphrase cleared"
+                                        isFeedbackDanger = false
                                     } catch {
                                         passphraseFeedback = "Failed to clear: \(error.localizedDescription)"
+                                        isFeedbackDanger = true
                                     }
                                 }) {
                                     Text("Clear")
@@ -223,16 +321,11 @@ public struct DevicesSyncView: View {
                                 .buttonStyle(.plain)
                             }
                         }
-
-                        if let feedback = passphraseFeedback {
-                            Text(feedback)
-                                .font(.system(size: 10))
-                                .foregroundColor(ThemeColors.accent)
-                                .padding(.horizontal, 2)
-                        }
                     }
                     .padding(12)
                     .card()
+                    .onChange(of: passphraseInput) { _ in updatePassphraseValidation() }
+                    .onChange(of: confirmPassphraseInput) { _ in updatePassphraseValidation() }
 
                     // 2. Devices Section
                     VStack(alignment: .leading, spacing: 6) {
@@ -629,5 +722,76 @@ public struct DevicesSyncView: View {
         .padding(20)
         .frame(width: 360)
         .background(ThemeColors.surface)
+    }
+
+    private var isPassphraseValid: Bool {
+        passphraseInput.count >= 8 && passphraseInput == confirmPassphraseInput
+    }
+
+    private var confirmHasError: Bool {
+        shakeAttempts > 0 || (!confirmPassphraseInput.isEmpty && passphraseInput != confirmPassphraseInput)
+    }
+
+    private func updatePassphraseValidation() {
+        if passphraseInput.isEmpty && confirmPassphraseInput.isEmpty {
+            passphraseFeedback = nil
+            isFeedbackDanger = false
+            return
+        }
+
+        if passphraseInput.count < 8 {
+            passphraseFeedback = "Passphrase must be at least 8 characters."
+            isFeedbackDanger = false
+            return
+        }
+
+        if !confirmPassphraseInput.isEmpty && passphraseInput != confirmPassphraseInput {
+            passphraseFeedback = "Passphrases do not match."
+            isFeedbackDanger = true
+            return
+        }
+
+        if isPassphraseValid {
+            passphraseFeedback = nil
+            isFeedbackDanger = false
+        }
+    }
+
+    private func submitPassphrase() {
+        if isPassphraseValid {
+            do {
+                try state.setSyncPassphrase(passphraseInput)
+                passphraseInput = ""
+                confirmPassphraseInput = ""
+                passphraseFeedback = "Passphrase saved"
+                isFeedbackDanger = false
+            } catch {
+                passphraseFeedback = "Failed to save: \(error.localizedDescription)"
+                isFeedbackDanger = true
+            }
+        } else {
+            withAnimation(.default) {
+                shakeAttempts += 1
+            }
+            if passphraseInput.count < 8 {
+                passphraseFeedback = "Passphrase must be at least 8 characters."
+                isFeedbackDanger = false
+            } else if passphraseInput != confirmPassphraseInput {
+                passphraseFeedback = "Passphrases do not match."
+                isFeedbackDanger = true
+            }
+        }
+    }
+}
+
+struct ShakeEffect: GeometryEffect {
+    var amount: CGFloat = 6
+    var shakesPerUnit: CGFloat = 3
+    var animatableData: CGFloat
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        ProjectionTransform(CGAffineTransform(translationX:
+            amount * sin(animatableData * .pi * shakesPerUnit),
+            y: 0))
     }
 }

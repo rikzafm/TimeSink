@@ -95,6 +95,34 @@ public class IpcPipeTests
     }
 
     [Fact]
+    public async Task A_set_sync_passphrase_request_from_the_UI_reaches_the_agent()
+    {
+        var name = NewName();
+        using var server = new IpcServer(name, () => new StateMessage(false, []));
+        var got = new TaskCompletionSource<string>();
+        server.SyncPassphraseSet += pwd => got.TrySetResult(pwd);
+        server.Start();
+
+        await IpcClient.SendAsync(name, new SetSyncPassphraseMessage("secret-passphrase-123"));
+
+        (await Next(got)).Should().Be("secret-passphrase-123");
+    }
+
+    [Fact]
+    public async Task A_clear_sync_passphrase_request_from_the_UI_reaches_the_agent()
+    {
+        var name = NewName();
+        using var server = new IpcServer(name, () => new StateMessage(false, []));
+        var got = new TaskCompletionSource<bool>();
+        server.SyncPassphraseCleared += () => got.TrySetResult(true);
+        server.Start();
+
+        await IpcClient.SendAsync(name, new ClearSyncPassphraseMessage());
+
+        (await Next(got)).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Sending_with_no_agent_listening_does_not_throw()
         => await FluentActions.Awaiting(() => IpcClient.SendAsync(NewName(), new SetIconMessage("clean.bars"), TimeSpan.FromMilliseconds(50)))
             .Should().NotThrowAsync();

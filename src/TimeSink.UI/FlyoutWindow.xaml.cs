@@ -2,12 +2,14 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using TimeSink.Core.Backup;
+using TimeSink.Core.Devices;
 using TimeSink.Core.Sync;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using TimeSink.Core.Data;
@@ -592,8 +594,8 @@ public partial class FlyoutWindow : Window
             return;
         }
 
-        // 7. Secondary Go Back: Backspace outside a TextBox
-        if (!ctrl && !alt && !shift && e.Key == Key.Back && Keyboard.FocusedElement is not TextBox)
+        // 7. Secondary Go Back: Backspace outside text input
+        if (!ctrl && !alt && !shift && e.Key == Key.Back && !IsTextInputElement(Keyboard.FocusedElement))
         {
             if (Overlay.Content is not null || BodyIsDrilldown())
             {
@@ -604,7 +606,7 @@ public partial class FlyoutWindow : Window
         }
 
         // 8. Shortcuts guide: '?' (Shift+/)
-        if (!ctrl && !alt && shift && (e.Key == Key.OemQuestion || e.Key == Key.Divide) && Keyboard.FocusedElement is not TextBox)
+        if (!ctrl && !alt && shift && (e.Key == Key.OemQuestion || e.Key == Key.Divide) && !IsTextInputElement(Keyboard.FocusedElement))
         {
             e.Handled = true;
             ToggleKeyboardGuide();
@@ -650,8 +652,25 @@ public partial class FlyoutWindow : Window
             return;
         }
 
+        if (Keyboard.FocusedElement is PasswordBox pb)
+        {
+            if (!string.IsNullOrEmpty(pb.Password))
+            {
+                pb.Password = "";
+            }
+            else
+            {
+                Keyboard.ClearFocus();
+                Focus();
+            }
+            return;
+        }
+
         HandleGoBack();
     }
+
+    private static bool IsTextInputElement(IInputElement? element) =>
+        element is TextBoxBase or PasswordBox;
 
     private void HandleGoBack()
     {

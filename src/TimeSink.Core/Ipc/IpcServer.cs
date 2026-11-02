@@ -35,6 +35,7 @@ public sealed class IpcServer : IDisposable
 
     /// <summary>Raised (on a thread-pool thread) with the passphrase when a UI sends <see cref="SetSyncPassphraseMessage"/>.</summary>
     public event Action<string>? SyncPassphraseSet;
+    public event Action? SyncPassphraseCleared;
 
     public void Start() => _ = Task.Run(AcceptLoop);
 
@@ -81,6 +82,7 @@ public sealed class IpcServer : IDisposable
                 else if (msg is SetIconMessage icon) IconRequested?.Invoke(icon.IconId);
                 else if (msg is SyncNowMessage) SyncRequested?.Invoke();
                 else if (msg is SetSyncPassphraseMessage passphraseMsg) SyncPassphraseSet?.Invoke(passphraseMsg.Passphrase);
+                else if (msg is ClearSyncPassphraseMessage) SyncPassphraseCleared?.Invoke();
             }
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or OperationCanceledException or ObjectDisposedException) { }

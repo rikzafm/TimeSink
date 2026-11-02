@@ -1,9 +1,11 @@
 using System.IO;
+using System.Reflection;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using Microsoft.Data.Sqlite;
 using Microsoft.Win32;
@@ -433,24 +435,13 @@ public sealed partial class SettingsView
             encHelp.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
             encStack.Children.Add(encHelp);
 
-            // Row 3: PasswordBox + Action Button
-            var inputGrid = new Grid();
-            inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-            var pwdBox = new PasswordBox
+            // Row 3: Passphrase Inputs, Feedback, and Action Buttons
+            var feedbackBlock = new TextBlock
             {
-                Height = 28,
-                Padding = new Thickness(8, 4, 8, 4),
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 8, 0),
+                Margin = new Thickness(2, 0, 0, 6),
+                Visibility = Visibility.Collapsed,
             };
-            pwdBox.SetResourceReference(Control.BackgroundProperty, "Brush.SurfaceAlt");
-            pwdBox.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
-            pwdBox.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");
-
-            Grid.SetColumn(pwdBox, 0);
-            inputGrid.Children.Add(pwdBox);
+            feedbackBlock.SetResourceReference(TextBlock.StyleProperty, "Caption");
 
             var setBtn = new Button
             {
@@ -466,23 +457,96 @@ public sealed partial class SettingsView
             setBtn.SetResourceReference(Control.ForegroundProperty, "Brush.OnAccent");
             setBtn.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
 
-            pwdBox.PasswordChanged += (_, _) =>
-            {
-                setBtn.IsEnabled = !string.IsNullOrWhiteSpace(pwdBox.Password);
-            };
+            PeekablePasswordControl pwdControl = null!;
+            PeekablePasswordControl confirmControl = null!;
 
-            pwdBox.KeyDown += (s, e) =>
+            void UpdateValidation()
             {
-                if (e.Key == System.Windows.Input.Key.Enter && setBtn.IsEnabled)
+                var p1 = pwdControl.Password;
+                var p2 = confirmControl.Password;
+
+                if (string.IsNullOrEmpty(p1) && string.IsNullOrEmpty(p2))
                 {
-                    setBtn.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                    feedbackBlock.Text = "";
+                    feedbackBlock.Visibility = Visibility.Collapsed;
+                    setBtn.IsEnabled = false;
+                    return;
                 }
-            };
+
+                if (p1.Length < 8)
+                {
+                    feedbackBlock.Text = "Passphrase must be at least 8 characters.";
+                    feedbackBlock.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Warning");
+                    feedbackBlock.Visibility = Visibility.Visible;
+                    setBtn.IsEnabled = false;
+                    return;
+                }
+
+                if (!string.IsNullOrEmpty(p2) && p1 != p2)
+                {
+                    feedbackBlock.Text = "Passphrases do not match.";
+                    feedbackBlock.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Danger");
+                    feedbackBlock.Visibility = Visibility.Visible;
+                    setBtn.IsEnabled = false;
+                    return;
+                }
+
+                if (p1.Length >= 8 && p1 == p2)
+                {
+                    feedbackBlock.Text = "";
+                    feedbackBlock.Visibility = Visibility.Collapsed;
+                    setBtn.IsEnabled = true;
+                }
+                else
+                {
+                    feedbackBlock.Text = "";
+                    feedbackBlock.Visibility = Visibility.Collapsed;
+                    setBtn.IsEnabled = false;
+                }
+            }
+
+            pwdControl = new PeekablePasswordControl(
+                "Enter sync passphrase…",
+                onChanged: UpdateValidation,
+                onEnter: () => confirmControl.Focus());
+
+            confirmControl = new PeekablePasswordControl(
+                "Confirm sync passphrase…",
+                onChanged: UpdateValidation,
+                onEnter: () =>
+                {
+                    var p1 = pwdControl.Password;
+                    var p2 = confirmControl.Password;
+                    if (p1.Length >= 8 && p1 == p2)
+                    {
+                        setBtn.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                    }
+                    else
+                    {
+                        confirmControl.PlayShake();
+                        if (p1.Length < 8)
+                        {
+                            feedbackBlock.Text = "Passphrase must be at least 8 characters.";
+                            feedbackBlock.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Warning");
+                            feedbackBlock.Visibility = Visibility.Visible;
+                        }
+                        else
+                        {
+                            feedbackBlock.Text = "Passphrases do not match.";
+                            feedbackBlock.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Danger");
+                            feedbackBlock.Visibility = Visibility.Visible;
+                        }
+                    }
+                });
 
             setBtn.Click += async (_, _) =>
             {
-                var pwd = pwdBox.Password;
-                if (string.IsNullOrWhiteSpace(pwd)) return;
+                var pwd = pwdControl.Password;
+                if (pwd.Length < 8 || pwd != confirmControl.Password)
+                {
+                    confirmControl.PlayShake();
+                    return;
+                }
 
                 setBtn.IsEnabled = false;
 
@@ -517,10 +581,47 @@ public sealed partial class SettingsView
                 Refresh();
             };
 
-            Grid.SetColumn(setBtn, 1);
-            inputGrid.Children.Add(setBtn);
+            var actionRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+            actionRow.Children.Add(setBtn);
 
-            encStack.Children.Add(inputGrid);
+            if (hasPassphrase)
+            {
+                var clearBtn = new Button
+                {
+                    Content = "Clear",
+                    Height = 28,
+                    Padding = new Thickness(12, 0, 12, 0),
+                    FontWeight = FontWeights.SemiBold,
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(8, 0, 0, 0),
+                };
+                clearBtn.SetResourceReference(StyleProperty, "LinkButton");
+                clearBtn.SetResourceReference(Control.ForegroundProperty, "Brush.TextMuted");
+                clearBtn.Click += (_, _) =>
+                {
+                    Db.KeyManager.ClearSyncPassphrase();
+                    settings.Set(Setting.SyncEncrypted, false);
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var scratch = Environment.GetEnvironmentVariable("TIMESINK_DB");
+                            var pipeName = PipeNames.For(scratch);
+                            await IpcClient.SendAsync(pipeName, new ClearSyncPassphraseMessage());
+                        }
+                        catch { }
+                    });
+                    TriggerSyncNow();
+                    Refresh();
+                };
+                actionRow.Children.Add(clearBtn);
+            }
+
+            encStack.Children.Add(pwdControl.Border);
+            encStack.Children.Add(confirmControl.Border);
+            encStack.Children.Add(feedbackBlock);
+            encStack.Children.Add(actionRow);
             encCard.Child = encStack;
             stack.Children.Add(encCard);
 
@@ -1145,5 +1246,242 @@ public sealed partial class SettingsView
         if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes} min ago";
         if (span.TotalHours < 24) return $"{(int)span.TotalHours} h ago";
         return $"{(int)span.TotalDays} d ago";
+    }
+
+    private sealed class PeekablePasswordControl
+    {
+        public Border Border { get; }
+        public PasswordBox PwdBox { get; }
+        public TextBox TxtBox { get; }
+        public Button PeekBtn { get; }
+        public TranslateTransform ShakeTransform { get; }
+        private readonly TextBlock _hint;
+        private readonly System.Windows.Shapes.Path _eyePath;
+        private bool _revealed;
+
+        public string Password
+        {
+            get => _revealed ? TxtBox.Text : PwdBox.Password;
+            set
+            {
+                PwdBox.Password = value;
+                TxtBox.Text = value;
+                _hint.Visibility = string.IsNullOrEmpty(value) ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+
+        private static readonly MethodInfo? s_pwdSelectMethod = typeof(PasswordBox).GetMethod("Select", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly PropertyInfo? s_pwdSelectionProp = typeof(PasswordBox).GetProperty("Selection", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        private static int GetPasswordBoxCaret(PasswordBox pwdBox)
+        {
+            try
+            {
+                var sel = s_pwdSelectionProp?.GetValue(pwdBox);
+                if (sel is not null)
+                {
+                    var rangeType = sel.GetType().GetInterface("ITextRange");
+                    var start = rangeType?.GetProperty("Start")?.GetValue(sel);
+                    if (start is not null)
+                    {
+                        var offsetProp = start.GetType().GetProperty("Offset", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                        if (offsetProp?.GetValue(start) is int offset)
+                        {
+                            return Math.Clamp(offset, 0, pwdBox.Password.Length);
+                        }
+                    }
+                }
+            }
+            catch { }
+            return pwdBox.Password.Length;
+        }
+
+        private static void SetPasswordBoxCaret(PasswordBox pwdBox, int caret)
+        {
+            try
+            {
+                var pos = Math.Clamp(caret, 0, pwdBox.Password.Length);
+                s_pwdSelectMethod?.Invoke(pwdBox, new object[] { pos, 0 });
+            }
+            catch { }
+        }
+
+        public void Focus()
+        {
+            if (_revealed)
+            {
+                TxtBox.Focus();
+                TxtBox.CaretIndex = TxtBox.Text.Length;
+            }
+            else
+            {
+                PwdBox.Focus();
+                SetPasswordBoxCaret(PwdBox, PwdBox.Password.Length);
+            }
+        }
+
+        public void PlayShake()
+        {
+            Border.SetResourceReference(Border.BorderBrushProperty, "Brush.Danger");
+            var anim = new DoubleAnimationUsingKeyFrames
+            {
+                Duration = TimeSpan.FromMilliseconds(300),
+            };
+            anim.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+            anim.KeyFrames.Add(new LinearDoubleKeyFrame(-6, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(50))));
+            anim.KeyFrames.Add(new LinearDoubleKeyFrame(6, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(100))));
+            anim.KeyFrames.Add(new LinearDoubleKeyFrame(-4, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(150))));
+            anim.KeyFrames.Add(new LinearDoubleKeyFrame(4, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(200))));
+            anim.KeyFrames.Add(new LinearDoubleKeyFrame(-2, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(250))));
+            anim.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(300))));
+            ShakeTransform.BeginAnimation(TranslateTransform.XProperty, anim);
+        }
+
+        public void ResetBorder()
+        {
+            Border.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
+        }
+
+        public PeekablePasswordControl(string placeholder, Action onChanged, Action onEnter)
+        {
+            ShakeTransform = new TranslateTransform();
+            Border = new Border
+            {
+                Height = 28,
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 0, 0, 8),
+                RenderTransform = ShakeTransform,
+            };
+            Border.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+            Border.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
+            Border.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var inputGrid = new Grid();
+            PwdBox = new PasswordBox
+            {
+                BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Padding = new Thickness(8, 0, 4, 0),
+            };
+            PwdBox.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
+            PwdBox.SetResourceReference(PasswordBox.CaretBrushProperty, "Brush.Text");
+
+            TxtBox = new TextBox
+            {
+                BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Padding = new Thickness(8, 0, 4, 0),
+                Visibility = Visibility.Collapsed,
+            };
+            TxtBox.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
+            TxtBox.SetResourceReference(TextBox.CaretBrushProperty, "Brush.Text");
+
+            _hint = new TextBlock
+            {
+                Text = placeholder,
+                IsHitTestVisible = false,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(8, 0, 0, 0),
+            };
+            _hint.SetResourceReference(TextBlock.StyleProperty, "Caption");
+            _hint.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+
+            inputGrid.Children.Add(_hint);
+            inputGrid.Children.Add(PwdBox);
+            inputGrid.Children.Add(TxtBox);
+            Grid.SetColumn(inputGrid, 0);
+            grid.Children.Add(inputGrid);
+
+            _eyePath = new System.Windows.Shapes.Path
+            {
+                Data = Geometry.Parse("M2.5,12 C5,7.5 8.5,5.5 12,5.5 C15.5,5.5 19,7.5 21.5,12 C19,16.5 15.5,18.5 12,18.5 C8.5,18.5 5,16.5 2.5,12 Z M15,12 A3,3 0 1 1 9,12 A3,3 0 1 1 15,12 Z"),
+                StrokeThickness = 1.3,
+                Width = 14,
+                Height = 14,
+                Stretch = Stretch.Uniform,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            _eyePath.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Brush.TextMuted");
+
+            PeekBtn = new Button
+            {
+                Width = 26,
+                Height = 26,
+                Padding = new Thickness(0),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 2, 0),
+                Content = _eyePath,
+            };
+            PeekBtn.SetResourceReference(Control.StyleProperty, "LinkButton");
+
+            PeekBtn.Click += (_, _) =>
+            {
+                _revealed = !_revealed;
+                if (_revealed)
+                {
+                    var caret = GetPasswordBoxCaret(PwdBox);
+                    TxtBox.Text = PwdBox.Password;
+                    PwdBox.Visibility = Visibility.Collapsed;
+                    TxtBox.Visibility = Visibility.Visible;
+                    _eyePath.Data = Geometry.Parse("M2.5,12 C5,7.5 8.5,5.5 12,5.5 C15.5,5.5 19,7.5 21.5,12 C19,16.5 15.5,18.5 12,18.5 C8.5,18.5 5,16.5 2.5,12 Z M15,12 A3,3 0 1 1 9,12 A3,3 0 1 1 15,12 Z M4,20 L20,4");
+                    _eyePath.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Brush.Accent");
+                    TxtBox.Focus();
+                    TxtBox.CaretIndex = Math.Clamp(caret, 0, TxtBox.Text.Length);
+                }
+                else
+                {
+                    var caret = TxtBox.CaretIndex;
+                    PwdBox.Password = TxtBox.Text;
+                    TxtBox.Visibility = Visibility.Collapsed;
+                    PwdBox.Visibility = Visibility.Visible;
+                    _eyePath.Data = Geometry.Parse("M2.5,12 C5,7.5 8.5,5.5 12,5.5 C15.5,5.5 19,7.5 21.5,12 C19,16.5 15.5,18.5 12,18.5 C8.5,18.5 5,16.5 2.5,12 Z M15,12 A3,3 0 1 1 9,12 A3,3 0 1 1 15,12 Z");
+                    _eyePath.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Brush.TextMuted");
+                    PwdBox.Focus();
+                    SetPasswordBoxCaret(PwdBox, caret);
+                }
+            };
+
+            Grid.SetColumn(PeekBtn, 1);
+            grid.Children.Add(PeekBtn);
+            Border.Child = grid;
+
+            PwdBox.PasswordChanged += (_, _) =>
+            {
+                if (!_revealed)
+                {
+                    _hint.Visibility = string.IsNullOrEmpty(PwdBox.Password) ? Visibility.Visible : Visibility.Collapsed;
+                    ResetBorder();
+                    onChanged();
+                }
+            };
+
+            TxtBox.TextChanged += (_, _) =>
+            {
+                if (_revealed)
+                {
+                    _hint.Visibility = string.IsNullOrEmpty(TxtBox.Text) ? Visibility.Visible : Visibility.Collapsed;
+                    ResetBorder();
+                    onChanged();
+                }
+            };
+
+            PwdBox.KeyDown += (s, e) =>
+            {
+                if (e.Key == System.Windows.Input.Key.Enter) onEnter();
+            };
+
+            TxtBox.KeyDown += (s, e) =>
+            {
+                if (e.Key == System.Windows.Input.Key.Enter) onEnter();
+            };
+        }
     }
 }

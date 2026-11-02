@@ -82,7 +82,7 @@ public sealed partial class SettingsView : Grid
         Focusable = true;
         PreviewKeyDown += (_, e) =>
         {
-            if (e.Key != Key.Escape || Keyboard.FocusedElement is TextBox) return;
+            if (e.Key != Key.Escape || Keyboard.FocusedElement is TextBoxBase or PasswordBox) return;
             e.Handled = true;
             if (TryCloseSubView()) return;
             _close?.Invoke();
