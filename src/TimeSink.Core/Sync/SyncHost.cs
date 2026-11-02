@@ -1,4 +1,5 @@
 using TimeSink.Core.Data;
+using TimeSink.Core.Security;
 using TimeSink.Core.Settings;
 
 namespace TimeSink.Core.Sync;
@@ -20,6 +21,7 @@ public sealed class SyncHost : IDisposable
     private readonly Func<DateTimeOffset> _clock;
     private readonly Action<string>? _log;
     private readonly TimeSpan _exportInterval;
+    private readonly IKeyManager? _keyManager;
 
     private readonly object _gate = new();
     private FileSystemWatcher? _watcher;
@@ -39,13 +41,15 @@ public sealed class SyncHost : IDisposable
         TimeZoneInfo? zone = null,
         Func<DateTimeOffset>? clock = null,
         Action<string>? log = null,
-        TimeSpan? exportInterval = null)
+        TimeSpan? exportInterval = null,
+        IKeyManager? keyManager = null)
     {
         _dbPath = dbPath;
         _zone = zone ?? TimeZoneInfo.Local;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         _log = log;
         _exportInterval = exportInterval ?? DefaultExportInterval;
+        _keyManager = keyManager;
     }
 
     public void Start(TimeSpan? checkInterval = null)
@@ -115,7 +119,7 @@ public sealed class SyncHost : IDisposable
             {
                 try
                 {
-                    SyncWriter.Write(db.Connection, folder, now);
+                    SyncWriter.Write(db.Connection, folder, now, keyManager: _keyManager);
                     _lastExportUtc = now;
                     _lastSessionCount = count;
                     _lastMaxLastSeen = maxLastSeen;
@@ -146,7 +150,7 @@ public sealed class SyncHost : IDisposable
                         continue;
                     }
 
-                    var result = SyncReader.Import(file, _dbPath, _zone);
+                    var result = SyncReader.Import(file, _dbPath, _zone, _keyManager);
                     if (result.Status == SyncStatus.Success)
                     {
                         anyRemoteFound = true;
@@ -160,6 +164,27 @@ public sealed class SyncHost : IDisposable
                     else if (result.Status == SyncStatus.ThirdDeviceIgnored)
                     {
                         _log?.Invoke($"sync: third device snapshot ignored: {Path.GetFileName(file)}");
+                    }
+                    else if (result.Status == SyncStatus.EncryptionKeyMissing)
+                    {
+                        db.SetSetting(Setting.SyncState.Key, "encryption_key_missing");
+                        lock (_gate) { _backoffUntil = DateTimeOffset.MaxValue; }
+                        _log?.Invoke($"sync: snapshot encrypted but key missing: {Path.GetFileName(file)}");
+                        return;
+                    }
+                    else if (result.Status == SyncStatus.EncryptionKeyWrong)
+                    {
+                        db.SetSetting(Setting.SyncState.Key, "encryption_key_wrong");
+                        lock (_gate) { _backoffUntil = DateTimeOffset.MaxValue; }
+                        _log?.Invoke($"sync: passphrase failed decryption: {Path.GetFileName(file)}");
+                        return;
+                    }
+                    else if (result.Status == SyncStatus.RemoteNotEncrypted)
+                    {
+                        db.SetSetting(Setting.SyncState.Key, "remote_not_encrypted");
+                        lock (_gate) { _backoffUntil = DateTimeOffset.MaxValue; }
+                        _log?.Invoke($"sync: remote file {Path.GetFileName(file)} is not encrypted while local expects encryption");
+                        return;
                     }
                 }
             }
@@ -314,7 +339,7 @@ public sealed class SyncHost : IDisposable
                 var folder = settings.Get(Setting.SyncFolder);
                 if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
                 {
-                    SyncWriter.Write(_dbPath, folder, _clock());
+                    SyncWriter.Write(_dbPath, folder, _clock(), keyManager: _keyManager);
                     _log?.Invoke("sync: clean final snapshot written on exit");
                 }
             }

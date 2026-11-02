@@ -112,6 +112,7 @@ public static class Setting
     public static readonly Setting<string?> BackupFolder = Text("backup.folder");
 
     public static readonly Setting<bool> SyncEnabled = Switch("sync.enabled", false);
+    public static readonly Setting<bool> SyncEncrypted = Switch("sync.encrypted", false);
     public static readonly Setting<string?> SyncFolder = Text("sync.folder");
     public static readonly Setting<string?> SyncState = Text("sync.state");
     public static readonly Setting<long> SyncLastExportUtc = Count("sync.lastExportUtc");
@@ -121,6 +122,20 @@ public static class Setting
     public static readonly Setting<string?> DeviceId = Text("device.id");
     public static readonly Setting<string?> DeviceName = Text("device.name");
     public static readonly Setting<bool> ShortDeviceNames = Switch("devices.shortNames", true);
+    public const string SyncStateEncryptionKeyMissing = "encryption_key_missing";
+    public const string SyncStateEncryptionKeyWrong = "encryption_key_wrong";
+    public const string SyncStateRemoteNotEncrypted = "remote_not_encrypted";
+
+    public static class SyncStates
+    {
+        public const string Synced = "synced";
+        public const string Pending = "pending";
+        public const string WaitingForDevice = "waiting_for_device";
+        public const string NoOtherDevice = "no_other_device";
+        public const string EncryptionKeyMissing = "encryption_key_missing";
+        public const string EncryptionKeyWrong = "encryption_key_wrong";
+        public const string RemoteNotEncrypted = "remote_not_encrypted";
+    }
 
     public static readonly Setting<string?> AlertsSent = Text("alerts.sent");
     public static readonly Setting<string?> AlertsWeeklyLast = Text("alerts.weeklyLast");
@@ -137,6 +152,6 @@ public static class Setting
         Startup, WeekStartsOn, PauseOnSleep, CountWhenLocked, MinSessionSeconds, SuggestApps, SteamAutoTrack,
         Theme, Accent, Compact, AppIcon, GoalAlerts, WeeklySummary, BackupMode,
         LastTab, LastYearView, AllLayout, InstantOpen, GamesOnly, BackupLastUtc, BackupFolder, AlertsSent, AlertsWeeklyLast, SteamIconsRepaired,
-        SyncEnabled, SyncFolder, SyncState, SyncLastExportUtc, SyncLastImportUtc, SyncEnabledUtc, DeviceScope, DeviceId, DeviceName, ShortDeviceNames,
+        SyncEnabled, SyncEncrypted, SyncFolder, SyncState, SyncLastExportUtc, SyncLastImportUtc, SyncEnabledUtc, DeviceScope, DeviceId, DeviceName, ShortDeviceNames,
     ];
 }

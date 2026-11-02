@@ -14,6 +14,8 @@ public struct DevicesSyncView: View {
     @State private var deletingDevice: DeviceRow?
     @State private var deleteConfirmText: String = ""
     @State private var showingMergeSheet: Bool = false
+    @State private var passphraseInput: String = ""
+    @State private var passphraseFeedback: String?
 
     public init(state: AppState) {
         self.state = state
@@ -91,6 +93,143 @@ public struct DevicesSyncView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
                         .card(fill: Tokens.well, radius: 8)
+                    }
+                    .padding(12)
+                    .card()
+
+                    // Diagnostic Banner for Encryption Error States
+                    if state.syncState == "encryption_key_wrong" ||
+                       state.syncState == "encryption_key_missing" ||
+                       state.syncState == "remote_not_encrypted" {
+                        let isMismatch = state.syncState == "encryption_key_wrong"
+                        let isMissing = state.syncState == "encryption_key_missing"
+                        let bannerTitle = isMismatch ? "Sync Paused — Passphrase Mismatch"
+                            : isMissing ? "Sync Paused — Passphrase Required"
+                            : "Sync Alert — Remote Device Not Encrypted"
+                        let bannerDesc = isMismatch ? "The entered passphrase does not match the other device. Make sure both devices use the exact same passphrase to decrypt sync archives."
+                            : isMissing ? "The remote sync file is encrypted, but no passphrase is configured on this device. Enter your sync passphrase below to resume synchronization."
+                            : "This device expects encrypted sync files, but the remote archive is unencrypted. Please configure the same passphrase on the other device."
+                        let alertColor = isMismatch ? ThemeColors.danger : ThemeColors.warning
+
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: isMismatch ? "exclamationmark.triangle.fill" : "lock.fill")
+                                .font(.system(size: 13))
+                                .foregroundColor(alertColor)
+                                .padding(.top, 2)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(bannerTitle)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(alertColor)
+
+                                Text(bannerDesc)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(ThemeColors.textDim)
+                                    .lineSpacing(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(12)
+                        .card(fill: Tokens.warnBg, border: alertColor)
+                    }
+
+                    // 1.5. Sync Encryption Card
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .center) {
+                            HStack(spacing: 6) {
+                                Image(systemName: state.syncEncrypted && state.hasSyncPassphrase ? "lock.fill" : "lock")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(state.syncEncrypted && state.hasSyncPassphrase ? ThemeColors.accent : ThemeColors.textMuted)
+
+                                Text("Sync encryption")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(ThemeColors.textPrimary)
+                            }
+
+                            Spacer()
+
+                            // Status Badge
+                            HStack(spacing: 5) {
+                                Circle()
+                                    .fill(state.syncEncrypted && state.hasSyncPassphrase ? ThemeColors.accent : ThemeColors.textMuted)
+                                    .frame(width: 6, height: 6)
+
+                                Text(state.syncEncrypted && state.hasSyncPassphrase ? "Encrypted" : "Not configured")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(state.syncEncrypted && state.hasSyncPassphrase ? ThemeColors.accent : ThemeColors.textMuted)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .card(fill: Tokens.well, radius: 6)
+                        }
+
+                        Text("Enter the same passphrase on both devices to encrypt your sync data. Your passphrase is stored securely in macOS Keychain and never sent over the network.")
+                            .font(.system(size: 11))
+                            .foregroundColor(ThemeColors.textMuted)
+                            .lineSpacing(2)
+
+                        // Passphrase Input Row
+                        HStack(spacing: 8) {
+                            SecureField("Enter sync passphrase…", text: $passphraseInput)
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 12))
+                                .foregroundColor(ThemeColors.textPrimary)
+                                .padding(.horizontal, 10)
+                                .frame(height: 28)
+                                .background(Tokens.well)
+                                .cornerRadius(7)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 7)
+                                        .stroke(Tokens.fieldBorder, lineWidth: 1)
+                                )
+
+                            Button(action: {
+                                guard !passphraseInput.isEmpty else { return }
+                                do {
+                                    try state.setSyncPassphrase(passphraseInput)
+                                    passphraseInput = ""
+                                    passphraseFeedback = "Passphrase saved"
+                                } catch {
+                                    passphraseFeedback = "Failed to save: \(error.localizedDescription)"
+                                }
+                            }) {
+                                Text(state.hasSyncPassphrase ? "Update" : "Set Passphrase")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(ThemeColors.background)
+                                    .padding(.horizontal, 12)
+                                    .frame(height: 28)
+                                    .background(ThemeColors.accent)
+                                    .cornerRadius(7)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(passphraseInput.isEmpty)
+
+                            if state.hasSyncPassphrase {
+                                Button(action: {
+                                    do {
+                                        try state.clearSyncPassphrase()
+                                        passphraseFeedback = "Passphrase cleared"
+                                    } catch {
+                                        passphraseFeedback = "Failed to clear: \(error.localizedDescription)"
+                                    }
+                                }) {
+                                    Text("Clear")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(ThemeColors.textMuted)
+                                        .padding(.horizontal, 8)
+                                        .frame(height: 28)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        if let feedback = passphraseFeedback {
+                            Text(feedback)
+                                .font(.system(size: 10))
+                                .foregroundColor(ThemeColors.accent)
+                                .padding(.horizontal, 2)
+                        }
                     }
                     .padding(12)
                     .card()
@@ -326,6 +465,12 @@ public struct DevicesSyncView: View {
             return StatusInfo(text: "Up to date", color: ThemeColors.deviceA)
         } else if activeRemoteCount > 1 && index >= 2 {
             return StatusInfo(text: "Only two devices are supported yet", color: ThemeColors.warning)
+        } else if state.syncState == "encryption_key_wrong" {
+            return StatusInfo(text: "Passphrase mismatch", color: ThemeColors.danger)
+        } else if state.syncState == "encryption_key_missing" {
+            return StatusInfo(text: "Passphrase required", color: ThemeColors.warning)
+        } else if state.syncState == "remote_not_encrypted" {
+            return StatusInfo(text: "Remote unencrypted", color: ThemeColors.warning)
         } else if state.syncState == "no_other_device" {
             return StatusInfo(text: "No other device found", color: ThemeColors.warning)
         } else if state.syncState == "pending" {

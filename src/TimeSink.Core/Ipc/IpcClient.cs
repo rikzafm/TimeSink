@@ -8,14 +8,19 @@ namespace TimeSink.Core.Ipc;
 /// </summary>
 public sealed class IpcClient : IDisposable
 {
+    /// <summary>Default connection timeout for IPC pipe connection attempts (2000ms provides margin against thread-pool starvation under high load).</summary>
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(2);
+
     private readonly string _name;
     private readonly TimeSpan _retry;
+    private readonly TimeSpan _connectTimeout;
     private readonly CancellationTokenSource _cts = new();
 
-    public IpcClient(string pipeName, TimeSpan? retryDelay = null)
+    public IpcClient(string pipeName, TimeSpan? retryDelay = null, TimeSpan? connectTimeout = null)
     {
         _name = pipeName;
         _retry = retryDelay ?? TimeSpan.FromSeconds(2);
+        _connectTimeout = connectTimeout ?? DefaultTimeout;
     }
 
     public event Action<StateMessage>? StateReceived;
@@ -31,7 +36,7 @@ public sealed class IpcClient : IDisposable
             try
             {
                 using var pipe = new NamedPipeClientStream(".", _name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-                await pipe.ConnectAsync(500, ct).ConfigureAwait(false);
+                await pipe.ConnectAsync((int)_connectTimeout.TotalMilliseconds, ct).ConfigureAwait(false);
                 ConnectionChanged?.Invoke(true);
                 try
                 {
@@ -54,7 +59,7 @@ public sealed class IpcClient : IDisposable
         try
         {
             using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-            await pipe.ConnectAsync((int)(timeout ?? TimeSpan.FromMilliseconds(500)).TotalMilliseconds, ct).ConfigureAwait(false);
+            await pipe.ConnectAsync((int)(timeout ?? DefaultTimeout).TotalMilliseconds, ct).ConfigureAwait(false);
             await IpcFraming.WriteAsync(pipe, message, ct).ConfigureAwait(false);
             await pipe.FlushAsync(ct).ConfigureAwait(false);
         }

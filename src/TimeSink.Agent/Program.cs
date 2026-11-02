@@ -126,6 +126,17 @@ internal static class Program
         s_steam.Start();
         s_sync = new SyncAgentHost(s_dbPath, s_hwnd);
         s_ipc.SyncRequested += () => s_sync.SyncNow();
+        s_ipc.SyncPassphraseSet += passphrase =>
+        {
+            try
+            {
+                s_sync?.OnSyncPassphraseSet(passphrase);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"sync passphrase set: {ex.Message}");
+            }
+        };
         s_sync.Start();
 
         MSG msg;

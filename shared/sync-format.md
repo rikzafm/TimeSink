@@ -26,8 +26,8 @@ TimeSink sync allows two devices (e.g., a Windows PC and a macOS Mac) to share u
   - Example: `3fa85f64-5717-4562-b3fc-2c963f66afa6.tssync`
 - Format: Standard ZIP archive (identical packaging to `.timesink` backup archives).
 - Archive contents:
-  - `manifest.json`: JSON metadata and integrity hash.
-  - `snapshot.db`: SQLite database holding a stripped export of only this device's apps and sessions.
+  - `manifest.json`: JSON metadata and integrity hash (always stored in plaintext).
+  - `snapshot.db`: SQLite database holding a stripped export of only this device's apps and sessions (encrypted via SQLCipher 4 when sync encryption is enabled).
 
 ### 2.2 Atomic Writes
 
@@ -50,14 +50,15 @@ The manifest contains metadata used to validate the snapshot before opening the 
 ```json
 {
   "format": 1,
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "appVersion": "1.0.0",
   "deviceId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "deviceName": "MacBook Pro",
   "platform": "macos",
   "createdUtc": "2026-11-01T04:30:00Z",
   "sessionCount": 1425,
-  "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "encrypted": true
 }
 ```
 
@@ -66,14 +67,15 @@ The manifest contains metadata used to validate the snapshot before opening the 
 | Field | Type | Description |
 |---|---|---|
 | `format` | integer | Sync specification format version (currently `1`). |
-| `schemaVersion` | integer | SQLite schema version of `snapshot.db` (matches `PRAGMA user_version`, `4`). |
+| `schemaVersion` | integer | SQLite schema version of `snapshot.db` (matches `PRAGMA user_version`, `5`). |
 | `appVersion` | string | Display version of the writing application. |
 | `deviceId` | string | UUID of the device that wrote the snapshot. |
 | `deviceName` | string | User-visible device name (default: computer name). |
 | `platform` | string | Operating system: `"windows"` or `"macos"`. |
 | `createdUtc` | string | ISO 8601 UTC timestamp when the snapshot was generated. |
 | `sessionCount` | integer | Total count of session records contained in `snapshot.db`. |
-| `hash` | string | Lowercase hex SHA-256 hash of `snapshot.db`. |
+| `hash` | string | Lowercase hex SHA-256 hash of `snapshot.db` (computed over ciphertext when encrypted). |
+| `encrypted` | boolean | `true` if `snapshot.db` is encrypted with SQLCipher 4; `false` if unencrypted SQLite. Defaults to `false` when absent (schema 4 compatibility). |
 
 ---
 
@@ -90,6 +92,20 @@ The SQLite database inside the archive contains only tables and columns necessar
 - `settings`: Local configuration is never shared.
 - `devices`: Managed locally by each device.
 - Unrelated internal logs or caches.
+
+### 4.1 SQLCipher 4 Encryption Specification
+
+When `encrypted` is `true`:
+- **Cipher algorithm:** AES-256 in CBC mode with HMAC-SHA512 per-page integrity verification.
+- **Key derivation:** PBKDF2-HMAC-SHA512 with 256,000 iterations (`PRAGMA kdf_iter = 256000;`).
+- **Page size:** 4096 bytes (`PRAGMA cipher_page_size = 4096;`).
+- **Salt:** 16-byte cryptographically random salt stored in the first 16 bytes of the database file header.
+- **Key source:** User-provided UTF-8 passphrase string configured per device. Passed directly to SQLCipher via `PRAGMA key = '<passphrase>';` or `ATTACH DATABASE ... KEY '<passphrase>';`.
+- **Ciphertext hashing:** The SHA-256 `hash` in `manifest.json` covers the exact byte stream of `snapshot.db` as packed into the archive (i.e. the encrypted ciphertext bytes). Hash verification precedes decryption.
+- **Local key storage:**
+  - Windows: DPAPI encrypted at `%LocalAppData%\TimeSink\.synckey`.
+  - macOS: Keychain Services (`com.timesink.synckey`, `kSecClassGenericPassword`).
+  - Passphrase is NEVER stored in the SQLite settings database.
 
 ---
 
@@ -123,6 +139,15 @@ Sessions are keyed uniquely by:
    - If a snapshot carries this device's own `deviceId` but originates from an external file with conflicting hardware or installation timestamps (a cloned install), the local device generates a new UUID, updates its local settings, and logs a warning.
 7. **Offline / Missing folder**:
    - If the sync directory is unreachable or deleted, the app continues operating offline without errors, retaining all previously imported data.
+8. **Encrypted archive without configured passphrase (`encryption_key_missing`)**:
+   - If an incoming archive has `"encrypted": true` but the local device does not have a configured sync passphrase, import returns `EncryptionKeyMissing`.
+   - `sync.state` enters `"encryption_key_missing"` and automated retries are paused until the user enters the passphrase.
+9. **Wrong passphrase or decryption failure (`encryption_key_wrong`)**:
+   - If an incoming archive has `"encrypted": true` and a passphrase is provided, but SQLCipher cannot decrypt or `PRAGMA integrity_check` fails, import returns `EncryptionKeyWrong`.
+   - `sync.state` enters `"encryption_key_wrong"` and automated retries are paused until the user updates the passphrase.
+10. **Remote device not encrypted (`remote_not_encrypted`)**:
+    - If the local device has `sync.encrypted = true` but the incoming archive has `"encrypted": false`, import returns `RemoteNotEncrypted`.
+    - `sync.state` enters `"remote_not_encrypted"` and a warning prompts the user to configure encryption on the other device.
 
 ---
 

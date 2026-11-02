@@ -7,15 +7,20 @@ public enum SyncDeviceStatus: String, Sendable, Equatable {
     case onlyTwoDevices = "Only two devices are supported yet"
     case noOtherFound = "No other device found"
     case disabled = "Sync disabled"
+    case encryptionKeyMissing = "Passphrase required"
+    case encryptionKeyWrong = "Passphrase mismatch"
+    case remoteNotEncrypted = "Remote device unencrypted"
 }
 
 public final class SyncHost: @unchecked Sendable {
     private let db: SQLiteDatabase
     private let timeZone: TimeZone
+    private let keyManager: KeyManagerProtocol
     private var timer: Timer?
     private var folderSource: DispatchSourceFileSystemObject?
     private var folderFileDescriptor: Int32 = -1
     private let lock = NSLock()
+    private var isPausedDueToEncryptionError: Bool = false
 
     // Watcher debouncing & loop prevention
     private let debounceQueue = DispatchQueue(label: "com.timesink.sync.debounce", qos: .utility)
@@ -25,9 +30,14 @@ public final class SyncHost: @unchecked Sendable {
     public var onSyncStarted: (@Sendable () -> Void)?
     public var onSyncCompleted: (@Sendable () -> Void)?
 
-    public init(db: SQLiteDatabase, timeZone: TimeZone = .current) {
+    public init(
+        db: SQLiteDatabase,
+        timeZone: TimeZone = .current,
+        keyManager: KeyManagerProtocol = KeychainKeyManager.shared
+    ) {
         self.db = db
         self.timeZone = timeZone
+        self.keyManager = keyManager
     }
 
     deinit {
@@ -43,6 +53,7 @@ public final class SyncHost: @unchecked Sendable {
     }
 
     public func start() {
+        isPausedDueToEncryptionError = false
         guard isEnabled, let folder = syncFolder, !folder.isEmpty else { return }
         setupWatcher(folder: folder)
 
@@ -74,11 +85,13 @@ public final class SyncHost: @unchecked Sendable {
     }
 
     public func restart() {
+        isPausedDueToEncryptionError = false
         stop()
         start()
     }
 
     public func syncNow() {
+        isPausedDueToEncryptionError = false
         DispatchQueue.global(qos: .utility).async { [weak self] in
             self?.performSync()
         }
@@ -87,6 +100,10 @@ public final class SyncHost: @unchecked Sendable {
     public func performSync() {
         lock.lock()
         defer { lock.unlock() }
+
+        if isPausedDueToEncryptionError {
+            return
+        }
 
         guard isEnabled, let folder = syncFolder, !folder.isEmpty else { return }
         let fm = FileManager.default
@@ -98,10 +115,11 @@ public final class SyncHost: @unchecked Sendable {
 
         var exportSucceeded = false
         var importSucceeded = false
+        var encryptionError: SyncStatus? = nil
 
         // 1. Export local snapshot
         do {
-            _ = try SyncWriter.write(db: db, syncFolder: folder)
+            _ = try SyncWriter.write(db: db, syncFolder: folder, keyManager: keyManager)
             exportSucceeded = true
             self.lastLocalWriteUtc = Date().timeIntervalSince1970
             let nowUnix = Int64(Date().timeIntervalSince1970)
@@ -122,9 +140,14 @@ public final class SyncHost: @unchecked Sendable {
                     continue
                 }
 
-                let result = try SyncReader.import(syncFile: fullPath, db: db, timeZone: timeZone)
+                let result = try SyncReader.import(syncFile: fullPath, db: db, timeZone: timeZone, keyManager: keyManager)
                 if result.status == .success {
                     importSucceeded = true
+                } else if result.status == .encryptionKeyMissing ||
+                           result.status == .encryptionKeyWrong ||
+                           result.status == .remoteNotEncrypted {
+                    encryptionError = result.status
+                    break
                 }
             }
 
@@ -136,15 +159,32 @@ public final class SyncHost: @unchecked Sendable {
             NSLog("SyncReader scan error: \(error)")
         }
 
-        // 3. Update sync.state in settings
-        let status = getDeviceStatus()
+        // 3. Update sync.state in settings and pause retries on encryption error
         let stateStr: String
-        switch status {
-        case .noOtherFound: stateStr = "no_other_device"
-        case .pending: stateStr = "pending"
-        case .onlyTwoDevices: stateStr = "only_two_devices"
-        case .synced, .upToDate: stateStr = "synced"
-        case .disabled: stateStr = "disabled"
+        if let err = encryptionError {
+            self.isPausedDueToEncryptionError = true
+            switch err {
+            case .encryptionKeyMissing:
+                stateStr = "encryption_key_missing"
+            case .encryptionKeyWrong:
+                stateStr = "encryption_key_wrong"
+            case .remoteNotEncrypted:
+                stateStr = "remote_not_encrypted"
+            default:
+                stateStr = "failed"
+            }
+        } else {
+            let status = getDeviceStatus()
+            switch status {
+            case .noOtherFound: stateStr = "no_other_device"
+            case .pending: stateStr = "pending"
+            case .onlyTwoDevices: stateStr = "only_two_devices"
+            case .synced, .upToDate: stateStr = "synced"
+            case .disabled: stateStr = "disabled"
+            case .encryptionKeyMissing: stateStr = "encryption_key_missing"
+            case .encryptionKeyWrong: stateStr = "encryption_key_wrong"
+            case .remoteNotEncrypted: stateStr = "remote_not_encrypted"
+            }
         }
         try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.state', '\(stateStr)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
 
@@ -157,6 +197,15 @@ public final class SyncHost: @unchecked Sendable {
     public func getDeviceStatus() -> SyncDeviceStatus {
         guard isEnabled else { return .disabled }
         guard let folder = syncFolder, !folder.isEmpty else { return .disabled }
+
+        let currentState = (try? db.scalarText("SELECT value FROM settings WHERE key = 'sync.state';")) ?? ""
+        if currentState == "encryption_key_missing" {
+            return .encryptionKeyMissing
+        } else if currentState == "encryption_key_wrong" {
+            return .encryptionKeyWrong
+        } else if currentState == "remote_not_encrypted" {
+            return .remoteNotEncrypted
+        }
 
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(atPath: folder) else {

@@ -5,6 +5,8 @@ using Microsoft.Data.Sqlite;
 using TimeSink.Core.Apps;
 using TimeSink.Core.Data;
 using TimeSink.Core.Devices;
+using TimeSink.Core.Security;
+using TimeSink.Core.Settings;
 
 namespace TimeSink.Core.Sync;
 
@@ -16,15 +18,35 @@ public static class SyncWriter
 {
     public const string Extension = ".tssync";
 
-    public static string Write(string dbPath, string syncFolder, DateTimeOffset now, string appVersion = "1.0.0")
+    public static string Write(string dbPath, string syncFolder, DateTimeOffset now, string appVersion = "1.0.0", IKeyManager? keyManager = null)
     {
         using var db = Db.Open(dbPath);
-        return Write(db.Connection, syncFolder, now, appVersion);
+        return Write(db.Connection, syncFolder, now, appVersion, keyManager);
     }
 
-    public static string Write(SqliteConnection connection, string syncFolder, DateTimeOffset now, string appVersion = "1.0.0")
+    public static string Write(SqliteConnection connection, string syncFolder, DateTimeOffset now, string appVersion = "1.0.0", IKeyManager? keyManager = null)
     {
         Directory.CreateDirectory(syncFolder);
+        keyManager ??= Db.KeyManager;
+
+        // Inspect encryption setting and passphrase
+        bool isEncrypted = false;
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT value FROM settings WHERE key = $k";
+            cmd.Parameters.AddWithValue("$k", Setting.SyncEncrypted.Key);
+            isEncrypted = Setting.SyncEncrypted.Parse(cmd.ExecuteScalar() as string);
+        }
+
+        string? passphrase = null;
+        if (isEncrypted)
+        {
+            passphrase = keyManager.GetSyncPassphrase();
+            if (string.IsNullOrEmpty(passphrase))
+            {
+                throw new InvalidOperationException("Sync encryption is enabled but no passphrase is configured.");
+            }
+        }
 
         var local = DeviceIdentity.GetLocalDevice(connection);
         var localDeviceId = local.DeviceId;
@@ -41,8 +63,8 @@ public static class SyncWriter
         {
             var snapshotDbPath = Path.Combine(scratchDir, SyncManifest.DbEntryName);
 
-            // 1. Create stripped snapshot.db
-            CreateSnapshotDatabase(connection, snapshotDbPath, localDeviceId);
+            // 1. Create stripped snapshot.db (encrypted if enabled)
+            CreateSnapshotDatabase(connection, snapshotDbPath, localDeviceId, passphrase);
 
             // 2. Count sessions and calculate SHA-256 hash
             int sessionCount;
@@ -50,6 +72,14 @@ public static class SyncWriter
                    { DataSource = snapshotDbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
             {
                 snapConn.Open();
+                if (!string.IsNullOrEmpty(passphrase))
+                {
+                    var escPass = passphrase.Replace("'", "''");
+                    using var pragma = snapConn.CreateCommand();
+                    pragma.CommandText = $"PRAGMA key = '{escPass}';";
+                    pragma.ExecuteNonQuery();
+                }
+
                 using var cmd = snapConn.CreateCommand();
                 cmd.CommandText = "SELECT COUNT(*) FROM sessions";
                 sessionCount = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
@@ -63,17 +93,18 @@ public static class SyncWriter
                 hashHex = Convert.ToHexStringLower(hashBytes);
             }
 
-            // 3. Create manifest
+            // 3. Create manifest (schema 5, Encrypted flag)
             var manifest = new SyncManifest(
                 Format: 1,
-                SchemaVersion: Migrator.Shipped.Max(m => m.Version),
+                SchemaVersion: Math.Max(5, Migrator.Shipped.Max(m => m.Version)),
                 AppVersion: appVersion,
                 DeviceId: localDeviceId,
                 DeviceName: localDeviceName,
                 Platform: platform,
                 CreatedUtc: now,
                 SessionCount: sessionCount,
-                Hash: hashHex
+                Hash: hashHex,
+                Encrypted: isEncrypted
             );
 
             // 4. Create zip archive atomically at .tmp
@@ -100,16 +131,24 @@ public static class SyncWriter
         }
     }
 
-    private static void CreateSnapshotDatabase(SqliteConnection sourceConn, string snapshotDbPath, string localDeviceId)
+    private static void CreateSnapshotDatabase(SqliteConnection sourceConn, string snapshotDbPath, string localDeviceId, string? passphrase)
     {
-        // Build empty tables in snapshot.db
+        // Build empty tables in snapshot.db with SQLCipher keying if encrypted
         using (var snapConn = new SqliteConnection(new SqliteConnectionStringBuilder
                { DataSource = snapshotDbPath, Mode = SqliteOpenMode.ReadWriteCreate, Pooling = false }.ToString()))
         {
             snapConn.Open();
+            if (!string.IsNullOrEmpty(passphrase))
+            {
+                var escPass = passphrase.Replace("'", "''");
+                using var pragma = snapConn.CreateCommand();
+                pragma.CommandText = $"PRAGMA key = '{escPass}'; PRAGMA cipher_page_size = 4096; PRAGMA kdf_iter = 256000;";
+                pragma.ExecuteNonQuery();
+            }
+
             using var cmd = snapConn.CreateCommand();
             cmd.CommandText = $"""
-                PRAGMA user_version = {Migrator.Shipped.Max(m => m.Version)};
+                PRAGMA user_version = {Math.Max(5, Migrator.Shipped.Max(m => m.Version))};
 
                 CREATE TABLE apps (
                     id             INTEGER PRIMARY KEY,
@@ -165,7 +204,15 @@ public static class SyncWriter
         var escapedPath = snapshotDbPath.Replace('\\', '/').Replace("'", "''");
         using (var cmd = sourceConn.CreateCommand())
         {
-            cmd.CommandText = $"ATTACH DATABASE '{escapedPath}' AS snap KEY '';";
+            if (!string.IsNullOrEmpty(passphrase))
+            {
+                var escPass = passphrase.Replace("'", "''");
+                cmd.CommandText = $"ATTACH DATABASE '{escapedPath}' AS snap KEY '{escPass}';";
+            }
+            else
+            {
+                cmd.CommandText = $"ATTACH DATABASE '{escapedPath}' AS snap KEY '';";
+            }
             cmd.ExecuteNonQuery();
         }
 

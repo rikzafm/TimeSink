@@ -7,6 +7,8 @@ using Microsoft.Data.Sqlite;
 using TimeSink.Core.Apps;
 using TimeSink.Core.Data;
 using TimeSink.Core.Devices;
+using TimeSink.Core.Security;
+using TimeSink.Core.Settings;
 using TimeSink.Core.Tracking;
 using TimeSink.Core.Usage;
 
@@ -91,7 +93,7 @@ public static partial class SyncReader
     [DllImport("libSystem.dylib", EntryPoint = "stat$INODE64", SetLastError = true)]
     private static extern int stat64([MarshalAs(UnmanagedType.LPUTF8Str)] string path, byte[] statBuf);
 
-    public static SyncImportResult Import(string syncFile, string dbPath, TimeZoneInfo zone)
+    public static SyncImportResult Import(string syncFile, string dbPath, TimeZoneInfo zone, IKeyManager? keyManager = null)
     {
         if (!File.Exists(syncFile))
             return new SyncImportResult(SyncStatus.Failed, "File not found", 0, 0, 0, 0);
@@ -104,6 +106,8 @@ public static partial class SyncReader
 
         var scratchDir = Path.Combine(Path.GetTempPath(), "timesink-sync-in-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(scratchDir);
+
+        keyManager ??= Db.KeyManager;
 
         try
         {
@@ -145,21 +149,66 @@ public static partial class SyncReader
             if (!string.Equals(computedHash, manifest.Hash, StringComparison.OrdinalIgnoreCase))
                 return new SyncImportResult(SyncStatus.BadHash, "Snapshot hash mismatch", 0, 0, 0, 0);
 
-            // Format & schema version check
-            var latestSupportedSchema = Migrator.Shipped.Max(m => m.Version);
+            // Format & schema version check (supports schema 5)
+            var latestSupportedSchema = Math.Max(5, Migrator.Shipped.Max(m => m.Version));
             if (manifest.Format > 1 || manifest.SchemaVersion > latestSupportedSchema)
                 return new SyncImportResult(SyncStatus.NewerFormat, $"Update required (format {manifest.Format}, schema {manifest.SchemaVersion})", 0, 0, 0, 0);
 
-            // Integrity check on extracted snapshot.db
-            using (var snapConn = new SqliteConnection(new SqliteConnectionStringBuilder
-                   { DataSource = extractedDbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
+            // Encryption verification & integrity check
+            string? passphrase = null;
+            if (manifest.Encrypted)
             {
-                snapConn.Open();
-                using var cmd = snapConn.CreateCommand();
-                cmd.CommandText = "PRAGMA integrity_check;";
-                var integrity = cmd.ExecuteScalar() as string;
-                if (integrity != "ok")
-                    return new SyncImportResult(SyncStatus.BadHash, "snapshot.db failed integrity check", 0, 0, 0, 0);
+                if (!keyManager.HasSyncPassphrase() || string.IsNullOrEmpty(keyManager.GetSyncPassphrase()))
+                {
+                    return new SyncImportResult(SyncStatus.EncryptionKeyMissing, "Sync encryption key missing", 0, 0, 0, 0);
+                }
+
+                passphrase = keyManager.GetSyncPassphrase()!;
+
+                using (var snapConn = new SqliteConnection(new SqliteConnectionStringBuilder
+                       { DataSource = extractedDbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
+                {
+                    snapConn.Open();
+                    try
+                    {
+                        var escPass = passphrase.Replace("'", "''");
+                        using var pragma = snapConn.CreateCommand();
+                        pragma.CommandText = $"PRAGMA key = '{escPass}';";
+                        pragma.ExecuteNonQuery();
+
+                        using var cmd = snapConn.CreateCommand();
+                        cmd.CommandText = "PRAGMA integrity_check;";
+                        var integrity = cmd.ExecuteScalar() as string;
+                        if (integrity != "ok")
+                        {
+                            return new SyncImportResult(SyncStatus.EncryptionKeyWrong, "Incorrect sync passphrase or damaged snapshot", 0, 0, 0, 0);
+                        }
+                    }
+                    catch (SqliteException)
+                    {
+                        return new SyncImportResult(SyncStatus.EncryptionKeyWrong, "Incorrect sync passphrase", 0, 0, 0, 0);
+                    }
+                }
+            }
+            else
+            {
+                // Check if local device expects encryption
+                var localEncrypted = AppSettings.ForFile(dbPath).Get(Setting.SyncEncrypted);
+                if (localEncrypted)
+                {
+                    return new SyncImportResult(SyncStatus.RemoteNotEncrypted, "Remote sync archive is not encrypted", 0, 0, 0, 0);
+                }
+
+                using (var snapConn = new SqliteConnection(new SqliteConnectionStringBuilder
+                       { DataSource = extractedDbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
+                {
+                    snapConn.Open();
+                    using var cmd = snapConn.CreateCommand();
+                    cmd.CommandText = "PRAGMA integrity_check;";
+                    var integrity = cmd.ExecuteScalar() as string;
+                    if (integrity != "ok")
+                        return new SyncImportResult(SyncStatus.BadHash, "snapshot.db failed integrity check", 0, 0, 0, 0);
+                }
             }
 
             // Validate against local database
@@ -206,7 +255,15 @@ public static partial class SyncReader
             var escapedPath = extractedDbPath.Replace('\\', '/').Replace("'", "''");
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = $"ATTACH DATABASE '{escapedPath}' AS src KEY '';";
+                if (manifest.Encrypted)
+                {
+                    var escPass = passphrase!.Replace("'", "''");
+                    cmd.CommandText = $"ATTACH DATABASE '{escapedPath}' AS src KEY '{escPass}';";
+                }
+                else
+                {
+                    cmd.CommandText = $"ATTACH DATABASE '{escapedPath}' AS src KEY '';";
+                }
                 cmd.ExecuteNonQuery();
             }
 

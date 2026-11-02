@@ -13,17 +13,32 @@ public struct SyncManifest: Codable, Sendable, Equatable {
     public let createdUtc: String
     public let sessionCount: Int
     public let hash: String
+    public let encrypted: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case format
+        case schemaVersion
+        case appVersion
+        case deviceId
+        case deviceName
+        case platform
+        case createdUtc
+        case sessionCount
+        case hash
+        case encrypted
+    }
 
     public init(
         format: Int = 1,
-        schemaVersion: Int32 = 4,
+        schemaVersion: Int32 = 5,
         appVersion: String = "1.0.0",
         deviceId: String,
         deviceName: String,
         platform: String = "macos",
         createdUtc: String,
         sessionCount: Int,
-        hash: String
+        hash: String,
+        encrypted: Bool = false
     ) {
         self.format = format
         self.schemaVersion = schemaVersion
@@ -34,6 +49,35 @@ public struct SyncManifest: Codable, Sendable, Equatable {
         self.createdUtc = createdUtc
         self.sessionCount = sessionCount
         self.hash = hash
+        self.encrypted = encrypted
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.format = try container.decode(Int.self, forKey: .format)
+        self.schemaVersion = try container.decode(Int32.self, forKey: .schemaVersion)
+        self.appVersion = try container.decode(String.self, forKey: .appVersion)
+        self.deviceId = try container.decode(String.self, forKey: .deviceId)
+        self.deviceName = try container.decode(String.self, forKey: .deviceName)
+        self.platform = try container.decode(String.self, forKey: .platform)
+        self.createdUtc = try container.decode(String.self, forKey: .createdUtc)
+        self.sessionCount = try container.decode(Int.self, forKey: .sessionCount)
+        self.hash = try container.decode(String.self, forKey: .hash)
+        self.encrypted = try container.decodeIfPresent(Bool.self, forKey: .encrypted) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(format, forKey: .format)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(appVersion, forKey: .appVersion)
+        try container.encode(deviceId, forKey: .deviceId)
+        try container.encode(deviceName, forKey: .deviceName)
+        try container.encode(platform, forKey: .platform)
+        try container.encode(createdUtc, forKey: .createdUtc)
+        try container.encode(sessionCount, forKey: .sessionCount)
+        try container.encode(hash, forKey: .hash)
+        try container.encode(encrypted, forKey: .encrypted)
     }
 }
 
@@ -47,6 +91,9 @@ public enum SyncStatus: String, Sendable, Equatable {
     case deviceForgotten
     case thirdDeviceIgnored
     case failed
+    case encryptionKeyMissing = "encryption_key_missing"
+    case encryptionKeyWrong = "encryption_key_wrong"
+    case remoteNotEncrypted = "remote_not_encrypted"
 }
 
 public struct SyncImportResult: Sendable, Equatable {

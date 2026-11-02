@@ -1,5 +1,10 @@
 import Foundation
 import CryptoKit
+#if canImport(SQLCipher)
+import SQLCipher
+#elseif canImport(SQLite3)
+import SQLite3
+#endif
 
 public enum SyncReader {
     public static func isConflictCopy(filePath: String) -> Bool {
@@ -36,10 +41,60 @@ public enum SyncReader {
         return false
     }
 
+    private enum IntegrityCheckResult {
+        case ok
+        case wrongKey(String)
+        case corrupt(String)
+    }
+
+    private static func verifySnapshotIntegrity(snapshotDbPath: String, passphrase: String?) -> IntegrityCheckResult {
+        var handle: OpaquePointer?
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX
+        guard sqlite3_open_v2(snapshotDbPath, &handle, flags, nil) == SQLITE_OK, let h = handle else {
+            if let h = handle { sqlite3_close_v2(h) }
+            return passphrase != nil ? .wrongKey("Failed to open snapshot") : .corrupt("Failed to open snapshot")
+        }
+        defer { sqlite3_close_v2(h) }
+
+        if let passphrase = passphrase, !passphrase.isEmpty {
+            let escPass = passphrase.replacingOccurrences(of: "'", with: "''")
+            var err: UnsafeMutablePointer<CChar>?
+            if sqlite3_exec(h, "PRAGMA key = '\(escPass)';", nil, nil, &err) != SQLITE_OK {
+                let msg = err != nil ? String(cString: err!) : "Failed to set PRAGMA key"
+                sqlite3_free(err)
+                return .wrongKey(msg)
+            }
+        }
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(h, "PRAGMA integrity_check;", -1, &stmt, nil) == SQLITE_OK, let s = stmt else {
+            let msg = String(cString: sqlite3_errmsg(h))
+            return passphrase != nil ? .wrongKey(msg) : .corrupt(msg)
+        }
+        defer { sqlite3_finalize(s) }
+
+        let stepRc = sqlite3_step(s)
+        if stepRc == SQLITE_ROW {
+            if let cStr = sqlite3_column_text(s, 0) {
+                let resultStr = String(cString: cStr)
+                if resultStr == "ok" {
+                    return .ok
+                } else {
+                    return passphrase != nil ? .wrongKey("Integrity check returned \(resultStr)") : .corrupt("Integrity check returned \(resultStr)")
+                }
+            }
+        } else {
+            let msg = String(cString: sqlite3_errmsg(h))
+            return passphrase != nil ? .wrongKey("Failed to read integrity check: \(msg)") : .corrupt("Failed to read integrity check: \(msg)")
+        }
+        return .corrupt("Unknown integrity check failure")
+    }
+
     public static func `import`(
         syncFile: String,
         db: SQLiteDatabase,
-        timeZone: TimeZone = .current
+        timeZone: TimeZone = .current,
+        keyManager: KeyManagerProtocol = KeychainKeyManager.shared
     ) throws -> SyncImportResult {
         let fm = FileManager.default
         guard fm.fileExists(atPath: syncFile) else {
@@ -88,18 +143,45 @@ public enum SyncReader {
             return SyncImportResult(status: .badHash, message: "Snapshot hash mismatch")
         }
 
-        if manifest.format > 1 || manifest.schemaVersion > Migrator.latestVersion {
+        let latestSupportedSchema: Int32 = max(5, Migrator.latestVersion)
+        if manifest.format > 1 || manifest.schemaVersion > latestSupportedSchema {
             return SyncImportResult(
                 status: .newerFormat,
                 message: "Update required (format \(manifest.format), schema \(manifest.schemaVersion))"
             )
         }
 
-        // Integrity check
-        let snapDb = try SQLiteDatabase(path: extractedDbPath)
-        let integrity = try snapDb.scalarText("PRAGMA integrity_check;")
-        guard integrity == "ok" else {
-            return SyncImportResult(status: .badHash, message: "snapshot.db failed integrity check")
+        // 3. Encryption verification and integrity check
+        var passphrase: String? = nil
+        if manifest.encrypted {
+            guard keyManager.hasSyncPassphrase(), let pass = try? keyManager.getSyncPassphrase(), !pass.isEmpty else {
+                return SyncImportResult(status: .encryptionKeyMissing, message: "Sync encryption key missing")
+            }
+            passphrase = pass
+
+            let integrityResult = verifySnapshotIntegrity(snapshotDbPath: extractedDbPath, passphrase: pass)
+            switch integrityResult {
+            case .ok:
+                break
+            case .wrongKey(let msg):
+                return SyncImportResult(status: .encryptionKeyWrong, message: "Incorrect sync passphrase or damaged snapshot: \(msg)")
+            case .corrupt(let msg):
+                return SyncImportResult(status: .badHash, message: "snapshot.db failed integrity check: \(msg)")
+            }
+        } else {
+            // Check if local device expects encryption
+            let localEncrypted = (try? db.scalarText("SELECT value FROM settings WHERE key = 'sync.encrypted';"))?.lowercased() == "true"
+            if localEncrypted {
+                return SyncImportResult(status: .remoteNotEncrypted, message: "Remote sync archive is not encrypted")
+            }
+
+            let integrityResult = verifySnapshotIntegrity(snapshotDbPath: extractedDbPath, passphrase: nil)
+            switch integrityResult {
+            case .ok:
+                break
+            case .wrongKey, .corrupt:
+                return SyncImportResult(status: .badHash, message: "snapshot.db failed integrity check")
+            }
         }
 
         // Check self and device state
@@ -127,7 +209,12 @@ public enum SyncReader {
         var sessionsSkipped = 0
 
         let escapedExtractedPath = extractedDbPath.replacingOccurrences(of: "'", with: "''")
-        try db.exec("ATTACH DATABASE '\(escapedExtractedPath)' AS src;")
+        if let passphrase = passphrase, !passphrase.isEmpty {
+            let escPass = passphrase.replacingOccurrences(of: "'", with: "''")
+            try db.exec("ATTACH DATABASE '\(escapedExtractedPath)' AS src KEY '\(escPass)';")
+        } else {
+            try db.exec("ATTACH DATABASE '\(escapedExtractedPath)' AS src KEY '';")
+        }
         defer {
             try? db.exec("DETACH DATABASE src;")
         }

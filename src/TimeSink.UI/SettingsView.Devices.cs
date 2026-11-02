@@ -10,6 +10,8 @@ using Microsoft.Win32;
 using TimeSink.Core.Backup;
 using TimeSink.Core.Data;
 using TimeSink.Core.Devices;
+using TimeSink.Core.Ipc;
+using TimeSink.Core.Security;
 using TimeSink.Core.Settings;
 using TimeSink.Core.Sync;
 using TimeSink.UI.Controls;
@@ -266,6 +268,261 @@ public sealed partial class SettingsView
             folderStack.Children.Add(pathBox);
             folderCard.Child = folderStack;
             stack.Children.Add(folderCard);
+
+            // -------------------------------------------------------------------------------------------------
+            // Card 1.5: Sync Encryption Banner & Configuration Card
+            // -------------------------------------------------------------------------------------------------
+
+            // 1. Guidance banner when in paused encryption error states
+            if (syncState is "encryption_key_wrong" or "encryption_key_missing" or "remote_not_encrypted")
+            {
+                var (bannerTitle, bannerDesc, isDanger) = syncState switch
+                {
+                    "encryption_key_wrong" => (
+                        "Sync Paused — Passphrase Mismatch",
+                        "The entered passphrase does not match the other device. Make sure both devices use the exact same passphrase to decrypt sync archives.",
+                        true),
+                    "encryption_key_missing" => (
+                        "Sync Paused — Passphrase Required",
+                        "The remote sync file is encrypted, but no passphrase is configured on this device. Enter your sync passphrase below to resume synchronization.",
+                        false),
+                    "remote_not_encrypted" => (
+                        "Sync Alert — Remote Device Not Encrypted",
+                        "This device expects encrypted sync files, but the remote archive is unencrypted. Please update TimeSink and configure the same passphrase on the other device.",
+                        false),
+                    _ => ("", "", false)
+                };
+
+                var warnBanner = new Border
+                {
+                    Padding = new Thickness(12, 10, 12, 10),
+                    BorderThickness = new Thickness(1),
+                    Margin = new Thickness(0, 0, 0, 14),
+                };
+                warnBanner.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+                warnBanner.SetResourceReference(Border.BorderBrushProperty, isDanger ? "Brush.Danger" : "Brush.Warning");
+                warnBanner.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
+
+                var warnStack = new StackPanel();
+
+                var titleBlock = new TextBlock
+                {
+                    Text = bannerTitle,
+                    FontWeight = FontWeights.SemiBold,
+                };
+                titleBlock.SetResourceReference(TextBlock.ForegroundProperty, isDanger ? "Brush.Danger" : "Brush.Warning");
+                warnStack.Children.Add(titleBlock);
+
+                var descBlock = new TextBlock
+                {
+                    Text = bannerDesc,
+                    Margin = new Thickness(0, 2, 0, 0),
+                    TextWrapping = TextWrapping.Wrap,
+                    LineHeight = 16,
+                };
+                descBlock.SetResourceReference(TextBlock.StyleProperty, "Caption");
+                descBlock.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+                descBlock.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+                warnStack.Children.Add(descBlock);
+
+                warnBanner.Child = warnStack;
+                stack.Children.Add(warnBanner);
+            }
+
+            // 2. Section Header: SYNC ENCRYPTION
+            var encHeader = new TextBlock
+            {
+                Text = "SYNC ENCRYPTION",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(4, 0, 0, 6),
+            };
+            encHeader.SetResourceReference(TextBlock.StyleProperty, "Caption");
+            encHeader.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
+            stack.Children.Add(encHeader);
+
+            // 3. Card: Sync Encryption Card
+            var encCard = new Border
+            {
+                Padding = new Thickness(12),
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 0, 0, 14),
+            };
+            encCard.SetResourceReference(Border.BackgroundProperty, "Brush.Panel");
+            encCard.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
+            encCard.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
+
+            var encStack = new StackPanel();
+
+            // Row 1: Header with Vector Lock Icon and Status Badge
+            var encTopRow = new Grid();
+            encTopRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            encTopRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var encTitleStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+
+            var isEncrypted = settings.Get(Setting.SyncEncrypted);
+            var hasPassphrase = Db.KeyManager.HasSyncPassphrase();
+
+            var lockIcon = new System.Windows.Shapes.Path
+            {
+                Data = Geometry.Parse("M4 5 A3 3 0 0 1 10 5 L10 7 L11 7 A1 1 0 0 1 12 8 L12 13 A1 1 0 0 1 11 14 L3 14 A1 1 0 0 1 2 13 L2 8 A1 1 0 0 1 3 7 L4 7 Z M5 7 L9 7 L9 5 A2 2 0 0 0 5 5 Z"),
+                StrokeThickness = 1.3,
+                Width = 14,
+                Height = 14,
+                Stretch = Stretch.Uniform,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0),
+            };
+            lockIcon.SetResourceReference(Shape.StrokeProperty, isEncrypted && hasPassphrase ? "Brush.Accent" : "Brush.TextMuted");
+            encTitleStack.Children.Add(lockIcon);
+
+            var encTitle = new TextBlock
+            {
+                Text = "Snapshot Encryption (SQLCipher 4)",
+                FontWeight = FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            encTitle.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");
+            encTitleStack.Children.Add(encTitle);
+
+            Grid.SetColumn(encTitleStack, 0);
+            encTopRow.Children.Add(encTitleStack);
+
+            // Status Badge
+            var statusBorder = new Border
+            {
+                Padding = new Thickness(8, 2, 8, 2),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            statusBorder.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+            statusBorder.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
+
+            var statusText = new TextBlock
+            {
+                FontSize = 11,
+                FontWeight = FontWeights.Medium,
+            };
+
+            if (isEncrypted && hasPassphrase)
+            {
+                statusText.Text = "● Encrypted";
+                statusText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
+            }
+            else
+            {
+                statusText.Text = "○ Not configured";
+                statusText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+            }
+
+            statusBorder.Child = statusText;
+            Grid.SetColumn(statusBorder, 1);
+            encTopRow.Children.Add(statusBorder);
+
+            encStack.Children.Add(encTopRow);
+
+            // Row 2: Help text
+            var encHelp = new TextBlock
+            {
+                Text = "Enter the same passphrase on both devices to encrypt your sync data. Your passphrase is stored securely in Windows DPAPI and never sent over the network.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 6, 0, 10),
+                LineHeight = 16,
+            };
+            encHelp.SetResourceReference(TextBlock.StyleProperty, "Caption");
+            encHelp.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+            encHelp.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+            encStack.Children.Add(encHelp);
+
+            // Row 3: PasswordBox + Action Button
+            var inputGrid = new Grid();
+            inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var pwdBox = new PasswordBox
+            {
+                Height = 28,
+                Padding = new Thickness(8, 4, 8, 4),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0),
+            };
+            pwdBox.SetResourceReference(Control.BackgroundProperty, "Brush.SurfaceAlt");
+            pwdBox.SetResourceReference(Control.ForegroundProperty, "Brush.Text");
+            pwdBox.SetResourceReference(Control.BorderBrushProperty, "Brush.Border");
+
+            Grid.SetColumn(pwdBox, 0);
+            inputGrid.Children.Add(pwdBox);
+
+            var setBtn = new Button
+            {
+                Content = hasPassphrase ? "Update Passphrase" : "Set Passphrase",
+                Height = 28,
+                Padding = new Thickness(14, 0, 14, 0),
+                FontWeight = FontWeights.SemiBold,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsEnabled = false,
+            };
+            setBtn.SetResourceReference(Control.BackgroundProperty, "Brush.Accent");
+            setBtn.SetResourceReference(Control.ForegroundProperty, "Brush.OnAccent");
+            setBtn.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
+
+            pwdBox.PasswordChanged += (_, _) =>
+            {
+                setBtn.IsEnabled = !string.IsNullOrWhiteSpace(pwdBox.Password);
+            };
+
+            pwdBox.KeyDown += (s, e) =>
+            {
+                if (e.Key == System.Windows.Input.Key.Enter && setBtn.IsEnabled)
+                {
+                    setBtn.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                }
+            };
+
+            setBtn.Click += async (_, _) =>
+            {
+                var pwd = pwdBox.Password;
+                if (string.IsNullOrWhiteSpace(pwd)) return;
+
+                setBtn.IsEnabled = false;
+
+                // 1. Store via IKeyManager locally (DPAPI)
+                Db.KeyManager.SetSyncPassphrase(pwd);
+
+                // 2. Set sync.encrypted = true
+                settings.Set(Setting.SyncEncrypted, true);
+
+                // 3. Clear paused error states
+                if (syncState is "encryption_key_missing" or "encryption_key_wrong" or "remote_not_encrypted")
+                {
+                    settings.Set(Setting.SyncState, "pending");
+                }
+
+                // 4. Send IPC message to Agent
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var scratch = Environment.GetEnvironmentVariable("TIMESINK_DB");
+                        var pipeName = PipeNames.For(scratch);
+                        await IpcClient.SendAsync(pipeName, new SetSyncPassphraseMessage(pwd));
+                    }
+                    catch { }
+                });
+
+                // 5. Trigger immediate sync
+                TriggerSyncNow();
+
+                // 6. Refresh UI
+                Refresh();
+            };
+
+            Grid.SetColumn(setBtn, 1);
+            inputGrid.Children.Add(setBtn);
+
+            encStack.Children.Add(inputGrid);
+            encCard.Child = encStack;
+            stack.Children.Add(encCard);
 
             // Card 2: Devices section
             var devHeader = new TextBlock

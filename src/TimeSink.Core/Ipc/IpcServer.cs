@@ -33,6 +33,9 @@ public sealed class IpcServer : IDisposable
     /// <summary>Raised (on a thread-pool thread) when a UI sends <see cref="SyncNowMessage"/>.</summary>
     public event Action? SyncRequested;
 
+    /// <summary>Raised (on a thread-pool thread) with the passphrase when a UI sends <see cref="SetSyncPassphraseMessage"/>.</summary>
+    public event Action<string>? SyncPassphraseSet;
+
     public void Start() => _ = Task.Run(AcceptLoop);
 
     public int ClientCount { get { lock (_clients) return _clients.Count; } }
@@ -77,6 +80,7 @@ public sealed class IpcServer : IDisposable
                 if (msg is GetStateMessage) await SendAsync(client, _current()).ConfigureAwait(false);
                 else if (msg is SetIconMessage icon) IconRequested?.Invoke(icon.IconId);
                 else if (msg is SyncNowMessage) SyncRequested?.Invoke();
+                else if (msg is SetSyncPassphraseMessage passphraseMsg) SyncPassphraseSet?.Invoke(passphraseMsg.Passphrase);
             }
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or OperationCanceledException or ObjectDisposedException) { }

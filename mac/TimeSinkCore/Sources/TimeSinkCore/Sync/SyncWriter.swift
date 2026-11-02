@@ -1,5 +1,10 @@
 import Foundation
 import CryptoKit
+#if canImport(SQLCipher)
+import SQLCipher
+#elseif canImport(SQLite3)
+import SQLite3
+#endif
 
 public enum SyncWriter {
     public static let `extension` = ".tssync"
@@ -8,10 +13,21 @@ public enum SyncWriter {
         db: SQLiteDatabase,
         syncFolder: String,
         now: Date = Date(),
-        appVersion: String = "1.0.0"
+        appVersion: String = "1.0.0",
+        keyManager: KeyManagerProtocol = KeychainKeyManager.shared
     ) throws -> String {
         let fm = FileManager.default
         try fm.createDirectory(atPath: syncFolder, withIntermediateDirectories: true)
+
+        let settingEncrypted = (try? db.scalarText("SELECT value FROM settings WHERE key = 'sync.encrypted';"))?.lowercased() == "true"
+        let isEncrypted = settingEncrypted || keyManager.hasSyncPassphrase()
+        var passphrase: String? = nil
+        if isEncrypted {
+            passphrase = try keyManager.getSyncPassphrase()
+            if passphrase == nil || passphrase!.isEmpty {
+                throw SQLiteError.generic("Sync encryption is enabled but no passphrase is configured.")
+            }
+        }
 
         let localDeviceId = (try db.scalarText("SELECT value FROM settings WHERE key = 'device.id';")) ?? ""
         let localDeviceName = (try db.scalarText("SELECT value FROM settings WHERE key = 'device.name';")) ?? "Mac"
@@ -31,29 +47,29 @@ public enum SyncWriter {
         let snapshotDbPath = (scratchDir as NSString).appendingPathComponent(SyncManifest.dbEntryName)
         let manifestPath = (scratchDir as NSString).appendingPathComponent(SyncManifest.entryName)
 
-        // 1. Create snapshot.db
-        try createSnapshotDatabase(sourceDb: db, snapshotDbPath: snapshotDbPath, localDeviceId: localDeviceId)
+        // 1. Create snapshot.db (encrypted with SQLCipher if configured)
+        try createSnapshotDatabase(sourceDb: db, snapshotDbPath: snapshotDbPath, localDeviceId: localDeviceId, passphrase: passphrase)
 
-        // 2. Count sessions and calculate SHA-256
-        let snapDb = try SQLiteDatabase(path: snapshotDbPath)
-        let sessionCount = Int((try snapDb.scalarInt("SELECT COUNT(*) FROM sessions;")) ?? 0)
+        // 2. Count sessions and calculate SHA-256 over ciphertext file bytes
+        let sessionCount = try countSessions(snapshotDbPath: snapshotDbPath, passphrase: passphrase)
 
         let snapData = try Data(contentsOf: URL(fileURLWithPath: snapshotDbPath))
         let hashBytes = SHA256.hash(data: snapData)
         let hashHex = hashBytes.map { String(format: "%02x", $0) }.joined()
 
-        // 3. Create manifest.json
+        // 3. Create manifest.json (schemaVersion 5, encrypted flag)
         let isoFormatter = ISO8601DateFormatter()
         let manifest = SyncManifest(
             format: 1,
-            schemaVersion: 4,
+            schemaVersion: 5,
             appVersion: appVersion,
             deviceId: localDeviceId,
             deviceName: localDeviceName,
             platform: platform,
             createdUtc: isoFormatter.string(from: now),
             sessionCount: sessionCount,
-            hash: hashHex
+            hash: hashHex,
+            encrypted: isEncrypted
         )
 
         let encoder = JSONEncoder()
@@ -86,10 +102,69 @@ public enum SyncWriter {
         return targetFile
     }
 
-    private static func createSnapshotDatabase(sourceDb: SQLiteDatabase, snapshotDbPath: String, localDeviceId: String) throws {
-        let snapDb = try SQLiteDatabase(path: snapshotDbPath)
-        try snapDb.exec("""
-            PRAGMA user_version = 4;
+    private static func countSessions(snapshotDbPath: String, passphrase: String?) throws -> Int {
+        var handle: OpaquePointer?
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX
+        guard sqlite3_open_v2(snapshotDbPath, &handle, flags, nil) == SQLITE_OK, let h = handle else {
+            let msg = handle != nil ? String(cString: sqlite3_errmsg(handle)) : "Failed to open snapshot to count sessions"
+            if let h = handle { sqlite3_close_v2(h) }
+            throw SQLiteError.openFailed(msg)
+        }
+        defer { sqlite3_close_v2(h) }
+
+        if let passphrase = passphrase, !passphrase.isEmpty {
+            let escPass = passphrase.replacingOccurrences(of: "'", with: "''")
+            var err: UnsafeMutablePointer<CChar>?
+            if sqlite3_exec(h, "PRAGMA key = '\(escPass)';", nil, nil, &err) != SQLITE_OK {
+                let msg = err != nil ? String(cString: err!) : "Failed to set PRAGMA key"
+                sqlite3_free(err)
+                throw SQLiteError.executionFailed(msg)
+            }
+        }
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(h, "SELECT COUNT(*) FROM sessions;", -1, &stmt, nil) == SQLITE_OK, let s = stmt else {
+            let msg = String(cString: sqlite3_errmsg(h))
+            throw SQLiteError.prepareFailed(msg)
+        }
+        defer { sqlite3_finalize(s) }
+
+        if sqlite3_step(s) == SQLITE_ROW {
+            return Int(sqlite3_column_int64(s, 0))
+        }
+        return 0
+    }
+
+    private static func createSnapshotDatabase(
+        sourceDb: SQLiteDatabase,
+        snapshotDbPath: String,
+        localDeviceId: String,
+        passphrase: String?
+    ) throws {
+        // Build empty tables in snapshot.db with SQLCipher keying if encrypted
+        var snapHandle: OpaquePointer?
+        let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
+        let result = sqlite3_open_v2(snapshotDbPath, &snapHandle, flags, nil)
+        guard result == SQLITE_OK, let validHandle = snapHandle else {
+            let msg = snapHandle != nil ? String(cString: sqlite3_errmsg(snapHandle)) : "Failed to create snapshot database"
+            if let snapHandle = snapHandle { sqlite3_close_v2(snapHandle) }
+            throw SQLiteError.openFailed(msg)
+        }
+
+        if let passphrase = passphrase, !passphrase.isEmpty {
+            let escPass = passphrase.replacingOccurrences(of: "'", with: "''")
+            var errMsg: UnsafeMutablePointer<CChar>?
+            let pragmaSql = "PRAGMA key = '\(escPass)'; PRAGMA cipher_page_size = 4096; PRAGMA kdf_iter = 256000;"
+            if sqlite3_exec(validHandle, pragmaSql, nil, nil, &errMsg) != SQLITE_OK {
+                let msg = errMsg != nil ? String(cString: errMsg!) : String(cString: sqlite3_errmsg(validHandle))
+                sqlite3_free(errMsg)
+                sqlite3_close_v2(validHandle)
+                throw SQLiteError.executionFailed(msg)
+            }
+        }
+
+        let schemaSql = """
+            PRAGMA user_version = 5;
 
             CREATE TABLE apps (
                 id             INTEGER PRIMARY KEY,
@@ -137,10 +212,25 @@ public enum SyncWriter {
                 target_exe_path TEXT NOT NULL DEFAULT '',
                 target_bundle_id TEXT NOT NULL DEFAULT ''
             );
-            """)
+            """
 
+        var schemaErrMsg: UnsafeMutablePointer<CChar>?
+        if sqlite3_exec(validHandle, schemaSql, nil, nil, &schemaErrMsg) != SQLITE_OK {
+            let msg = schemaErrMsg != nil ? String(cString: schemaErrMsg!) : String(cString: sqlite3_errmsg(validHandle))
+            sqlite3_free(schemaErrMsg)
+            sqlite3_close_v2(validHandle)
+            throw SQLiteError.executionFailed(msg)
+        }
+        sqlite3_close_v2(validHandle)
+
+        // Attach snapshotDb to sourceDb with appropriate key
         let escapedSnapPath = snapshotDbPath.replacingOccurrences(of: "'", with: "''")
-        try sourceDb.exec("ATTACH DATABASE '\(escapedSnapPath)' AS snap;")
+        if let passphrase = passphrase, !passphrase.isEmpty {
+            let escPass = passphrase.replacingOccurrences(of: "'", with: "''")
+            try sourceDb.exec("ATTACH DATABASE '\(escapedSnapPath)' AS snap KEY '\(escPass)';")
+        } else {
+            try sourceDb.exec("ATTACH DATABASE '\(escapedSnapPath)' AS snap KEY '';")
+        }
         defer {
             try? sourceDb.exec("DETACH DATABASE snap;")
         }

@@ -11,6 +11,18 @@ public protocol KeyManagerProtocol: Sendable {
 
     /// Deletes the stored database key (e.g. during a full data wipe).
     func deleteDatabaseKey() throws
+
+    /// Retrieves the stored sync passphrase, or nil if none is configured.
+    func getSyncPassphrase() throws -> String?
+
+    /// Stores or updates the sync passphrase in secure storage.
+    func setSyncPassphrase(_ passphrase: String) throws
+
+    /// Checks if a sync passphrase is currently configured.
+    func hasSyncPassphrase() -> Bool
+
+    /// Removes the stored sync passphrase.
+    func clearSyncPassphrase() throws
 }
 
 /// Errors occurring during cryptographic key management operations.
@@ -54,17 +66,25 @@ public final class KeychainKeyManager: KeyManagerProtocol, @unchecked Sendable {
 
     public let serviceName: String
     public let accountName: String
+    public let syncServiceName: String
+    public let syncAccountName: String
 
     private let lock = NSLock()
     private var cachedKey: Data?
     private var fallbackStorage: Data?
+    private var cachedSyncPassphrase: String?
+    private var fallbackSyncPassphrase: String?
 
     public init(
         serviceName: String = "com.timesink.dbkey",
-        accountName: String = "timesink.dbkey"
+        accountName: String = "timesink.dbkey",
+        syncServiceName: String = "com.timesink.synckey",
+        syncAccountName: String = "timesink.synckey"
     ) {
         self.serviceName = serviceName
         self.accountName = accountName
+        self.syncServiceName = syncServiceName
+        self.syncAccountName = syncAccountName
     }
 
     public func getOrCreateDatabaseKey() throws -> Data {
@@ -129,6 +149,116 @@ public final class KeychainKeyManager: KeyManagerProtocol, @unchecked Sendable {
             bytes = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
         }
         return bytes
+    }
+
+    // MARK: - Sync Passphrase Operations
+
+    public func getSyncPassphrase() throws -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        if let cached = cachedSyncPassphrase {
+            return cached
+        }
+
+        if let fallback = fallbackSyncPassphrase {
+            return fallback
+        }
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: syncServiceName,
+            kSecAttrAccount as String: syncAccountName,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+
+        switch status {
+        case errSecSuccess:
+            guard let data = item as? Data, let pass = String(data: data, encoding: .utf8) else {
+                return nil
+            }
+            cachedSyncPassphrase = pass
+            return pass
+        case errSecItemNotFound:
+            return nil
+        default:
+            if isHeadlessEnvironmentStatus(status) {
+                return fallbackSyncPassphrase
+            }
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
+
+    public func setSyncPassphrase(_ passphrase: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let data = passphrase.data(using: .utf8) else {
+            throw KeychainError.unexpectedStatus(errSecParam)
+        }
+
+        let attributes: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: syncServiceName,
+            kSecAttrAccount as String: syncAccountName,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+        ]
+
+        let status = SecItemAdd(attributes as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: syncServiceName,
+                kSecAttrAccount as String: syncAccountName
+            ]
+            let updateAttrs: [String: Any] = [
+                kSecValueData as String: data
+            ]
+            let updateStatus = SecItemUpdate(query as CFDictionary, updateAttrs as CFDictionary)
+            if updateStatus != errSecSuccess && !isHeadlessEnvironmentStatus(updateStatus) {
+                throw KeychainError.unexpectedStatus(updateStatus)
+            }
+        } else if status != errSecSuccess {
+            if isHeadlessEnvironmentStatus(status) {
+                fallbackSyncPassphrase = passphrase
+            } else {
+                throw KeychainError.unexpectedStatus(status)
+            }
+        }
+
+        cachedSyncPassphrase = passphrase
+    }
+
+    public func hasSyncPassphrase() -> Bool {
+        do {
+            return try getSyncPassphrase() != nil
+        } catch {
+            return false
+        }
+    }
+
+    public func clearSyncPassphrase() throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        cachedSyncPassphrase = nil
+        fallbackSyncPassphrase = nil
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: syncServiceName,
+            kSecAttrAccount as String: syncAccountName
+        ]
+
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound || isHeadlessEnvironmentStatus(status) else {
+            throw KeychainError.unexpectedStatus(status)
+        }
     }
 
     // MARK: - Private Helpers
@@ -213,10 +343,12 @@ public final class KeychainKeyManager: KeyManagerProtocol, @unchecked Sendable {
 /// CI test runners, or simulated test scenarios where the Keychain is inaccessible.
 public final class InMemoryKeyManager: KeyManagerProtocol, @unchecked Sendable {
     private var key: Data?
+    private var syncPassphrase: String?
     private let lock = NSLock()
 
-    public init(initialKey: Data? = nil) {
+    public init(initialKey: Data? = nil, initialSyncPassphrase: String? = nil) {
         self.key = initialKey
+        self.syncPassphrase = initialSyncPassphrase
     }
 
     public func getOrCreateDatabaseKey() throws -> Data {
@@ -254,6 +386,30 @@ public final class InMemoryKeyManager: KeyManagerProtocol, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         key = nil
+    }
+
+    public func getSyncPassphrase() throws -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return syncPassphrase
+    }
+
+    public func setSyncPassphrase(_ passphrase: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        self.syncPassphrase = passphrase
+    }
+
+    public func hasSyncPassphrase() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return syncPassphrase != nil
+    }
+
+    public func clearSyncPassphrase() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        syncPassphrase = nil
     }
 }
 

@@ -70,7 +70,6 @@ public sealed class UsageSnapshotLoader
     private readonly string? _dbPath;
     private int _seq;
     private volatile bool _started;
-    private readonly SemaphoreSlim _gate = new(1, 1);
 
     public UsageSnapshotLoader(Func<DateTimeOffset> clock, TimeZoneInfo zone, Func<IReadOnlyCollection<long>?> running,
         Func<long?> signInUtc, Func<WeekStart> weekStart, Func<bool>? gamesOnly = null, string? dbPath = null, Func<DeviceScope>? deviceScope = null, Func<string?>? localDeviceId = null)
@@ -114,21 +113,12 @@ public sealed class UsageSnapshotLoader
     {
         if (!_started) return false;
         var seq = Interlocked.Increment(ref _seq);
-        await _gate.WaitAsync();
-        try
-        {
-            if (!_started || seq != Volatile.Read(ref _seq)) return false;
-            var context = new UsageContext(_clock(), _zone, _running(), _signInUtc, _weekStart, _gamesOnly(), _dbPath, _deviceScope(), _localDeviceId());
-            T result;
-            try { result = await Task.Run(() => query(context)); }
-            catch (Exception ex) when (ex is SqliteException or IOException) { return false; } // no DB yet
-            if (seq != Volatile.Read(ref _seq) || !_started) return false;
-            apply(result);
-            return true;
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        var context = new UsageContext(_clock(), _zone, _running(), _signInUtc, _weekStart, _gamesOnly(), _dbPath, _deviceScope(), _localDeviceId());
+        T result;
+        try { result = await Task.Run(() => query(context)); }
+        catch (Exception ex) when (ex is SqliteException or IOException) { return false; } // no DB yet
+        if (seq != Volatile.Read(ref _seq) || !_started) return false;
+        apply(result);
+        return true;
     }
 }

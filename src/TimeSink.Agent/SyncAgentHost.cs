@@ -1,5 +1,8 @@
 using TimeSink.Agent.Native;
 using TimeSink.Core.Backup;
+using TimeSink.Core.Data;
+using TimeSink.Core.Security;
+using TimeSink.Core.Settings;
 using TimeSink.Core.Sync;
 
 namespace TimeSink.Agent;
@@ -11,15 +14,42 @@ internal sealed class SyncAgentHost : IDisposable
 {
     public const uint SyncNowMessage = NativeMethods.WM_APP + 5;
 
+    private readonly string _dbPath;
+    private readonly IKeyManager _keyManager;
     private readonly SyncHost _sync;
     private readonly nint _hwnd;
     private EventWaitHandle? _syncNowEvent;
     private RegisteredWaitHandle? _syncNowWait;
 
-    public SyncAgentHost(string dbPath, nint hwnd)
+    public SyncAgentHost(string dbPath, nint hwnd, IKeyManager? keyManager = null)
     {
+        _dbPath = dbPath;
         _hwnd = hwnd;
-        _sync = new SyncHost(dbPath, TimeZoneInfo.Local, null, Log.Info);
+        _keyManager = keyManager ?? Db.KeyManager;
+        _sync = new SyncHost(dbPath, TimeZoneInfo.Local, null, Log.Info, keyManager: _keyManager);
+    }
+
+    public void OnSyncPassphraseSet(string passphrase)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(passphrase);
+
+        // 1. Persist passphrase via DPAPI
+        _keyManager.SetSyncPassphrase(passphrase);
+
+        // 2. Set sync.encrypted = true and reset paused error states
+        using (var db = Db.Open(_dbPath))
+        {
+            db.SetSetting(Setting.SyncEncrypted.Key, "true");
+
+            var state = db.GetSetting(Setting.SyncState.Key);
+            if (state is "encryption_key_missing" or "encryption_key_wrong" or "remote_not_encrypted")
+            {
+                db.SetSetting(Setting.SyncState.Key, "pending");
+            }
+        }
+
+        // 3. Trigger immediate sync export and clear retry pause
+        _sync.SyncNow();
     }
 
     public void Start()

@@ -16,10 +16,13 @@ public sealed record SyncManifest(
     string Platform,
     DateTimeOffset CreatedUtc,
     int SessionCount,
-    string Hash)
+    string Hash,
+    bool Encrypted = false)
 {
     public const string EntryName = "manifest.json";
     public const string DbEntryName = "snapshot.db";
+    public const int CurrentFormat = 1;
+    public const int CurrentSchemaVersion = 5;
 
     public string ToJson()
     {
@@ -36,6 +39,7 @@ public sealed record SyncManifest(
             w.WriteString("createdUtc", CreatedUtc.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture));
             w.WriteNumber("sessionCount", SessionCount);
             w.WriteString("hash", Hash);
+            w.WriteBoolean("encrypted", Encrypted);
             w.WriteEndObject();
         }
         return Encoding.UTF8.GetString(ms.ToArray());
@@ -48,15 +52,16 @@ public sealed record SyncManifest(
             using var doc = JsonDocument.Parse(json);
             var r = doc.RootElement;
             return new SyncManifest(
-                r.GetProperty("format").GetInt32(),
-                r.GetProperty("schemaVersion").GetInt32(),
+                r.TryGetProperty("format", out var fProp) ? fProp.GetInt32() : CurrentFormat,
+                r.TryGetProperty("schemaVersion", out var sProp) ? sProp.GetInt32() : CurrentSchemaVersion,
                 r.TryGetProperty("appVersion", out var appVer) ? appVer.GetString() ?? "" : "",
                 r.GetProperty("deviceId").GetString() ?? "",
                 r.GetProperty("deviceName").GetString() ?? "",
                 r.GetProperty("platform").GetString() ?? "",
                 DateTimeOffset.Parse(r.GetProperty("createdUtc").GetString()!, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal),
                 r.GetProperty("sessionCount").GetInt32(),
-                r.GetProperty("hash").GetString() ?? ""
+                r.GetProperty("hash").GetString() ?? "",
+                r.TryGetProperty("encrypted", out var encProp) && encProp.GetBoolean()
             );
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)

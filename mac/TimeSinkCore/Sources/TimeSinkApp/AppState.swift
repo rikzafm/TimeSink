@@ -67,6 +67,8 @@ public final class AppState: ObservableObject {
 
     // Settings & Sync State
     @Published public var syncEnabled: Bool = false
+    @Published public var syncEncrypted: Bool = false
+    @Published public var hasSyncPassphrase: Bool = false
     @Published public var syncFolder: String = ""
     @Published public var syncState: String = ""
     @Published public var lastSyncUtc: Int64 = 0
@@ -503,6 +505,8 @@ public final class AppState: ObservableObject {
     public func loadSettings() {
         do {
             self.syncEnabled = (try db.scalarText("SELECT value FROM settings WHERE key = 'sync.enabled';"))?.lowercased() == "true"
+            self.syncEncrypted = (try? db.scalarText("SELECT value FROM settings WHERE key = 'sync.encrypted';"))?.lowercased() == "true"
+            self.hasSyncPassphrase = KeychainKeyManager.shared.hasSyncPassphrase()
             self.syncFolder = (try db.scalarText("SELECT value FROM settings WHERE key = 'sync.folder';")) ?? ""
             self.syncState = (try db.scalarText("SELECT value FROM settings WHERE key = 'sync.state';")) ?? ""
             let lastExp = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'sync.last_export_utc';")) ?? 0
@@ -629,6 +633,37 @@ public final class AppState: ObservableObject {
             } else {
                 triggerSyncNow()
             }
+        }
+    }
+
+    public func setSyncPassphrase(_ passphrase: String) throws {
+        let trimmed = passphrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        try KeychainKeyManager.shared.setSyncPassphrase(trimmed)
+        try db.exec("INSERT INTO settings (key, value) VALUES ('sync.encrypted', 'true') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        if syncState == "encryption_key_missing" || syncState == "encryption_key_wrong" {
+            try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.state', 'synced') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        }
+        self.syncEncrypted = true
+        self.hasSyncPassphrase = true
+        loadSettings()
+        if let host = syncHost {
+            host.restart()
+        } else {
+            triggerSyncNow()
+        }
+    }
+
+    public func clearSyncPassphrase() throws {
+        try KeychainKeyManager.shared.clearSyncPassphrase()
+        try db.exec("INSERT INTO settings (key, value) VALUES ('sync.encrypted', 'false') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        self.syncEncrypted = false
+        self.hasSyncPassphrase = false
+        loadSettings()
+        if let host = syncHost {
+            host.restart()
+        } else {
+            triggerSyncNow()
         }
     }
 

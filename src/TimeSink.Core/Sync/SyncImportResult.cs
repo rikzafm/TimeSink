@@ -13,7 +13,10 @@ public enum SyncStatus
     SelfFile,
     ThirdDeviceIgnored,
     DeviceForgotten,
-    Failed
+    Failed,
+    EncryptionKeyMissing,
+    EncryptionKeyWrong,
+    RemoteNotEncrypted
 }
 
 /// <summary>
