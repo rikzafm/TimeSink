@@ -79,11 +79,12 @@ public final class MacAppLibrary: @unchecked Sendable {
         exePath: String,
         displayName: String,
         category: String = "Other",
-        kind: AppKind = .other,
+        kind: AppKind? = nil,
         isBackground: Bool = false,
         deviceId: String
     ) throws -> Int64 {
         let now = Int64(Date().timeIntervalSince1970)
+        let resolvedKind = kind ?? AppKinds.detect(exePath: exePath, displayName: displayName)
         let stmt = try db.prepare("""
             INSERT INTO apps (exe_path, display_name, category, state, added_utc, is_background, kind, device_id)
             VALUES (?1, ?2, ?3, 'tracked', ?4, ?5, ?6, ?7)
@@ -99,7 +100,7 @@ public final class MacAppLibrary: @unchecked Sendable {
         try stmt.bind(text: category, at: 3)
         try stmt.bind(int64: now, at: 4)
         try stmt.bind(int64: isBackground ? 1 : 0, at: 5)
-        try stmt.bind(int64: kind.rawValue, at: 6)
+        try stmt.bind(int64: resolvedKind.rawValue, at: 6)
         try stmt.bind(text: deviceId, at: 7)
         _ = try stmt.step()
 
@@ -204,7 +205,8 @@ public final class MacAppLibrary: @unchecked Sendable {
             let state = stmt.columnText(at: 5) ?? "tracked"
             let added = stmt.columnInt64(at: 6)
             let bg = stmt.columnInt64(at: 7) == 1
-            let kind = AppKind(rawValue: stmt.columnInt64(at: 8)) ?? .other
+            let kindVal = stmt.columnIsNull(at: 8) ? nil : stmt.columnInt64(at: 8)
+            let kind = AppKinds.resolve(kind: kindVal, exePath: path, displayName: name)
             let dev = stmt.columnText(at: 9) ?? ""
             let merged = Int(stmt.columnInt64(at: 10))
             let sec = merged > 0 ? ((try? getActiveSeconds(appId: id)) ?? stmt.columnInt64(at: 11)) : stmt.columnInt64(at: 11)
@@ -252,7 +254,7 @@ public final class MacAppLibrary: @unchecked Sendable {
                 state: stmt.columnText(at: 5) ?? "tracked",
                 addedUtc: stmt.columnInt64(at: 6),
                 isBackground: stmt.columnInt64(at: 7) == 1,
-                kind: AppKind(rawValue: stmt.columnInt64(at: 8)) ?? .other,
+                kind: AppKinds.resolve(kind: stmt.columnIsNull(at: 8) ? nil : stmt.columnInt64(at: 8), exePath: stmt.columnText(at: 2) ?? "", displayName: stmt.columnText(at: 3) ?? ""),
                 deviceId: stmt.columnText(at: 9) ?? "",
                 mergedCount: 0,
                 totalSeconds: stmt.columnInt64(at: 11)

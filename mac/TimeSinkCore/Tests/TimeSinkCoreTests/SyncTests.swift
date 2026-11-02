@@ -188,6 +188,48 @@ final class SyncTests: XCTestCase {
         XCTAssertEqual(macKind2, 1)
     }
 
+    func testGachaGameSyncFromWindowsCarriesOverToMac() throws {
+        let dbWin = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: dbWin)
+        let winId = "win-dev-gacha"
+        try dbWin.exec("""
+            UPDATE settings SET value = '\(winId)' WHERE key = 'device.id';
+            UPDATE devices SET device_id = '\(winId)', name = 'Gaming PC', platform = 'windows';
+            """)
+
+        let winAppLib = MacAppLibrary(db: dbWin)
+        _ = try winAppLib.trackApp(
+            exePath: "C:\\Games\\Wuthering Waves\\Wuthering Waves.exe",
+            displayName: "Wuthering Waves",
+            category: "Games",
+            kind: nil, // Leave untyped / detected
+            deviceId: winId
+        )
+
+        let tempFolder = (NSTemporaryDirectory() as NSString).appendingPathComponent("sync-wuwa-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(atPath: tempFolder, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(atPath: tempFolder)
+        }
+
+        let snap = try SyncWriter.write(db: dbWin, syncFolder: tempFolder)
+
+        let dbMac = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: dbMac)
+
+        let res = try SyncReader.import(syncFile: snap, db: dbMac)
+        XCTAssertEqual(res.status, .success)
+
+        let macKind = try dbMac.scalarInt("SELECT kind FROM apps WHERE device_id = '\(winId)';")
+        XCTAssertEqual(macKind, 2) // Gacha is rawValue 2
+
+        let tracked = try MacAppLibrary(db: dbMac).getTrackedApps()
+        XCTAssertEqual(tracked.first?.kind, .gacha)
+
+        let groups = try AppGroups.load(db: dbMac, deviceScope: .all)
+        XCTAssertEqual(groups.values.first?.kind, .gacha)
+    }
+
     func testMergeDataSyncsAcrossDevices() throws {
         let dbWin = try SQLiteDatabase(path: ":memory:")
         try Migrator.apply(to: dbWin)

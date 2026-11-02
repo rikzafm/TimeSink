@@ -313,11 +313,12 @@ public struct AppSettingsSheet: View {
             try stmt.bind(int64: appId, at: 1)
             if try stmt.step() {
                 displayName = stmt.columnText(at: 0) ?? ""
-                kind = AppKind(rawValue: stmt.columnInt64(at: 1)) ?? .other
+                let rawKind = stmt.columnIsNull(at: 1) ? nil : stmt.columnInt64(at: 1)
                 isBackground = stmt.columnInt64(at: 2) == 1
                 appPath = stmt.columnText(at: 3) ?? ""
                 addedUtc = stmt.columnInt64(at: 4)
                 deviceId = stmt.columnText(at: 5) ?? ""
+                kind = AppKinds.resolve(kind: rawKind, exePath: appPath, displayName: displayName)
             }
             mergedChildren = try lib.getMergedChildren(mainId: appId)
             totalSeconds = (try? lib.getActiveSeconds(appId: appId)) ?? 0

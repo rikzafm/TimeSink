@@ -189,6 +189,23 @@ public enum SyncWriter {
             WHERE (a.device_id = '\(escapedDev)' OR c.device_id = '\(escapedDev)')
               AND a.device_id != c.device_id;
             """)
+
+        let selectCmd = try sourceDb.prepare("SELECT id, exe_path, display_name FROM snap.apps WHERE kind IS NULL;")
+        var appsToResolve: [(Int64, String, String)] = []
+        while try selectCmd.step() {
+            appsToResolve.append((
+                selectCmd.columnInt64(at: 0),
+                selectCmd.columnText(at: 1) ?? "",
+                selectCmd.columnText(at: 2) ?? ""
+            ))
+        }
+        for (id, path, name) in appsToResolve {
+            let resolved = AppKinds.resolve(kind: nil, exePath: path, displayName: name)
+            let upd = try sourceDb.prepare("UPDATE snap.apps SET kind = ?1 WHERE id = ?2;")
+            try upd.bind(int64: resolved.rawValue, at: 1)
+            try upd.bind(int64: id, at: 2)
+            _ = try upd.step()
+        }
     }
 }
 

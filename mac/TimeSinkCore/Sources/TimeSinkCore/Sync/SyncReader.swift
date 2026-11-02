@@ -182,20 +182,25 @@ public enum SyncReader {
 
             var srcApps: [SrcApp] = []
             while try selectSrcApps.step() {
+                let path = selectSrcApps.columnText(at: 2) ?? ""
+                let name = selectSrcApps.columnText(at: 6) ?? ""
+                let rawKind = selectSrcApps.columnIsNull(at: 12) ? nil : selectSrcApps.columnInt64(at: 12)
+                let resolvedKind = rawKind ?? AppKinds.detect(exePath: path, displayName: name).rawValue
+
                 srcApps.append(SrcApp(
                     id: selectSrcApps.columnInt64(at: 0),
                     canonicalId: selectSrcApps.columnInt64(at: 1) == 0 ? nil : selectSrcApps.columnInt64(at: 1),
-                    exePath: selectSrcApps.columnText(at: 2) ?? "",
+                    exePath: path,
                     bundleId: selectSrcApps.columnText(at: 3),
                     deviceId: selectSrcApps.columnText(at: 4) ?? "",
                     packageFamily: selectSrcApps.columnText(at: 5),
-                    displayName: selectSrcApps.columnText(at: 6) ?? "",
+                    displayName: name,
                     category: selectSrcApps.columnText(at: 7) ?? "Other",
                     state: selectSrcApps.columnText(at: 8) ?? "tracked",
                     addedUtc: selectSrcApps.columnInt64(at: 9),
                     retiredUtc: selectSrcApps.columnInt64(at: 10) == 0 ? nil : selectSrcApps.columnInt64(at: 10),
                     isBackground: selectSrcApps.columnInt64(at: 11),
-                    kind: selectSrcApps.columnInt64(at: 12)
+                    kind: resolvedKind
                 ))
             }
 
@@ -238,7 +243,7 @@ public enum SyncReader {
                     try insStmt.bind(int64: a.addedUtc, at: 8)
                     if let r = a.retiredUtc { try insStmt.bind(int64: r, at: 9) }
                     try insStmt.bind(int64: a.isBackground, at: 10)
-                    if let k = a.kind { try insStmt.bind(int64: k, at: 11) }
+                    if let k = a.kind { try insStmt.bind(int64: k, at: 11) } else { try insStmt.bindNull(at: 11) }
                     _ = try insStmt.step()
 
                     dstId = db.lastInsertRowid
