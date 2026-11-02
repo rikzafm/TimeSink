@@ -217,6 +217,30 @@ public sealed class WeekView : UserControl, ILiveView
         _panelLoader.Stop();
     }
 
+    public bool IsDrilldown => _panel.Visibility == Visibility.Visible || _weeksBack > 0;
+
+    public bool TryGoBack()
+    {
+        if (_panel.Visibility == Visibility.Visible)
+        {
+            ClosePanel();
+            return true;
+        }
+        if (_weeksBack > 0)
+        {
+            _weeksBack = 0;
+            ClosePanel();
+            Refresh();
+            return true;
+        }
+        return false;
+    }
+
+    public void NavigateWeek(int step)
+    {
+        Navigate(-step);
+    }
+
     public async void Refresh()
     {
         var weeksBack = _weeksBack;

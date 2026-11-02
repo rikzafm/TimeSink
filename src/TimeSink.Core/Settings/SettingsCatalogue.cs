@@ -35,6 +35,7 @@ public static class SettingsCatalogue
     [
         new("startup", General, "Open at login", "Starts quietly in the menu bar", SettingKind.Switch, Setting.Startup),
         new("weekStart", General, "Week starts on", "Used by the Week tab and weekly totals.", SettingKind.Segmented, Setting.WeekStartsOn, Options(Setting.WeekStartsOn)),
+        new("keyboardShortcuts", General, "Keyboard shortcuts", "View navigation keys, shortcuts, and ESC hierarchy.", SettingKind.Button),
 
         new("pauseOnSleep", Tracking, "Pause while the PC sleeps", "Time stops counting while the computer is asleep.", SettingKind.Switch, Setting.PauseOnSleep),
         new("countWhenLocked", Tracking, "Keep counting when locked", "Apps still running behind the lock screen keep adding up.", SettingKind.Switch, Setting.CountWhenLocked),

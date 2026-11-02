@@ -11,9 +11,7 @@ public struct AppSettingsSheet: View {
     @State private var isBackground = false
     @State private var main: TrackedAppItem?
     @State private var mergedChildren: [TrackedAppItem] = []
-    @State private var showingMerge = false
-    @State private var showingStopConfirm = false
-    @State private var showingClearConfirm = false
+
     @State private var appPath = ""
     @State private var addedUtc: Int64 = 0
     @State private var deviceId = ""
@@ -53,16 +51,16 @@ public struct AppSettingsSheet: View {
             }
             .background(ThemeColors.background)
 
-            if showingMerge {
+            if state.appSettingsShowingMerge {
                 MergeView(state: state, mainAppId: appId) {
-                    showingMerge = false
+                    state.appSettingsShowingMerge = false
                     loadDetails()
                 }
             }
         }
         .frame(width: 400, height: 640)
         .onAppear(perform: loadDetails)
-        .alert("Stop tracking?", isPresented: $showingStopConfirm) {
+        .alert("Stop tracking?", isPresented: $state.appSettingsShowingStopConfirm) {
             Button("Stop tracking", role: .destructive) {
                 try? MacAppLibrary(db: state.db).stopTracking(appId: appId)
                 state.refresh()
@@ -72,7 +70,7 @@ public struct AppSettingsSheet: View {
         } message: {
             Text("TimeSink will stop tracking new sessions for this app. Existing history will be kept.")
         }
-        .alert("Clear history?", isPresented: $showingClearConfirm) {
+        .alert("Clear history?", isPresented: $state.appSettingsShowingClearConfirm) {
             Button("Clear all history", role: .destructive) {
                 try? MacAppLibrary(db: state.db).clearHistory(appId: appId)
                 state.refresh()
@@ -224,7 +222,7 @@ public struct AppSettingsSheet: View {
             HStack {
                 Text("MERGED APPS").caps(10)
                 Spacer()
-                Button(action: { showingMerge = true }) {
+                Button(action: { state.appSettingsShowingMerge = true }) {
                     Text("Merge…")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(ThemeColors.accent)
@@ -298,8 +296,8 @@ public struct AppSettingsSheet: View {
 
     private var dangerBar: some View {
         HStack(spacing: 10) {
-            dangerButton("Stop tracking") { showingStopConfirm = true }
-            dangerButton("Clear history…") { showingClearConfirm = true }
+            dangerButton("Stop tracking") { state.appSettingsShowingStopConfirm = true }
+            dangerButton("Clear history…") { state.appSettingsShowingClearConfirm = true }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

@@ -3,7 +3,6 @@ import TimeSinkCore
 
 public struct AppDetailView: View {
     @ObservedObject var state: AppState
-    @State private var showingSettings = false
     @State private var range: AppDetailRange = .matrix
     @State private var anchor = ""
     @State private var mergedCount = 0
@@ -30,9 +29,9 @@ public struct AppDetailView: View {
             }
             .background(ThemeColors.background)
 
-            if showingSettings, let appId = state.selectedAppDetailId {
+            if state.appDetailShowingSettings, let appId = state.selectedAppDetailId {
                 AppSettingsSheet(state: state, appId: appId) {
-                    showingSettings = false
+                    state.appDetailShowingSettings = false
                     loadMerged()
                     state.refresh()
                 }
@@ -66,7 +65,7 @@ public struct AppDetailView: View {
                 .foregroundColor(ThemeColors.textPrimary)
                 .frame(maxWidth: .infinity)
 
-            Button(action: { showingSettings = true }) {
+            Button(action: { state.appDetailShowingSettings = true }) {
                 Text("Settings")
                     .font(.system(size: 12))
                     .foregroundColor(ThemeColors.textDim)

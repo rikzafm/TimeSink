@@ -52,6 +52,7 @@ public sealed partial class AddAppView
     /// <summary>Back to the settings screen after the merge screen it opened is done (the navigation already points at it).</summary>
     private void ReturnToSettings()
     {
+        _showingIconPicker = false;
         if (_nav.State.SettingsId is null) { Content = _shell; ShowTracked(); return; }
         _settingsOffset = 0;
         Content = BuildAppSettings();

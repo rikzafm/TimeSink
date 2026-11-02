@@ -55,6 +55,53 @@ public sealed partial class AddAppView : UserControl
     private readonly TileRegistry _tiles;      // Installed tab rows waiting for their icon
     private readonly TileRegistry _mergeTiles; // merge screen rows waiting for their icon
     private Action? _externalSettingsClose;
+    private bool _showingIconPicker;
+
+    public bool TryGoBack()
+    {
+        if (_showingIconPicker)
+        {
+            ReturnToSettings();
+            return true;
+        }
+        if (_nav.State.ClearStep > 0)
+        {
+            _nav.DismissClear();
+            RefreshSettings();
+            return true;
+        }
+        if (_nav.State.SettingsId is not null)
+        {
+            CloseSettings();
+            return true;
+        }
+        if (_mergePlan is not null || _nav.State.Merge != MergeStage.None)
+        {
+            _mergePlan = null;
+            _nav.CancelMerge();
+            ReturnToSettings();
+            return true;
+        }
+        if (_nav.State.OpenRowId is not null)
+        {
+            _nav.CloseRow();
+            RenderTracked();
+            return true;
+        }
+        if (!string.IsNullOrWhiteSpace(_trackedQuery))
+        {
+            _trackedQuery = string.Empty;
+            RenderTracked(reload: false);
+            return true;
+        }
+        if (!string.IsNullOrWhiteSpace(_query))
+        {
+            _query = string.Empty;
+            RenderInstalled(reload: false);
+            return true;
+        }
+        return false;
+    }
 
     public void ShowAppSettingsDirect(long id, Action onClose)
     {

@@ -58,8 +58,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             popover.appearance = ThemeManager.shared.nsAppearance ?? NSAppearance(named: .darkAqua)
             popover.contentViewController = NSHostingController(rootView: PopoverRootView(state: appState))
 
-            statusBarController = StatusBarController(popover: popover, initialIconId: appState.appIcon)
+            statusBarController = StatusBarController(popover: popover, appState: appState, initialIconId: appState.appIcon)
             updateDockIcon(appState.appIcon)
+
+            appState.onClosePopover = { [weak self] in
+                self?.statusBarController?.closePopover()
+            }
 
             appState.onThemeChanged = { [weak self] in
                 self?.popover.appearance = ThemeManager.shared.nsAppearance

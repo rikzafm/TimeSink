@@ -53,7 +53,6 @@ public struct AddAppView: View {
     @State private var trackedBundleIds: Set<String> = []
     @State private var retiredApps: [RetiredApp] = []
 
-    @State private var editingAppId: Int64?
 
     public init(state: AppState, onDismiss: @escaping () -> Void) {
         self.state = state
@@ -80,9 +79,9 @@ public struct AddAppView: View {
             }
             .background(ThemeColors.background)
 
-            if let id = editingAppId {
+            if let id = state.addAppEditingAppId {
                 AppSettingsSheet(state: state, appId: id) {
-                    editingAppId = nil
+                    state.addAppEditingAppId = nil
                     reloadAll()
                 }
             }
@@ -560,7 +559,7 @@ public struct AddAppView: View {
         }
         .contentShape(Rectangle())
         .onHover { hoveredId = $0 ? app.id : (hoveredId == app.id ? nil : hoveredId) }
-        .onTapGesture(count: 2) { editingAppId = app.id }
+        .onTapGesture(count: 2) { state.addAppEditingAppId = app.id }
     }
 
     // MARK: - Browse

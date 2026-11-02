@@ -169,6 +169,31 @@ public partial class TodayView : UserControl, ILiveView
         ShowDay(Today);
     }
 
+    public bool IsDrilldown => Panel.Visibility == Visibility.Visible || _day is not null;
+
+    public bool TryGoBack()
+    {
+        if (Panel.Visibility == Visibility.Visible)
+        {
+            ClosePanel();
+            return true;
+        }
+        if (_day is not null)
+        {
+            ResetToToday();
+            return true;
+        }
+        return false;
+    }
+
+    public void NavigateDay(int delta)
+    {
+        var current = _day ?? Today;
+        var next = current.AddDays(delta);
+        if (next > Today) next = Today;
+        ShowDay(next);
+    }
+
     private async void Load()
     {
         if (!_driver.Started) return;

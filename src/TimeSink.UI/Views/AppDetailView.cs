@@ -78,6 +78,18 @@ public sealed class AppDetailView : UserControl
         Unloaded += (_, _) => _driver.Stop();
     }
 
+    public bool TryGoBack()
+    {
+        if (_showingSettings)
+        {
+            if (_settingsView != null && _settingsView.TryGoBack()) return true;
+            _showingSettings = false;
+            Refresh();
+            return true;
+        }
+        return false;
+    }
+
     private async void Refresh()
     {
         var (id, year) = (_appId, _year);

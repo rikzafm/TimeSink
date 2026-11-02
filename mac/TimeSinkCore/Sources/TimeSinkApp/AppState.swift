@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AppKit
 import TimeSinkCore
 
 public enum AppTab: String, CaseIterable, Identifiable {
@@ -59,6 +60,7 @@ public final class AppState: ObservableObject {
     @Published public var showingAddApp: Bool = false
     @Published public var showingSettings: Bool = false
     @Published public var showingDevicesSync: Bool = false
+    @Published public var showingKeyboardGuide: Bool = false
     @Published public var addAppInitialTab: AddAppTab = .running
     @Published public var addAppInitialDeviceFilter: String? = nil
     @Published public var returnToDevicesSyncOnDismiss: Bool = false
@@ -81,6 +83,19 @@ public final class AppState: ObservableObject {
     @Published public var showMenuBarTime: Bool = false
     @Published public var backupMode: String = "Daily"
     @Published public var showingAppIconPicker: Bool = false
+
+    // Inner modals and subviews tracking for keyboard unwinding
+    @Published public var showingRestoreSheet: Bool = false
+    @Published public var showingExportSheet: Bool = false
+    @Published public var showingDeleteAllSheet: Bool = false
+    @Published public var showingRenameMacSheet: Bool = false
+    @Published public var addAppEditingAppId: Int64?
+    @Published public var appSettingsShowingMerge: Bool = false
+    @Published public var appSettingsShowingClearConfirm: Bool = false
+    @Published public var appSettingsShowingStopConfirm: Bool = false
+    @Published public var appDetailShowingSettings: Bool = false
+
+    public var onClosePopover: (() -> Void)?
 
     public var onMenuBarTimeChanged: ((Int64, Bool) -> Void)?
     public var onThemeChanged: (() -> Void)?
@@ -984,4 +999,205 @@ public struct DeviceRow: Identifiable {
     public let state: String
     public let appCount: Int
     public let totalHours: Int64
+
+    // MARK: - Keyboard Navigation & ESC Hierarchy
+
+    public func handleEscape() {
+        // 1. Text field focus (AppKit)
+        if checkAndHandleTextFieldEscape() {
+            return
+        }
+
+        handleGoBack()
+    }
+
+    public func handleGoBack() {
+        // 2. Inner sheets and modals
+        if showingKeyboardGuide {
+            showingKeyboardGuide = false
+            return
+        }
+        if showingAppIconPicker {
+            showingAppIconPicker = false
+            return
+        }
+        if showingRenameMacSheet {
+            showingRenameMacSheet = false
+            return
+        }
+        if showingDeleteAllSheet {
+            showingDeleteAllSheet = false
+            return
+        }
+        if showingExportSheet {
+            showingExportSheet = false
+            return
+        }
+        if showingRestoreSheet {
+            showingRestoreSheet = false
+            return
+        }
+        if showingDevicesSync {
+            showingDevicesSync = false
+            return
+        }
+        if appSettingsShowingMerge {
+            appSettingsShowingMerge = false
+            return
+        }
+        if appSettingsShowingClearConfirm {
+            appSettingsShowingClearConfirm = false
+            return
+        }
+        if appSettingsShowingStopConfirm {
+            appSettingsShowingStopConfirm = false
+            return
+        }
+        if addAppEditingAppId != nil {
+            addAppEditingAppId = nil
+            return
+        }
+        if appDetailShowingSettings {
+            appDetailShowingSettings = false
+            return
+        }
+
+        // 3. Full overlays
+        if showingSettings {
+            showingSettings = false
+            return
+        }
+        if showingAddApp {
+            showingAddApp = false
+            if returnToDevicesSyncOnDismiss {
+                returnToDevicesSyncOnDismiss = false
+                showingSettings = true
+                showingDevicesSync = true
+            }
+            return
+        }
+        if selectedAppDetailId != nil {
+            closeAppDetail()
+            return
+        }
+
+        // 4. Tab drilldown
+        if selectedTab == .today && daysBack > 0 {
+            daysBack = 0
+            refresh()
+            return
+        }
+        if selectedTab == .week && weeksBack > 0 {
+            weeksBack = 0
+            refresh()
+            return
+        }
+        if selectedTab == .month && monthsBack > 0 {
+            monthsBack = 0
+            refresh()
+            return
+        }
+        if selectedTab == .year && yearOffset != 0 {
+            yearOffset = 0
+            refresh()
+            return
+        }
+
+        // 5. Dismiss popover
+        onClosePopover?()
+    }
+
+    public func switchToTab(_ tab: AppTab) {
+        showingSettings = false
+        showingAddApp = false
+        selectedAppDetailId = nil
+        selectedTab = tab
+    }
+
+    public func cycleTab(forward: Bool) {
+        let tabs = AppTab.allCases
+        guard let currentIndex = tabs.firstIndex(of: selectedTab) else { return }
+        let nextIndex = forward ? (currentIndex + 1) % tabs.count : (currentIndex + tabs.count - 1) % tabs.count
+        switchToTab(tabs[nextIndex])
+    }
+
+    public func toggleKeyboardGuide() {
+        if showingKeyboardGuide {
+            showingKeyboardGuide = false
+        } else {
+            showingAddApp = false
+            selectedAppDetailId = nil
+            showingSettings = true
+            showingKeyboardGuide = true
+        }
+    }
+
+    public func toggleSettings() {
+        if showingSettings {
+            showingSettings = false
+        } else {
+            showingAddApp = false
+            selectedAppDetailId = nil
+            showingSettings = true
+        }
+    }
+
+    public func showAddApp() {
+        showingSettings = false
+        selectedAppDetailId = nil
+        showingAddApp = true
+    }
+
+    public func navigateDate(step: Int) {
+        switch selectedTab {
+        case .today:
+            if step < 0 { previousDay() } else { nextDay() }
+        case .week:
+            if step < 0 { previousWeek() } else { nextWeek() }
+        case .month:
+            if step < 0 { previousMonth() } else { nextMonth() }
+        case .year:
+            if step < 0 { previousYear() } else { nextYear() }
+        case .all:
+            break
+        }
+    }
+
+    public var isDrilldownOrOverlay: Bool {
+        showingSettings || showingAddApp || selectedAppDetailId != nil || showingKeyboardGuide ||
+        showingDevicesSync || showingAppIconPicker || showingRestoreSheet ||
+        showingExportSheet || showingDeleteAllSheet || showingRenameMacSheet ||
+        addAppEditingAppId != nil || appSettingsShowingMerge ||
+        appSettingsShowingClearConfirm || appSettingsShowingStopConfirm ||
+        appDetailShowingSettings ||
+        (selectedTab == .today && daysBack > 0) ||
+        (selectedTab == .week && weeksBack > 0) ||
+        (selectedTab == .month && monthsBack > 0) ||
+        (selectedTab == .year && yearOffset != 0)
+    }
+
+    private func checkAndHandleTextFieldEscape() -> Bool {
+        guard let firstResponder = NSApp.keyWindow?.firstResponder else { return false }
+        if let textView = firstResponder as? NSTextView {
+            let text = textView.string
+            if !text.isEmpty {
+                textView.string = ""
+                textView.didChangeText()
+                return true
+            } else {
+                NSApp.keyWindow?.makeFirstResponder(nil)
+                return true
+            }
+        } else if let textField = firstResponder as? NSTextField {
+            if !textField.stringValue.isEmpty {
+                textField.stringValue = ""
+                return true
+            } else {
+                NSApp.keyWindow?.makeFirstResponder(nil)
+                return true
+            }
+        }
+        return false
+    }
+
 }

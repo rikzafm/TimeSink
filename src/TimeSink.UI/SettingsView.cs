@@ -661,6 +661,7 @@ public sealed partial class SettingsView : Grid
         if (_overlay is not null) { CloseDialog(); return true; }
         if (TryClosePicker()) return true;
         if (TryCloseDevicesSync()) return true;
+        if (TryCloseKeyboardGuide()) return true;
         return false;
     }
 
@@ -668,6 +669,7 @@ public sealed partial class SettingsView : Grid
     {
         string label = row.Id switch
         {
+            "keyboardShortcuts" => "View ›",
             "backupNow" => "Run",
             "restore" => "Choose file…",
             "export" => "Export…",
@@ -689,6 +691,7 @@ public sealed partial class SettingsView : Grid
 
         switch (row.Id)
         {
+            case "keyboardShortcuts": b.Click += (_, _) => OpenKeyboardGuide(); break;
             case "backupNow": b.Click += (_, _) => BackUpNow(b); break;
             case "restore": b.Click += (_, _) => ChooseRestoreFile(); break;
             case "export": b.Click += (_, _) => ChooseExport(); break;

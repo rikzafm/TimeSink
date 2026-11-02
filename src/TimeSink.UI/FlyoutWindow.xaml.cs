@@ -57,6 +57,7 @@ public partial class FlyoutWindow : Window
         SourceInitialized += OnSourceInitialized;
         ContentRendered += OnContentRendered;
         Deactivated += (_, _) => { if (_revealed && !KeepOpen && !TestKeepOpenActive) Close(); };
+        PreviewKeyDown += OnFlyoutPreviewKeyDown;
         SettingsButton.Click += (_, _) => ToggleSettings();
         AddAppButton.Click += (_, _) => ShowAddApp();
         Live.GamesOnly = AppSettings.ForFile(_dbPath).Get(Setting.GamesOnly);
@@ -524,6 +525,220 @@ public partial class FlyoutWindow : Window
         StartupTrace.FlushShown();
     }
 
+
+
+    private void OnFlyoutPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        var shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+        var alt = (Keyboard.Modifiers & ModifierKeys.Alt) != 0;
+
+        // 1. Direct tab switching: Ctrl+1 .. Ctrl+5
+        if (ctrl && !alt && !shift && e.Key >= Key.D1 && e.Key <= Key.D5)
+        {
+            e.Handled = true;
+            var targetTab = (ShellTab)(e.Key - Key.D1);
+            SwitchToTab(targetTab);
+            return;
+        }
+
+        // 2. Tab cycling: Ctrl+Tab and Ctrl+Shift+Tab
+        if (ctrl && !alt && e.Key == Key.Tab)
+        {
+            e.Handled = true;
+            CycleTab(forward: !shift);
+            return;
+        }
+
+        // 3. Toggle Settings: Ctrl+,
+        if (ctrl && !alt && !shift && e.Key == Key.OemComma)
+        {
+            e.Handled = true;
+            ToggleSettings();
+            return;
+        }
+
+        // 4. Add App: Ctrl+N
+        if (ctrl && !alt && !shift && e.Key == Key.N)
+        {
+            e.Handled = true;
+            ShowAddApp();
+            return;
+        }
+
+        // 5. Toggle Games: Ctrl+G
+        if (ctrl && !alt && !shift && e.Key == Key.G)
+        {
+            e.Handled = true;
+            ToggleGamesOnly();
+            return;
+        }
+
+        // 6. Date navigation: Alt+Left / Alt+Right
+        var key = e.Key == Key.System || e.Key == Key.None ? e.SystemKey : e.Key;
+        if (alt && !ctrl && !shift && (key == Key.Left || key == Key.Right))
+        {
+            // If an overlay is open and Alt+Left was pressed, treat it as Go Back
+            if (key == Key.Left && Overlay.Content is not null)
+            {
+                e.Handled = true;
+                HandleGoBack();
+                return;
+            }
+
+            e.Handled = true;
+            var step = key == Key.Left ? -1 : 1;
+            NavigateDate(step);
+            return;
+        }
+
+        // 7. Secondary Go Back: Backspace outside a TextBox
+        if (!ctrl && !alt && !shift && e.Key == Key.Back && Keyboard.FocusedElement is not TextBox)
+        {
+            if (Overlay.Content is not null || BodyIsDrilldown())
+            {
+                e.Handled = true;
+                HandleGoBack();
+                return;
+            }
+        }
+
+        // 8. Shortcuts guide: '?' (Shift+/)
+        if (!ctrl && !alt && shift && (e.Key == Key.OemQuestion || e.Key == Key.Divide) && Keyboard.FocusedElement is not TextBox)
+        {
+            e.Handled = true;
+            ToggleKeyboardGuide();
+            return;
+        }
+
+        // 9. ESC navigation
+        if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            HandleEscape();
+            return;
+        }
+    }
+
+    private void ToggleKeyboardGuide()
+    {
+        if (_settings is not null && (ReferenceEquals(Overlay.Content, _settings) || ReferenceEquals(Body.Content, _settings)))
+        {
+            if (_settings.TryCloseKeyboardGuide()) return;
+            _settings.OpenKeyboardGuide();
+            return;
+        }
+
+        ToggleSettings();
+        _settings?.OpenKeyboardGuide();
+    }
+
+    private void HandleEscape()
+    {
+        // Two-step text input handling
+        if (Keyboard.FocusedElement is TextBox tb)
+        {
+            if (!string.IsNullOrEmpty(tb.Text))
+            {
+                tb.Text = "";
+            }
+            else
+            {
+                Keyboard.ClearFocus();
+                Focus();
+            }
+            return;
+        }
+
+        HandleGoBack();
+    }
+
+    private void HandleGoBack()
+    {
+        if (Overlay.Content is SettingsView settings)
+        {
+            if (settings.TryCloseSubView()) return;
+            SetOverlay(null);
+            return;
+        }
+
+        if (Overlay.Content is AddAppView addApp)
+        {
+            if (addApp.TryGoBack()) return;
+            SetOverlay(null);
+            Live.NotifyDataChanged();
+            return;
+        }
+
+        if (Overlay.Content is AppDetailView detail)
+        {
+            if (detail.TryGoBack()) return;
+            SetOverlay(null);
+            return;
+        }
+
+        if (Overlay.Content is not null)
+        {
+            SetOverlay(null);
+            return;
+        }
+
+        if (Body.Content is TodayView today && today.TryGoBack())
+            return;
+
+        if (Body.Content is WeekView week && week.TryGoBack())
+            return;
+
+        // Dismiss / close flyout
+        Close();
+    }
+
+    private void SwitchToTab(ShellTab tab)
+    {
+        SetOverlay(null);
+        foreach (RadioButton b in TabBar.Children)
+        {
+            if (Enum.TryParse<ShellTab>((string)b.Tag, out var t) && t == tab)
+            {
+                b.IsChecked = true;
+                break;
+            }
+        }
+    }
+
+    private void CycleTab(bool forward)
+    {
+        var current = (int)_current;
+        var next = forward ? (current + 1) % 5 : (current + 4) % 5;
+        SwitchToTab((ShellTab)next);
+    }
+
+    private void NavigateDate(int step)
+    {
+        if (Body.Content is TodayView today)
+        {
+            today.NavigateDay(step);
+        }
+        else if (Body.Content is WeekView week)
+        {
+            week.NavigateWeek(step);
+        }
+        else if (Body.Content is MonthView month)
+        {
+            month.NavigateMonth(step);
+        }
+        else if (Body.Content is YearView year)
+        {
+            year.NavigateYear(step);
+        }
+    }
+
+    private bool BodyIsDrilldown()
+    {
+        if (Body.Content is TodayView today && today.IsDrilldown) return true;
+        if (Body.Content is WeekView week && week.IsDrilldown) return true;
+        return false;
+    }
 
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);

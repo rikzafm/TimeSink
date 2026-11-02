@@ -7,14 +7,10 @@ public struct SettingsView: View {
 
     @State private var backupStatusText: String = "Run"
     @State private var isBackingUp: Bool = false
-    @State private var showingRestoreSheet: Bool = false
     @State private var pendingRestoreFile: String = ""
     @State private var restoreInspection: BackupInspection?
     @State private var restoreStatusMessage: String?
-    @State private var showingExportSheet: Bool = false
-    @State private var showingDeleteAllSheet: Bool = false
     @State private var deleteAllConfirmText: String = ""
-    @State private var showingRenameMacSheet: Bool = false
     @State private var renameMacText: String = ""
 
     public init(state: AppState) {
@@ -27,22 +23,24 @@ public struct SettingsView: View {
                 DevicesSyncView(state: state)
             } else if state.showingAppIconPicker {
                 AppIconPickerView(state: state)
+            } else if state.showingKeyboardGuide {
+                KeyboardGuideView(state: state)
             } else {
                 mainSettingsView
             }
         }
         .frame(width: 400, height: 640)
         .background(ThemeColors.background)
-        .sheet(isPresented: $showingRestoreSheet) {
+        .sheet(isPresented: $state.showingRestoreSheet) {
             restoreSheetView
         }
-        .sheet(isPresented: $showingExportSheet) {
+        .sheet(isPresented: $state.showingExportSheet) {
             exportSheetView
         }
-        .sheet(isPresented: $showingDeleteAllSheet) {
+        .sheet(isPresented: $state.showingDeleteAllSheet) {
             deleteAllSheetView
         }
-        .sheet(isPresented: $showingRenameMacSheet) {
+        .sheet(isPresented: $state.showingRenameMacSheet) {
             renameMacSheetView
         }
     }
@@ -98,6 +96,34 @@ public struct SettingsView: View {
                                 set: { state.setWeekStart($0) }
                             )
                         )
+                        settingsRule
+                        Button(action: {
+                            state.showingKeyboardGuide = true
+                        }) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Keyboard shortcuts")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(ThemeColors.textPrimary)
+                                    Text("View navigation keys, shortcuts, and ESC hierarchy")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(ThemeColors.textMuted)
+                                }
+                                Spacer()
+                                HStack(spacing: 4) {
+                                    Text("View")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(ThemeColors.accent)
+                                    Text("›")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(ThemeColors.accent)
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     // TRACKING
@@ -243,7 +269,7 @@ public struct SettingsView: View {
 
                         Button(action: {
                             renameMacText = state.localDeviceName
-                            showingRenameMacSheet = true
+                            state.showingRenameMacSheet = true
                         }) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -368,7 +394,7 @@ public struct SettingsView: View {
                                     .foregroundColor(ThemeColors.textMuted)
                             }
                             Spacer()
-                            Button(action: { showingExportSheet = true }) {
+                            Button(action: { state.showingExportSheet = true }) {
                                 Text("Export…")
                                     .font(.system(size: 12, weight: .semibold))
                                     .foregroundColor(ThemeColors.accent)
@@ -394,7 +420,7 @@ public struct SettingsView: View {
                             Spacer()
                             Button(action: {
                                 deleteAllConfirmText = ""
-                                showingDeleteAllSheet = true
+                                state.showingDeleteAllSheet = true
                             }) {
                                 Text("Delete…")
                                     .font(.system(size: 12, weight: .semibold))
@@ -534,7 +560,7 @@ public struct SettingsView: View {
                 self.pendingRestoreFile = file
                 self.restoreInspection = inspection
                 self.restoreStatusMessage = nil
-                self.showingRestoreSheet = true
+                self.state.showingRestoreSheet = true
             } catch {
                 let alert = NSAlert()
                 alert.messageText = "Cannot Restore Backup"
@@ -586,7 +612,7 @@ public struct SettingsView: View {
 
             HStack {
                 Button("Cancel") {
-                    showingRestoreSheet = false
+                    state.showingRestoreSheet = false
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(ThemeColors.textMuted)
@@ -598,7 +624,7 @@ public struct SettingsView: View {
                         let res = try state.restore(from: pendingRestoreFile, replace: false)
                         restoreStatusMessage = res
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                            showingRestoreSheet = false
+                            state.showingRestoreSheet = false
                         }
                     } catch {
                         restoreStatusMessage = "Error: \(error.localizedDescription)"
@@ -612,7 +638,7 @@ public struct SettingsView: View {
                         let res = try state.restore(from: pendingRestoreFile, replace: true)
                         restoreStatusMessage = res
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                            showingRestoreSheet = false
+                            state.showingRestoreSheet = false
                         }
                     } catch {
                         restoreStatusMessage = "Error: \(error.localizedDescription)"
@@ -640,7 +666,7 @@ public struct SettingsView: View {
 
             HStack {
                 Button("Cancel") {
-                    showingExportSheet = false
+                    state.showingExportSheet = false
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(ThemeColors.textMuted)
@@ -648,7 +674,7 @@ public struct SettingsView: View {
                 Spacer()
 
                 Button("Export CSV…") {
-                    showingExportSheet = false
+                    state.showingExportSheet = false
                     let panel = NSOpenPanel()
                     panel.title = "Select Folder for CSV Export"
                     panel.canChooseFiles = false
@@ -662,7 +688,7 @@ public struct SettingsView: View {
                 .tint(ThemeColors.accent)
 
                 Button("Export JSON…") {
-                    showingExportSheet = false
+                    state.showingExportSheet = false
                     let panel = NSSavePanel()
                     panel.title = "Export JSON File"
                     panel.nameFieldStringValue = "timesink-export.json"
@@ -696,7 +722,7 @@ public struct SettingsView: View {
             HStack {
                 Spacer()
                 Button("Cancel") {
-                    showingDeleteAllSheet = false
+                    state.showingDeleteAllSheet = false
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(ThemeColors.textMuted)
@@ -704,7 +730,7 @@ public struct SettingsView: View {
                 Button("Delete") {
                     if deleteAllConfirmText.trimmingCharacters(in: .whitespaces) == "DELETE" {
                         try? state.deleteAllHistory(confirmation: "DELETE")
-                        showingDeleteAllSheet = false
+                        state.showingDeleteAllSheet = false
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -734,14 +760,14 @@ public struct SettingsView: View {
             HStack {
                 Spacer()
                 Button("Cancel") {
-                    showingRenameMacSheet = false
+                    state.showingRenameMacSheet = false
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(ThemeColors.textMuted)
 
                 Button("Save") {
                     state.renameDevice(deviceId: state.localDeviceId, newName: renameMacText)
-                    showingRenameMacSheet = false
+                    state.showingRenameMacSheet = false
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(ThemeColors.accent)

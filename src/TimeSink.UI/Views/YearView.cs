@@ -128,7 +128,7 @@ public sealed class YearView : UserControl, ILiveView
         }
     }
 
-    private void NavigateYear(int delta)
+    public void NavigateYear(int delta)
     {
         var target = _selectedYear + delta;
         var todayYear = DateTime.Today.Year;

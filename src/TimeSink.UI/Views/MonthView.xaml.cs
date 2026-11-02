@@ -67,6 +67,8 @@ public partial class MonthView : UserControl, ILiveView
         return new PeriodNavigator(PeriodUnit.Month, _firstTracked ?? today, today);
     }
 
+    public void NavigateMonth(int delta) => Navigate(delta);
+
     private void Navigate(int delta)
     {
         var months = Months();

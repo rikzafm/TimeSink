@@ -95,7 +95,7 @@ public sealed partial class AddAppView
 
     private byte[]? CurrentIcon(TrackedEntry app) => _catalogue.StoredIcon(app.Id) ?? _trackedIcons.GetValueOrDefault(app.Id);
 
-    private void ShowIconPicker(TrackedEntry app, IconPick pick) => Content = BuildIconPicker(app, pick);
+    private void ShowIconPicker(TrackedEntry app, IconPick pick) { _showingIconPicker = true; Content = BuildIconPicker(app, pick); }
 
     private UIElement BuildIconPicker(TrackedEntry app, IconPick pick)
     {
