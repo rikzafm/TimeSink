@@ -60,7 +60,36 @@ elif [ -d "$BIN_DIR/PackageFrameworks/SQLCipher.framework" ]; then
     cp -R "$BIN_DIR/PackageFrameworks/SQLCipher.framework" "$APP_DIR/Contents/Frameworks/"
 fi
 
-# 4. Icon if available
+# 4. Icon if available, or generate from default comic.ticks.ico
+if [ ! -f "$REPO_ROOT/mac/AppIcon.icns" ]; then
+    echo "==> Generating AppIcon.icns..."
+    python3 -c "
+import struct, os, subprocess
+ico_path = '$REPO_ROOT/src/TimeSink.Core/Icons/comic.ticks.ico'
+if os.path.exists(ico_path):
+    with open(ico_path, 'rb') as f:
+        data = f.read()
+    count = struct.unpack('<H', data[4:6])[0]
+    best_offset, best_len, max_size = None, None, 0
+    for i in range(count):
+        entry = data[6 + i * 16 : 6 + (i + 1) * 16]
+        w = entry[0] or 256
+        length, offset = struct.unpack('<II', entry[8:16])
+        if w >= max_size:
+            max_size, best_offset, best_len = w, offset, length
+    png_data = data[best_offset : best_offset + best_len]
+    iconset_dir = '/tmp/TimeSink_AppIcon.iconset'
+    os.makedirs(iconset_dir, exist_ok=True)
+    base_png = os.path.join(iconset_dir, 'icon_256x256@2x.png')
+    with open(base_png, 'wb') as f:
+        f.write(png_data)
+    sizes = [(16, 'icon_16x16.png'), (32, 'icon_16x16@2x.png'), (32, 'icon_32x32.png'), (64, 'icon_32x32@2x.png'), (128, 'icon_128x128.png'), (256, 'icon_128x128@2x.png'), (256, 'icon_256x256.png'), (512, 'icon_256x256@2x.png')]
+    for sz, name in sizes:
+        subprocess.run(['sips', '-z', str(sz), str(sz), base_png, '--out', os.path.join(iconset_dir, name)], stdout=subprocess.DEVNULL, check=True)
+    subprocess.run(['iconutil', '-c', 'icns', iconset_dir, '-o', '$REPO_ROOT/mac/AppIcon.icns'], check=True)
+" 2>/dev/null || true
+fi
+
 if [ -f "$REPO_ROOT/mac/AppIcon.icns" ]; then
     cp "$REPO_ROOT/mac/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 fi

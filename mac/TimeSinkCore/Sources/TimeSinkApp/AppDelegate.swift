@@ -72,8 +72,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                     showTime: self?.appState?.showMenuBarTime ?? false,
                     iconId: self?.appState?.appIcon
                 )
-                if self?.appState?.appIcon == "clean.clock" {
-                    self?.updateDockIcon("clean.clock")
+                if let currentIcon = self?.appState?.appIcon {
+                    self?.updateDockIcon(currentIcon)
                 }
             }
             appState.onMenuBarTimeChanged = { [weak self] todaySec, showTime in
@@ -114,8 +114,23 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateDockIcon(_ iconId: String) {
-        if let appImg = IconCatalogue.image(for: iconId, size: 256, accentColor: NSColor(ThemeColors.accent)) {
-            NSApp.applicationIconImage = appImg
+        let accentColor = NSColor(ThemeColors.accent)
+        guard let appImg = IconCatalogue.image(for: iconId, size: 512, accentColor: accentColor) ??
+                           IconCatalogue.image(for: iconId, size: 256, accentColor: accentColor) else {
+            return
+        }
+        NSApp.applicationIconImage = appImg
+
+        let mainBundlePath = Bundle.main.bundleURL.path
+        if !mainBundlePath.isEmpty && FileManager.default.fileExists(atPath: mainBundlePath) {
+            NSWorkspace.shared.setIcon(appImg, forFile: mainBundlePath, options: [])
+            NSWorkspace.shared.noteFileSystemChanged(mainBundlePath)
+        }
+
+        let installedPath = "/Applications/TimeSink.app"
+        if mainBundlePath != installedPath && FileManager.default.fileExists(atPath: installedPath) {
+            NSWorkspace.shared.setIcon(appImg, forFile: installedPath, options: [])
+            NSWorkspace.shared.noteFileSystemChanged(installedPath)
         }
     }
 

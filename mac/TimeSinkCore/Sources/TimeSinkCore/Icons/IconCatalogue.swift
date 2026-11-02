@@ -110,6 +110,18 @@ public enum IconCatalogue {
 
     public static func drawClockImage(size: CGFloat, accentColor: NSColor) -> NSImage {
         let img = NSImage(size: NSSize(width: size, height: size), flipped: true) { _ in
+            if size >= 128 {
+                let inset = size * (16.0 / 256.0)
+                let rect = NSRect(x: inset, y: inset, width: size - 2 * inset, height: size - 2 * inset)
+                let corner = size * (56.0 / 256.0)
+                let tile = NSBezierPath(roundedRect: rect, xRadius: corner, yRadius: corner)
+                NSColor(red: 0.063, green: 0.082, blue: 0.063, alpha: 1.0).setFill()
+                tile.fill()
+                NSColor(red: 0.149, green: 0.173, blue: 0.122, alpha: 1.0).setStroke()
+                tile.lineWidth = size * (4.0 / 256.0)
+                tile.stroke()
+            }
+
             let scale = size / 12.0
             accentColor.setStroke()
             let ring = NSBezierPath(ovalIn: NSRect(x: 1.5 * scale, y: 1.5 * scale, width: 9 * scale, height: 9 * scale))
