@@ -117,12 +117,8 @@ struct FooterSyncStatusView: View {
                 isSpinning = true
             }
         }
-        .onChange(of: state.isSyncing) { syncing in
-            if syncing {
-                isSpinning = true
-            } else {
-                isSpinning = false
-            }
+        .onChange(of: state.isSyncing) { _, syncing in
+            isSpinning = syncing
         }
     }
 
