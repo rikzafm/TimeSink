@@ -182,5 +182,25 @@ public sealed class DevicesAndSyncSettingsTests : IDisposable
         cmd.CommandText = "SELECT canonical_id FROM apps WHERE id = 1";
         cmd.ExecuteScalar().Should().Be(DBNull.Value);
     }
+
+    [Fact]
+    public void DeviceIdentity_MergeMatchingCrossDeviceApps_merges_same_device_duplicate_apps()
+    {
+        using var db = Db.Open(_dbPath);
+        // Add a 3rd app on the same local device with the same display name
+        using (var ins = db.Connection.CreateCommand())
+        {
+            ins.CommandText = "INSERT INTO apps (id, display_name, exe_path, state, added_utc, device_id) VALUES (3, 'Code', 'C:\\app3.exe', 'tracked', 300, $dev);";
+            ins.Parameters.AddWithValue("$dev", WinDevId);
+            ins.ExecuteNonQuery();
+        }
+
+        var mergedCount = DeviceIdentity.MergeMatchingCrossDeviceApps(db);
+        mergedCount.Should().Be(2);
+
+        using var cmd = db.Connection.CreateCommand();
+        cmd.CommandText = "SELECT canonical_id FROM apps WHERE id = 3";
+        cmd.ExecuteScalar().Should().Be(1L);
+    }
 }
 

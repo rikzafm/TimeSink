@@ -228,7 +228,7 @@ public static class DeviceIdentity
                 SELECT display_name FROM apps
                 WHERE canonical_id IS NULL AND state = 'tracked'
                 GROUP BY display_name
-                HAVING COUNT(DISTINCT device_id) > 1;
+                HAVING COUNT(*) > 1;
                 """;
             using var r = cmd.ExecuteReader();
             while (r.Read())

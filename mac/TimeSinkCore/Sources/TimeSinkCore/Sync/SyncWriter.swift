@@ -35,8 +35,9 @@ public enum SyncWriter {
         try createSnapshotDatabase(sourceDb: db, snapshotDbPath: snapshotDbPath, localDeviceId: localDeviceId)
 
         // 2. Count sessions and calculate SHA-256
-        let snapDb = try SQLiteDatabase(path: snapshotDbPath)
+        let snapDb = try SQLiteDatabase(path: snapshotDbPath, allowPlaintext: true)
         let sessionCount = Int((try snapDb.scalarInt("SELECT COUNT(*) FROM sessions;")) ?? 0)
+        snapDb.close()
 
         let snapData = try Data(contentsOf: URL(fileURLWithPath: snapshotDbPath))
         let hashBytes = SHA256.hash(data: snapData)
@@ -62,9 +63,7 @@ public enum SyncWriter {
         try manifestData.write(to: URL(fileURLWithPath: manifestPath))
 
         // 4. Create ZIP archive using /usr/bin/zip
-        if fm.fileExists(atPath: tmpFile) {
-            try fm.removeItem(atPath: tmpFile)
-        }
+        try? fm.removeItem(atPath: tmpFile)
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
@@ -78,16 +77,15 @@ public enum SyncWriter {
         }
 
         // 5. Atomic rename to targetFile
-        if fm.fileExists(atPath: targetFile) {
-            try fm.removeItem(atPath: targetFile)
-        }
+        try? fm.removeItem(atPath: targetFile)
         try fm.moveItem(atPath: tmpFile, toPath: targetFile)
 
         return targetFile
     }
 
     private static func createSnapshotDatabase(sourceDb: SQLiteDatabase, snapshotDbPath: String, localDeviceId: String) throws {
-        let snapDb = try SQLiteDatabase(path: snapshotDbPath)
+        let snapDb = try SQLiteDatabase(path: snapshotDbPath, allowPlaintext: true)
+        try snapDb.exec("PRAGMA journal_mode = DELETE;")
         try snapDb.exec("""
             PRAGMA user_version = 4;
 
@@ -138,9 +136,10 @@ public enum SyncWriter {
                 target_bundle_id TEXT NOT NULL DEFAULT ''
             );
             """)
+        snapDb.close()
 
         let escapedSnapPath = snapshotDbPath.replacingOccurrences(of: "'", with: "''")
-        try sourceDb.exec("ATTACH DATABASE '\(escapedSnapPath)' AS snap;")
+        try sourceDb.exec("ATTACH DATABASE '\(escapedSnapPath)' AS snap KEY '';")
         defer {
             try? sourceDb.exec("DETACH DATABASE snap;")
         }

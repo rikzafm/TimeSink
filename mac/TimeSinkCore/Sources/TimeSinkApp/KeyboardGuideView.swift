@@ -164,7 +164,7 @@ public struct KeyboardGuideView: View {
             .padding(.vertical, 2)
             .background(
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(ThemeColors.controlBackground)
+                    .fill(ThemeColors.surfaceRaised)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 4)

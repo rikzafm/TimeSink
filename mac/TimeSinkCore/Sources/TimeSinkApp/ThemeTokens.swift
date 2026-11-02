@@ -67,6 +67,7 @@ public enum ThemeColors {
             ? Color(red: 0.086, green: 0.106, blue: 0.067) // #161b11
             : Color(hex: 0xebefe3)
     }
+    public static var controlBackground: Color { surfaceRaised }
 
     // Borders
     public static var border: Color {

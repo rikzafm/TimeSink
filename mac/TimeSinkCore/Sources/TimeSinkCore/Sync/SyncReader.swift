@@ -96,8 +96,9 @@ public enum SyncReader {
         }
 
         // Integrity check
-        let snapDb = try SQLiteDatabase(path: extractedDbPath)
+        let snapDb = try SQLiteDatabase(path: extractedDbPath, allowPlaintext: true)
         let integrity = try snapDb.scalarText("PRAGMA integrity_check;")
+        snapDb.close()
         guard integrity == "ok" else {
             return SyncImportResult(status: .badHash, message: "snapshot.db failed integrity check")
         }
@@ -127,7 +128,7 @@ public enum SyncReader {
         var sessionsSkipped = 0
 
         let escapedExtractedPath = extractedDbPath.replacingOccurrences(of: "'", with: "''")
-        try db.exec("ATTACH DATABASE '\(escapedExtractedPath)' AS src;")
+        try db.exec("ATTACH DATABASE '\(escapedExtractedPath)' AS src KEY '';")
         defer {
             try? db.exec("DETACH DATABASE src;")
         }

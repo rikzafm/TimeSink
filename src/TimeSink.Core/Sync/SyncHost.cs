@@ -169,6 +169,18 @@ public sealed class SyncHost : IDisposable
                 return;
             }
 
+            if (anyRemoteFound)
+            {
+                try
+                {
+                    DeviceIdentity.MergeMatchingCrossDeviceApps(db);
+                }
+                catch (Exception ex)
+                {
+                    _log?.Invoke($"sync: auto-merge matching apps error: {ex.Message}");
+                }
+            }
+
             // 3. Update sync state and check 10-minute discovery window
             UpdateSyncState(db, now, anyRemoteFound, placeholderDetected);
         }

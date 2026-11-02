@@ -322,6 +322,8 @@ public partial class FlyoutWindow : Window
                         if (SyncReader.IsPlaceholder(file)) continue;
                         SyncReader.Import(file, _dbPath, TimeZoneInfo.Local);
                     }
+                    using var autoMergeDb = Db.Open(_dbPath);
+                    DeviceIdentity.MergeMatchingCrossDeviceApps(autoMergeDb);
                 }
             }
         }

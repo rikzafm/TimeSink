@@ -47,7 +47,7 @@ public enum KeychainError: Error, LocalizedError, CustomStringConvertible, Senda
 /// with service `com.timesink.dbkey` and accessibility `kSecAttrAccessibleAfterFirstUnlock`.
 public final class KeychainKeyManager: KeyManagerProtocol, @unchecked Sendable {
     /// Shared default instance of the key manager.
-    public static var shared: KeyManagerProtocol = KeychainKeyManager()
+    public nonisolated(unsafe) static var shared: KeyManagerProtocol = KeychainKeyManager()
 
     /// Standard concrete singleton instance.
     public static let standard = KeychainKeyManager()
