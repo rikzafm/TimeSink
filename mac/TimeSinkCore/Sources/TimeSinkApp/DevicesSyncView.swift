@@ -119,7 +119,8 @@ public struct DevicesSyncView: View {
                     // Manage Synced Apps Card
                     let allDevices = state.readDevices()
                     let hasRemote = allDevices.contains { !$0.isLocal && $0.state == "active" }
-                    if state.syncEnabled || hasRemote {
+                    let hasSyncedApps = (try? MacAppLibrary(db: state.db).getTrackedApps().contains { !$0.deviceId.isEmpty && !state.isLocalDevice($0.deviceId) || $0.mergedDeviceIds.contains { !$0.isEmpty && !state.isLocalDevice($0) } }) ?? false
+                    if state.syncEnabled || hasRemote || hasSyncedApps {
                         Button(action: {
                             state.showingSettings = false
                             state.showingDevicesSync = true
