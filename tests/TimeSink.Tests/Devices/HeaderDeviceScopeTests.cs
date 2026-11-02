@@ -85,9 +85,8 @@ public sealed class HeaderDeviceScopeTests : IDisposable
     public void Control_is_hidden_with_single_device_and_sync_off()
     {
         // Initially single local device created by migration, sync is off
-        using (var conn = new SqliteConnection($"Data Source={_dbPath}"))
+        using (var conn = Db.CreateConnection(_dbPath))
         {
-            conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT COUNT(*) FROM devices WHERE is_local = 0;";
             var remoteCount = (long)(cmd.ExecuteScalar() ?? 0L);
@@ -110,9 +109,8 @@ public sealed class HeaderDeviceScopeTests : IDisposable
 
         // 2. Sync off but remote device added makes it visible
         AppSettings.ForFile(_dbPath).Set(Setting.SyncEnabled, false);
-        using (var conn = new SqliteConnection($"Data Source={_dbPath}"))
+        using (var conn = Db.CreateConnection(_dbPath))
         {
-            conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO devices (device_id, name, platform, is_local, first_seen_utc, state)
@@ -130,8 +128,7 @@ public sealed class HeaderDeviceScopeTests : IDisposable
         if (syncOn) return true;
         try
         {
-            using var conn = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
-            conn.Open();
+            using var conn = Db.CreateConnection(dbPath, SqliteOpenMode.ReadOnly);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT COUNT(*) FROM devices WHERE is_local = 0;";
             var count = (long)(cmd.ExecuteScalar() ?? 0L);

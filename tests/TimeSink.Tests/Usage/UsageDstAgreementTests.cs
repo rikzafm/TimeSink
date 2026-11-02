@@ -40,8 +40,7 @@ public sealed class UsageDstAgreementTests : IDisposable
 
     private void Session(DateTimeOffset start, DateTimeOffset end)
     {
-        using var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = _db, Pooling = false }.ToString());
-        c.Open();
+        using var c = Db.CreateConnection(_db);
         using var cmd = c.CreateCommand();
         cmd.CommandText = "INSERT INTO sessions(app_id,start_utc,end_utc,last_seen_utc,end_reason) VALUES($a,$s,$e,$e,'exit')";
         cmd.Parameters.AddWithValue("$a", _app);

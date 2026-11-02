@@ -18,12 +18,13 @@ public sealed record MergeResult(int AppsAdded, int SessionsAdded, int SessionsS
 public static class RestoreService
 {
     /// <summary>Validates the archive, manifest, schema version and integrity. Throws <see cref="BackupException"/> if unusable.</summary>
-    public static BackupInspection Inspect(string backupFile) => Inspect(backupFile, null);
+    /// <summary>Validates the archive, manifest, schema version and integrity. Throws <see cref="BackupException"/> if unusable.</summary>
+    public static BackupInspection Inspect(string backupFile, byte[]? key = null) => Inspect(backupFile, null, key);
 
-    internal static BackupInspection Inspect(string backupFile, IReadOnlyList<Migration>? migrations)
+    internal static BackupInspection Inspect(string backupFile, IReadOnlyList<Migration>? migrations, byte[]? key = null)
     {
-        using var prepared = Prepare(backupFile, migrations);
-        using var c = Open(prepared.DbPath);
+        using var prepared = Prepare(backupFile, migrations, key);
+        using var c = Open(prepared.DbPath, prepared.IsPlaintext, key);
         return new BackupInspection(prepared.Manifest, (int)Count(c, "apps"), Count(c, "sessions"), prepared.Migrated);
     }
 
@@ -32,24 +33,27 @@ public static class RestoreService
     /// then the live database content is swapped for the backup's inside one transaction, open sessions are closed
     /// as 'restore' and <c>daily_usage</c> is rebuilt. The caller tells the Agent to drop its in-memory sessions.
     /// </summary>
-    public static ReplaceResult Replace(string backupFile, string dbPath, string safetyFolder, DateTimeOffset now, TimeZoneInfo zone) =>
-        Replace(backupFile, dbPath, safetyFolder, now, zone, null);
+    public static ReplaceResult Replace(string backupFile, string dbPath, string safetyFolder, DateTimeOffset now, TimeZoneInfo zone, byte[]? key = null) =>
+        Replace(backupFile, dbPath, safetyFolder, now, zone, null, key);
 
     internal static ReplaceResult Replace(string backupFile, string dbPath, string safetyFolder, DateTimeOffset now, TimeZoneInfo zone,
-        IReadOnlyList<Migration>? migrations)
+        IReadOnlyList<Migration>? migrations, byte[]? key = null)
     {
-        using var prepared = Prepare(backupFile, migrations);
+        using var prepared = Prepare(backupFile, migrations, key);
 
         string? safety = null;
         if (File.Exists(dbPath))
         {
             safety = Path.Combine(safetyFolder, $"pre-restore-{now.UtcDateTime:yyyyMMdd-HHmmss}{BackupService.Extension}");
-            BackupService.Create(dbPath, safety, now);
+            BackupService.Create(dbPath, safety, now, key: key);
         }
 
-        using var db = Db.Open(dbPath);
+        using var db = Db.Open(dbPath, key);
         var c = db.Connection;
-        Exec(c, $"ATTACH DATABASE '{Quote(prepared.DbPath)}' AS src");
+        var attachSql = prepared.IsPlaintext
+            ? $"ATTACH DATABASE '{Quote(prepared.DbPath)}' AS src KEY ''"
+            : $"ATTACH DATABASE '{Quote(prepared.DbPath)}' AS src KEY 'x''{Convert.ToHexString(Db.GetDatabaseKey(key))}'''";
+        Exec(c, attachSql);
         try
         {
             using (var tx = c.BeginTransaction())
@@ -76,14 +80,17 @@ public static class RestoreService
     /// <c>INSERT OR IGNORE</c> on <c>(app_id, start_utc)</c>, so merging the same file again changes nothing.
     /// Existing settings are never overwritten. <c>daily_usage</c> is rebuilt afterwards.
     /// </summary>
-    public static MergeResult Merge(string backupFile, string dbPath, TimeZoneInfo zone) => Merge(backupFile, dbPath, zone, null);
+    public static MergeResult Merge(string backupFile, string dbPath, TimeZoneInfo zone, byte[]? key = null) => Merge(backupFile, dbPath, zone, null, key);
 
-    internal static MergeResult Merge(string backupFile, string dbPath, TimeZoneInfo zone, IReadOnlyList<Migration>? migrations)
+    internal static MergeResult Merge(string backupFile, string dbPath, TimeZoneInfo zone, IReadOnlyList<Migration>? migrations, byte[]? key = null)
     {
-        using var prepared = Prepare(backupFile, migrations);
-        using var db = Db.Open(dbPath);
+        using var prepared = Prepare(backupFile, migrations, key);
+        using var db = Db.Open(dbPath, key);
         var c = db.Connection;
-        Exec(c, $"ATTACH DATABASE '{Quote(prepared.DbPath)}' AS src");
+        var attachSql = prepared.IsPlaintext
+            ? $"ATTACH DATABASE '{Quote(prepared.DbPath)}' AS src KEY ''"
+            : $"ATTACH DATABASE '{Quote(prepared.DbPath)}' AS src KEY 'x''{Convert.ToHexString(Db.GetDatabaseKey(key))}'''";
+        Exec(c, attachSql);
         int appsAdded, added, skipped;
         try
         {
@@ -150,11 +157,12 @@ public static class RestoreService
 
     // ---- preparation: unzip, validate, migrate a temp copy -------------------------------------------------
 
-    private sealed class Prepared(string dir, string dbPath, BackupManifest manifest, bool migrated) : IDisposable
+    private sealed class Prepared(string dir, string dbPath, BackupManifest manifest, bool migrated, bool isPlaintext) : IDisposable
     {
         public string DbPath { get; } = dbPath;
         public BackupManifest Manifest { get; } = manifest;
         public bool Migrated { get; } = migrated;
+        public bool IsPlaintext { get; } = isPlaintext;
 
         public void Dispose()
         {
@@ -163,7 +171,7 @@ public static class RestoreService
         }
     }
 
-    private static Prepared Prepare(string backupFile, IReadOnlyList<Migration>? migrations)
+    private static Prepared Prepare(string backupFile, IReadOnlyList<Migration>? migrations, byte[]? key = null)
     {
         migrations ??= Migrator.Shipped;
         var latest = migrations.Max(m => m.Version);
@@ -190,8 +198,9 @@ public static class RestoreService
             if (manifest.SchemaVersion > latest)
                 throw new BackupException($"This backup was made by a newer version of TimeSink (schema {manifest.SchemaVersion}, this version understands {latest}). Update TimeSink to restore it.");
 
+            var isPlaintext = EncryptionMigrator.IsPlaintextDatabase(dbPath);
             var migrated = false;
-            using (var c = Open(dbPath))
+            using (var c = Open(dbPath, isPlaintext, key))
             {
                 string integrity;
                 try { integrity = Scalar(c, "PRAGMA integrity_check") as string ?? ""; }
@@ -202,7 +211,7 @@ public static class RestoreService
                 if (version < latest) { Migrator.Migrate(c, migrations); migrated = true; }
             }
             SqliteConnection.ClearAllPools();
-            return new Prepared(dir, dbPath, manifest, migrated);
+            return new Prepared(dir, dbPath, manifest, migrated, isPlaintext);
         }
         catch
         {
@@ -214,14 +223,18 @@ public static class RestoreService
 
     // ---- small SQL helpers ---------------------------------------------------------------------------------
 
-    private static SqliteConnection Open(string path)
+    private static SqliteConnection Open(string path, bool isPlaintext, byte[]? key = null)
     {
-        var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString());
-        c.Open();
-        return c;
+        if (isPlaintext)
+        {
+            var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString());
+            c.Open();
+            return c;
+        }
+        return Db.CreateConnection(path, SqliteOpenMode.ReadWrite, key);
     }
 
-    private static string Quote(string path) => path.Replace("'", "''");
+    private static string Quote(string path) => path.Replace('\\', '/').Replace("'", "''");
 
     private static object? Scalar(SqliteConnection c, string sql)
     {

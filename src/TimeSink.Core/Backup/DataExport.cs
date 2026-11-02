@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Data;
 
 namespace TimeSink.Core.Backup;
 
@@ -122,8 +123,7 @@ public static class DataExport
 
     private static SqliteConnection Open(string dbPath)
     {
-        var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
-        c.Open();
+        var c = Db.CreateConnection(dbPath, SqliteOpenMode.ReadOnly);
         using var p = c.CreateCommand();
         p.CommandText = "PRAGMA busy_timeout=5000";
         p.ExecuteNonQuery();
@@ -141,8 +141,7 @@ public static class HistoryDeleter
         if (!string.Equals(typedConfirmation, Confirmation, StringComparison.Ordinal))
             throw new ArgumentException($"Type {Confirmation} to confirm.", nameof(typedConfirmation));
 
-        using var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = dbPath, Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString());
-        c.Open();
+        using var c = Db.CreateConnection(dbPath, SqliteOpenMode.ReadWrite);
         using var tx = c.BeginTransaction();
         using var cmd = c.CreateCommand();
         cmd.CommandText = "PRAGMA busy_timeout=5000";

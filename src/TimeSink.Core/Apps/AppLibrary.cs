@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Data;
 using TimeSink.Core.Devices;
 
 namespace TimeSink.Core.Apps;
@@ -46,11 +47,7 @@ public sealed class AppLibrary : IDisposable
 
     public static AppLibrary Open(string dbPath)
     {
-        var c = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath, Mode = SqliteOpenMode.ReadWrite, Pooling = false,
-        }.ToString());
-        c.Open();
+        var c = Db.CreateConnection(dbPath, SqliteOpenMode.ReadWrite);
         using var p = c.CreateCommand();
         p.CommandText = "PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;";
         p.ExecuteNonQuery();

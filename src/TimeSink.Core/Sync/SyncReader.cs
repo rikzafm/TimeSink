@@ -203,10 +203,10 @@ public static partial class SyncReader
             int sessionsUpdated = 0;
             int sessionsSkipped = 0;
 
-            var escapedPath = extractedDbPath.Replace("'", "''");
+            var escapedPath = extractedDbPath.Replace('\\', '/').Replace("'", "''");
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = $"ATTACH DATABASE '{escapedPath}' AS src;";
+                cmd.CommandText = $"ATTACH DATABASE '{escapedPath}' AS src KEY '';";
                 cmd.ExecuteNonQuery();
             }
 

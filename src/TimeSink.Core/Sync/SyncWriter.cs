@@ -162,10 +162,10 @@ public static class SyncWriter
         }
 
         // Attach snapshotDb to sourceConn and copy data for localDeviceId only
-        var escapedPath = snapshotDbPath.Replace("'", "''");
+        var escapedPath = snapshotDbPath.Replace('\\', '/').Replace("'", "''");
         using (var cmd = sourceConn.CreateCommand())
         {
-            cmd.CommandText = $"ATTACH DATABASE '{escapedPath}' AS snap;";
+            cmd.CommandText = $"ATTACH DATABASE '{escapedPath}' AS snap KEY '';";
             cmd.ExecuteNonQuery();
         }
 

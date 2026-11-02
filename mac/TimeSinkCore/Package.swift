@@ -16,23 +16,51 @@ let package = Package(
             targets: ["TimeSinkApp"]
         )
     ],
-    dependencies: [],
+    dependencies: [
+        .package(url: "https://github.com/sqlcipher/SQLCipher.swift.git", from: "4.10.0")
+    ],
     targets: [
         .target(
             name: "TimeSinkCore",
-            dependencies: [],
+            dependencies: [
+                .product(name: "SQLCipher", package: "SQLCipher.swift")
+            ],
             path: "Sources/TimeSinkCore",
-            resources: [.copy("Resources")]
+            resources: [.copy("Resources")],
+            cSettings: [
+                .define("SQLITE_HAS_CODEC")
+            ],
+            swiftSettings: [
+                .define("SQLITE_HAS_CODEC")
+            ]
         ),
         .executableTarget(
             name: "TimeSinkApp",
-            dependencies: ["TimeSinkCore"],
-            path: "Sources/TimeSinkApp"
+            dependencies: [
+                "TimeSinkCore",
+                .product(name: "SQLCipher", package: "SQLCipher.swift")
+            ],
+            path: "Sources/TimeSinkApp",
+            cSettings: [
+                .define("SQLITE_HAS_CODEC")
+            ],
+            swiftSettings: [
+                .define("SQLITE_HAS_CODEC")
+            ]
         ),
         .testTarget(
             name: "TimeSinkCoreTests",
-            dependencies: ["TimeSinkCore"],
-            path: "Tests/TimeSinkCoreTests"
+            dependencies: [
+                "TimeSinkCore",
+                .product(name: "SQLCipher", package: "SQLCipher.swift")
+            ],
+            path: "Tests/TimeSinkCoreTests",
+            cSettings: [
+                .define("SQLITE_HAS_CODEC")
+            ],
+            swiftSettings: [
+                .define("SQLITE_HAS_CODEC")
+            ]
         )
     ]
 )

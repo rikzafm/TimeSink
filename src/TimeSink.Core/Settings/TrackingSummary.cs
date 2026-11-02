@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Data;
 
 namespace TimeSink.Core.Settings;
 
@@ -11,9 +12,7 @@ public sealed record TrackingSummary(DateTimeOffset? FirstAddedUtc, int AppCount
         if (!File.Exists(dbPath)) return new(null, 0);
         try
         {
-            using var c = new SqliteConnection(new SqliteConnectionStringBuilder
-                { DataSource = dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
-            c.Open();
+            using var c = Db.CreateConnection(dbPath, SqliteOpenMode.ReadOnly);
             using var cmd = c.CreateCommand();
             cmd.CommandText = "SELECT MIN(added_utc), COUNT(*) FROM apps WHERE state = 'tracked'";
             using var r = cmd.ExecuteReader();

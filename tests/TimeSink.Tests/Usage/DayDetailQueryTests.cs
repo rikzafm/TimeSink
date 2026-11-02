@@ -25,8 +25,7 @@ public sealed class DayDetailQueryTests : IDisposable
             using (var d = Db.Open(db))
             {
                 var app = d.InsertApp(@"c:\chrome.exe", "Chrome", TodayFixture.U(2026, 3, 1, 0));
-                using var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = db, Pooling = false }.ToString());
-                c.Open();
+                using var c = Db.CreateConnection(db);
                 using var cmd = c.CreateCommand();
                 cmd.CommandText = "INSERT INTO sessions(app_id,start_utc,end_utc,last_seen_utc,end_reason) VALUES($a,$s,$e,$e,'exit')";
                 cmd.Parameters.AddWithValue("$a", app);

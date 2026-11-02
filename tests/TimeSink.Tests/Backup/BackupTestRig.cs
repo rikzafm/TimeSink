@@ -37,9 +37,7 @@ public sealed class BackupTestRig : IDisposable
 
     public SqliteConnection Open(string path)
     {
-        var c = new SqliteConnection($"Data Source={path};Pooling=False");
-        c.Open();
-        return c;
+        return Db.CreateConnection(path);
     }
 
     public static void Exec(SqliteConnection c, string sql, params (string, object)[] args)

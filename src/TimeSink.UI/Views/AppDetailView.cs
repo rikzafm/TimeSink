@@ -119,9 +119,7 @@ public sealed class AppDetailView : UserControl
     {
         try
         {
-            using var conn = new SqliteConnection(
-                new SqliteConnectionStringBuilder { DataSource = _dbPath, Mode = SqliteOpenMode.ReadOnly }.ToString());
-            conn.Open();
+            using var conn = Db.CreateConnection(_dbPath, SqliteOpenMode.ReadOnly);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT COUNT(*) FROM apps WHERE canonical_id = $id";
             cmd.Parameters.AddWithValue("$id", id);

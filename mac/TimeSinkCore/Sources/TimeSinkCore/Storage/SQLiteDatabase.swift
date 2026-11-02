@@ -1,7 +1,11 @@
 import Foundation
+#if canImport(SQLCipher)
+import SQLCipher
+#elseif canImport(SQLite3)
 import SQLite3
+#endif
 
-public enum SQLiteError: Error, LocalizedError, CustomStringConvertible {
+public enum SQLiteError: Error, LocalizedError, CustomStringConvertible, Sendable {
     case openFailed(String)
     case prepareFailed(String)
     case stepFailed(String)
@@ -28,9 +32,28 @@ public enum SQLiteError: Error, LocalizedError, CustomStringConvertible {
 public final class SQLiteDatabase: @unchecked Sendable {
     public let path: String
     private var db: OpaquePointer?
+    public let key: Data?
 
-    public init(path: String) throws {
+    public init(path: String, key: Data? = nil, allowPlaintext: Bool = false) throws {
         self.path = path
+        var resolvedKey: Data? = key
+
+        if !allowPlaintext && path != ":memory:" {
+            // Check for unencrypted database via EncryptionMigrator and trigger migration
+            if FileManager.default.fileExists(atPath: path) && EncryptionMigrator.isPlaintextDatabase(at: path) {
+                let migrationKey = try (key ?? KeychainKeyManager.shared.getOrCreateDatabaseKey())
+                try EncryptionMigrator.migrate(at: path, key: migrationKey)
+                resolvedKey = migrationKey
+            }
+
+            // Obtain key from KeychainKeyManager.shared if key is nil
+            if resolvedKey == nil {
+                resolvedKey = try KeychainKeyManager.shared.getOrCreateDatabaseKey()
+            }
+        }
+
+        self.key = resolvedKey
+
         var handle: OpaquePointer?
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
         let result = sqlite3_open_v2(path, &handle, flags, nil)
@@ -41,6 +64,23 @@ public final class SQLiteDatabase: @unchecked Sendable {
         }
         self.db = validHandle
 
+        // If key is supplied, configure SQLCipher encryption
+        if let keyData = resolvedKey {
+            let hexKey = keyData.map { String(format: "%02x", $0) }.joined()
+            try exec("PRAGMA key = \"x'\(hexKey)'\";")
+            try exec("PRAGMA cipher_page_size = 4096;")
+            try exec("PRAGMA kdf_iter = 256000;")
+
+            // Verify decryption immediately
+            do {
+                _ = try scalarInt("SELECT count(*) FROM sqlite_master;")
+            } catch {
+                sqlite3_close_v2(validHandle)
+                self.db = nil
+                throw SQLiteError.openFailed("Failed to decrypt database with provided key: \(error.localizedDescription)")
+            }
+        }
+
         // Configure default pragmas: WAL mode, 5s busy timeout, foreign keys enabled
         try exec("PRAGMA journal_mode = WAL;")
         try exec("PRAGMA busy_timeout = 5000;")
@@ -48,7 +88,7 @@ public final class SQLiteDatabase: @unchecked Sendable {
     }
 
     public static func inMemory() throws -> SQLiteDatabase {
-        try SQLiteDatabase(path: ":memory:")
+        try SQLiteDatabase(path: ":memory:", key: nil, allowPlaintext: true)
     }
 
     deinit {
@@ -141,8 +181,9 @@ public final class SQLiteDatabase: @unchecked Sendable {
         }
     }
 
-    /// Online database backup using SQLite Online Backup API (equivalent to VACUUM INTO)
-    public func backup(to destinationPath: String) throws {
+    /// Online database backup using SQLite Online Backup API (equivalent to VACUUM INTO).
+    /// Supports encrypted-to-encrypted backups by keying the destination handle prior to backup initialization.
+    public func backup(to destinationPath: String, destKey: Data? = nil) throws {
         guard let sourceHandle = db else { throw SQLiteError.generic("Source database is closed") }
 
         // Remove destination file if exists
@@ -158,6 +199,15 @@ public final class SQLiteDatabase: @unchecked Sendable {
             throw SQLiteError.backupFailed(msg)
         }
         defer { if let destHandle = destHandle { sqlite3_close(destHandle) } }
+
+        // Inherit source key by default for destination handle so snapshot is encrypted
+        let keyToApply = destKey ?? self.key
+        if let keyToApply = keyToApply {
+            let hex = keyToApply.map { String(format: "%02x", $0) }.joined()
+            sqlite3_exec(destHandle, "PRAGMA key = \"x'\(hex)'\";", nil, nil, nil)
+            sqlite3_exec(destHandle, "PRAGMA cipher_page_size = 4096;", nil, nil, nil)
+            sqlite3_exec(destHandle, "PRAGMA kdf_iter = 256000;", nil, nil, nil)
+        }
 
         guard let backup = sqlite3_backup_init(destHandle, "main", sourceHandle, "main") else {
             let msg = String(cString: sqlite3_errmsg(destHandle))

@@ -100,9 +100,8 @@ public class DeviceInfoServiceTests : IDisposable
     [Fact]
     public void Load_ReadsSettingAndDevices_FromDatabase()
     {
-        using (var conn = new SqliteConnection($"Data Source={_dbPath}"))
+        using (var conn = Db.CreateConnection(_dbPath))
         {
-            conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 DELETE FROM devices;
@@ -118,9 +117,8 @@ public class DeviceInfoServiceTests : IDisposable
         info["dev2"].Name.Should().Be("Mac");
 
         // Now toggle off
-        using (var conn = new SqliteConnection($"Data Source={_dbPath}"))
+        using (var conn = Db.CreateConnection(_dbPath))
         {
-            conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "INSERT INTO settings (key, value) VALUES ('devices.shortNames', 'false') ON CONFLICT(key) DO UPDATE SET value = excluded.value;";
             cmd.ExecuteNonQuery();

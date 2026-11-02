@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Data;
 
 namespace TimeSink.Core.Devices;
 
@@ -9,8 +10,7 @@ public static class DeviceInfoService
         var dict = new Dictionary<string, (string Name, bool IsLocal)>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            using var conn = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
-            conn.Open();
+            using var conn = Db.CreateConnection(dbPath, SqliteOpenMode.ReadOnly);
 
             var shortNames = true;
             string? localDevId = null;
@@ -66,8 +66,7 @@ public static class DeviceInfoService
     {
         try
         {
-            using var conn = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
-            conn.Open();
+            using var conn = Db.CreateConnection(dbPath, SqliteOpenMode.ReadOnly);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT COALESCE((SELECT value FROM settings WHERE key = 'device.id'), (SELECT device_id FROM devices WHERE is_local = 1));";
             return cmd.ExecuteScalar() as string;

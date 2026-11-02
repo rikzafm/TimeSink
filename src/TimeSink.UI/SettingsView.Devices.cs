@@ -763,8 +763,7 @@ public sealed partial class SettingsView
     {
         try
         {
-            using var conn = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
-            conn.Open();
+            using var conn = Db.CreateConnection(dbPath, SqliteOpenMode.ReadOnly);
 
             var localDevId = DeviceInfoService.GetLocalDeviceId(dbPath);
 
@@ -808,8 +807,7 @@ public sealed partial class SettingsView
         var list = new List<DeviceRecord>();
         try
         {
-            using var conn = new SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly");
-            conn.Open();
+            using var conn = Db.CreateConnection(_dbPath, SqliteOpenMode.ReadOnly);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT device_id, name, platform, is_local, first_seen_utc, last_import_utc, last_file_utc, state FROM devices ORDER BY is_local DESC, first_seen_utc ASC;";
             using var r = cmd.ExecuteReader();
@@ -834,8 +832,7 @@ public sealed partial class SettingsView
     {
         try
         {
-            using var conn = new SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly");
-            conn.Open();
+            using var conn = Db.CreateConnection(_dbPath, SqliteOpenMode.ReadOnly);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT COUNT(*) FROM apps WHERE device_id = $id AND canonical_id IS NULL AND state = 'tracked';";
             cmd.Parameters.AddWithValue("$id", deviceId);
@@ -848,8 +845,7 @@ public sealed partial class SettingsView
     {
         try
         {
-            using var conn = new SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly");
-            conn.Open();
+            using var conn = Db.CreateConnection(_dbPath, SqliteOpenMode.ReadOnly);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT COALESCE(SUM(seconds), 0) FROM daily_usage WHERE app_id IN (SELECT id FROM apps WHERE device_id = $id);";
             cmd.Parameters.AddWithValue("$id", deviceId);
@@ -864,8 +860,7 @@ public sealed partial class SettingsView
         var result = new List<string>();
         try
         {
-            using var conn = new SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly");
-            conn.Open();
+            using var conn = Db.CreateConnection(_dbPath, SqliteOpenMode.ReadOnly);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
                 SELECT display_name FROM apps

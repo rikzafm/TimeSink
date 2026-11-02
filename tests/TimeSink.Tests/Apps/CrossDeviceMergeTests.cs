@@ -22,8 +22,7 @@ public sealed class CrossDeviceMergeTests : IDisposable
         _dbPath = Path.Combine(_dir, "timesink.db");
 
         using var db = Db.Open(_dbPath);
-        using var conn = new SqliteConnection($"Data Source={_dbPath}");
-        conn.Open();
+        using var conn = Db.CreateConnection(_dbPath);
 
         // 1. Devices
         using (var cmd = conn.CreateCommand())
@@ -232,9 +231,8 @@ public sealed class CrossDeviceMergeTests : IDisposable
         }
 
         // Sessions and daily usage are preserved in the DB
-        using (var conn = new SqliteConnection($"Data Source={_dbPath}"))
+        using (var conn = Db.CreateConnection(_dbPath))
         {
-            conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT COUNT(*) FROM daily_usage";
             ((long)cmd.ExecuteScalar()!).Should().Be(2);

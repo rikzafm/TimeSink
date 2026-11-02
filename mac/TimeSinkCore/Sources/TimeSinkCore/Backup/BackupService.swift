@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(SQLCipher)
+import SQLCipher
+#elseif canImport(SQLite3)
 import SQLite3
+#endif
 
 public final class BackupService: Sendable {
     public static let fileExtension = ".timesink"
@@ -8,7 +12,8 @@ public final class BackupService: Sendable {
         dbPath: String,
         destFile: String,
         now: Date = Date(),
-        appVersion: String = "1.0.0"
+        appVersion: String = "1.0.0",
+        key: Data? = nil
     ) throws {
         let destDir = (destFile as NSString).deletingLastPathComponent
         try FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
@@ -27,8 +32,9 @@ public final class BackupService: Sendable {
         }
 
         let tempDbPath = tempDir.appendingPathComponent(BackupManifest.dbEntryName).path
-        let db = try SQLiteDatabase(path: dbPath)
-        try db.backup(to: tempDbPath)
+        let isPlaintext = EncryptionMigrator.isPlaintextDatabase(at: dbPath)
+        let db = try SQLiteDatabase(path: dbPath, key: isPlaintext ? nil : key, allowPlaintext: isPlaintext)
+        try db.backup(to: tempDbPath, destKey: isPlaintext ? nil : (key ?? db.key))
         let version = db.userVersion
         db.close()
 
@@ -59,13 +65,13 @@ public final class BackupService: Sendable {
         try FileManager.default.moveItem(atPath: partial, toPath: destFile)
     }
 
-    public static func inspect(backupFile: String) throws -> BackupInspection {
-        let prepared = try prepare(backupFile: backupFile)
+    public static func inspect(backupFile: String, key: Data? = nil) throws -> BackupInspection {
+        let prepared = try prepare(backupFile: backupFile, key: key)
         defer {
             try? FileManager.default.removeItem(at: prepared.dir)
         }
 
-        let db = try SQLiteDatabase(path: prepared.dbPath)
+        let db = try SQLiteDatabase(path: prepared.dbPath, key: prepared.isPlaintext ? nil : key, allowPlaintext: prepared.isPlaintext)
         let apps = Int(try db.scalarInt("SELECT COUNT(*) FROM apps;") ?? 0)
         let sessions = Int(try db.scalarInt("SELECT COUNT(*) FROM sessions;") ?? 0)
         db.close()
@@ -83,9 +89,10 @@ public final class BackupService: Sendable {
         dbPath: String,
         safetyFolder: String,
         now: Date = Date(),
-        zone: TimeZone = .current
+        zone: TimeZone = .current,
+        key: Data? = nil
     ) throws -> ReplaceResult {
-        let prepared = try prepare(backupFile: backupFile)
+        let prepared = try prepare(backupFile: backupFile, key: key)
         defer {
             try? FileManager.default.removeItem(at: prepared.dir)
         }
@@ -98,13 +105,21 @@ public final class BackupService: Sendable {
             df.timeZone = TimeZone(secondsFromGMT: 0)
             let safetyName = "pre-restore-\(df.string(from: now))\(fileExtension)"
             let safetyPath = (safetyFolder as NSString).appendingPathComponent(safetyName)
-            try create(dbPath: dbPath, destFile: safetyPath, now: now)
+            try create(dbPath: dbPath, destFile: safetyPath, now: now, key: key)
             safetyCopy = safetyPath
         }
 
-        let db = try SQLiteDatabase(path: dbPath)
+        let db = try SQLiteDatabase(path: dbPath, key: key)
         let escapedSrc = prepared.dbPath.replacingOccurrences(of: "'", with: "''")
-        try db.exec("ATTACH DATABASE '\(escapedSrc)' AS src;")
+        let attachSql: String
+        if prepared.isPlaintext {
+            attachSql = "ATTACH DATABASE '\(escapedSrc)' AS src KEY '';"
+        } else {
+            let resolvedKey = try (key ?? db.key ?? KeychainKeyManager.shared.getOrCreateDatabaseKey())
+            let hexKey = resolvedKey.map { String(format: "%02x", $0) }.joined()
+            attachSql = "ATTACH DATABASE '\(escapedSrc)' AS src KEY \"x'\(hexKey)'\";"
+        }
+        try db.exec(attachSql)
         defer {
             try? db.exec("DETACH DATABASE src;")
         }
@@ -151,16 +166,25 @@ public final class BackupService: Sendable {
     public static func merge(
         backupFile: String,
         dbPath: String,
-        zone: TimeZone = .current
+        zone: TimeZone = .current,
+        key: Data? = nil
     ) throws -> MergeResult {
-        let prepared = try prepare(backupFile: backupFile)
+        let prepared = try prepare(backupFile: backupFile, key: key)
         defer {
             try? FileManager.default.removeItem(at: prepared.dir)
         }
 
-        let db = try SQLiteDatabase(path: dbPath)
+        let db = try SQLiteDatabase(path: dbPath, key: key)
         let escapedSrc = prepared.dbPath.replacingOccurrences(of: "'", with: "''")
-        try db.exec("ATTACH DATABASE '\(escapedSrc)' AS src;")
+        let attachSql: String
+        if prepared.isPlaintext {
+            attachSql = "ATTACH DATABASE '\(escapedSrc)' AS src KEY '';"
+        } else {
+            let resolvedKey = try (key ?? db.key ?? KeychainKeyManager.shared.getOrCreateDatabaseKey())
+            let hexKey = resolvedKey.map { String(format: "%02x", $0) }.joined()
+            attachSql = "ATTACH DATABASE '\(escapedSrc)' AS src KEY \"x'\(hexKey)'\";"
+        }
+        try db.exec(attachSql)
         defer {
             try? db.exec("DETACH DATABASE src;")
         }
@@ -279,9 +303,10 @@ public final class BackupService: Sendable {
         let dbPath: String
         let manifest: BackupManifest
         let migrated: Bool
+        let isPlaintext: Bool
     }
 
-    private static func prepare(backupFile: String) throws -> PreparedBackup {
+    private static func prepare(backupFile: String, key: Data? = nil) throws -> PreparedBackup {
         guard FileManager.default.fileExists(atPath: backupFile) else {
             throw BackupError.generic("Backup file does not exist at \(backupFile)")
         }
@@ -326,7 +351,20 @@ public final class BackupService: Sendable {
             throw BackupError.newerSchemaVersion(current: manifest.schemaVersion, supported: Int(latestSupported))
         }
 
-        let db = try SQLiteDatabase(path: dbFile.path)
+        let isPlaintext = EncryptionMigrator.isPlaintextDatabase(at: dbFile.path)
+        let db: SQLiteDatabase
+        do {
+            if isPlaintext {
+                db = try SQLiteDatabase(path: dbFile.path, key: nil, allowPlaintext: true)
+            } else {
+                let resolvedKey = try (key ?? KeychainKeyManager.shared.getDatabaseKey() ?? KeychainKeyManager.shared.getOrCreateDatabaseKey())
+                db = try SQLiteDatabase(path: dbFile.path, key: resolvedKey)
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: tempDir)
+            throw BackupError.databaseCorrupt("Invalid encryption key or corrupt database: \(error.localizedDescription)")
+        }
+
         let integrity = try db.scalarText("PRAGMA integrity_check;") ?? ""
         if integrity != "ok" {
             db.close()
@@ -346,6 +384,6 @@ public final class BackupService: Sendable {
         }
         db.close()
 
-        return PreparedBackup(dir: tempDir, dbPath: dbFile.path, manifest: manifest, migrated: migrated)
+        return PreparedBackup(dir: tempDir, dbPath: dbFile.path, manifest: manifest, migrated: migrated, isPlaintext: isPlaintext)
     }
 }

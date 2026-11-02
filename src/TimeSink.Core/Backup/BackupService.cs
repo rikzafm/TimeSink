@@ -59,7 +59,7 @@ public static class BackupService
     /// Snapshots <paramref name="dbPath"/> with <c>VACUUM INTO</c> (consistent even while the Agent writes in WAL mode)
     /// and writes <paramref name="destFile"/>. Safe at any time.
     /// </summary>
-    public static void Create(string dbPath, string destFile, DateTimeOffset now, string appVersion = "0.0.0")
+    public static void Create(string dbPath, string destFile, DateTimeOffset now, string appVersion = "0.0.0", byte[]? key = null)
     {
         var dir = Path.GetDirectoryName(Path.GetFullPath(destFile))!;
         Directory.CreateDirectory(dir);
@@ -70,10 +70,13 @@ public static class BackupService
         {
             var snapshot = Path.Combine(tmpDir, BackupManifest.DbEntryName);
             int version;
-            using (var c = new SqliteConnection(new SqliteConnectionStringBuilder
-                   { DataSource = dbPath, Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString()))
+            var isPlaintext = EncryptionMigrator.IsPlaintextDatabase(dbPath);
+            using (var c = isPlaintext
+                ? new SqliteConnection(new SqliteConnectionStringBuilder
+                    { DataSource = dbPath, Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString())
+                : Db.CreateConnection(dbPath, SqliteOpenMode.ReadWrite, key))
             {
-                c.Open();
+                if (isPlaintext) c.Open();
                 using (var busy = c.CreateCommand()) { busy.CommandText = "PRAGMA busy_timeout=5000"; busy.ExecuteNonQuery(); }
                 version = Migrator.CurrentVersion(c);
                 using var cmd = c.CreateCommand();

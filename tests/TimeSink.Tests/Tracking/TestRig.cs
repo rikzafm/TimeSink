@@ -85,8 +85,7 @@ public sealed class Rig : IDisposable
     /// <summary>Runs SQL on a second connection, the way the UI writes to the database while the Agent runs.</summary>
     public void ExternalExec(string sql)
     {
-        using var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = DbPath, Pooling = false }.ToString());
-        c.Open();
+        using var c = Db.CreateConnection(DbPath);
         if (sql.Contains("INSERT INTO apps", StringComparison.OrdinalIgnoreCase) && !sql.Contains("device_id", StringComparison.OrdinalIgnoreCase))
         {
             using var devCmd = c.CreateCommand();

@@ -61,9 +61,7 @@ public sealed class MatrixQueryTests : IDisposable
 
     private SqliteConnection Open()
     {
-        var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = _db, Pooling = false }.ToString());
-        c.Open();
-        return c;
+        return Db.CreateConnection(_db);
     }
 
     private void Exec(string sql)

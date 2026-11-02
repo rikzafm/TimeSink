@@ -34,8 +34,7 @@ public sealed class AlertEngineTests : IDisposable
 
     private void Sql(string sql)
     {
-        using var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = _path, Pooling = false }.ToString());
-        c.Open();
+        using var c = Db.CreateConnection(_path);
         using var cmd = c.CreateCommand();
         cmd.CommandText = sql;
         cmd.ExecuteNonQuery();

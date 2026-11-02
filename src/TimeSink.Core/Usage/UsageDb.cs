@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Data;
 
 namespace TimeSink.Core.Usage;
 
@@ -7,13 +8,9 @@ internal static class UsageDb
 {
     public static SqliteConnection OpenReadOnly(string dbPath)
     {
-        var c = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false,
-        }.ToString());
+        var c = Db.CreateConnection(dbPath, SqliteOpenMode.ReadOnly);
         try
         {
-            c.Open();
             using var p = c.CreateCommand();
             p.CommandText = "PRAGMA busy_timeout=2000";
             p.ExecuteNonQuery();

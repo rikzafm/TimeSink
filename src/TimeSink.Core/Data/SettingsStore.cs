@@ -39,8 +39,7 @@ public static class SettingsStore
 
     private static SqliteConnection Open(string path, SqliteOpenMode mode)
     {
-        var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = mode, Pooling = false }.ToString());
-        c.Open();
+        var c = Db.CreateConnection(path, mode);
         using var p = c.CreateCommand();
         p.CommandText = "PRAGMA busy_timeout=2000";
         p.ExecuteNonQuery();

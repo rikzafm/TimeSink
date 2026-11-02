@@ -26,8 +26,7 @@ public sealed class TrackedTabTests : IDisposable
         var id = lib.AddTracked(new NewApp(exe, name, null), 100, null).AppId;
         if (seconds > 0)
         {
-            using var c = new SqliteConnection($"Data Source={_path};Pooling=False");
-            c.Open();
+            using var c = Db.CreateConnection(_path);
             using var cmd = c.CreateCommand();
             cmd.CommandText = "INSERT INTO daily_usage (app_id, day, seconds) VALUES ($a, '2026-01-01', $s)";
             cmd.Parameters.AddWithValue("$a", id);
@@ -84,9 +83,8 @@ public sealed class TrackedTabTests : IDisposable
         var chrome = Add(lib, @"C:\chrome.exe", "Chrome", 100);
         var beta = Add(lib, @"C:\beta.exe", "Chrome Beta", 40);
         lib.Merge(beta, chrome).Should().BeTrue();
-        using (var c = new SqliteConnection($"Data Source={_path};Pooling=False"))
+        using (var c = Db.CreateConnection(_path))
         {
-            c.Open();
             using var cmd = c.CreateCommand();
             cmd.CommandText = $"UPDATE apps SET state = 'retired', retired_utc = 1 WHERE id = {chrome}";
             cmd.ExecuteNonQuery();

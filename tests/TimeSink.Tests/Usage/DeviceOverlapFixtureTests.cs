@@ -90,8 +90,7 @@ public sealed class DeviceOverlapFixtureTests
 
         using (var db = Db.Open(dbPath))
         {
-            using var conn = new SqliteConnection($"Data Source={dbPath}");
-            conn.Open();
+            using var conn = Db.CreateConnection(dbPath);
 
             // Populate devices
             foreach (var dev in doc.Devices)

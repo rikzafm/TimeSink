@@ -21,8 +21,7 @@ public sealed class MergeDeviceTabsTests : IDisposable
         _dbPath = Path.Combine(_dir, "timesink.db");
 
         using var db = Db.Open(_dbPath);
-        using var conn = new SqliteConnection($"Data Source={_dbPath}");
-        conn.Open();
+        using var conn = Db.CreateConnection(_dbPath);
 
         // 1. Devices
         using (var cmd = conn.CreateCommand())

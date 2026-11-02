@@ -65,8 +65,7 @@ public sealed class WrappedFixture : IDisposable
 
     public void Session(long app, long start, long? end, long? lastSeen = null)
     {
-        using var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = DbPath, Pooling = false }.ToString());
-        c.Open();
+        using var c = Db.CreateConnection(DbPath);
         using var cmd = c.CreateCommand();
         cmd.CommandText = "INSERT INTO sessions(app_id,start_utc,end_utc,last_seen_utc,end_reason) VALUES($a,$s,$e,$l,$r)";
         cmd.Parameters.AddWithValue("$a", app);

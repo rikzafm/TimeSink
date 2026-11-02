@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using TimeSink.Core.Data.Migrations;
+using TimeSink.Core.Security;
 
 namespace TimeSink.Core.Data;
 
@@ -8,22 +9,95 @@ public sealed record AppRow(long Id, string ExePath, string DisplayName, string 
 /// <summary>Opens (and migrates) the TimeSink SQLite database.</summary>
 public sealed class Db : IDisposable
 {
+    private static int _batteriesInitialized;
+    private static IKeyManager? _keyManager;
+
     private readonly SqliteConnection _connection;
+
+    static Db()
+    {
+        InitializeBatteries();
+    }
 
     private Db(SqliteConnection connection) => _connection = connection;
 
-    public static Db Open(string path)
+    public static void InitializeBatteries()
     {
+        if (Interlocked.Exchange(ref _batteriesInitialized, 1) == 0)
+        {
+            SQLitePCL.Batteries_V2.Init();
+        }
+    }
+
+    public static IKeyManager KeyManager
+    {
+        get
+        {
+            if (_keyManager is not null) return _keyManager;
+            if (OperatingSystem.IsWindows())
+            {
+                _keyManager = new DpapiKeyManager();
+                return _keyManager;
+            }
+            throw new PlatformNotSupportedException("KeyManager is not supported on this platform without explicit injection.");
+        }
+        set => _keyManager = value;
+    }
+
+    public static byte[] GetDatabaseKey(byte[]? key = null) => key ?? KeyManager.GetOrCreateDatabaseKey();
+
+    /// <summary>
+    /// Creates and opens a new SQLite connection with the SQLCipher encryption key and cipher pragmas applied.
+    /// </summary>
+    public static SqliteConnection CreateConnection(string path, SqliteOpenMode mode = SqliteOpenMode.ReadWriteCreate, byte[]? key = null)
+    {
+        InitializeBatteries();
+
         var dir = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        if (!string.IsNullOrEmpty(dir) && mode != SqliteOpenMode.ReadOnly)
+        {
+            Directory.CreateDirectory(dir);
+        }
 
         var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = path,
-            Mode = SqliteOpenMode.ReadWriteCreate,
+            Mode = mode,
             Pooling = false,
         }.ToString());
+
         connection.Open();
+        try
+        {
+            key = GetDatabaseKey(key);
+            var hexKey = Convert.ToHexString(key);
+            Execute(connection, $"PRAGMA key = \"x'{hexKey}'\"; PRAGMA cipher_page_size = 4096; PRAGMA kdf_iter = 256000;");
+            return connection;
+        }
+        catch
+        {
+            connection.Dispose();
+            throw;
+        }
+    }
+
+    public static Db Open(string path, byte[]? key = null)
+    {
+        InitializeBatteries();
+
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+        EncryptionMigrator.CleanStaleMigrationFiles(path);
+
+        key = GetDatabaseKey(key);
+
+        if (EncryptionMigrator.IsPlaintextDatabase(path))
+        {
+            EncryptionMigrator.Migrate(path, key);
+        }
+
+        var connection = CreateConnection(path, SqliteOpenMode.ReadWriteCreate, key);
         try
         {
             Execute(connection, "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");

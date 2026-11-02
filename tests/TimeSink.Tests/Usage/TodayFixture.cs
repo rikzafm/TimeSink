@@ -73,9 +73,7 @@ public sealed class TodayFixture : IDisposable
 
     private SqliteConnection Open()
     {
-        var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = DbPath, Pooling = false }.ToString());
-        c.Open();
-        return c;
+        return Db.CreateConnection(DbPath);
     }
 
     public void Dispose()
