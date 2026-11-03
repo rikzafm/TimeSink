@@ -202,12 +202,15 @@ public enum UsageUptime {
     public static func inactiveBands(segs: [UsageSeg], d0: Int64, nowUtc: Int64) -> [SleepBand] {
         var bands: [(start: Int64, end: Int64)] = []
         for s in segs where (s.sleep || s.off) && s.end >= d0 && s.end <= nowUtc {
-            let startsAfter = segs.filter { .start > s.end }.map(\.start)
+            let startsAfter = segs.filter { $0.start > s.end }.map(\.start)
             let next = startsAfter.min() ?? nowUtc
             bands.append((start: s.end, end: min(next, nowUtc)))
         }
+        return mergeBands(bands)
+    }
 
-        let sorted = bands.sorted { .start < .start }
+    private static func mergeBands(_ bands: [(start: Int64, end: Int64)]) -> [SleepBand] {
+        let sorted = bands.sorted { $0.start < $1.start }
         var merged: [SleepBand] = []
         for b in sorted {
             if b.end <= b.start { continue }
