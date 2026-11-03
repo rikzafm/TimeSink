@@ -28,8 +28,57 @@ public final class NSWorkspaceProcessProvider: ProcessProvider, @unchecked Senda
 
         processes.removeAll()
         for app in NSWorkspace.shared.runningApplications {
-            guard let info = makeProcInfo(from: app) else { continue }
+            guard !app.isTerminated, let info = makeProcInfo(from: app) else { continue }
             processes[app.processIdentifier] = info
+        }
+    }
+
+    /// Actively reconciles the cached process list with NSWorkspace.shared.runningApplications
+    /// and prunes dead or terminated processes even if quit notifications were dropped.
+    public func reconcileRunningApplications() {
+        lock.lock()
+        var changed = false
+        let runningApps = NSWorkspace.shared.runningApplications
+        var currentPids = Set<pid_t>()
+
+        for app in runningApps {
+            if app.isTerminated { continue }
+            let pid = app.processIdentifier
+            currentPids.insert(pid)
+
+            if let existing = processes[pid] {
+                if existing.isActive != app.isActive {
+                    processes[pid] = ProcInfo(
+                        pid: existing.pid,
+                        name: existing.name,
+                        fullPath: existing.fullPath,
+                        startUtc: existing.startUtc,
+                        packageFamily: existing.packageFamily,
+                        bundleId: existing.bundleId,
+                        isActive: app.isActive,
+                        activeSinceUtc: app.isActive ? (existing.activeSinceUtc ?? Date()) : nil
+                    )
+                    changed = true
+                }
+            } else if let info = makeProcInfo(from: app) {
+                processes[pid] = info
+                changed = true
+            }
+        }
+
+        for pid in Array(processes.keys) {
+            if !currentPids.contains(pid) {
+                processes.removeValue(forKey: pid)
+                changed = true
+            } else if kill(pid, 0) != 0 && errno == ESRCH {
+                processes.removeValue(forKey: pid)
+                changed = true
+            }
+        }
+        lock.unlock()
+
+        if changed {
+            onProcessChanged?()
         }
     }
 

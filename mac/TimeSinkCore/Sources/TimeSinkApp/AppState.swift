@@ -102,6 +102,12 @@ public final class AppState: ObservableObject {
     public var onMenuBarTimeChanged: ((Int64, Bool) -> Void)?
     public var onThemeChanged: (() -> Void)?
     public var onAppIconChanged: ((String) -> Void)?
+    public var onTickRequest: (() -> Void)?
+
+    // Live update state
+    @Published public var liveNowUtc: Int64 = Int64(Date().timeIntervalSince1970)
+    private var liveTimer: Timer?
+    private var liveTickCount: Int = 0
 
     // All tab search, layout and sort
     @Published public var allSearchQuery: String = ""
@@ -267,6 +273,38 @@ public final class AppState: ObservableObject {
     }
 
     public var showsDeviceSplit: Bool { deviceScope == .all && hasMultipleDevices }
+
+    public func startLiveUpdates() {
+        guard liveTimer == nil else { return }
+        liveNowUtc = Int64(Date().timeIntervalSince1970)
+        liveTickCount = 0
+        if let onTickRequest {
+            onTickRequest()
+        } else {
+            refresh()
+        }
+        liveTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.liveNowUtc = Int64(Date().timeIntervalSince1970)
+                self.liveTickCount += 1
+                if self.liveTickCount >= 4 {
+                    self.liveTickCount = 0
+                    if let onTick = self.onTickRequest {
+                        onTick()
+                    } else {
+                        self.refresh()
+                    }
+                }
+            }
+        }
+    }
+
+    public func stopLiveUpdates() {
+        liveTimer?.invalidate()
+        liveTimer = nil
+        liveTickCount = 0
+    }
 
     public func refresh() {
         let ctx = makeUsageContext()
@@ -848,6 +886,14 @@ public final class AppState: ObservableObject {
                         try up.bind(int64: canonicalApp.id, at: 1)
                         try up.bind(int64: candidate.id, at: 2)
                         _ = try up.step()
+
+                        let copyIcon = try db.prepare("""
+                            INSERT OR IGNORE INTO icons (app_id, png, hash)
+                            SELECT ?1, png, hash FROM icons WHERE app_id = ?2;
+                            """)
+                        try copyIcon.bind(int64: canonicalApp.id, at: 1)
+                        try copyIcon.bind(int64: candidate.id, at: 2)
+                        _ = try copyIcon.step()
                     }
                 }
             }

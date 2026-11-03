@@ -11,6 +11,11 @@ public struct TodayTabView: View {
         self.state = state
     }
 
+    private var isLive: Bool { state.daysBack == 0 }
+    private var effectiveNowUtc: Int64 {
+        isLive ? state.liveNowUtc : (state.todayResult?.nowUtc ?? Int64(Date().timeIntervalSince1970))
+    }
+
     private var formattedDateString: String {
         let df = DateFormatter()
         df.dateFormat = "EEEE, d MMM"
@@ -41,7 +46,8 @@ public struct TodayTabView: View {
     }
 
     private func headline(_ result: TodayResult) -> some View {
-        HStack(alignment: .bottom) {
+        let uptime = result.uptimeAt(effectiveNowUtc, live: isLive)
+        return HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 10) {
                     PeriodArrow(left: true, enabled: result.canPrev, iconSize: 8) {
@@ -56,11 +62,11 @@ public struct TodayTabView: View {
                 }
 
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text(Formatters.paddedHM(result.uptimeSeconds))
+                    Text(Formatters.paddedHM(uptime))
                         .font(.system(size: 34, weight: .bold))
                         .tracking(-0.8)
                         .foregroundColor(ThemeColors.accent)
-                    Text("\(result.uptimeSeconds % 60)s")
+                    Text("\(uptime % 60)s")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(ThemeColors.textMuted)
                 }
@@ -88,17 +94,19 @@ public struct TodayTabView: View {
     }
 
     private func deviceRow(_ result: TodayResult) -> some View {
+        let elapsed = isLive ? result.elapsedAt(effectiveNowUtc) : 0
         let uptimes = result.deviceUptimes ?? [:]
         let local = uptimes.first { state.isLocalDevice($0.key) }?.value
         let remote = uptimes.first { !state.isLocalDevice($0.key) }
         let localName = state.deviceADisplayName()
         let remoteName = state.deviceDisplayName(remote?.key)
+        let localUptime = (local?.uptimeSeconds ?? 0) + elapsed
         var remoteText = "\(remoteName) \(Formatters.paddedHM(remote?.value.uptimeSeconds ?? 0))"
         if let pc = remote?.value, !pc.isLive, let last = pc.lastActiveUtc {
             remoteText += " · off \(Formatters.formatClock(utcSeconds: last))"
         }
         return DeviceLegend(
-            mac: "\(localName) \(Formatters.paddedHM(local?.uptimeSeconds ?? 0))",
+            mac: "\(localName) \(Formatters.paddedHM(localUptime))",
             pc: remoteText,
             both: "\(Formatters.paddedHM(result.onBothSeconds)) on both"
         )
@@ -169,11 +177,11 @@ public struct TodayTabView: View {
         if row.isRunning, let since = row.runningSinceUtc {
             let devName = state.deviceADisplayName()
             let where_ = state.deviceScope == .all ? "Running on \(devName)" : "Running"
-            return "\(where_) · \(Formatters.paddedHM(max(0, result.nowUtc - since))) session"
+            return "\(where_) · \(Formatters.paddedHM(max(0, effectiveNowUtc - since))) session"
         }
         if let remote = remoteRunningSession(row) {
             let devName = state.deviceBDisplayName()
-            return "Running on \(devName) · \(Formatters.paddedHM(max(0, result.nowUtc - remote.startUtc))) session"
+            return "Running on \(devName) · \(Formatters.paddedHM(max(0, effectiveNowUtc - remote.startUtc))) session"
         }
         if let closed = row.lastClosedUtc {
             return "Closed \(Formatters.clock12(closed))"
@@ -207,7 +215,7 @@ public struct TodayTabView: View {
                         HStack {
                             Text(row.name)
                             Spacer()
-                            Text(Formatters.paddedHM(row.seconds))
+                            Text(Formatters.paddedHM(result.rowSecondsAt(row, nowUtc: effectiveNowUtc)))
                         }
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(ThemeColors.textPrimary)
@@ -229,7 +237,7 @@ public struct TodayTabView: View {
                     appRow: row,
                     dayStartUtc: result.dayStartUtc,
                     dayEndUtc: result.dayEndUtc,
-                    nowUtc: result.nowUtc,
+                    nowUtc: effectiveNowUtc,
                     isAllScope: state.showsDeviceSplit,
                     localDeviceId: state.localDeviceId,
                     activeSessionIndex: rowActiveBinding

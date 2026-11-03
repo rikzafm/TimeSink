@@ -280,7 +280,7 @@ public struct AddAppView: View {
                         iconButton(.eyeSlash, color: ThemeColors.textMuted, help: "Not this one") {
                             hiddenThisSession.insert(app.path)
                         }
-                        trackButton { track(path: app.path, name: app.name) }
+                        trackButton { track(path: app.path, name: app.name, bundleId: app.bundleId) }
                     }
                     .frame(height: 44)
                 }
@@ -417,7 +417,7 @@ public struct AddAppView: View {
                 trackedButtons(tracked, width: 36, eyeLime: true)
             } else {
                 trackButton(help: retired != nil ? "Restore" : "Track") {
-                    track(path: retired?.exePath ?? app.executablePath, name: app.name)
+                    track(path: retired?.exePath ?? app.executablePath, name: app.name, bundleId: app.bundleId)
                 }
                 .padding(.trailing, 10)
             }
@@ -684,9 +684,16 @@ public struct AddAppView: View {
         state.refresh()
     }
 
-    private func track(path: String, name: String) {
+    private func track(path: String, name: String, bundleId: String? = nil) {
         do {
-            try library.trackApp(exePath: path, displayName: name, category: "Other", kind: .other, deviceId: state.localDeviceId)
+            try library.trackApp(
+                exePath: path,
+                displayName: name,
+                category: "Other",
+                kind: .other,
+                bundleId: bundleId,
+                deviceId: state.localDeviceId
+            )
             addedThisSession += 1
             reloadAll()
             state.refresh()
@@ -701,7 +708,7 @@ public struct AddAppView: View {
         let name = bundle?.localizedInfoDictionary?["CFBundleDisplayName"] as? String
             ?? bundle?.infoDictionary?["CFBundleName"] as? String
             ?? resolved.deletingPathExtension().lastPathComponent
-        track(path: bundle?.executableURL?.path ?? resolved.path, name: name)
+        track(path: bundle?.executableURL?.path ?? resolved.path, name: name, bundleId: bundle?.bundleIdentifier)
     }
 
     private func openFileBrowser(in folder: String? = nil) {

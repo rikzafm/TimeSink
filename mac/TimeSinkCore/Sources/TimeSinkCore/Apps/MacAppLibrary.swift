@@ -84,19 +84,23 @@ public final class MacAppLibrary: @unchecked Sendable {
         category: String = "Other",
         kind: AppKind? = nil,
         isBackground: Bool = false,
+        bundleId: String? = nil,
         deviceId: String
     ) throws -> Int64 {
         let now = Int64(Date().timeIntervalSince1970)
         let resolvedKind = kind ?? AppKinds.detect(exePath: exePath, displayName: displayName)
+        let resolvedBundleId = (bundleId?.isEmpty == false ? bundleId : nil) ?? Self.resolveBundleId(forPath: exePath)
+
         let stmt = try db.prepare("""
-            INSERT INTO apps (exe_path, display_name, category, state, added_utc, is_background, kind, device_id)
-            VALUES (?1, ?2, ?3, 'tracked', ?4, ?5, ?6, ?7)
+            INSERT INTO apps (exe_path, display_name, category, state, added_utc, is_background, kind, device_id, bundle_id)
+            VALUES (?1, ?2, ?3, 'tracked', ?4, ?5, ?6, ?7, ?8)
             ON CONFLICT(device_id, exe_path) DO UPDATE SET
                 state = 'tracked',
                 display_name = excluded.display_name,
                 category = excluded.category,
                 kind = excluded.kind,
-                is_background = excluded.is_background;
+                is_background = excluded.is_background,
+                bundle_id = COALESCE(excluded.bundle_id, apps.bundle_id);
             """)
         try stmt.bind(text: exePath, at: 1)
         try stmt.bind(text: displayName, at: 2)
@@ -105,9 +109,81 @@ public final class MacAppLibrary: @unchecked Sendable {
         try stmt.bind(int64: isBackground ? 1 : 0, at: 5)
         try stmt.bind(int64: resolvedKind.rawValue, at: 6)
         try stmt.bind(text: deviceId, at: 7)
+        if let bid = resolvedBundleId {
+            try stmt.bind(text: bid, at: 8)
+        } else {
+            try stmt.bindNull(at: 8)
+        }
         _ = try stmt.step()
 
         return db.lastInsertRowid
+    }
+
+    /// Resolves the bundle identifier for a given file or executable path.
+    public static func resolveBundleId(forPath path: String) -> String? {
+        let fileUrl = URL(fileURLWithPath: path)
+        if let bundle = Bundle(url: fileUrl), let bid = bundle.bundleIdentifier, !bid.isEmpty {
+            return bid
+        }
+        var current = fileUrl
+        while current.path != "/" {
+            if current.pathExtension == "app" {
+                if let b = Bundle(url: current), let bid = b.bundleIdentifier, !bid.isEmpty {
+                    return bid
+                }
+            }
+            current.deleteLastPathComponent()
+        }
+        for app in NSWorkspace.shared.runningApplications {
+            if let execPath = app.executableURL?.path, execPath.caseInsensitiveCompare(path) == .orderedSame {
+                return app.bundleIdentifier
+            }
+        }
+        return nil
+    }
+
+    /// Auto-repairs existing tracked apps that have a missing bundle_id.
+    public func repairMissingBundleIds() {
+        guard let stmt = try? db.prepare("SELECT id, exe_path FROM apps WHERE bundle_id IS NULL OR bundle_id = '';") else {
+            return
+        }
+        var toUpdate: [(Int64, String)] = []
+        while (try? stmt.step()) == true {
+            let id = stmt.columnInt64(at: 0)
+            if let path = stmt.columnText(at: 1), let bundleId = Self.resolveBundleId(forPath: path) {
+                toUpdate.append((id, bundleId))
+            }
+        }
+        for (id, bundleId) in toUpdate {
+            if let updateStmt = try? db.prepare("UPDATE apps SET bundle_id = ?1 WHERE id = ?2;") {
+                try? updateStmt.bind(text: bundleId, at: 1)
+                try? updateStmt.bind(int64: id, at: 2)
+                _ = try? updateStmt.step()
+            }
+        }
+    }
+
+    /// Auto-repairs missing icons for tracked apps on the local device.
+    public func repairMissingIcons(iconCache: MacIconCache, localDeviceId: String = "") {
+        guard let stmt = try? db.prepare("""
+            SELECT a.id, a.exe_path, a.bundle_id, a.display_name
+            FROM apps a
+            LEFT JOIN icons i ON i.app_id = a.id
+            WHERE a.state = 'tracked' AND a.canonical_id IS NULL AND i.app_id IS NULL
+              AND (a.device_id = '' OR ?1 = '' OR a.device_id = ?1);
+            """) else { return }
+        try? stmt.bind(text: localDeviceId, at: 1)
+        var candidates: [(Int64, String, String?, String)] = []
+        while (try? stmt.step()) == true {
+            let id = stmt.columnInt64(at: 0)
+            let path = stmt.columnText(at: 1) ?? ""
+            let bundleId = stmt.columnText(at: 2)
+            let name = stmt.columnText(at: 3) ?? ""
+            candidates.append((id, path, bundleId, name))
+        }
+        for (id, path, bundleId, name) in candidates {
+            _ = iconCache.resolveAndExtractIcon(forAppId: id, exePath: path, bundleId: bundleId, displayName: name)
+        }
     }
 
     public func stopTracking(appId: Int64) throws {
@@ -150,6 +226,14 @@ public final class MacAppLibrary: @unchecked Sendable {
                 try stmt.bind(int64: mainId, at: 1)
                 try stmt.bind(int64: cId, at: 2)
                 _ = try stmt.step()
+
+                let copyIcon = try db.prepare("""
+                    INSERT OR IGNORE INTO icons (app_id, png, hash)
+                    SELECT ?1, png, hash FROM icons WHERE app_id = ?2;
+                    """)
+                try copyIcon.bind(int64: mainId, at: 1)
+                try copyIcon.bind(int64: cId, at: 2)
+                _ = try copyIcon.step()
             }
         }
     }
@@ -195,6 +279,14 @@ public final class MacAppLibrary: @unchecked Sendable {
             try goalsStmt.bind(int64: oldMain, at: 1)
             try goalsStmt.bind(int64: aliasId, at: 2)
             _ = try goalsStmt.step()
+
+            let copyIcon = try db.prepare("""
+                INSERT OR IGNORE INTO icons (app_id, png, hash)
+                SELECT ?1, png, hash FROM icons WHERE app_id = ?2;
+                """)
+            try copyIcon.bind(int64: aliasId, at: 1)
+            try copyIcon.bind(int64: oldMain, at: 2)
+            _ = try copyIcon.step()
 
             success = true
         }

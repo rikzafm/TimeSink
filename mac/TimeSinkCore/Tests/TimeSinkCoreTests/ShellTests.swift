@@ -111,4 +111,48 @@ final class ShellTests: XCTestCase {
         // Reading isEnabled shouldn't crash
         _ = manager.isEnabled
     }
+
+    func testMacIconCacheInheritsMergedAliasIcon() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+
+        let devId = try db.scalarText("SELECT device_id FROM devices LIMIT 1;") ?? "dev-1"
+        // Insert main app (id=1) and alias app (id=2) merged under main
+        let ins1 = try db.prepare("INSERT INTO apps (id, exe_path, display_name, category, added_utc, device_id) VALUES (1, '', 'Keynote', 'Work', 1000, ?1);")
+        try ins1.bind(text: devId, at: 1)
+        _ = try ins1.step()
+
+        let ins2 = try db.prepare("INSERT INTO apps (id, canonical_id, exe_path, display_name, category, added_utc, device_id) VALUES (2, 1, '/System/Applications/Preview.app', 'Keynote', 'Work', 1000, ?1);")
+        try ins2.bind(text: devId, at: 1)
+        _ = try ins2.step()
+
+        let cache = MacIconCache(db: db)
+        let sampleData = "alias-icon-data".data(using: .utf8)!
+        // Save icon only under alias (id=2)
+        cache.saveIcon(forAppId: 2, hash: "alias-hash", png: sampleData)
+
+        // getCachedIcon for main app (id=1) should inherit from alias
+        let retrieved = cache.getCachedIcon(forAppId: 1)
+        XCTAssertEqual(retrieved, sampleData)
+    }
+
+    func testRepairMissingIcons() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+
+        let devId = try db.scalarText("SELECT device_id FROM devices LIMIT 1;") ?? "dev-1"
+        // Preview app exists on macOS at /System/Applications/Preview.app
+        let ins = try db.prepare("INSERT INTO apps (id, exe_path, display_name, category, added_utc, device_id, state) VALUES (10, '/System/Applications/Preview.app', 'Preview', 'Utility', 1000, ?1, 'tracked');")
+        try ins.bind(text: devId, at: 1)
+        _ = try ins.step()
+
+        let cache = MacIconCache(db: db)
+        XCTAssertNil(cache.getCachedIcon(forAppId: 10))
+
+        let library = MacAppLibrary(db: db)
+        library.repairMissingIcons(iconCache: cache, localDeviceId: devId)
+
+        let retrieved = cache.getCachedIcon(forAppId: 10)
+        XCTAssertNotNil(retrieved)
+    }
 }

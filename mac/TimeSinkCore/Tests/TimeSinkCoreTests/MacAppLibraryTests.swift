@@ -232,5 +232,56 @@ final class MacAppLibraryTests: XCTestCase {
         XCTAssertEqual(main.mergedNames, ["Chrome (PC)"])
         XCTAssertEqual(main.mergedDeviceIds, [devPC])
     }
+
+    func testTrackAppPersistsBundleIdAndAutoResolves() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+        let devId = try db.scalarText("SELECT device_id FROM devices LIMIT 1;") ?? "mac-1"
+
+        let lib = MacAppLibrary(db: db)
+        // 1. Explicit bundleId
+        let id1 = try lib.trackApp(
+            exePath: "/Applications/Custom.app",
+            displayName: "Custom",
+            bundleId: "com.example.custom",
+            deviceId: devId
+        )
+        let savedBundle1 = try db.scalarText("SELECT bundle_id FROM apps WHERE id = \(id1);")
+        XCTAssertEqual(savedBundle1, "com.example.custom")
+
+        // 2. Auto-resolve bundleId for existing app bundle on disk
+        if FileManager.default.fileExists(atPath: "/Applications/WhatsApp.app") {
+            let id2 = try lib.trackApp(
+                exePath: "/Applications/WhatsApp.app",
+                displayName: "WhatsApp",
+                deviceId: devId
+            )
+            let savedBundle2 = try db.scalarText("SELECT bundle_id FROM apps WHERE id = \(id2);")
+            XCTAssertEqual(savedBundle2, "net.whatsapp.WhatsApp")
+        }
+    }
+
+    func testRepairMissingBundleIds() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+        let devId = try db.scalarText("SELECT device_id FROM devices LIMIT 1;") ?? "mac-1"
+
+        if FileManager.default.fileExists(atPath: "/Applications/WhatsApp.app") {
+            // Simulate legacy database where bundle_id was NULL
+            try db.exec("""
+                INSERT INTO apps (exe_path, display_name, bundle_id, device_id, added_utc, state)
+                VALUES ('/Applications/WhatsApp.app', 'WhatsApp', NULL, '\(devId)', 1000, 'tracked');
+                """)
+
+            let before = try db.scalarText("SELECT bundle_id FROM apps WHERE exe_path = '/Applications/WhatsApp.app';")
+            XCTAssertNil(before)
+
+            let lib = MacAppLibrary(db: db)
+            lib.repairMissingBundleIds()
+
+            let after = try db.scalarText("SELECT bundle_id FROM apps WHERE exe_path = '/Applications/WhatsApp.app';")
+            XCTAssertEqual(after, "net.whatsapp.WhatsApp")
+        }
+    }
 }
 

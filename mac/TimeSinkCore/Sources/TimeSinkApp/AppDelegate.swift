@@ -25,6 +25,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             db = database
             try Migrator.apply(to: database)
 
+            let library = MacAppLibrary(db: database)
+            library.repairMissingBundleIds()
+
             store = SQLiteSessionStore(db: database)
             processProvider = NSWorkspaceProcessProvider()
             powerHub = MacPowerEventHub()
@@ -32,6 +35,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             syncHost = SyncHost(db: database, timeZone: .current)
             appState = AppState(db: database, syncHost: syncHost)
             syncHost.start()
+            library.repairMissingIcons(iconCache: iconCache, localDeviceId: appState.localDeviceId)
 
             let settings = DbTrackingSettings(db: database)
             let clock = SystemClock()
@@ -43,11 +47,17 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 timeZone: .current
             )
             engine.attach(power: powerHub.hub)
+            powerHub.hub.onResume.append { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.processProvider?.reconcileRunningApplications()
+                }
+            }
             try engine.recoverFromCrash(Date())
 
             processProvider.onProcessChanged = { [weak self] in
                 Task { @MainActor [weak self] in
                     try? self?.engine.onTick(Date())
+                    self?.appState?.refresh()
                 }
             }
 
@@ -63,6 +73,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
             appState.onClosePopover = { [weak self] in
                 self?.statusBarController?.closePopover()
+            }
+            appState.onTickRequest = { [weak self] in
+                self?.tick()
             }
 
             appState.onThemeChanged = { [weak self] in
@@ -108,6 +121,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func tick() {
         let now = Date()
+        processProvider?.reconcileRunningApplications()
         try? engine.onTick(now)
         appState?.checkAutoBackup()
         appState?.refresh()

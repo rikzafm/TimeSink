@@ -178,7 +178,7 @@ public struct AppSettingsSheet: View {
                     border: ThemeColors.borderSubtle
                 )
             }
-            row("Background", "Runs all day. Still counted, but ranked after your other apps") {
+            row("Foreground only", "Only track when focused in front; ignore background time") {
                 TSSwitch(isOn: Binding(get: { isBackground }, set: { isBackground = $0; saveChanges() }))
             }
             row("Icon", loaded ? "Detected from the app" : "") {

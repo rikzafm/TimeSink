@@ -206,6 +206,22 @@ public struct TodayResult: Sendable, Equatable {
         guard let first = firstTrackedDay else { return false }
         return PeriodNavigator(unit: .day, first: first, today: date).canPrev(anchor: date)
     }
+
+    public func elapsedAt(_ nowUtc: Int64) -> Int64 {
+        max(0, nowUtc - self.nowUtc)
+    }
+
+    public func uptimeAt(_ nowUtc: Int64, live: Bool) -> Int64 {
+        uptimeSeconds + (live && (!gamesOnly || openSessionCount > 0) ? elapsedAt(nowUtc) : 0)
+    }
+
+    public func combinedSecondsAt(_ nowUtc: Int64) -> Int64 {
+        totalSeconds + elapsedAt(nowUtc) * Int64(openSessionCount)
+    }
+
+    public func rowSecondsAt(_ row: TodayAppRow, nowUtc: Int64) -> Int64 {
+        row.seconds + (row.isRunning ? elapsedAt(nowUtc) : 0)
+    }
 }
 
 public enum TodayQuery {

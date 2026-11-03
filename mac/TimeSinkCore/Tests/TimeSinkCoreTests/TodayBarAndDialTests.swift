@@ -157,4 +157,64 @@ final class TodayBarAndDialTests: XCTestCase {
         // Started 2 days ago clamps to 0
         XCTAssertEqual(result.dayFractionBefore(dayStart - 200000), 0.0)
     }
+
+    func testTodayLiveCalculations() {
+        let dayStart: Int64 = 1700000000
+        let dayEnd: Int64 = dayStart + 86400
+        let snapshotNow: Int64 = dayStart + 1000
+
+        let runningApp = TodayAppRow(
+            appId: 1,
+            name: "Antigravity",
+            seconds: 500,
+            isRunning: true,
+            runningSinceUtc: snapshotNow - 500,
+            lastClosedUtc: nil,
+            sessions: [],
+            sevenDayAverageSeconds: nil,
+            sevenDayDays: 0
+        )
+        let stoppedApp = TodayAppRow(
+            appId: 2,
+            name: "Notes",
+            seconds: 300,
+            isRunning: false,
+            runningSinceUtc: nil,
+            lastClosedUtc: snapshotNow - 100,
+            sessions: [],
+            sevenDayAverageSeconds: nil,
+            sevenDayDays: 0
+        )
+
+        let result = TodayResult(
+            date: "2023-11-14",
+            dayStartUtc: dayStart,
+            dayEndUtc: dayEnd,
+            nowUtc: snapshotNow,
+            totalSeconds: 800,
+            runningCount: 1,
+            openSessionCount: 1,
+            hours: [],
+            hasTypical: false,
+            sleepBands: [],
+            firstApp: nil,
+            longestSession: nil,
+            totalVsYesterdaySeconds: 0,
+            rows: [runningApp, stoppedApp],
+            uptimeSeconds: 1000,
+            uptimeVsYesterdaySeconds: 0,
+            firstTrackedDay: nil,
+            gamesOnly: false,
+            deviceUptimes: nil,
+            onBothSeconds: 0
+        )
+
+        let liveNow = snapshotNow + 52 // 52 seconds elapsed
+        XCTAssertEqual(result.elapsedAt(liveNow), 52)
+        XCTAssertEqual(result.uptimeAt(liveNow, live: true), 1052)
+        XCTAssertEqual(result.uptimeAt(liveNow, live: false), 1000) // past day is static
+        XCTAssertEqual(result.rowSecondsAt(runningApp, nowUtc: liveNow), 552) // running app ticks
+        XCTAssertEqual(result.rowSecondsAt(stoppedApp, nowUtc: liveNow), 300) // stopped app stays static
+        XCTAssertEqual(result.combinedSecondsAt(liveNow), 852)
+    }
 }

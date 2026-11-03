@@ -76,24 +76,93 @@ public final class MacIconCache: @unchecked Sendable {
         return png
     }
 
+    public func resolveAndExtractIcon(
+        forAppId appId: Int64,
+        exePath: String,
+        bundleId: String? = nil,
+        displayName: String = "",
+        targetSize: CGFloat = 64
+    ) -> Data? {
+        if !exePath.isEmpty, let png = iconData(forFilePath: exePath, bundleId: bundleId, targetSize: targetSize) {
+            saveIcon(forAppId: appId, hash: "extracted:\(exePath)", png: png)
+            return png
+        }
+
+        if let bid = bundleId, !bid.isEmpty, let png = iconData(forFilePath: "", bundleId: bid, targetSize: targetSize) {
+            saveIcon(forAppId: appId, hash: "extracted:\(bid)", png: png)
+            return png
+        }
+
+        if !displayName.isEmpty {
+            let candidates = [
+                "/System/Applications/\(displayName).app",
+                "/Applications/\(displayName).app",
+                "/System/Applications/Utilities/\(displayName).app"
+            ]
+            for cand in candidates {
+                if FileManager.default.fileExists(atPath: cand), let png = iconData(forFilePath: cand, targetSize: targetSize) {
+                    saveIcon(forAppId: appId, hash: "extracted:\(cand)", png: png)
+                    return png
+                }
+            }
+        }
+
+        return nil
+    }
+
     public func getCachedIcon(forAppId appId: Int64, fallbackExePath: String? = nil) -> Data? {
+        let memKey = "appId:\(appId)"
+        lock.lock()
+        if let cached = memoryCache[memKey] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        // 1. Check direct icons table entry
         do {
             let stmt = try db.prepare("SELECT png FROM icons WHERE app_id = ?;")
             try stmt.bind(int64: appId, at: 1)
             if try stmt.step(), let blob = stmt.columnBlob(at: 0) {
+                lock.lock()
+                memoryCache[memKey] = blob
+                lock.unlock()
                 return blob
             }
         } catch {}
 
-        if let exePath = fallbackExePath, let png = iconData(forFilePath: exePath, targetSize: 64) {
-            saveIcon(forAppId: appId, hash: "extracted:\(exePath)", png: png)
-            return png
+        // 2. Check if any merged alias or canonical counterpart has a cached icon
+        do {
+            let stmt = try db.prepare("""
+                SELECT i.png FROM icons i
+                JOIN apps a ON a.id = i.app_id
+                WHERE a.canonical_id = ?1
+                   OR (a.canonical_id = (SELECT canonical_id FROM apps WHERE id = ?1) AND a.canonical_id IS NOT NULL)
+                   OR a.id = (SELECT canonical_id FROM apps WHERE id = ?1)
+                ORDER BY (CASE WHEN a.device_id = '' THEN 0 ELSE 1 END) ASC
+                LIMIT 1;
+                """)
+            try stmt.bind(int64: appId, at: 1)
+            if try stmt.step(), let blob = stmt.columnBlob(at: 0) {
+                saveIcon(forAppId: appId, hash: "inherited", png: blob)
+                return blob
+            }
+        } catch {}
+
+        // 3. Fallback path if explicitly provided
+        if let exePath = fallbackExePath {
+            return resolveAndExtractIcon(forAppId: appId, exePath: exePath)
         }
 
         return nil
     }
 
     public func saveIcon(forAppId appId: Int64, hash: String, png: Data) {
+        let memKey = "appId:\(appId)"
+        lock.lock()
+        memoryCache[memKey] = png
+        lock.unlock()
+
         do {
             let stmt = try db.prepare("""
                 INSERT INTO icons (app_id, png, hash)

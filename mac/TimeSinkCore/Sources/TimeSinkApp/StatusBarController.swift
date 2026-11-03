@@ -3,7 +3,7 @@ import SwiftUI
 import TimeSinkCore
 
 @MainActor
-public final class StatusBarController: NSObject {
+public final class StatusBarController: NSObject, NSPopoverDelegate {
     private let statusItem: NSStatusItem
     private let popover: NSPopover
     private var eventMonitor: Any?
@@ -17,6 +17,7 @@ public final class StatusBarController: NSObject {
         self.appState = appState
         self.currentIconId = initialIconId
         super.init()
+        self.popover.delegate = self
 
         if let button = statusItem.button {
             button.target = self
@@ -64,6 +65,7 @@ public final class StatusBarController: NSObject {
 
     private func showPopover() {
         guard let button = statusItem.button else { return }
+        appState?.startLiveUpdates()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             self?.closePopover()
@@ -77,7 +79,24 @@ public final class StatusBarController: NSObject {
     }
 
     public func closePopover() {
+        appState?.stopLiveUpdates()
         popover.performClose(nil)
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+            eventMonitor = nil
+        }
+        if let keyMon = keyEventMonitor {
+            NSEvent.removeMonitor(keyMon)
+            keyEventMonitor = nil
+        }
+    }
+
+    public func popoverWillShow(_ notification: Notification) {
+        appState?.startLiveUpdates()
+    }
+
+    public func popoverDidClose(_ notification: Notification) {
+        appState?.stopLiveUpdates()
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
             eventMonitor = nil

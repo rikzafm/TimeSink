@@ -79,6 +79,7 @@ public final class TrackingEngine: @unchecked Sendable {
     public func onTick(_ now: Date) throws {
         if stopped || suspended { return }
         let n = Int64(now.timeIntervalSince1970)
+        try reloadTrackedApps()
 
         if let last = lastTick {
             if n < last {
@@ -240,15 +241,15 @@ public final class TrackingEngine: @unchecked Sendable {
 
     private func matches(app: TrackedApp, proc: ProcInfo) -> Bool {
         if let bundle = proc.bundleId, !bundle.isEmpty {
-            if let appBundle = app.bundleId, appBundle.caseInsensitiveCompare(bundle) == .orderedSame {
+            if let appBundle = app.bundleId, !appBundle.isEmpty, appBundle.caseInsensitiveCompare(bundle) == .orderedSame {
                 return true
             }
-            if let appPkg = app.packageFamily, appPkg.caseInsensitiveCompare(bundle) == .orderedSame {
+            if let appPkg = app.packageFamily, !appPkg.isEmpty, appPkg.caseInsensitiveCompare(bundle) == .orderedSame {
                 return true
             }
         }
         if let fullPath = proc.fullPath {
-            if fullPath.caseInsensitiveCompare(app.exePath) == .orderedSame {
+            if matchesPath(appPath: app.exePath, procPath: fullPath) {
                 return true
             }
             if let pkg = app.packageFamily, let procPkg = proc.packageFamily,
@@ -261,17 +262,45 @@ public final class TrackingEngine: @unchecked Sendable {
             }
         } else {
             // Unreadable process (elevated/protected): fall back to the image name when unambiguous.
-            let appFile = (app.exePath.replacingOccurrences(of: "\\", with: "/") as NSString).lastPathComponent
+            let rawAppFile = (app.exePath.replacingOccurrences(of: "\\", with: "/") as NSString).lastPathComponent
+            let appFile = rawAppFile.lowercased().hasSuffix(".app") ? (rawAppFile as NSString).deletingPathExtension : rawAppFile
             let isUniqueInApps = apps.filter {
-                ($0.exePath.replacingOccurrences(of: "\\", with: "/") as NSString).lastPathComponent.caseInsensitiveCompare(appFile) == .orderedSame
+                let raw = ($0.exePath.replacingOccurrences(of: "\\", with: "/") as NSString).lastPathComponent
+                let clean = raw.lowercased().hasSuffix(".app") ? (raw as NSString).deletingPathExtension : raw
+                return clean.caseInsensitiveCompare(appFile) == .orderedSame
             }.count == 1
-            if isUniqueInApps && proc.name.caseInsensitiveCompare(appFile) == .orderedSame {
+            if isUniqueInApps && (proc.name.caseInsensitiveCompare(appFile) == .orderedSame || proc.name.caseInsensitiveCompare(rawAppFile) == .orderedSame) {
                 return true
             }
             if let bundle = app.bundleId, bundle.caseInsensitiveCompare(proc.name) == .orderedSame {
                 return true
             }
         }
+        return false
+    }
+
+    private func matchesPath(appPath: String, procPath: String) -> Bool {
+        let a = (appPath.replacingOccurrences(of: "\\", with: "/") as NSString).standardizingPath
+        let p = (procPath.replacingOccurrences(of: "\\", with: "/") as NSString).standardizingPath
+        if a.caseInsensitiveCompare(p) == .orderedSame {
+            return true
+        }
+
+        // Bundle folder to executable containment:
+        // Case A: appPath is a .app bundle, procPath is inside it
+        if a.lowercased().hasSuffix(".app") {
+            if p.lowercased().hasPrefix(a.lowercased() + "/") {
+                return true
+            }
+        }
+
+        // Case B: procPath is a .app bundle, appPath is inside it
+        if p.lowercased().hasSuffix(".app") {
+            if a.lowercased().hasPrefix(p.lowercased() + "/") {
+                return true
+            }
+        }
+
         return false
     }
 

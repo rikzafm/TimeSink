@@ -18,8 +18,11 @@ public struct HourlyChartView: View {
     private let barsHeight: CGFloat = 46
     private var split: Bool { state.showsDeviceSplit }
     private var isLive: Bool { state.daysBack == 0 }
+    private var effectiveNowUtc: Int64 {
+        isLive ? state.liveNowUtc : result.nowUtc
+    }
     private var nowFraction: CGFloat {
-        CGFloat(result.nowUtc - result.dayStartUtc) / CGFloat(max(1, result.dayEndUtc - result.dayStartUtc))
+        CGFloat(effectiveNowUtc - result.dayStartUtc) / CGFloat(max(1, result.dayEndUtc - result.dayStartUtc))
     }
     private var nowHour: Int { isLive ? min(23, Int(nowFraction * 24)) : 24 }
     private let scale: Double = 3600.0
@@ -161,7 +164,7 @@ public struct HourlyChartView: View {
         GeometryReader { geo in
             let x = nowFraction * geo.size.width
             Rectangle().fill(ThemeColors.accent).frame(width: 1, height: 62).offset(x: x)
-            Text(Formatters.clock12(result.nowUtc))
+            Text(Formatters.clock12(effectiveNowUtc))
                 .font(.system(size: 10, weight: .bold))
                 .foregroundColor(ThemeColors.background)
                 .padding(.horizontal, 6)

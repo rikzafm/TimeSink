@@ -251,6 +251,74 @@ final class TrackingEngineTests: XCTestCase {
         XCTAssertFalse(snap3.contains { $0.isActive })
         XCTAssertGreaterThan(counter.count, 2)
     }
+
+    func testBundleFolderAndBinaryPathMatch() throws {
+        let rig = try TrackingTestRig()
+        // Insert WhatsApp tracked as .app bundle via externalExec to update data_version
+        try rig.externalExec("""
+            INSERT INTO apps (exe_path, display_name, added_utc, device_id, state)
+            VALUES ('/Applications/WhatsApp.app', 'WhatsApp', \(unix(0)), '\(rig.deviceId)', 'tracked');
+        """)
+        try rig.engine.reloadTrackedApps()
+        let waId = try rig.db.scalarInt("SELECT id FROM apps WHERE exe_path = '/Applications/WhatsApp.app';")!
+
+        // Process reports the Mach-O binary inside the bundle
+        rig.procs.running.append(ProcInfo(
+            pid: 42,
+            name: "WhatsApp",
+            fullPath: "/Applications/WhatsApp.app/Contents/MacOS/WhatsApp",
+            startUtc: rig.atTime(0)
+        ))
+        try rig.tick(0)
+
+        let sessions = try rig.getAllSessions()
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions.first?.appId, Int64(waId))
+    }
+
+    func testBundleIdMatchesEvenWhenPathsDiffer() throws {
+        let rig = try TrackingTestRig()
+        try rig.externalExec("""
+            INSERT INTO apps (exe_path, bundle_id, display_name, added_utc, device_id, state)
+            VALUES ('/Applications/WhatsApp.app', 'net.whatsapp.WhatsApp', 'WhatsApp', \(unix(0)), '\(rig.deviceId)', 'tracked');
+        """)
+        try rig.engine.reloadTrackedApps()
+        let waId = try rig.db.scalarInt("SELECT id FROM apps WHERE exe_path = '/Applications/WhatsApp.app';")!
+
+        // Process path differs or is sandboxed/temporary, but bundleId matches
+        rig.procs.running.append(ProcInfo(
+            pid: 99,
+            name: "WhatsApp",
+            fullPath: "/private/var/folders/xyz/WhatsApp",
+            startUtc: rig.atTime(0),
+            bundleId: "net.whatsapp.WhatsApp"
+        ))
+        try rig.tick(0)
+
+        let sessions = try rig.getAllSessions()
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions.first?.appId, Int64(waId))
+    }
+
+    func testProcessRemovedClosesSessionImmediately() throws {
+        let rig = try TrackingTestRig()
+        rig.procs.running.append(rig.notepadProc(pid: 1))
+        try rig.tick(0)
+        XCTAssertEqual(try rig.getAllSessions().count, 1)
+        XCTAssertNil(try rig.getAllSessions()[0].endUtc)
+
+        // Run past minSessionSeconds (15s)
+        try rig.tickEvery5(from: 5, to: 25)
+
+        // Process terminates
+        rig.procs.running.removeAll()
+        try rig.tick(30)
+
+        let sessions = try rig.getAllSessions()
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertNotNil(sessions[0].endUtc)
+        XCTAssertEqual(sessions[0].endReason, EndReasons.exit)
+    }
 }
 
 // MARK: - Helper Counting Store
