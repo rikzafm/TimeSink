@@ -26,6 +26,7 @@ public partial class MonthView : UserControl, ILiveView
     private readonly ThemeService _themes;
     private readonly LiveState _live;
     private readonly FlyoutWindow? _window;
+    private readonly Action<long, AppDetailRange, DateOnly?>? _showAppDetail;
     private readonly UsageSnapshotLoader _loader;
     private readonly LiveViewDriver _driver;
 
@@ -36,12 +37,13 @@ public partial class MonthView : UserControl, ILiveView
     private List<(string Name, long Seconds)> _barLabels = new();
     private string _defaultNote = "";
 
-    public MonthView(string dbPath, ThemeService themes, LiveState live, FlyoutWindow? window)
+    public MonthView(string dbPath, ThemeService themes, LiveState live, FlyoutWindow? window, Action<long, AppDetailRange, DateOnly?>? showAppDetail = null)
     {
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
         _window = window;
+        _showAppDetail = showAppDetail;
         InitializeComponent();
         Prev.Click += (_, _) => Navigate(-1);
         Next.Click += (_, _) => Navigate(1);
@@ -266,7 +268,28 @@ public partial class MonthView : UserControl, ILiveView
             Grid.SetColumn(body, 1);
             row.Children.Add(tile);
             row.Children.Add(body);
-            TopApps.Children.Add(row);
+
+            var card = new Border
+            {
+                Margin = new Thickness(-6, 2, -6, 2),
+                Padding = new Thickness(6, 4, 6, 4),
+                Background = Brushes.Transparent,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Child = row
+            };
+            card.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
+            card.MouseEnter += (_, _) => card.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+            card.MouseLeave += (_, _) => card.Background = Brushes.Transparent;
+            var appId = app.AppId;
+            card.PreviewMouseLeftButtonDown += (_, e) =>
+            {
+                if (e.ClickCount == 2)
+                {
+                    _showAppDetail?.Invoke(appId, AppDetailRange.Month, _selected ?? new DateOnly(_year, _month, 1));
+                    e.Handled = true;
+                }
+            };
+            TopApps.Children.Add(card);
         }
     }
 }

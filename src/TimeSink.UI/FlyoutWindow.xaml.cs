@@ -17,6 +17,7 @@ using TimeSink.Core.Flyout;
 using TimeSink.Core.Ipc;
 using TimeSink.Core.Settings;
 using TimeSink.Core.Theming;
+using TimeSink.Core.Usage;
 using TimeSink.UI.Services;
 using TimeSink.UI.Theming;
 using TimeSink.UI.Views;
@@ -154,10 +155,10 @@ public partial class FlyoutWindow : Window
     // Built on first visit only.
     private UIElement CreateBody(ShellTab tab) => tab switch
     {
-        ShellTab.Today => new TodayView(_dbPath, _themes, Live, ShowAppDetail),
+        ShellTab.Today => new TodayView(_dbPath, _themes, Live, ShowAppDetail, ShowAppSettings),
         ShellTab.Week => new WeekView(_dbPath, _themes, Live, OpenDayInToday, ShowAppDetail),
-        ShellTab.Month => new MonthView(_dbPath, _themes, Live, this),
-        ShellTab.Year => new YearView(_dbPath, _themes, Live),
+        ShellTab.Month => new MonthView(_dbPath, _themes, Live, this, ShowAppDetail),
+        ShellTab.Year => new YearView(_dbPath, _themes, Live, ShowAppDetail),
         ShellTab.All => new AllView(_dbPath, _themes, Live, this, ShowAppDetail),
         _ => throw new ArgumentOutOfRangeException(nameof(tab)),
     };
@@ -435,9 +436,28 @@ public partial class FlyoutWindow : Window
         Body.Visibility = screen is null ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // The app detail page (double-click a row in All) also covers the whole flyout; Back or Esc returns to the table.
+    // The app detail page (double-click a row in All, Week, Month, Year Matrix, Year Pace) covers the whole flyout; Back or Esc returns.
     private void ShowAppDetail(long appId) =>
-        SetOverlay(new AppDetailView(_dbPath, _themes, Live, appId, () => SetOverlay(null)));
+        ShowAppDetail(appId, AppDetailRange.Matrix, null);
+
+    private void ShowAppDetail(long appId, AppDetailRange initialRange, DateOnly? initialAnchor) =>
+        SetOverlay(new AppDetailView(_dbPath, _themes, Live, appId, () => SetOverlay(null), initialRange, initialAnchor));
+
+    // App-specific settings opened from Today row action pill
+    private void ShowAppSettings(long appId)
+    {
+        var addApp = new AddAppView(_themes, _dbPath, () =>
+        {
+            SetOverlay(null);
+            Live.NotifyDataChanged();
+        });
+        addApp.ShowAppSettingsDirect(appId, () =>
+        {
+            SetOverlay(null);
+            Live.NotifyDataChanged();
+        });
+        SetOverlay(addApp);
+    }
 
     private SettingsView? _settings;
     private ShellTab _current;

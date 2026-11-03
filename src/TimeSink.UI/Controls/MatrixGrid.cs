@@ -37,6 +37,7 @@ public sealed class MatrixGrid : FrameworkElement
     public static readonly DependencyProperty OnHeatBrushProperty = Reg<Brush?>(nameof(OnHeatBrush));
     public static readonly DependencyProperty OnSelectionBrushProperty = Reg<Brush?>(nameof(OnSelectionBrush));
     public static readonly DependencyProperty BorderBrushLineProperty = Reg<Brush?>(nameof(BorderBrushLine));
+    public static readonly DependencyProperty HoverBrushProperty = Reg<Brush?>(nameof(HoverBrush));
     public static readonly DependencyProperty LabelFontFamilyProperty = Reg<FontFamily?>(nameof(LabelFontFamily));
     public static readonly DependencyProperty LabelFontSizeProperty = Reg<double>(nameof(LabelFontSize), 11.0);
 
@@ -58,12 +59,15 @@ public sealed class MatrixGrid : FrameworkElement
     /// <summary>Text colour on the selected month header (which is filled with <see cref="TextBrush"/>).</summary>
     public Brush? OnSelectionBrush { get => (Brush?)GetValue(OnSelectionBrushProperty); set => SetValue(OnSelectionBrushProperty, value); }
     public Brush? BorderBrushLine { get => (Brush?)GetValue(BorderBrushLineProperty); set => SetValue(BorderBrushLineProperty, value); }
+    public Brush? HoverBrush { get => (Brush?)GetValue(HoverBrushProperty); set => SetValue(HoverBrushProperty, value); }
     public FontFamily? LabelFontFamily { get => (FontFamily?)GetValue(LabelFontFamilyProperty); set => SetValue(LabelFontFamilyProperty, value); }
     public double LabelFontSize { get => (double)GetValue(LabelFontSizeProperty); set => SetValue(LabelFontSizeProperty, value); }
 
     public event Action<int>? RowClicked;
     public event Action<int>? MonthClicked;
+    public event Action<int>? RowDoubleClicked;
 
+    private int _hoveredRow = -1;
     private int Columns => MonthLabels?.Count ?? 0;
     private int RowCount => Rows?.Count ?? 0;
     private double NameWidth => 70;
@@ -97,6 +101,8 @@ public sealed class MatrixGrid : FrameworkElement
             var y = RowY(r);
             if (SelectedRow == r)
                 dc.DrawRoundedRectangle(null, new Pen(TextBrush, 1), new Rect(-1, y - 1, ActualWidth + 2, RowHeight + 2), 6, 6);
+            else if (_hoveredRow == r && HoverBrush != null)
+                dc.DrawRoundedRectangle(HoverBrush, null, new Rect(-1, y - 1, ActualWidth + 2, RowHeight + 2), 6, 6);
             if (row.Icon is { } icon)
                 dc.DrawImage(icon, new Rect(0, y + (RowHeight - IconSize) / 2, IconSize, IconSize));
             else if (AppBrushes is { Count: > 0 } apps)
@@ -157,6 +163,35 @@ public sealed class MatrixGrid : FrameworkElement
         base.OnMouseMove(e);
         var (m, r) = Hit(e.GetPosition(this));
         Cursor = m >= 0 || r >= 0 ? Cursors.Hand : null;
+        if (_hoveredRow != r)
+        {
+            _hoveredRow = r;
+            InvalidateVisual();
+        }
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        base.OnMouseLeave(e);
+        if (_hoveredRow != -1)
+        {
+            _hoveredRow = -1;
+            InvalidateVisual();
+        }
+    }
+
+    protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonDown(e);
+        if (e.ClickCount == 2)
+        {
+            var (m, r) = Hit(e.GetPosition(this));
+            if (r >= 0)
+            {
+                RowDoubleClicked?.Invoke(r);
+                e.Handled = true;
+            }
+        }
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)

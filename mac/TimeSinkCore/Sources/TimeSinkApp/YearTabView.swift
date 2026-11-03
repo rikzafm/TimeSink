@@ -399,50 +399,13 @@ public struct YearTabView: View {
                     let maxSecs = CGFloat(max(1, month.topApps.first?.seconds ?? 1))
                     VStack(spacing: 6) {
                         ForEach(month.topApps.prefix(4), id: \.appId) { app in
-                            Button(action: { state.openAppDetail(appId: app.appId) }) {
-                                HStack(spacing: 8) {
-                                    if let img = state.iconCache.getCachedIcon(forAppId: app.appId),
-                                       let nsImage = NSImage(data: img) {
-                                        Image(nsImage: nsImage)
-                                            .resizable()
-                                            .frame(width: 16, height: 16)
-                                            .cornerRadius(3)
-                                    } else {
-                                        RoundedRectangle(cornerRadius: 2)
-                                            .fill(Tokens.appColor(app.name))
-                                            .frame(width: 10, height: 10)
-                                            .padding(3)
-                                    }
-
-                                    Text(app.name)
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(ThemeColors.textPrimary)
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                        .frame(width: 86, alignment: .leading)
-
-                                    GeometryReader { geo in
-                                        ZStack(alignment: .leading) {
-                                            RoundedRectangle(cornerRadius: 2.5)
-                                                .fill(ThemeColors.border)
-                                                .frame(height: 5)
-                                            RoundedRectangle(cornerRadius: 2.5)
-                                                .fill(Tokens.appColor(app.name))
-                                                .frame(width: max(2, geo.size.width * CGFloat(app.seconds) / maxSecs), height: 5)
-                                        }
-                                        .frame(maxHeight: .infinity, alignment: .center)
-                                    }
-                                    .frame(height: 12)
-
-                                    Text("\(Formatters.decimalHours(app.seconds)) h")
-                                        .font(.system(size: 11.5, weight: .regular))
-                                        .foregroundColor(ThemeColors.textPrimary)
-                                        .frame(width: 48, alignment: .trailing)
-                                }
-                                .frame(height: 22)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
+                            PaceAppRowItem(
+                                state: state,
+                                app: app,
+                                maxSecs: maxSecs,
+                                year: result.year,
+                                month: month.month
+                            )
                         }
                     }
                     .padding(.top, 4)
@@ -496,30 +459,32 @@ public struct YearTabView: View {
     @ViewBuilder
     private var wrappedView: some View {
         if let result = state.wrappedResult {
+            let count = WrappedCardView.cardCount(state: state, result: result)
+            let curIndex = min(state.wrappedCardIndex, max(0, count - 1))
             VStack(spacing: 10) {
-                WrappedCardView(state: state, result: result, index: state.wrappedCardIndex)
+                WrappedCardView(state: state, result: result, index: curIndex)
                     .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 25)
+                            .onEnded { value in
+                                let dx = value.translation.width
+                                if dx < -40 && curIndex < count - 1 {
+                                    state.wrappedCardIndex = curIndex + 1
+                                } else if dx > 40 && curIndex > 0 {
+                                    state.wrappedCardIndex = curIndex - 1
+                                }
+                            }
+                    )
 
                 HStack {
-                    HStack(spacing: 8) {
-                        deckButton("‹", enabled: state.wrappedCardIndex > 0) { state.wrappedCardIndex -= 1 }
-                        Spacer(minLength: 4)
-                        HStack(spacing: 6) {
-                            ForEach(0..<WrappedCardView.cardCount, id: \.self) { i in
-                                let on = i == state.wrappedCardIndex
-                                Button(action: { state.wrappedCardIndex = i }) {
-                                    Capsule()
-                                        .fill(on ? ThemeColors.accent : ThemeColors.border)
-                                        .frame(width: on ? 22 : 6, height: 6)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                            }
+                    WrappedDeckPager(
+                        count: count,
+                        currentIndex: curIndex,
+                        onSelect: { target in
+                            state.wrappedCardIndex = max(0, min(count - 1, target))
                         }
-                        Spacer(minLength: 4)
-                        deckButton("›", enabled: state.wrappedCardIndex < WrappedCardView.cardCount - 1) { state.wrappedCardIndex += 1 }
-                    }
-                    .frame(width: 190)
+                    )
 
                     Spacer()
 
@@ -534,9 +499,9 @@ public struct YearTabView: View {
                         Text(savedFeedback ? "Saved ✓" : "Save as image")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundColor(ThemeColors.background)
-                            .padding(.horizontal, 14)
+                            .padding(.horizontal, 16)
                             .frame(height: 32)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(ThemeColors.accent))
+                            .background(Capsule().fill(ThemeColors.accent))
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -545,19 +510,146 @@ public struct YearTabView: View {
             }
         }
     }
+}
+
+// MARK: - Dynamic Sliding-Window Pager
+
+struct WrappedDeckPager: View {
+    let count: Int
+    let currentIndex: Int
+    let onSelect: (Int) -> Void
+
+    private let buttonSize: CGFloat = 32
+    private let buttonGap: CGFloat = 8
+    private let dotDiameter: CGFloat = 6
+    private let activeDotWidth: CGFloat = 20
+    private let dotSpacing: CGFloat = 6
+    private let maxViewportWidth: CGFloat = 92
+    private let dotBaseColor = Color(hex: 0x627352)
+
+    var body: some View {
+        let (vpWidth, totalTrackWidth) = computeViewport(count: count)
+        let (centers, widths, scrollOffset) = computeTrack(
+            activeIdx: currentIndex,
+            count: count,
+            vpWidth: vpWidth,
+            totalTrackWidth: totalTrackWidth
+        )
+        let maxScroll = max(0, totalTrackWidth - vpWidth)
+
+        HStack(spacing: buttonGap) {
+            deckButton("‹", enabled: currentIndex > 0) {
+                onSelect(currentIndex - 1)
+            }
+
+            ZStack(alignment: .leading) {
+                ForEach(0..<count, id: \.self) { i in
+                    let cx = centers[i] - scrollOffset
+                    let isActive = (i == currentIndex)
+                    let baseW = widths[i]
+                    let scale = computeDotScale(
+                        cx: cx,
+                        vpWidth: vpWidth,
+                        scrollOffset: scrollOffset,
+                        maxScroll: maxScroll
+                    )
+                    let w = max(2, baseW * scale)
+                    let h = max(2, dotDiameter * scale)
+
+                    Button(action: { onSelect(i) }) {
+                        Capsule()
+                            .fill(isActive ? ThemeColors.accent : dotBaseColor)
+                            .frame(width: w, height: h)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .position(x: cx, y: buttonSize / 2)
+                    .opacity(cx < -4 || cx > vpWidth + 4 ? 0 : 1)
+                    .animation(.spring(response: 0.30, dampingFraction: 0.85), value: currentIndex)
+                }
+            }
+            .frame(width: vpWidth, height: buttonSize)
+            .clipped()
+
+            deckButton("›", enabled: currentIndex < count - 1) {
+                onSelect(currentIndex + 1)
+            }
+        }
+    }
+
+    private func computeViewport(count: Int) -> (CGFloat, CGFloat) {
+        guard count > 0 else { return (0, 0) }
+        let total = CGFloat(count - 1) * (dotDiameter + dotSpacing) + activeDotWidth
+        return (min(maxViewportWidth, total), total)
+    }
+
+    private func computeTrack(activeIdx: Int, count: Int, vpWidth: CGFloat, totalTrackWidth: CGFloat) -> ([CGFloat], [CGFloat], CGFloat) {
+        guard count > 0 else { return ([], [], 0) }
+        var widths = [CGFloat](repeating: dotDiameter, count: count)
+        var centers = [CGFloat](repeating: 0, count: count)
+
+        for i in 0..<count {
+            widths[i] = (i == activeIdx) ? activeDotWidth : dotDiameter
+        }
+
+        centers[0] = widths[0] / 2
+        for i in 1..<count {
+            centers[i] = centers[i - 1] + widths[i - 1] / 2 + dotSpacing + widths[i] / 2
+        }
+
+        if totalTrackWidth <= vpWidth {
+            return (centers, widths, -(vpWidth - totalTrackWidth) / 2)
+        }
+        let activeCenter = centers[min(count - 1, max(0, activeIdx))]
+        let scroll = max(0, min(totalTrackWidth - vpWidth, activeCenter - vpWidth / 2))
+        return (centers, widths, scroll)
+    }
+
+    private func computeDotScale(cx: CGFloat, vpWidth: CGFloat, scrollOffset: CGFloat, maxScroll: CGFloat) -> CGFloat {
+        guard maxScroll > 0.5 else { return 1.0 }
+
+        let leftShrink = maxScroll > 0.5 ? min(1.0, max(0.0, scrollOffset / 10.0)) : 0.0
+        let rightShrink = maxScroll > 0.5 ? min(1.0, max(0.0, (maxScroll - scrollOffset) / 10.0)) : 0.0
+
+        var scaleL: CGFloat = 1.0
+        if leftShrink > 0 {
+            if cx < 6 { scaleL = 0.42 }
+            else if cx < 16 { scaleL = 0.42 + (cx - 6) / 10.0 * 0.58 }
+            scaleL = 1.0 - (1.0 - scaleL) * leftShrink
+        }
+
+        var scaleR: CGFloat = 1.0
+        let dR = vpWidth - cx
+        if rightShrink > 0 {
+            if dR < 6 { scaleR = 0.42 }
+            else if dR < 16 { scaleR = 0.42 + (dR - 6) / 10.0 * 0.58 }
+            scaleR = 1.0 - (1.0 - scaleR) * rightShrink
+        }
+
+        return min(scaleL, scaleR)
+    }
 
     private func deckButton(_ glyph: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(glyph)
-                .font(.system(size: 15))
-                .foregroundColor(enabled ? ThemeColors.textPrimary : ThemeColors.textDisabled)
-                .frame(width: 32, height: 32)
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(ThemeColors.border, lineWidth: 1))
-                .contentShape(Rectangle())
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(ThemeColors.controlBackground)
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(ThemeColors.border, lineWidth: 1)
+                Text(glyph)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(enabled ? ThemeColors.textPrimary : ThemeColors.textDisabled)
+            }
+            .frame(width: buttonSize, height: buttonSize)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.45)
     }
+}
+
+extension YearTabView {
 
     // MARK: - Matrix
 
@@ -603,32 +695,13 @@ public struct YearTabView: View {
 
             ForEach(result.rows, id: \.appId) { row in
                 let on = row.appId == selected
-                Button(action: { selectedRow = row.appId }) {
-                    HStack(spacing: 3) {
-                        Text(row.name)
-                            .font(.system(size: 11, weight: on ? .bold : .medium))
-                            .foregroundColor(on ? ThemeColors.accent : ThemeColors.textPrimary)
-                            .lineLimit(1)
-                            .frame(width: 78, alignment: .leading)
-
-                        ForEach(Array(row.cells.enumerated()), id: \.offset) { _, cell in
-                            let hours = (cell.seconds + 1800) / 3600
-                            Text(hours > 0 ? "\(hours)" : "")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(cell.level >= 3 ? ThemeColors.background : ThemeColors.textDim)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 26)
-                                .background(RoundedRectangle(cornerRadius: 4).fill(Tokens.heat(cell.level)))
-                        }
-
-                        Text(Formatters.grouped((row.totalSeconds + 1800) / 3600))
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(ThemeColors.textPrimary)
-                            .frame(width: 40, alignment: .trailing)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                MatrixRowItem(
+                    state: state,
+                    row: row,
+                    selected: on,
+                    year: result.year,
+                    onSelect: { selectedRow = row.appId }
+                )
             }
 
             HStack(spacing: 3) {
@@ -687,6 +760,56 @@ public struct YearTabView: View {
 
 /// One card of the Wrapped deck. Also what Save as image renders.
 public struct WrappedCardView: View {
+    public enum CardItem {
+        case total
+        case topApps
+        case deviceTop(eyebrow: String, title: String, podium: [WrappedApp], others: [WrappedApp])
+        case games
+        case gacha
+        case longestSessions
+        case habits
+    }
+
+    public static func cards(state: AppState, result: WrappedResult) -> [CardItem] {
+        var list: [CardItem] = [.total, .topApps]
+        if state.deviceScope == .all {
+            if state.wrappedGroupByPlatform {
+                // Local device first on Mac: Mac then PC
+                if let macTop = result.macTop, !macTop.podium.isEmpty {
+                    let title = macTop.podium.first.map { "\(.name) kept you company most." } ?? "No apps yet."
+                    list.append(.deviceTop(eyebrow: "YOUR MAC'S TOP APPS", title: title, podium: macTop.podium, others: macTop.others))
+                }
+                if let pcTop = result.pcTop, !pcTop.podium.isEmpty {
+                    let title = pcTop.podium.first.map { "\(.name) kept you company most." } ?? "No apps yet."
+                    list.append(.deviceTop(eyebrow: "YOUR PC'S TOP APPS", title: title, podium: pcTop.podium, others: pcTop.others))
+                }
+            } else if let devTops = result.deviceTops, !devTops.isEmpty {
+                let localId = state.localDeviceId
+                if !localId.isEmpty, let localTop = devTops[localId], !localTop.podium.isEmpty {
+                    let name = state.deviceDisplayName(localId).uppercased()
+                    let title = localTop.podium.first.map { "\(.name) kept you company most." } ?? "No apps yet."
+                    list.append(.deviceTop(eyebrow: "YOUR \(name)'S TOP APPS", title: title, podium: localTop.podium, others: localTop.others))
+                }
+                for (devId, top) in devTops.sorted(by: { .key < .key }) {
+                    if devId == localId || top.podium.isEmpty { continue }
+                    let name = state.deviceDisplayName(devId).uppercased()
+                    let title = top.podium.first.map { "\(.name) kept you company most." } ?? "No apps yet."
+                    list.append(.deviceTop(eyebrow: "YOUR \(name)'S TOP APPS", title: title, podium: top.podium, others: top.others))
+                }
+            }
+        }
+        list.append(.games)
+        list.append(.gacha)
+        list.append(.longestSessions)
+        list.append(.habits)
+        return list
+    }
+
+    public static func cardCount(state: AppState, result: WrappedResult?) -> Int {
+        guard let result = result else { return 6 }
+        return cards(state: state, result: result).count
+    }
+
     @ObservedObject var state: AppState
     let result: WrappedResult
     let index: Int
@@ -997,7 +1120,7 @@ public struct WrappedCardView: View {
                     habit("BUSIEST MONTH", result.busiestMonth.map { "\(Formatters.monthName($0, short: true)) · \(h(result.busiestMonthSeconds))" } ?? "—", busiestDelta)
                 }
                 HStack(spacing: 10) {
-                    habit("PEAK HOUR", peakText, "most apps open together")
+                    habit("PEAK HOUR", peakText, "Busiest Time")
                     habit("BEFORE NOON", "\(result.beforeNoonPercent)%", result.beforeNoonPercent >= 50 ? "of your time, an early bird" : "of your time")
                 }
             }
@@ -1045,5 +1168,109 @@ private struct OpenDashedBorder: View {
             path.addLine(to: CGPoint(x: size.width, y: size.height))
             ctx.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
         }
+    }
+}
+
+
+private struct PaceAppRowItem: View {
+    @ObservedObject var state: AppState
+    let app: YearAppShare
+    let maxSecs: CGFloat
+    let year: Int
+    let month: Int
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let img = state.iconCache.getCachedIcon(forAppId: app.appId),
+               let nsImage = NSImage(data: img) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .frame(width: 16, height: 16)
+                    .cornerRadius(3)
+            } else {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Tokens.appColor(app.name))
+                    .frame(width: 10, height: 10)
+                    .padding(3)
+            }
+
+            Text(app.name)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(ThemeColors.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(width: 86, alignment: .leading)
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2.5)
+                        .fill(ThemeColors.border)
+                        .frame(height: 5)
+                    RoundedRectangle(cornerRadius: 2.5)
+                        .fill(Tokens.appColor(app.name))
+                        .frame(width: max(2, geo.size.width * CGFloat(app.seconds) / maxSecs), height: 5)
+                }
+                .frame(maxHeight: .infinity, alignment: .center)
+            }
+            .frame(height: 12)
+
+            Text("\(Formatters.decimalHours(app.seconds)) h")
+                .font(.system(size: 11.5, weight: .regular))
+                .foregroundColor(ThemeColors.textPrimary)
+                .frame(width: 48, alignment: .trailing)
+        }
+        .padding(.horizontal, 4)
+        .frame(height: 22)
+        .background(RoundedRectangle(cornerRadius: 4).fill(isHovered ? ThemeColors.surfaceActive : Color.clear))
+        .contentShape(Rectangle())
+        .onHover { h in isHovered = h }
+        .onTapGesture(count: 2) {
+            state.openAppDetail(appId: app.appId, range: .year, anchor: String(format: "%04d-%02d-01", year, month), year: year)
+        }
+    }
+}
+
+private struct MatrixRowItem: View {
+    @ObservedObject var state: AppState
+    let row: MatrixRow
+    let selected: Bool
+    let year: Int
+    let onSelect: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Text(row.name)
+                .font(.system(size: 11, weight: selected ? .bold : .medium))
+                .foregroundColor(selected ? ThemeColors.accent : ThemeColors.textPrimary)
+                .lineLimit(1)
+                .frame(width: 78, alignment: .leading)
+
+            ForEach(Array(row.cells.enumerated()), id: \.offset) { _, cell in
+                let hours = (cell.seconds + 1800) / 3600
+                Text(hours > 0 ? "\(hours)" : "")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(cell.level >= 3 ? ThemeColors.background : ThemeColors.textDim)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 26)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Tokens.heat(cell.level)))
+            }
+
+            Text(Formatters.grouped((row.totalSeconds + 1800) / 3600))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(ThemeColors.textPrimary)
+                .frame(width: 40, alignment: .trailing)
+        }
+        .padding(.horizontal, 4)
+        .background(RoundedRectangle(cornerRadius: 6).fill(isHovered ? ThemeColors.surfaceActive : Color.clear))
+        .contentShape(Rectangle())
+        .onHover { h in isHovered = h }
+        .onTapGesture(count: 2) {
+            state.openAppDetail(appId: row.appId, range: .matrix, anchor: "\(year)-01-01", year: year)
+        }
+        .simultaneousGesture(TapGesture().onEnded {
+            onSelect()
+        })
     }
 }

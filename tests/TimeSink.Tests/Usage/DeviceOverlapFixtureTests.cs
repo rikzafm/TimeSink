@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using TimeSink.Core.Data;
 using TimeSink.Core.Data.Migrations;
@@ -287,6 +287,13 @@ public sealed class DeviceOverlapFixtureTests
             wrapped.LongestSessions!.Should().Contain(a => !string.IsNullOrEmpty(a.DeviceId));
             wrapped.BusiestMonthDeviceSeconds.Should().NotBeNull();
             wrapped.BeforeNoonDeviceSeconds.Should().NotBeNull();
+            wrapped.PcTop.Should().NotBeNull();
+            wrapped.PcTop!.Podium.Should().NotBeEmpty();
+            wrapped.MacTop.Should().NotBeNull();
+            wrapped.MacTop!.Podium.Should().NotBeEmpty();
+            wrapped.DeviceTops.Should().NotBeNull();
+            wrapped.DeviceTops!.Should().ContainKey("dev-win");
+            wrapped.DeviceTops!.Should().ContainKey("dev-mac");
         }
         finally
         {

@@ -194,7 +194,7 @@ public struct FlowLayout: Layout {
 
 public enum TSIcon {
     case gamepad, gear, gearLarge, eye, eyeSlash, lashes, layers, back, close, search, searchSmall
-    case folder, upload, clock, history, tableOptions, triangleLeft, triangleRight, sync
+    case folder, upload, clock, history, tableOptions, triangleLeft, triangleRight, sync, sliders, chartBars
 
     var box: CGFloat {
         switch self {
@@ -289,6 +289,17 @@ public enum TSIcon {
             p.move(to: pt(1, 1)); p.addLine(to: pt(6, 5)); p.addLine(to: pt(1, 9)); p.closeSubpath()
         case .sync:
             p = SVGPath.parse("M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3L21.5 8M22 12.5a10 10 0 0 1-18.8 4.2L2.5 16")
+        case .sliders:
+            line(pt(2, 5.5), pt(9, 5.5))
+            line(pt(13, 5.5), pt(15, 5.5))
+            dot(11, 5.5, 2)
+            line(pt(2, 10.5), pt(3.5, 10.5))
+            line(pt(7.5, 10.5), pt(15, 10.5))
+            dot(5.5, 10.5, 2)
+        case .chartBars:
+            line(pt(4, 12.5), pt(4, 8.5))
+            line(pt(8, 12.5), pt(8, 3.5))
+            line(pt(12, 12.5), pt(12, 6))
         }
         return p
     }
@@ -557,40 +568,57 @@ public struct OverlapBar: View {
 struct RankedAppList: View {
     @ObservedObject var state: AppState
     let rows: [(appId: Int64, name: String, seconds: Int64)]
+    var range: AppDetailRange = .month
+    var anchor: String? = nil
 
     var body: some View {
         let top = max(1, rows.first?.seconds ?? 1)
         VStack(spacing: 0) {
             ForEach(rows, id: \.appId) { row in
-                Button(action: { state.openAppDetail(appId: row.appId) }) {
-                    HStack(spacing: 10) {
-                        AppTile(name: row.name, png: state.iconCache.getCachedIcon(forAppId: row.appId))
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(row.name)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(ThemeColors.textPrimary)
-                                .lineLimit(1)
-                            GeometryReader { geo in
-                                Capsule().fill(ThemeColors.barBackground)
-                                    .overlay(alignment: .leading) {
-                                        Capsule()
-                                            .fill(Tokens.appColor(row.name))
-                                            .frame(width: geo.size.width * CGFloat(row.seconds) / CGFloat(top))
-                                    }
-                            }
-                            .frame(height: 4)
-                        }
-                        Text(Formatters.paddedHM(row.seconds))
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(ThemeColors.textPrimary)
-                            .frame(width: 62, alignment: .trailing)
-                    }
-                    .padding(.horizontal, 6)
-                    .frame(height: 46)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                RankedAppRow(state: state, row: row, top: top, range: range, anchor: anchor)
             }
+        }
+    }
+}
+
+private struct RankedAppRow: View {
+    @ObservedObject var state: AppState
+    let row: (appId: Int64, name: String, seconds: Int64)
+    let top: Int64
+    let range: AppDetailRange
+    let anchor: String?
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            AppTile(name: row.name, png: state.iconCache.getCachedIcon(forAppId: row.appId))
+            VStack(alignment: .leading, spacing: 5) {
+                Text(row.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(ThemeColors.textPrimary)
+                    .lineLimit(1)
+                GeometryReader { geo in
+                    Capsule().fill(ThemeColors.barBackground)
+                        .overlay(alignment: .leading) {
+                            Capsule()
+                                .fill(Tokens.appColor(row.name))
+                                .frame(width: geo.size.width * CGFloat(row.seconds) / CGFloat(top))
+                        }
+                }
+                .frame(height: 4)
+            }
+            Text(Formatters.paddedHM(row.seconds))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(ThemeColors.textPrimary)
+                .frame(width: 62, alignment: .trailing)
+        }
+        .padding(.horizontal, 6)
+        .frame(height: 46)
+        .background(RoundedRectangle(cornerRadius: 8).fill(isHovered ? ThemeColors.surfaceActive : Color.clear))
+        .contentShape(Rectangle())
+        .onHover { h in isHovered = h }
+        .onTapGesture(count: 2) {
+            state.openAppDetail(appId: row.appId, range: range, anchor: anchor)
         }
     }
 }

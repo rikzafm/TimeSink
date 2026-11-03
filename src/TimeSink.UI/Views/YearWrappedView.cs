@@ -1,14 +1,18 @@
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Markup;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using TimeSink.Core.Apps;
+using TimeSink.Core.Devices;
+using TimeSink.Core.Settings;
 using TimeSink.Core.Theming;
 using TimeSink.Core.Usage;
 using TimeSink.UI.Controls;
@@ -19,14 +23,17 @@ using static TimeSink.UI.Services.TimeText;
 namespace TimeSink.UI.Views;
 
 /// <summary>
-/// Year > Wrapped: six pageable cards (total hours, top apps, top games and top gacha podiums, habits, longest sessions; board PulseYearWrapped) and "Save as
+/// Year > Wrapped: pageable cards (total hours, top apps, optional device top apps in all-device mode,
+/// top games and top gacha podiums, habits, longest sessions; board PulseYearWrapped) and "Save as
 /// image", which writes the visible card to a PNG. Built in code; data arrives after first paint via <see cref="Start"/>.
 /// </summary>
 public sealed class YearWrappedView : UserControl, IYearSubView
 {
     private const int RefreshEverySeconds = 30;
-    private const int CardCount = 6; // total, top apps, top games, top gacha, habits, longest sessions
     private const double SwipeDistance = 40;
+
+    private enum CardKind { Total, TopApps, DeviceTop, Games, Gacha, LongestSessions, Habits }
+    private sealed record CardItem(CardKind Kind, string NameKey, string? DeviceId = null, string? Platform = null, string? DeviceName = null, WrappedKindTop? Top = null);
 
     private readonly string _dbPath;
     private readonly ThemeService _themes;
@@ -34,7 +41,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
     private readonly UsageSnapshotLoader _loader;
     private readonly LiveViewDriver _driver;
     private readonly WrappedCard _card = new();
-    private readonly WrappedPager _pager = new() { Count = CardCount };
+    private readonly WrappedPager _pager = new() { Count = 6 };
     private readonly Button _save = new();
 
     private WrappedResult? _result;
@@ -51,29 +58,17 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         _live = live;
         _onTrackingStarted = onTrackingStarted;
 #if DEBUG
-        if (int.TryParse(Environment.GetEnvironmentVariable("TS_WRAPPED_CARD"), out var start)) _index = Math.Clamp(start - 1, 0, CardCount - 1); // test aid (decision 115)
+        if (int.TryParse(Environment.GetEnvironmentVariable("TS_WRAPPED_CARD"), out var start)) _index = Math.Max(0, start - 1); // test aid (decision 115)
 #endif
 
-        Bind(_card, WrappedCard.BackBrushProperty, "Brush.SurfaceAlt");
-        Bind(_card, WrappedCard.TileBackBrushProperty, "Brush.Surface");
-        Bind(_card, WrappedCard.LineBrushProperty, "Brush.Border");
-        Bind(_card, WrappedCard.TextBrushProperty, "Brush.Text");
-        Bind(_card, WrappedCard.SoftBrushProperty, "Brush.TextSoft");
-        Bind(_card, WrappedCard.MutedBrushProperty, "Brush.TextMuted");
-        Bind(_card, WrappedCard.AccentBrushProperty, "Brush.Accent");
-        Bind(_card, WrappedCard.OnAccentBrushProperty, "Brush.OnAccent");
-        Bind(_card, WrappedCard.DeviceABrushProperty, "Brush.DeviceA");
-        Bind(_card, WrappedCard.DeviceBBrushProperty, "Brush.DeviceB");
-        Bind(_card, WrappedCard.FontFaceProperty, "FontFamily.Ui");
-        Bind(_card, WrappedCard.NumberFontFaceProperty, "FontFamily.Numbers");
-        Bind(_card, WrappedCard.SmallSizeProperty, "Double.FontSize.Small");
-        Bind(_card, WrappedCard.BodySizeProperty, "Double.FontSize.Body");
-        Bind(_card, WrappedCard.TitleSizeProperty, "Double.FontSize.Title");
-        Bind(_card, WrappedCard.DisplaySizeProperty, "Double.FontSize.Display");
+        BindCard(_card);
+
         Bind(_pager, WrappedPager.LineBrushProperty, "Brush.Border");
         Bind(_pager, WrappedPager.IconBrushProperty, "Brush.Text");
-        Bind(_pager, WrappedPager.DotBrushProperty, "Brush.Border");
+        _pager.DotBrush = new SolidColorBrush(Color.FromRgb(0x62, 0x73, 0x52));
         Bind(_pager, WrappedPager.ActiveBrushProperty, "Brush.Accent");
+        Bind(_pager, WrappedPager.ButtonBackgroundBrushProperty, "Brush.SurfaceAlt");
+
         _card.Margin = new Thickness(16, 14, 16, 0);
         _card.Cursor = Cursors.Arrow;
         _card.MouseLeftButtonDown += (_, e) => { _dragFrom = e.GetPosition(this); _card.CaptureMouse(); };
@@ -86,13 +81,14 @@ public sealed class YearWrappedView : UserControl, IYearSubView
             if (dx <= -SwipeDistance) Go(_index + 1);
             else if (dx >= SwipeDistance) Go(_index - 1);
         };
-        _pager.Width = 190;
+
         _pager.HorizontalAlignment = HorizontalAlignment.Left;
+        _pager.VerticalAlignment = VerticalAlignment.Center;
         _pager.PageRequested += Go;
 
         _save.Template = (ControlTemplate)XamlReader.Parse("""
             <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button">
-              <Border Background="{DynamicResource Brush.Accent}" CornerRadius="{DynamicResource CornerRadius.Small}" Padding="14,0" Height="32">
+              <Border Background="{DynamicResource Brush.Accent}" CornerRadius="16" Padding="16,0" Height="32">
                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="{DynamicResource Brush.OnAccent}"/>
               </Border>
             </ControlTemplate>
@@ -123,13 +119,91 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         Redraw(); // static text and an empty card; data follows in Start
     }
 
+    private void BindCard(WrappedCard card)
+    {
+        Bind(card, WrappedCard.BackBrushProperty, "Brush.SurfaceAlt");
+        Bind(card, WrappedCard.TileBackBrushProperty, "Brush.Surface");
+        Bind(card, WrappedCard.LineBrushProperty, "Brush.Border");
+        Bind(card, WrappedCard.TextBrushProperty, "Brush.Text");
+        Bind(card, WrappedCard.SoftBrushProperty, "Brush.TextSoft");
+        Bind(card, WrappedCard.MutedBrushProperty, "Brush.TextMuted");
+        Bind(card, WrappedCard.AccentBrushProperty, "Brush.Accent");
+        Bind(card, WrappedCard.OnAccentBrushProperty, "Brush.OnAccent");
+        Bind(card, WrappedCard.DeviceABrushProperty, "Brush.DeviceA");
+        Bind(card, WrappedCard.DeviceBBrushProperty, "Brush.DeviceB");
+        Bind(card, WrappedCard.FontFaceProperty, "FontFamily.Ui");
+        Bind(card, WrappedCard.NumberFontFaceProperty, "FontFamily.Numbers");
+        Bind(card, WrappedCard.SmallSizeProperty, "Double.FontSize.Small");
+        Bind(card, WrappedCard.BodySizeProperty, "Double.FontSize.Body");
+        Bind(card, WrappedCard.TitleSizeProperty, "Double.FontSize.Title");
+        Bind(card, WrappedCard.DisplaySizeProperty, "Double.FontSize.Display");
+    }
+
     private static void Bind(FrameworkElement el, DependencyProperty dp, string key) => el.SetResourceReference(dp, key);
 
-    private void Go(int index)
+    private List<CardItem> GetCards(WrappedResult? r)
     {
-        index = Math.Clamp(index, 0, CardCount - 1);
-        if (index == _index) return;
-        _index = index;
+        var list = new List<CardItem>
+        {
+            new(CardKind.Total, WrappedStringKeys.CardNameTotal),
+            new(CardKind.TopApps, WrappedStringKeys.CardNameTop)
+        };
+
+        var scope = _live?.DeviceScope ?? TimeSink.Core.Devices.DeviceScope.This;
+        if (scope == TimeSink.Core.Devices.DeviceScope.All && r != null)
+        {
+            var settings = AppSettings.ForFile(_dbPath);
+            var groupByPlatform = settings.Get(Setting.WrappedGroupByPlatform);
+            if (groupByPlatform)
+            {
+                // Local device first: PC then Mac on Windows
+                var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+                if (isWindows)
+                {
+                    if (r.PcTop is { Podium.Count: > 0 })
+                        list.Add(new(CardKind.DeviceTop, WrappedStringKeys.CardNamePc, Platform: "windows", DeviceName: "PC", Top: r.PcTop));
+                    if (r.MacTop is { Podium.Count: > 0 })
+                        list.Add(new(CardKind.DeviceTop, WrappedStringKeys.CardNameMac, Platform: "macos", DeviceName: "Mac", Top: r.MacTop));
+                }
+                else
+                {
+                    if (r.MacTop is { Podium.Count: > 0 })
+                        list.Add(new(CardKind.DeviceTop, WrappedStringKeys.CardNameMac, Platform: "macos", DeviceName: "Mac", Top: r.MacTop));
+                    if (r.PcTop is { Podium.Count: > 0 })
+                        list.Add(new(CardKind.DeviceTop, WrappedStringKeys.CardNamePc, Platform: "windows", DeviceName: "PC", Top: r.PcTop));
+                }
+            }
+            else if (r.DeviceTops is { Count: > 0 })
+            {
+                var devInfo = DeviceInfoService.Load(_dbPath);
+                var localId = _live?.LocalDeviceId ?? DeviceInfoService.GetLocalDeviceId(_dbPath);
+                if (!string.IsNullOrEmpty(localId) && r.DeviceTops.TryGetValue(localId, out var localTop) && localTop.Podium.Count > 0)
+                {
+                    var name = devInfo.TryGetValue(localId, out var li) && !string.IsNullOrEmpty(li.Name) ? li.Name : "PC";
+                    list.Add(new(CardKind.DeviceTop, WrappedStringKeys.CardNameTop, DeviceId: localId, DeviceName: name, Top: localTop));
+                }
+                foreach (var (devId, top) in r.DeviceTops.OrderBy(kv => kv.Key))
+                {
+                    if (devId == localId || top.Podium.Count == 0) continue;
+                    var name = devInfo.TryGetValue(devId, out var ri) && !string.IsNullOrEmpty(ri.Name) ? ri.Name : "Device";
+                    list.Add(new(CardKind.DeviceTop, WrappedStringKeys.CardNameTop, DeviceId: devId, DeviceName: name, Top: top));
+                }
+            }
+        }
+
+        list.Add(new(CardKind.Games, WrappedStringKeys.CardNameGames));
+        list.Add(new(CardKind.Gacha, WrappedStringKeys.CardNameGacha));
+        list.Add(new(CardKind.LongestSessions, WrappedStringKeys.CardNameLongest));
+        list.Add(new(CardKind.Habits, WrappedStringKeys.CardNameHabits));
+        return list;
+    }
+
+    private void Go(int targetIndex)
+    {
+        var cards = GetCards(_result);
+        targetIndex = Math.Clamp(targetIndex, 0, Math.Max(0, cards.Count - 1));
+        if (targetIndex == _index) return;
+        _index = targetIndex;
         Redraw();
     }
 
@@ -150,7 +224,16 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         if (!await _loader.Refresh(c => WrappedQuery.Run(c, _year), r => { loaded = r; _onTrackingStarted?.Invoke(r.TrackingStarted); })) return;
         var result = loaded!;
         _result = result;
-        AppIcons.Load(_dbPath, result.Podium.Concat(result.Others).Concat(result.GamesTop?.Podium ?? []).Concat(result.GachaTop?.Podium ?? []).Concat(result.LongestSessions ?? []).Select(a => a.AppId));
+        var extraApps = (result.PcTop?.Podium ?? []).Concat(result.PcTop?.Others ?? [])
+            .Concat(result.MacTop?.Podium ?? []).Concat(result.MacTop?.Others ?? []);
+        if (result.DeviceTops != null)
+        {
+            foreach (var dt in result.DeviceTops.Values)
+                extraApps = extraApps.Concat(dt.Podium).Concat(dt.Others);
+        }
+        AppIcons.Load(_dbPath, result.Podium.Concat(result.Others)
+            .Concat(result.GamesTop?.Podium ?? []).Concat(result.GachaTop?.Podium ?? [])
+            .Concat(result.LongestSessions ?? []).Concat(extraApps).Select(a => a.AppId));
         Redraw();
 #if DEBUG
         var auto = Environment.GetEnvironmentVariable("TS_WRAPPED_SAVETO"); // test aid: write the visible card, no dialog (decision 115)
@@ -166,25 +249,44 @@ public sealed class YearWrappedView : UserControl, IYearSubView
     private static string Hours(long seconds) =>
         seconds < 3600 ? UsageText.HoursMinutes(seconds) : Str(WrappedStringKeys.ShortHours, UsageText.Hours(seconds));
 
-    private WrappedCardModel BuildModel(WrappedResult r, int index)
+    private WrappedCardModel BuildModel(WrappedResult r, IReadOnlyList<CardItem> cards, int index)
     {
+        if (index < 0 || index >= cards.Count) return new EmptyCardModel("", "");
+        var item = cards[index];
+
         if (r.TotalSeconds <= 0)
         {
-            var label = index switch
+            var emptyLabel = item.Kind switch
             {
-                1 => WrappedStringKeys.Card2Label, 2 => WrappedStringKeys.Card4Label, 3 => WrappedStringKeys.Card5Label,
-                4 => WrappedStringKeys.Card6Label, 5 => WrappedStringKeys.Card3Label, _ => WrappedStringKeys.Card1Label,
+                CardKind.Total => WrappedStringKeys.Card1Label,
+                CardKind.TopApps => WrappedStringKeys.Card2Label,
+                CardKind.DeviceTop when item.Platform == "windows" => WrappedStringKeys.CardPcLabel,
+                CardKind.DeviceTop when item.Platform == "macos" => WrappedStringKeys.CardMacLabel,
+                CardKind.DeviceTop => WrappedStringKeys.Card2Label,
+                CardKind.Games => WrappedStringKeys.Card4Label,
+                CardKind.Gacha => WrappedStringKeys.Card5Label,
+                CardKind.LongestSessions => WrappedStringKeys.Card6Label,
+                _ => WrappedStringKeys.Card3Label
             };
-            return new EmptyCardModel(Str(label, r.Year), Str(YearStringKeys.Empty));
+            return new EmptyCardModel(Str(emptyLabel, r.Year), Str(YearStringKeys.Empty));
         }
-        return index switch
+
+        return item.Kind switch
         {
-            1 => Podium(Str(WrappedStringKeys.Card2Label), WrappedStringKeys.TopHeadline, r.Podium, r.Others, ""),
-            2 => Podium(Str(WrappedStringKeys.Card4Label), WrappedStringKeys.GamesHeadline, r.GamesTop?.Podium, r.GamesTop?.Others, WrappedStringKeys.NoGames),
-            3 => Podium(Str(WrappedStringKeys.Card5Label), WrappedStringKeys.GachaHeadline, r.GachaTop?.Podium, r.GachaTop?.Others, WrappedStringKeys.NoGacha),
-            4 => Podium(Str(WrappedStringKeys.Card6Label), WrappedStringKeys.LongestHeadline, r.LongestSessions, null, "", isLongest: true),
-            5 => Habits(r),
-            _ => Total(r),
+            CardKind.Total => Total(r),
+            CardKind.TopApps => Podium(Str(WrappedStringKeys.Card2Label), WrappedStringKeys.TopHeadline, r.Podium, r.Others, ""),
+            CardKind.DeviceTop => Podium(
+                item.Platform switch
+                {
+                    "windows" => Str(WrappedStringKeys.CardPcLabel),
+                    "macos" => Str(WrappedStringKeys.CardMacLabel),
+                    _ => Str(WrappedStringKeys.CardDeviceLabel, (item.DeviceName ?? "Device").ToUpperInvariant())
+                },
+                WrappedStringKeys.TopHeadline, item.Top?.Podium, item.Top?.Others, "", isDeviceSpecific: true),
+            CardKind.Games => Podium(Str(WrappedStringKeys.Card4Label), WrappedStringKeys.GamesHeadline, r.GamesTop?.Podium, r.GamesTop?.Others, WrappedStringKeys.NoGames),
+            CardKind.Gacha => Podium(Str(WrappedStringKeys.Card5Label), WrappedStringKeys.GachaHeadline, r.GachaTop?.Podium, r.GachaTop?.Others, WrappedStringKeys.NoGacha),
+            CardKind.LongestSessions => Podium(Str(WrappedStringKeys.Card6Label), WrappedStringKeys.LongestHeadline, r.LongestSessions, null, "", isLongest: true),
+            _ => Habits(r),
         };
     }
 
@@ -216,16 +318,9 @@ public sealed class YearWrappedView : UserControl, IYearSubView
 
         var (isMultiDev, devAName, devBName, devInfo, localId) = GetDeviceInfo(r);
 
-
         long secA = 0, secB = 0;
         if (isMultiDev)
         {
-
-
-
-
-
-
             if (localId != null && r.DeviceTotals!.TryGetValue(localId, out secA))
             {
                 foreach (var (k, v) in r.DeviceTotals)
@@ -261,10 +356,10 @@ public sealed class YearWrappedView : UserControl, IYearSubView
             TotalSeconds: r.TotalSeconds);
     }
 
-    private WrappedCardModel Podium(string label, string headlineKey, IReadOnlyList<WrappedApp>? p, IReadOnlyList<WrappedApp>? others, string emptyKey, bool isLongest = false)
+    private WrappedCardModel Podium(string label, string headlineKey, IReadOnlyList<WrappedApp>? p, IReadOnlyList<WrappedApp>? others, string emptyKey, bool isLongest = false, bool isDeviceSpecific = false)
     {
         if (p is not { Count: > 0 }) return new EmptyCardModel(label, Str(emptyKey.Length > 0 ? emptyKey : YearStringKeys.Empty));
-        var (isMultiDev, devAName, devBName, devInfo, localId) = _result != null ? GetDeviceInfo(_result) : (false, "PC", "Mac", new Dictionary<string, (string, bool)>(), null);
+        var (isMultiDev, devAName, devBName, devInfo, localId) = _result != null && !isDeviceSpecific ? GetDeviceInfo(_result) : (false, "PC", "Mac", new Dictionary<string, (string, bool)>(), null);
 
         WrappedPodiumEntry E(int i)
         {
@@ -349,7 +444,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
 
     private HabitsCardModel Habits(WrappedResult r)
     {
-        const string none = "â";
+        const string none = "\u2014";
         var streakValue = r.LongestStreakDays > 0 ? Plural(r.LongestStreakDays, WrappedStringKeys.Day, WrappedStringKeys.Days) : none;
         var streakSub = r.StreakStart is { } a && r.StreakEnd is { } b
             ? r.LongestStreakDays == 1 ? Str(WrappedStringKeys.StreakOne, UsageText.ShortDate(a)) : Str(WrappedStringKeys.StreakSpan, UsageText.ShortDate(a), UsageText.ShortDate(b))
@@ -406,23 +501,25 @@ public sealed class YearWrappedView : UserControl, IYearSubView
             new WrappedHabit(Str(WrappedStringKeys.Busiest), busiestValue, busiestSub, bmSplitA, bmSplitB),
             new WrappedHabit(Str(WrappedStringKeys.Peak), peakValue, r.PeakHour is null ? "" : Str(WrappedStringKeys.PeakSub)),
             new WrappedHabit(Str(WrappedStringKeys.Noon), r.BeforeNoonPercent.ToString(CultureInfo.CurrentCulture) + "%", noonSub, bnSplitA, bnSplitB),
-
         ]);
     }
 
     private void Redraw()
     {
+        var cards = GetCards(_result);
+        _index = Math.Clamp(_index, 0, Math.Max(0, cards.Count - 1));
+        _pager.Count = cards.Count;
         _pager.Index = _index;
-        _pager.Count = CardCount;
         _save.Content = Str(WrappedStringKeys.Save);
         _card.AppBrushes = Enumerable.Range(0, Math.Max(1, _themes.Current.Apps.Count)).Select(i => Application.Current.TryFindResource("Brush.App" + i) as Brush ?? (Brush)Application.Current.FindResource("Brush.TextMuted")).ToList();
         _card.MediumRadius = Application.Current.TryFindResource("CornerRadius.Medium") is CornerRadius mr ? mr.TopLeft : 10;
         _card.LargeRadius = Application.Current.TryFindResource("CornerRadius.Large") is CornerRadius lr ? lr.TopLeft : 12;
         _pager.ButtonRadius = Application.Current.TryFindResource("CornerRadius.Small") is CornerRadius sr ? sr.TopLeft : 8;
-        var names = new[] { Str(WrappedStringKeys.CardNameTotal), Str(WrappedStringKeys.CardNameTop), Str(WrappedStringKeys.CardNameGames), Str(WrappedStringKeys.CardNameGacha), Str(WrappedStringKeys.CardNameLongest), Str(WrappedStringKeys.CardNameHabits) };
-        System.Windows.Automation.AutomationProperties.SetName(_card, Str(WrappedStringKeys.GoTo, _index + 1, names[_index]));
+        var cardName = _index < cards.Count ? Str(cards[_index].NameKey) : "";
+        System.Windows.Automation.AutomationProperties.SetName(_card, Str(WrappedStringKeys.GoTo, _index + 1, cardName));
         System.Windows.Automation.AutomationProperties.SetName(_pager, Str(WrappedStringKeys.Prev) + " / " + Str(WrappedStringKeys.Next));
-        _card.Model = _result is { } r ? BuildModel(r, _index) : null;
+        _card.Model = _result is { } r ? BuildModel(r, cards, _index) : null;
+        _card.InvalidateVisual();
     }
 
     // ---- save as image ----------------------------------------------------------------------------------------------
@@ -450,9 +547,10 @@ public sealed class YearWrappedView : UserControl, IYearSubView
             _savedReset.Tick += (_, _) => { _savedReset.Stop(); _save.Content = Str(WrappedStringKeys.Save); };
             _savedReset.Start();
         }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
-        finally { if (window is not null) { window.KeepOpen = false; window.Activate(); } }
+        finally
+        {
+            if (window is not null) window.KeepOpen = false;
+        }
     }
 }
 

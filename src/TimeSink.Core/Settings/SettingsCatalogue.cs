@@ -1,4 +1,4 @@
-using TimeSink.Core.Data;
+﻿using TimeSink.Core.Data;
 
 namespace TimeSink.Core.Settings;
 
@@ -52,6 +52,7 @@ public static class SettingsCatalogue
         new("devicesSync", DevicesAndSync, "Sync with other devices", "Works with OneDrive, Google Drive or any synced folder.", SettingKind.Button),
         new("deviceName", DevicesAndSync, "This PC is called", "Shown on combined reports", SettingKind.Info),
         new("shortDeviceNames", DevicesAndSync, "Use short device names", "Show short labels (PC / Mac) on views instead of full device names", SettingKind.Switch, Setting.ShortDeviceNames),
+        new("wrappedGroupByPlatform", DevicesAndSync, "Group devices by platform in Wrapped", "Group all Windows devices as PC and macOS as Mac in Year Wrapped cards", SettingKind.Switch, Setting.WrappedGroupByPlatform),
 
         new("goalAlerts", Notifications, "Goal and limit alerts", "A notification when a goal or limit is reached.", SettingKind.Switch, Setting.GoalAlerts),
         new("weeklySummary", Notifications, "Weekly summary", "A short recap at the start of each week.", SettingKind.Switch, Setting.WeeklySummary),

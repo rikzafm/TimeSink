@@ -1,4 +1,4 @@
-using TimeSink.Core.Usage;
+﻿using TimeSink.Core.Usage;
 using static TimeSink.Tests.Usage.WrappedFixture;
 
 namespace TimeSink.Tests.Usage;

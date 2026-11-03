@@ -1,4 +1,4 @@
-import Foundation
+﻿import Foundation
 
 public enum DeviceScope: String, Sendable, Codable {
     case this = "This"
@@ -75,5 +75,6 @@ public enum SettingKeys {
     public static let backupMode = "backup.mode"
     public static let backupLastUtc = "backup.last_utc"
     public static let shortDeviceNames = "devices.shortNames"
+    public static let wrappedGroupByPlatform = "devices.wrappedGroupByPlatform"
     public static let allLayout = "all.layout"
 }

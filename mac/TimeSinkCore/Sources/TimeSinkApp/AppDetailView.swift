@@ -38,7 +38,13 @@ public struct AppDetailView: View {
             }
         }
         .frame(width: 400, height: 640)
-        .onAppear(perform: loadMerged)
+        .onAppear {
+            self.range = state.appDetailInitialRange
+            if let a = state.appDetailInitialAnchor, !a.isEmpty {
+                self.anchor = a
+            }
+            loadMerged()
+        }
     }
 
     private func loadMerged() {

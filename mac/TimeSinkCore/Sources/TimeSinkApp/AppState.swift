@@ -1,4 +1,4 @@
-import Foundation
+﻿import Foundation
 import SwiftUI
 import AppKit
 import TimeSinkCore
@@ -33,6 +33,7 @@ public final class AppState: ObservableObject {
         didSet {
             if oldValue != selectedTab {
                 yearOffset = 0
+                todayExpandedAppId = nil
             }
         }
     }
@@ -45,6 +46,7 @@ public final class AppState: ObservableObject {
     @Published public var remoteDeviceId: String?
     @Published public var remoteDeviceName: String? = "PC"
     @Published public var shortDeviceNames: Bool = true
+    @Published public var wrappedGroupByPlatform: Bool = true
     @Published public var deviceDisplayNames: [String: String] = [:]
 
     // Navigation and sub-views
@@ -57,6 +59,10 @@ public final class AppState: ObservableObject {
     @Published public var detailYear: Int = Calendar.current.component(.year, from: Date())
 
     @Published public var selectedAppDetailId: Int64?
+    @Published public var appDetailInitialRange: AppDetailRange = .matrix
+    @Published public var appDetailInitialAnchor: String? = nil
+    @Published public var todayExpandedAppId: Int64?
+    @Published public var todayEditingAppId: Int64?
     @Published public var showingAddApp: Bool = false
     @Published public var showingSettings: Bool = false
     @Published public var showingDevicesSync: Bool = false
@@ -224,6 +230,12 @@ public final class AppState: ObservableObject {
         self.shortDeviceNames = enabled
         try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.shortDeviceNames)', '\(enabled ? "true" : "false")') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
         loadDeviceInfo()
+        refresh()
+    }
+
+    public func setWrappedGroupByPlatform(_ enabled: Bool) {
+        self.wrappedGroupByPlatform = enabled
+        try? db.exec("INSERT INTO settings (key, value) VALUES ('\(SettingKeys.wrappedGroupByPlatform)', '\(enabled ? "true" : "false")') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
         refresh()
     }
 
@@ -431,10 +443,13 @@ public final class AppState: ObservableObject {
         return (try? TodayQuery.run(ctx).totalSeconds) ?? 0
     }
 
-    public func openAppDetail(appId: Int64) {
+    public func openAppDetail(appId: Int64, range: AppDetailRange = .matrix, anchor: String? = nil, year: Int? = nil) {
         self.selectedAppDetailId = appId
-        self.detailYear = Calendar.current.component(.year, from: Date())
-        self.appDetailResult = AppDetailQuery.run(context: makeUsageContext(), appId: appId, year: detailYear)
+        let y = year ?? Calendar.current.component(.year, from: Date())
+        self.detailYear = y
+        self.appDetailInitialRange = range
+        self.appDetailInitialAnchor = anchor
+        self.appDetailResult = AppDetailQuery.run(context: makeUsageContext(), appId: appId, year: y)
     }
 
     public func closeAppDetail() {
@@ -1149,6 +1164,10 @@ extension AppState {
             addAppEditingAppId = nil
             return
         }
+        if todayEditingAppId != nil {
+            todayEditingAppId = nil
+            return
+        }
         if appDetailShowingSettings {
             appDetailShowingSettings = false
             return
@@ -1174,6 +1193,10 @@ extension AppState {
         }
 
         // 4. Tab drilldown
+        if selectedTab == .today && todayExpandedAppId != nil {
+            todayExpandedAppId = nil
+            return
+        }
         if selectedTab == .today && daysBack > 0 {
             daysBack = 0
             refresh()
@@ -1259,10 +1282,10 @@ extension AppState {
         showingSettings || showingAddApp || selectedAppDetailId != nil || showingKeyboardGuide ||
         showingDevicesSync || showingAppIconPicker || showingRestoreSheet ||
         showingExportSheet || showingDeleteAllSheet || showingRenameMacSheet ||
-        addAppEditingAppId != nil || appSettingsShowingMerge ||
+        addAppEditingAppId != nil || todayEditingAppId != nil || appSettingsShowingMerge ||
         appSettingsShowingClearConfirm || appSettingsShowingStopConfirm ||
         appDetailShowingSettings ||
-        (selectedTab == .today && daysBack > 0) ||
+        (selectedTab == .today && (todayExpandedAppId != nil || daysBack > 0)) ||
         (selectedTab == .week && weeksBack > 0) ||
         (selectedTab == .month && monthsBack > 0) ||
         (selectedTab == .year && yearOffset != 0)

@@ -36,7 +36,7 @@ public struct MonthTabView: View {
                     calendar(result)
                     legend
                     dayCard(result)
-                    RankedAppList(state: state, rows: result.topApps.map { ($0.appId, $0.name, $0.seconds) })
+                    RankedAppList(state: state, rows: result.topApps.map { ($0.appId, $0.name, $0.seconds) }, range: .month, anchor: String(format: "%04d-%02d-01", result.year, result.month))
                         .padding(.bottom, 8)
                 } else {
                     ProgressView().frame(maxWidth: .infinity, minHeight: 200)

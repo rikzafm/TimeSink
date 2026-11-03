@@ -558,17 +558,36 @@ public struct WeekTabView: View {
     }
 
     private func appRow(_ row: WeekAppRow, result: WeekResult) -> some View {
+        WeekAppRowItem(
+            state: state,
+            row: row,
+            result: result,
+            hoveredSparkKey: $hoveredSparkKey,
+            onSparkDate: { idx, total, today in sparkDate(for: idx, total: total, todayStr: today) },
+            onSelectSpark: { date, appId, res in selectSparkDay(date, appId: appId, result: res) }
+        )
+    }
+}
+
+
+private struct WeekAppRowItem: View {
+    @ObservedObject var state: AppState
+    let row: WeekAppRow
+    let result: WeekResult
+    @Binding var hoveredSparkKey: String?
+    let onSparkDate: (Int, Int, String) -> String
+    let onSelectSpark: (String, Int64, WeekResult) -> Void
+    @State private var isHovered = false
+
+    var body: some View {
         HStack(spacing: 10) {
-            Button(action: { state.openAppDetail(appId: row.appId) }) {
-                HStack(spacing: 10) {
-                    AppTile(name: row.name, png: state.iconCache.getCachedIcon(forAppId: row.appId))
-                    Text(row.name)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(ThemeColors.textPrimary)
-                        .lineLimit(1)
-                }
+            HStack(spacing: 10) {
+                AppTile(name: row.name, png: state.iconCache.getCachedIcon(forAppId: row.appId))
+                Text(row.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(ThemeColors.textPrimary)
+                    .lineLimit(1)
             }
-            .buttonStyle(.plain)
 
             Spacer()
 
@@ -576,22 +595,22 @@ public struct WeekTabView: View {
             HStack(alignment: .bottom, spacing: 2) {
                 let top = max(1, row.sparkline.max() ?? 1)
                 ForEach(Array(row.sparkline.enumerated()), id: \.offset) { sIdx, s in
-                    let sDate = sparkDate(for: sIdx, total: row.sparkline.count, todayStr: result.today)
+                    let sDate = onSparkDate(sIdx, row.sparkline.count, result.today)
                     let key = "\(row.appId)-\(sDate)"
-                    let isHovered = hoveredSparkKey == key
+                    let isSparkHovered = hoveredSparkKey == key
                     let tip = "\(row.name)\n\(Formatters.dayText(sDate, format: "EEEE, d MMM")) · \(Formatters.paddedHM(s))"
 
                     Button(action: {
-                        selectSparkDay(sDate, appId: row.appId, result: result)
+                        onSelectSpark(sDate, row.appId, result)
                     }) {
                         ZStack(alignment: .bottom) {
-                            if isHovered {
+                            if isSparkHovered {
                                 RoundedRectangle(cornerRadius: 1.5)
                                     .fill(ThemeColors.textMuted.opacity(0.2))
                                     .frame(width: 6, height: 22)
                             }
                             RoundedRectangle(cornerRadius: 1)
-                                .fill(isHovered ? ThemeColors.accent : Tokens.appColor(row.name).opacity(0.8))
+                                .fill(isSparkHovered ? ThemeColors.accent : Tokens.appColor(row.name).opacity(0.8))
                                 .frame(width: 4, height: max(2, CGFloat(s) / CGFloat(top) * 20))
                         }
                         .frame(width: 6, height: 22, alignment: .bottom)
@@ -606,16 +625,19 @@ public struct WeekTabView: View {
             }
             .frame(height: 22, alignment: .bottom)
 
-            Button(action: { state.openAppDetail(appId: row.appId) }) {
-                Text(Formatters.paddedHM(row.seconds))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(ThemeColors.textPrimary)
-                    .frame(width: 62, alignment: .trailing)
-            }
-            .buttonStyle(.plain)
+            Text(Formatters.paddedHM(row.seconds))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(ThemeColors.textPrimary)
+                .frame(width: 62, alignment: .trailing)
         }
         .padding(.horizontal, 6)
         .frame(height: 46)
+        .background(RoundedRectangle(cornerRadius: 8).fill(isHovered ? ThemeColors.surfaceActive : Color.clear))
         .contentShape(Rectangle())
+        .onHover { h in isHovered = h }
+        .onTapGesture(count: 2) {
+            let anchor = result.shownWeekStart.isEmpty ? result.today : result.shownWeekStart
+            state.openAppDetail(appId: row.appId, range: .week, anchor: anchor)
+        }
     }
 }

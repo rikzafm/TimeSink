@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using TimeSink.Core.Data;
 
 namespace TimeSink.Core.Devices;
@@ -56,6 +56,24 @@ public static class DeviceInfoService
             if (!string.IsNullOrEmpty(localDevId) && !dict.ContainsKey(localDevId))
             {
                 dict[localDevId] = ("PC", true);
+            }
+        }
+        catch { }
+        return dict;
+    }
+
+    public static Dictionary<string, string> LoadPlatforms(string dbPath)
+    {
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            using var conn = Db.CreateConnection(dbPath, SqliteOpenMode.ReadOnly);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT device_id, platform FROM devices WHERE state != 'forgotten'";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                dict[reader.GetString(0)] = reader.GetString(1);
             }
         }
         catch { }

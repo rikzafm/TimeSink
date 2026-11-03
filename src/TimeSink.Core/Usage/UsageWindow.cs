@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using TimeSink.Core.Apps;
 using TimeSink.Core.Devices;
 
@@ -23,6 +23,7 @@ internal interface IUsageSource
 
     /// <summary>The local device ID when known.</summary>
     string? LocalDeviceId => null;
+    IReadOnlyDictionary<string, string> DevicePlatforms => new Dictionary<string, string>();
 }
 
 /// <summary>The SQLite adapter of <see cref="IUsageSource"/>. The caller owns the connection.</summary>
@@ -61,6 +62,26 @@ internal sealed class SqliteUsageSource(SqliteConnection connection) : IUsageSou
             try { return cmd.ExecuteScalar() as string; } catch { return null; }
         }
     }
+
+    public IReadOnlyDictionary<string, string> DevicePlatforms
+    {
+        get
+        {
+            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "SELECT device_id, platform FROM devices WHERE state != 'forgotten'";
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    dict[r.GetString(0)] = r.GetString(1);
+                }
+            }
+            catch { }
+            return dict;
+        }
+    }
 }
 
 /// <summary>
@@ -79,6 +100,8 @@ internal sealed class UsageWindow(IUsageSource source, UsageContext context)
     public UsageContext Context { get; } = context;
 
     public string? LocalDeviceId => Context.LocalDeviceId ?? source.LocalDeviceId;
+
+    public IReadOnlyDictionary<string, string> DevicePlatforms => source.DevicePlatforms;
 
     public long NowUtc => Context.Now.ToUnixTimeSeconds();
 

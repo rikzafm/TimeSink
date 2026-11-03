@@ -54,6 +54,11 @@ public static class WrappedStringKeys
     public const string CardNameLongest = "wrapCardNameLongest";
     public const string Card6Label = "wrapCard6Label";
     public const string LongestHeadline = "wrapLongestHeadline";
+    public const string CardPcLabel = "wrapCardPcLabel";
+    public const string CardMacLabel = "wrapCardMacLabel";
+    public const string CardDeviceLabel = "wrapCardDeviceLabel";
+    public const string CardNamePc = "wrapCardNamePc";
+    public const string CardNameMac = "wrapCardNameMac";
     public const string Prev = "wrapPrev";
     public const string Next = "wrapNext";
     public const string GoTo = "wrapGoTo";
@@ -70,5 +75,6 @@ public static class WrappedStringKeys
         Save, SaveDone, SaveTitle, SaveFilter,
         CardNameGames, CardNameGacha, Card4Label, GamesHeadline, Card5Label, GachaHeadline, NoGames, NoGacha,
         CardNameLongest, Card6Label, LongestHeadline,
+        CardPcLabel, CardMacLabel, CardDeviceLabel, CardNamePc, CardNameMac,
     ];
 }

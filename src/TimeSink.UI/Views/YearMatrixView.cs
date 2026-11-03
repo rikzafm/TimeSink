@@ -40,13 +40,15 @@ public sealed class YearMatrixView : UserControl, IYearSubView
     private int _selected; // row index, or month column index when _selectMonth
     private int _year = DateTime.Today.Year;
     private readonly Action<DateOnly?>? _onTrackingStarted;
+    private readonly Action<long, AppDetailRange, DateOnly?>? _showAppDetail;
 
-    public YearMatrixView(string dbPath, ThemeService themes, LiveState live, Action<DateOnly?>? onTrackingStarted = null)
+    public YearMatrixView(string dbPath, ThemeService themes, LiveState live, Action<DateOnly?>? onTrackingStarted = null, Action<long, AppDetailRange, DateOnly?>? showAppDetail = null)
     {
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
         _onTrackingStarted = onTrackingStarted;
+        _showAppDetail = showAppDetail;
 
         _total.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
         _total.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
@@ -68,8 +70,16 @@ public sealed class YearMatrixView : UserControl, IYearSubView
         _grid.SetResourceReference(MatrixGrid.BorderBrushLineProperty, "Brush.Border");
         _grid.SetResourceReference(MatrixGrid.LabelFontFamilyProperty, "FontFamily.Numbers");
         _grid.SetResourceReference(MatrixGrid.LabelFontSizeProperty, "Double.FontSize.Small");
+        _grid.SetResourceReference(MatrixGrid.HoverBrushProperty, "Brush.SurfaceAlt");
         _grid.RowClicked += i => { _selectMonth = false; _selected = i; DrawSelection(); };
         _grid.MonthClicked += i => { _selectMonth = true; _selected = i; DrawSelection(); };
+        _grid.RowDoubleClicked += r =>
+        {
+            if (_result is { } res && r >= 0 && r < res.Rows.Count)
+            {
+                _showAppDetail?.Invoke(res.Rows[r].AppId, AppDetailRange.Matrix, new DateOnly(_year, 1, 1));
+            }
+        };
 
         _selTitle.FontWeight = FontWeights.SemiBold;
         _selTitle.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Text");

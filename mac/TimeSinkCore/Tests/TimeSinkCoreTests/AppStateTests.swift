@@ -416,5 +416,38 @@ final class AppStateTests: XCTestCase {
         XCTAssertNotNil(detailRes)
         XCTAssertEqual(detailRes?.name, "Antigravity")
     }
+
+    func testTodayExpandedAppIdEscNavigationAndTabSwitch() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+        let state = AppState(db: db)
+
+        state.selectedTab = .today
+        XCTAssertNil(state.todayExpandedAppId)
+        XCTAssertFalse(state.isDrilldownOrOverlay)
+
+        // Opening dial sets drilldown
+        state.todayExpandedAppId = 42
+        XCTAssertTrue(state.isDrilldownOrOverlay)
+
+        // Esc closes dial
+        state.handleGoBack()
+        XCTAssertNil(state.todayExpandedAppId)
+        XCTAssertFalse(state.isDrilldownOrOverlay)
+
+        // Esc priority: dial closes before date drilldown
+        state.daysBack = 2
+        state.todayExpandedAppId = 42
+        state.handleGoBack()
+        XCTAssertNil(state.todayExpandedAppId, "First Esc closes the expanded dial")
+        XCTAssertEqual(state.daysBack, 2, "Date drilldown remains until next Esc")
+        state.handleGoBack()
+        XCTAssertEqual(state.daysBack, 0, "Second Esc resets date drilldown")
+
+        // Tab switch collapses dial
+        state.todayExpandedAppId = 42
+        state.switchToTab(.week)
+        XCTAssertNil(state.todayExpandedAppId, "Switching tabs collapses expanded dial")
+    }
 }
 

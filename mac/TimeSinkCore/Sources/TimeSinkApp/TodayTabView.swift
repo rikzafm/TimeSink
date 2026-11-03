@@ -3,7 +3,7 @@ import TimeSinkCore
 
 public struct TodayTabView: View {
     @ObservedObject var state: AppState
-    @State private var expandedAppId: Int64?
+
     @State private var selectedHour: Int? = nil
     @State private var activeSessions: [Int64: Int] = [:]
 
@@ -122,7 +122,7 @@ public struct TodayTabView: View {
             Button(action: {
                 if let first = result.firstApp {
                     withAnimation(.easeInOut(duration: 0.18)) {
-                        expandedAppId = first.appId
+                        state.todayExpandedAppId = first.appId
                     }
                 }
             }) {
@@ -133,7 +133,7 @@ public struct TodayTabView: View {
             Button(action: {
                 if let l = result.longestSession {
                     withAnimation(.easeInOut(duration: 0.18)) {
-                        expandedAppId = l.appId
+                        state.todayExpandedAppId = l.appId
                     }
                 }
             }) {
@@ -190,7 +190,7 @@ public struct TodayTabView: View {
     }
 
     private func isExpanded(_ row: TodayAppRow, result: TodayResult) -> Bool {
-        expandedAppId == row.appId
+        state.todayExpandedAppId == row.appId
     }
 
     @ViewBuilder
@@ -206,7 +206,7 @@ public struct TodayTabView: View {
         VStack(spacing: 0) {
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.18)) {
-                    expandedAppId = expanded ? nil : row.appId
+                    state.todayExpandedAppId = expanded ? nil : row.appId
                 }
             }) {
                 HStack(spacing: 12) {
@@ -240,7 +240,13 @@ public struct TodayTabView: View {
                     nowUtc: effectiveNowUtc,
                     isAllScope: state.showsDeviceSplit,
                     localDeviceId: state.localDeviceId,
-                    activeSessionIndex: rowActiveBinding
+                    activeSessionIndex: rowActiveBinding,
+                    onOpenSettings: {
+                        state.todayEditingAppId = row.appId
+                    },
+                    onOpenDetail: {
+                        state.openAppDetail(appId: row.appId)
+                    }
                 )
                 .padding(.bottom, 10)
             }

@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.Data.Sqlite;
 using TimeSink.Core.Apps;
 
@@ -16,7 +17,6 @@ public static class WrappedQuery
 {
     private const int PodiumSize = 5;
     private const int OthersSize = 3;
-
 
     public static WrappedResult Run(UsageContext context, int? targetYear = null) => UsageWindow.Over(context, w => Run(w, targetYear));
 
@@ -39,6 +39,8 @@ public static class WrappedQuery
         var perHour = new long[24];                        // local hour of day -> seconds (this year)
         var perGroup = new Dictionary<long, long>();       // this year
         var perGroupDevice = new Dictionary<long, Dictionary<string, long>>();
+        var perDeviceGroup = new Dictionary<string, Dictionary<long, long>>(StringComparer.OrdinalIgnoreCase);
+        var perPlatformGroup = new Dictionary<string, Dictionary<long, long>>(StringComparer.OrdinalIgnoreCase);
         var beforeNoonDevice = new Dictionary<string, long>();
         long beforeNoon = 0, total = 0;
 
@@ -56,11 +58,22 @@ public static class WrappedQuery
             perGroup[sl.Seg.Group] = perGroup.GetValueOrDefault(sl.Seg.Group) + len;
             if (!perGroupDevice.TryGetValue(sl.Seg.Group, out var devDict)) perGroupDevice[sl.Seg.Group] = devDict = [];
             devDict[dev] = devDict.GetValueOrDefault(dev) + len;
+
+            var devKey = !string.IsNullOrEmpty(dev) ? dev : (window.LocalDeviceId ?? "local");
+            if (!perDeviceGroup.TryGetValue(devKey, out var dg)) perDeviceGroup[devKey] = dg = [];
+            dg[sl.Seg.Group] = dg.GetValueOrDefault(sl.Seg.Group) + len;
+
+            var plat = !string.IsNullOrEmpty(dev) && window.DevicePlatforms.TryGetValue(dev, out var p)
+                ? p.ToLowerInvariant()
+                : (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows" : "macos");
+            if (!perPlatformGroup.TryGetValue(plat, out var pg)) perPlatformGroup[plat] = pg = [];
+            pg[sl.Seg.Group] = pg.GetValueOrDefault(sl.Seg.Group) + len;
+
             total += len;
-            foreach (var p in UsageDays.HourPieces(sl.Start, sl.End, zone))
+            foreach (var pPiece in UsageDays.HourPieces(sl.Start, sl.End, zone))
             {
-                perHour[p.Hour] += p.End - p.Start;
-                if (p.Hour < 12) { beforeNoon += p.End - p.Start; beforeNoonDevice[dev] = beforeNoonDevice.GetValueOrDefault(dev) + (p.End - p.Start); }
+                perHour[pPiece.Hour] += pPiece.End - pPiece.Start;
+                if (pPiece.Hour < 12) { beforeNoon += pPiece.End - pPiece.Start; beforeNoonDevice[dev] = beforeNoonDevice.GetValueOrDefault(dev) + (pPiece.End - pPiece.Start); }
             }
         }
 
@@ -85,6 +98,23 @@ public static class WrappedQuery
         {
             var list = ranked.Where(a => UsageRank.KindOf(apps, a.AppId) == kind).ToList();
             return new WrappedKindTop(list.Take(PodiumSize).ToList(), list.Skip(PodiumSize).Take(OthersSize).ToList(), list.Sum(a => a.Seconds));
+        }
+
+        WrappedKindTop BuildGroupTop(Dictionary<long, long> groupSecs)
+        {
+            var list = UsageRank.Rank(groupSecs.Where(kv => !UsageRank.IsBackground(apps, kv.Key) && kv.Value > 0)
+                .Select(kv => new WrappedApp(kv.Key, UsageRank.NameOf(apps, kv.Key), kv.Value)), apps, a => a.AppId, a => a.Seconds);
+            return new WrappedKindTop(list.Take(PodiumSize).ToList(), list.Skip(PodiumSize).Take(OthersSize).ToList(), list.Sum(a => a.Seconds));
+        }
+
+        var pcTop = perPlatformGroup.TryGetValue("windows", out var winSecs) && winSecs.Values.Sum() > 0 ? BuildGroupTop(winSecs) : null;
+        var macTop = perPlatformGroup.TryGetValue("macos", out var macSecs) && macSecs.Values.Sum() > 0 ? BuildGroupTop(macSecs) : null;
+
+        var devTops = new Dictionary<string, WrappedKindTop>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (k, v) in perDeviceGroup)
+        {
+            if (v.Values.Sum() > 0)
+                devTops[k] = BuildGroupTop(v);
         }
 
         // One entry per app group: its single longest session that ended this year (a session counts whole, as in All).
@@ -143,6 +173,7 @@ public static class WrappedQuery
             TopOf(Apps.AppKind.Game), TopOf(Apps.AppKind.Gacha), longest,
             wrappedDeviceTotals.Count > 0 ? wrappedDeviceTotals : null, wrappedOnBoth,
             busiestMonthDevice.Count > 0 ? busiestMonthDevice : null,
-            beforeNoonDevice.Count > 0 ? beforeNoonDevice : null);
+            beforeNoonDevice.Count > 0 ? beforeNoonDevice : null,
+            pcTop, macTop, devTops.Count > 0 ? devTops : null);
     }
 }

@@ -39,13 +39,15 @@ public sealed class YearPaceView : UserControl, IYearSubView
     private int _selected = -1;
     private int _year = DateTime.Today.Year;
     private readonly Action<DateOnly?>? _onTrackingStarted;
+    private readonly Action<long, AppDetailRange, DateOnly?>? _showAppDetail;
 
-    public YearPaceView(string dbPath, ThemeService themes, LiveState live, Action<DateOnly?>? onTrackingStarted = null)
+    public YearPaceView(string dbPath, ThemeService themes, LiveState live, Action<DateOnly?>? onTrackingStarted = null, Action<long, AppDetailRange, DateOnly?>? showAppDetail = null)
     {
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
         _onTrackingStarted = onTrackingStarted;
+        _showAppDetail = showAppDetail;
 
         _total.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
         _total.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
@@ -314,7 +316,28 @@ public sealed class YearPaceView : UserControl, IYearSubView
             row.Children.Add(name);
             row.Children.Add(track);
             row.Children.Add(value);
-            _panelApps.Children.Add(row);
+
+            var card = new Border
+            {
+                Margin = new Thickness(-6, i == 0 ? 0 : 2, -6, 2),
+                Padding = new Thickness(6, 4, 6, 4),
+                Background = Brushes.Transparent,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Child = row
+            };
+            card.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
+            card.MouseEnter += (_, _) => card.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+            card.MouseLeave += (_, _) => card.Background = Brushes.Transparent;
+            var appId = app.AppId;
+            card.PreviewMouseLeftButtonDown += (_, e) =>
+            {
+                if (e.ClickCount == 2)
+                {
+                    _showAppDetail?.Invoke(appId, AppDetailRange.Year, new DateOnly(_year, 1, 1));
+                    e.Handled = true;
+                }
+            };
+            _panelApps.Children.Add(card);
         }
     }
 

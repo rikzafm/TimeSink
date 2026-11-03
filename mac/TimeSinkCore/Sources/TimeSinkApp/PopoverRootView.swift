@@ -9,41 +9,50 @@ public struct PopoverRootView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            if state.showingSettings {
-                SettingsView(state: state)
-            } else if state.showingAddApp {
-                AddAppView(state: state) {
-                    state.showingAddApp = false
-                    if state.returnToDevicesSyncOnDismiss {
-                        state.returnToDevicesSyncOnDismiss = false
-                        state.showingSettings = true
-                        state.showingDevicesSync = true
+        ZStack {
+            VStack(spacing: 0) {
+                if state.showingSettings {
+                    SettingsView(state: state)
+                } else if state.showingAddApp {
+                    AddAppView(state: state) {
+                        state.showingAddApp = false
+                        if state.returnToDevicesSyncOnDismiss {
+                            state.returnToDevicesSyncOnDismiss = false
+                            state.showingSettings = true
+                            state.showingDevicesSync = true
+                        }
                     }
-                }
-            } else if state.selectedAppDetailId != nil {
-                AppDetailView(state: state)
-            } else {
-                HeaderView(state: state)
-                TabBarView(state: state)
+                } else if state.selectedAppDetailId != nil {
+                    AppDetailView(state: state)
+                } else {
+                    HeaderView(state: state)
+                    TabBarView(state: state)
 
-                Group {
-                    switch state.selectedTab {
-                    case .today:
-                        TodayTabView(state: state)
-                    case .week:
-                        WeekTabView(state: state)
-                    case .month:
-                        MonthTabView(state: state)
-                    case .year:
-                        YearTabView(state: state)
-                    case .all:
-                        AllTabView(state: state)
+                    Group {
+                        switch state.selectedTab {
+                        case .today:
+                            TodayTabView(state: state)
+                        case .week:
+                            WeekTabView(state: state)
+                        case .month:
+                            MonthTabView(state: state)
+                        case .year:
+                            YearTabView(state: state)
+                        case .all:
+                            AllTabView(state: state)
+                        }
                     }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                footer
+                    footer
+                }
+            }
+
+            if let appId = state.todayEditingAppId {
+                AppSettingsSheet(state: state, appId: appId) {
+                    state.todayEditingAppId = nil
+                    state.refresh()
+                }
             }
         }
         .frame(width: 400, height: 640)

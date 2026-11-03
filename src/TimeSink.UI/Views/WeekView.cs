@@ -58,11 +58,11 @@ public sealed class WeekView : UserControl, ILiveView
     private readonly ToolTip _tip = new();
     private readonly ToolTip _trendTip = new();
     private readonly Action<DateOnly>? _openDay;
-    private readonly Action<long>? _showAppDetail;
+    private readonly Action<long, AppDetailRange, DateOnly?>? _showAppDetail;
     private int _panelSeq;
     private (DateOnly Day, long? AppId)? _pendingDay; // a sparkline click that needed another week: opened after that week loads
 
-    public WeekView(string dbPath, ThemeService themes, LiveState live, Action<DateOnly>? openDay = null, Action<long>? showAppDetail = null)
+    public WeekView(string dbPath, ThemeService themes, LiveState live, Action<DateOnly>? openDay = null, Action<long, AppDetailRange, DateOnly?>? showAppDetail = null)
     {
         _openDay = openDay;
         _showAppDetail = showAppDetail;
@@ -479,7 +479,7 @@ public sealed class WeekView : UserControl, ILiveView
             summaryPhrase: null,
             actionText: Str(PanelStringKeys.DayOpenInToday),
             action: _openDay is null ? null : () => _openDay(day),
-            onAppClicked: appId => _showAppDetail?.Invoke(appId));
+            onAppClicked: appId => _showAppDetail?.Invoke(appId, AppDetailRange.Week, _result?.WeekStartDate));
         _panel.BringIntoView();
     }
 
@@ -523,6 +523,26 @@ public sealed class WeekView : UserControl, ILiveView
         grid.Children.Add(name);
         grid.Children.Add(spark);
         grid.Children.Add(time);
-        return grid;
+
+        var card = new Border
+        {
+            Margin = new Thickness(-6, 1, -6, 1),
+            Padding = new Thickness(6, 3, 6, 3),
+            Background = System.Windows.Media.Brushes.Transparent,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Child = grid
+        };
+        card.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
+        card.MouseEnter += (_, _) => card.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+        card.MouseLeave += (_, _) => card.Background = System.Windows.Media.Brushes.Transparent;
+        card.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            if (e.ClickCount == 2)
+            {
+                _showAppDetail?.Invoke(app.AppId, AppDetailRange.Week, _result?.WeekStartDate);
+                e.Handled = true;
+            }
+        };
+        return card;
     }
 }

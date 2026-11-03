@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using TimeSink.Core.Apps;
 using TimeSink.Core.Theming;
@@ -32,7 +33,9 @@ public partial class TodayView : UserControl, ILiveView
     private readonly UsageSnapshotLoader _loader;
     private readonly LiveViewDriver _driver;
     private readonly Action<long>? _showAppDetail;
+    private long? _expandedAppId;
     private readonly HashSet<long> _expanded = new();
+    private bool IsExpanded(long appId) => _expandedAppId == appId || (ExpandAll && _expanded.Contains(appId));
     private readonly Dictionary<long, (TextBlock Time, TextBlock Status, TodayAppRow Row)> _rowViews = new();
 
     private readonly UntrackedCardView _untracked;
@@ -89,12 +92,15 @@ public partial class TodayView : UserControl, ILiveView
         return "Mac";
     }
 
-    public TodayView(string dbPath, ThemeService themes, LiveState live, Action<long>? showAppDetail = null)
+    private readonly Action<long>? _showAppSettings;
+
+    public TodayView(string dbPath, ThemeService themes, LiveState live, Action<long>? showAppDetail = null, Action<long>? showAppSettings = null)
     {
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
         _showAppDetail = showAppDetail;
+        _showAppSettings = showAppSettings;
         LoadDeviceInfo();
         InitializeComponent();
         // WPF doesn't clamp CornerRadius like CSS does, so a huge value draws an oval: use half the height.
@@ -148,7 +154,11 @@ public partial class TodayView : UserControl, ILiveView
     /// <summary>Begin loading and ticking. Called once the window has rendered (first paint is never delayed by data).</summary>
     public void Start() => _driver.Start();
 
-    public void Stop() => _driver.Stop();
+    public void Stop()
+    {
+        CollapseDial();
+        _driver.Stop();
+    }
 
     /// <summary>Live-state refresh: a past day is static, so pipe changes and the timer leave it alone.</summary>
     public void Refresh()
@@ -171,10 +181,27 @@ public partial class TodayView : UserControl, ILiveView
         ShowDay(Today);
     }
 
-    public bool IsDrilldown => Panel.Visibility == Visibility.Visible || _day is not null;
+    public void CollapseDial()
+    {
+        if (_expandedAppId.HasValue)
+        {
+            if (_cards.TryGetValue(_expandedAppId.Value, out var c))
+            {
+                c.SetOpen(false);
+            }
+            _expandedAppId = null;
+        }
+    }
+
+    public bool IsDrilldown => _expandedAppId.HasValue || Panel.Visibility == Visibility.Visible || _day is not null;
 
     public bool TryGoBack()
     {
+        if (_expandedAppId.HasValue)
+        {
+            CollapseDial();
+            return true;
+        }
         if (Panel.Visibility == Visibility.Visible)
         {
             ClosePanel();
@@ -670,7 +697,7 @@ public partial class TodayView : UserControl, ILiveView
 
         var link = new SessionLink();
         // The dial, stats and pills are built the first time the row opens: most rows are never expanded.
-        var details = new Border { Visibility = _expanded.Contains(row.AppId) ? Visibility.Visible : Visibility.Collapsed };
+        var details = new Border { Visibility = IsExpanded(row.AppId) ? Visibility.Visible : Visibility.Collapsed };
         void EnsureDetails()
         {
             if (details.Child is not null) return;
@@ -733,9 +760,25 @@ public partial class TodayView : UserControl, ILiveView
         card.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Medium");
         void SetOpen(bool open)
         {
-            if (open) EnsureDetails();
+            if (open)
+            {
+                if (_expandedAppId.HasValue && _expandedAppId.Value != row.AppId)
+                {
+                    if (_cards.TryGetValue(_expandedAppId.Value, out var other))
+                    {
+                        other.SetOpen(false);
+                    }
+                }
+                _expandedAppId = row.AppId;
+                _expanded.Add(row.AppId);
+                EnsureDetails();
+            }
+            else
+            {
+                if (_expandedAppId == row.AppId) _expandedAppId = null;
+                _expanded.Remove(row.AppId);
+            }
             details.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
-            if (open) _expanded.Add(row.AppId); else _expanded.Remove(row.AppId);
             if (card != null)
             {
                 if (open) card.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
@@ -744,7 +787,7 @@ public partial class TodayView : UserControl, ILiveView
         }
         card.MouseLeftButtonUp += (_, _) => SetOpen(details.Visibility != Visibility.Visible);
         _cards[row.AppId] = (card, SetOpen);
-        if (_expanded.Contains(row.AppId)) card.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+        if (IsExpanded(row.AppId)) card.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
 
         // The strip, dial and pills of a row share one highlighted session: hover previews it, a click pins it.
         link.Apply = () =>
@@ -885,9 +928,20 @@ public partial class TodayView : UserControl, ILiveView
             stats.Children.Add(Stat(StringKeys.DialAverage, avg is { } m ? UsageText.HoursMinutes((long)Math.Round(m)) : Str(StringKeys.TileNone)));
         }
 
-        var top = new StackPanel { Orientation = Orientation.Horizontal };
+        var top = new Grid();
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        Grid.SetColumn(dial, 0);
         top.Children.Add(dial);
+
+        Grid.SetColumn(stats, 1);
         top.Children.Add(stats);
+
+        var actionPill = CreateDetailActionPill(row.AppId);
+        Grid.SetColumn(actionPill, 2);
+        top.Children.Add(actionPill);
 
         var pills = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
         var pillBorders = new List<Border>();
@@ -932,6 +986,113 @@ public partial class TodayView : UserControl, ILiveView
 
         panel.Child = stack;
         return panel;
+    }
+
+    private UIElement CreateDetailActionPill(long appId)
+    {
+        var pill = new Border
+        {
+            Width = 60,
+            Height = 28,
+            VerticalAlignment = VerticalAlignment.Top,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            CornerRadius = new CornerRadius(14),
+            Margin = new Thickness(0, 0, 2, 0),
+            BorderThickness = (Thickness)FindResource("Thickness.Border"),
+        };
+        pill.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+        pill.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
+
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        // Settings Button (Sliders icon, left half)
+        var settingsCanvas = new Canvas { Width = 16, Height = 16, IsHitTestVisible = false };
+        var settingsPath = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M 2,5.5 L 9,5.5 M 13,5.5 L 15,5.5 M 9,5.5 A 2,2 0 1 1 13,5.5 A 2,2 0 1 1 9,5.5 M 2,10.5 L 3.5,10.5 M 7.5,10.5 L 15,10.5 M 3.5,10.5 A 2,2 0 1 1 7.5,10.5 A 2,2 0 1 1 3.5,10.5"),
+            StrokeThickness = 1.4,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round,
+        };
+        settingsPath.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Brush.TextSoft");
+        settingsCanvas.Children.Add(settingsPath);
+
+        var settingsBtn = CreateHalfPillIconButton(settingsCanvas, Str(AppDetailStringKeys.Settings), isLeft: true);
+        settingsBtn.MouseEnter += (_, _) => settingsPath.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Brush.Accent");
+        settingsBtn.MouseLeave += (_, _) => settingsPath.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Brush.TextSoft");
+        settingsBtn.Click += (_, e) =>
+        {
+            e.Handled = true;
+            _showAppSettings?.Invoke(appId);
+        };
+        Grid.SetColumn(settingsBtn, 0);
+
+        // Detail Button (Bar chart icon, right half)
+        var detailCanvas = new Canvas { Width = 16, Height = 16, IsHitTestVisible = false };
+        var detailPath = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M 4,12.5 L 4,8.5 M 8,12.5 L 8,3.5 M 12,12.5 L 12,6"),
+            StrokeThickness = 1.8,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round,
+        };
+        detailPath.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Brush.TextSoft");
+        detailCanvas.Children.Add(detailPath);
+
+        var detailBtn = CreateHalfPillIconButton(detailCanvas, Str(AppDetailStringKeys.Title), isLeft: false);
+        detailBtn.MouseEnter += (_, _) => detailPath.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Brush.Accent");
+        detailBtn.MouseLeave += (_, _) => detailPath.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Brush.TextSoft");
+        detailBtn.Click += (_, e) =>
+        {
+            e.Handled = true;
+            _showAppDetail?.Invoke(appId);
+        };
+        Grid.SetColumn(detailBtn, 1);
+
+        grid.Children.Add(settingsBtn);
+        grid.Children.Add(detailBtn);
+        pill.Child = grid;
+        pill.MouseLeftButtonUp += (_, e) => e.Handled = true;
+
+        return pill;
+    }
+
+    private static Button CreateHalfPillIconButton(FrameworkElement icon, string toolTip, bool isLeft)
+    {
+        var btn = new Button
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Focusable = false,
+            Cursor = Cursors.Hand,
+            ToolTip = toolTip,
+            Content = icon,
+            Background = System.Windows.Media.Brushes.Transparent,
+            BorderBrush = System.Windows.Media.Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+        };
+        var template = new ControlTemplate(typeof(Button));
+        var factory = new FrameworkElementFactory(typeof(Border));
+        factory.Name = "Bd";
+        factory.SetValue(Border.BackgroundProperty, System.Windows.Media.Brushes.Transparent);
+        factory.SetValue(Border.CornerRadiusProperty, isLeft ? new CornerRadius(13, 0, 0, 13) : new CornerRadius(0, 13, 13, 0));
+        var cp = new FrameworkElementFactory(typeof(ContentPresenter));
+        cp.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        cp.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        factory.AppendChild(cp);
+        template.VisualTree = factory;
+
+        var trigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        trigger.Setters.Add(new Setter(Border.BackgroundProperty, Application.Current.FindResource("Brush.Surface"), "Bd"));
+        template.Triggers.Add(trigger);
+
+        btn.Template = template;
+        return btn;
     }
 
     private static int IndexOf(IReadOnlyList<TodaySession> list, TodaySession s)

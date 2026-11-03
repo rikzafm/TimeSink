@@ -1,4 +1,4 @@
-{
+﻿{
   "schema": 1,
   "id": "pulse-dark",
   "name": "Pulse Dark",
@@ -261,7 +261,7 @@
     "wrapBusiestOnly": "your most active month",
     "wrapPeak": "PEAK HOUR",
     "wrapPeakValue": "{0}–{1}",
-    "wrapPeakSub": "most apps open together",
+    "wrapPeakSub": "Busiest Time",
     "wrapNoon": "BEFORE NOON",
     "wrapNoonSub": "of your time",
     "wrapNoonSubEarly": "of your time, an early bird",
@@ -279,6 +279,11 @@
     "wrapCardNameLongest": "Longest sessions",
     "wrapCard6Label": "YOUR LONGEST SESSIONS",
     "wrapLongestHeadline": "{0} held on the longest.",
+    "wrapCardPcLabel": "YOUR PC'S TOP APPS",
+    "wrapCardMacLabel": "YOUR MAC'S TOP APPS",
+    "wrapCardDeviceLabel": "YOUR {0}'S TOP APPS",
+    "wrapCardNamePc": "PC top apps",
+    "wrapCardNameMac": "Mac top apps",
     "wrapPrev": "Previous card",
     "wrapNext": "Next card",
     "wrapGoTo": "Go to card {0}: {1}",

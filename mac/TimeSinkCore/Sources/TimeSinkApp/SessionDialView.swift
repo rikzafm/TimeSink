@@ -49,6 +49,8 @@ public struct SessionDialView: View {
     public let isAllScope: Bool
     public let localDeviceId: String
     @Binding public var activeSessionIndex: Int?
+    public var onOpenSettings: (() -> Void)? = nil
+    public var onOpenDetail: (() -> Void)? = nil
 
     @State private var hoveredSessionIndex: Int? = nil
     @State private var pinnedSessionIndex: Int? = nil
@@ -60,7 +62,9 @@ public struct SessionDialView: View {
         nowUtc: Int64,
         isAllScope: Bool,
         localDeviceId: String = "",
-        activeSessionIndex: Binding<Int?>? = nil
+        activeSessionIndex: Binding<Int?>? = nil,
+        onOpenSettings: (() -> Void)? = nil,
+        onOpenDetail: (() -> Void)? = nil
     ) {
         self.appRow = appRow
         self.dayStartUtc = dayStartUtc
@@ -69,6 +73,8 @@ public struct SessionDialView: View {
         self.isAllScope = isAllScope
         self.localDeviceId = localDeviceId
         self._activeSessionIndex = activeSessionIndex ?? .constant(nil)
+        self.onOpenSettings = onOpenSettings
+        self.onOpenDetail = onOpenDetail
     }
 
     private var detail: RowDetail { RowDetails.of(appRow) }
@@ -164,10 +170,13 @@ public struct SessionDialView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .center, spacing: 14) {
                 if isAllScope { dualDial } else { singleDial }
                 if isAllScope { dualStats } else { singleStats }
+                }
                 Spacer(minLength: 0)
+                actionPill
             }
             sessionChips
         }
@@ -175,6 +184,49 @@ public struct SessionDialView: View {
         .padding(.horizontal, 4)
         .onChange(of: effectiveActive) { _, newActive in
             activeSessionIndex = newActive
+        }
+    }
+
+    private var actionPill: some View {
+        HStack(spacing: 0) {
+            PillHalfButton(help: "Settings") {
+                onOpenSettings?()
+            } content: {
+                IconView(.sliders, size: 14, weight: 1.4, color: ThemeColors.textDim)
+            }
+
+            PillHalfButton(help: "App detail") {
+                onOpenDetail?()
+            } content: {
+                IconView(.chartBars, size: 14, weight: 1.6, color: ThemeColors.textDim)
+            }
+        }
+        .frame(width: 60, height: 28)
+        .background(
+            Capsule()
+                .fill(ThemeColors.surfaceRaised)
+                .overlay(Capsule().strokeBorder(ThemeColors.borderSubtle, lineWidth: 1))
+        )
+        .clipShape(Capsule())
+    }
+
+    private struct PillHalfButton<Content: View>: View {
+        let help: String
+        let action: () -> Void
+        @ViewBuilder let content: () -> Content
+        @State private var hovered = false
+
+        var body: some View {
+            Button(action: action) {
+                content()
+                    .foregroundColor(hovered ? ThemeColors.accent : ThemeColors.textDim)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(hovered ? ThemeColors.surface : Color.clear)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovered = $0 }
+            .help(help)
         }
     }
 

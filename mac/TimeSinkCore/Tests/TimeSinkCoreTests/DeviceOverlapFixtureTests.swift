@@ -1,4 +1,4 @@
-import XCTest
+﻿import XCTest
 import Foundation
 @testable import TimeSinkCore
 
@@ -285,6 +285,13 @@ final class DeviceOverlapFixtureTests: XCTestCase {
         XCTAssertNotNil(wrapped.deviceTotals)
         let wrappedSum = wrapped.deviceTotals!.values.reduce(0) { $0 + $1 }
         XCTAssertEqual(wrapped.totalSeconds, wrappedSum - wrapped.onBothSeconds)
+        XCTAssertNotNil(wrapped.pcTop)
+        XCTAssertFalse(wrapped.pcTop!.podium.isEmpty)
+        XCTAssertNotNil(wrapped.macTop)
+        XCTAssertFalse(wrapped.macTop!.podium.isEmpty)
+        XCTAssertNotNil(wrapped.deviceTops)
+        XCTAssertNotNil(wrapped.deviceTops?["dev-win"])
+        XCTAssertNotNil(wrapped.deviceTops?["dev-mac"])
     }
 
     func testForgottenDeviceShowsInAllScopeAndHiddenInThisScope() throws {

@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using TimeSink.Core.Settings;
 using TimeSink.Core.Theming;
+using TimeSink.Core.Usage;
 using TimeSink.UI.Services;
 using TimeSink.UI.Theming;
 
@@ -28,12 +29,14 @@ public sealed class YearView : UserControl, ILiveView
     private readonly Button _prev = NavArrow("◂");
     private readonly Button _next = NavArrow("▸");
     private readonly TextBlock _yearLabel = new();
+    private readonly Action<long, AppDetailRange, DateOnly?>? _showAppDetail;
 
-    public YearView(string dbPath, ThemeService themes, LiveState live)
+    public YearView(string dbPath, ThemeService themes, LiveState live, Action<long, AppDetailRange, DateOnly?>? showAppDetail = null)
     {
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
+        _showAppDetail = showAppDetail;
         _current = AppSettings.ForFile(dbPath).Get(Setting.LastYearView);
 
         var root = new Grid();
@@ -156,8 +159,8 @@ public sealed class YearView : UserControl, ILiveView
         IYearSubView view = sub switch
         {
             YearSubView.Wrapped => new YearWrappedView(_dbPath, _themes, _live, SetTrackingStart),
-            YearSubView.Matrix => new YearMatrixView(_dbPath, _themes, _live, SetTrackingStart),
-            _ => new YearPaceView(_dbPath, _themes, _live, SetTrackingStart),
+            YearSubView.Matrix => new YearMatrixView(_dbPath, _themes, _live, SetTrackingStart, _showAppDetail),
+            _ => new YearPaceView(_dbPath, _themes, _live, SetTrackingStart, _showAppDetail),
         };
         view.SetYear(_selectedYear);
         return (UIElement)view;

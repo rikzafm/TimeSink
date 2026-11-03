@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using TimeSink.Core.Devices;
 using TimeSink.Core.Icons;
 using TimeSink.Core.Theming;
@@ -122,6 +122,7 @@ public static class Setting
     public static readonly Setting<string?> DeviceId = Text("device.id");
     public static readonly Setting<string?> DeviceName = Text("device.name");
     public static readonly Setting<bool> ShortDeviceNames = Switch("devices.shortNames", true);
+    public static readonly Setting<bool> WrappedGroupByPlatform = Switch("devices.wrappedGroupByPlatform", true);
     public const string SyncStateEncryptionKeyMissing = "encryption_key_missing";
     public const string SyncStateEncryptionKeyWrong = "encryption_key_wrong";
     public const string SyncStateRemoteNotEncrypted = "remote_not_encrypted";
@@ -152,6 +153,6 @@ public static class Setting
         Startup, WeekStartsOn, PauseOnSleep, CountWhenLocked, MinSessionSeconds, SuggestApps, SteamAutoTrack,
         Theme, Accent, Compact, AppIcon, GoalAlerts, WeeklySummary, BackupMode,
         LastTab, LastYearView, AllLayout, InstantOpen, GamesOnly, BackupLastUtc, BackupFolder, AlertsSent, AlertsWeeklyLast, SteamIconsRepaired,
-        SyncEnabled, SyncEncrypted, SyncFolder, SyncState, SyncLastExportUtc, SyncLastImportUtc, SyncEnabledUtc, DeviceScope, DeviceId, DeviceName, ShortDeviceNames,
+        SyncEnabled, SyncEncrypted, SyncFolder, SyncState, SyncLastExportUtc, SyncLastImportUtc, SyncEnabledUtc, DeviceScope, DeviceId, DeviceName, ShortDeviceNames, WrappedGroupByPlatform,
     ];
 }

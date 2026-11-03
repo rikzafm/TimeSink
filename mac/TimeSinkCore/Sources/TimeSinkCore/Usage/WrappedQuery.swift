@@ -1,4 +1,4 @@
-import Foundation
+﻿import Foundation
 
 public struct WrappedApp: Sendable, Equatable {
     public let appId: Int64

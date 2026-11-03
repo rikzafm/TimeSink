@@ -1,4 +1,4 @@
-namespace TimeSink.Core.Usage;
+﻿namespace TimeSink.Core.Usage;
 
 /// <summary>The podium for one kind of app (games, gacha games): top three, the next three, and the kind's total app-seconds.</summary>
 public sealed record WrappedKindTop(IReadOnlyList<WrappedApp> Podium, IReadOnlyList<WrappedApp> Others, long Seconds)
@@ -40,7 +40,10 @@ public sealed record WrappedResult(
     IReadOnlyDictionary<string, long>? DeviceTotals = null,
     long OnBothSeconds = 0,
     IReadOnlyDictionary<string, long>? BusiestMonthDeviceSeconds = null,
-    IReadOnlyDictionary<string, long>? BeforeNoonDeviceSeconds = null)
+    IReadOnlyDictionary<string, long>? BeforeNoonDeviceSeconds = null,
+    WrappedKindTop? PcTop = null,
+    WrappedKindTop? MacTop = null,
+    IReadOnlyDictionary<string, WrappedKindTop>? DeviceTops = null)
 {
     /// <summary>"N days and M hours" the PC was on: whole days of the total.</summary>
     public int EquivalentDays => (int)(TotalSeconds / 86400);

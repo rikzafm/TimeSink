@@ -48,13 +48,14 @@ public sealed class AppDetailView : UserControl
     private TextBlock _matrixReadout = Label();
     private TextBlock _barsReadout = Label();
 
-    public AppDetailView(string dbPath, ThemeService themes, LiveState live, long appId, Action close)
+    public AppDetailView(string dbPath, ThemeService themes, LiveState live, long appId, Action close, AppDetailRange initialRange = AppDetailRange.Matrix, DateOnly? initialAnchor = null)
     {
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
         _appId = appId;
         _close = close;
+        _range = initialRange;
         SetResourceReference(BackgroundProperty, "Brush.Surface");
         Focusable = true;
         PreviewKeyDown += (_, e) =>
@@ -67,7 +68,8 @@ public sealed class AppDetailView : UserControl
         };
 
         _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope);
-        (_year, _anchor) = (_loader.Today.Year, _loader.Today);
+        var anchor = initialAnchor ?? _loader.Today;
+        (_year, _anchor) = (anchor.Year, anchor);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw);
         Loaded += (_, _) =>
         {
