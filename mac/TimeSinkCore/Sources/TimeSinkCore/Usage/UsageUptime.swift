@@ -209,15 +209,15 @@ public enum UsageUptime {
         return mergeBands(bands)
     }
 
-    private static func mergeBands(_ bands: [(start: Int64, end: Int64)]) -> [SleepBand] {
+    private static func mergeBands(_ bands: [(start: Int64, end: Int64)], deviceId: String? = nil) -> [SleepBand] {
         let sorted = bands.sorted { $0.start < $1.start }
         var merged: [SleepBand] = []
         for b in sorted {
             if b.end <= b.start { continue }
             if let last = merged.last, b.start <= last.endUtc {
-                merged[merged.count - 1] = SleepBand(startUtc: last.startUtc, endUtc: max(last.endUtc, b.end))
+                merged[merged.count - 1] = SleepBand(startUtc: last.startUtc, endUtc: max(last.endUtc, b.end), deviceId: deviceId)
             } else {
-                merged.append(SleepBand(startUtc: b.start, endUtc: b.end))
+                merged.append(SleepBand(startUtc: b.start, endUtc: b.end, deviceId: deviceId))
             }
         }
         return merged
@@ -225,21 +225,23 @@ public enum UsageUptime {
 
     /// From each sleep-close to the next session start of any app (or now), merged and clipped.
     public static func sleepBands(segs: [UsageSeg], d0: Int64, nowUtc: Int64, liveDeviceId: String? = nil) -> [SleepBand] {
-        var bands: [(start: Int64, end: Int64)] = []
+        var result: [SleepBand] = []
         let byDev = Dictionary(grouping: segs, by: { $0.deviceId })
         for (devId, devSegs) in byDev {
             let sorted = devSegs.sorted(by: { $0.start < $1.start })
             let isLive = liveDeviceId != nil && devId.caseInsensitiveCompare(liveDeviceId!) == .orderedSame
+            var devBands: [(start: Int64, end: Int64)] = []
             for s in sorted where s.sleep && s.end >= d0 && s.end <= nowUtc {
                 let startsAfter = sorted.filter { $0.start > s.end }.map(\.start)
                 if let next = startsAfter.min() {
-                    bands.append((start: s.end, end: min(next, nowUtc)))
+                    devBands.append((start: s.end, end: min(next, nowUtc)))
                 } else if isLive {
-                    bands.append((start: s.end, end: nowUtc))
+                    devBands.append((start: s.end, end: nowUtc))
                 }
             }
+            result.append(contentsOf: mergeBands(devBands, deviceId: devId.isEmpty ? nil : devId))
         }
-        return mergeBands(bands)
+        return result.sorted { $0.startUtc < $1.startUtc }
     }
 
     /// Uptime seconds and per-device breakdown per local day from `segs`.

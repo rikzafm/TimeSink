@@ -126,32 +126,44 @@ public struct HourlyChartView: View {
             EmptyView()
         } else {
             let slp = isAsleep(bucket.hour)
+            let devSleepMap: [String: Int64] = Dictionary(grouping: result.sleepBands, by: { $0.deviceId ?? "" })
+                .mapValues { bands in
+                    let start = result.dayStartUtc + Int64(bucket.hour) * 3600
+                    let end = start + 3600
+                    return bands.reduce(0) { sum, b in
+                        let o = min(b.endUtc, end) - max(b.startUtc, start)
+                        return sum + (o > 0 ? o : 0)
+                    }
+                }
             if split {
                 let parts = state.deviceSplit(bucket.byDevice?.mapValues(\.uptimeSeconds))
                 let macSec = parts.mac >= 60 ? parts.mac : 0
                 let pcSec = parts.pc >= 60 ? parts.pc : 0
-                let hasActive = macSec > 0 || pcSec > 0
-                if hasActive && slp {
-                    let activeH = max(macSec > 0 ? height(Double(macSec)) : 0, pcSec > 0 ? height(Double(pcSec)) : 0)
-                    let slpH = max(2, min(barsHeight - activeH, barsHeight * 0.7))
-                    VStack(spacing: 0) {
-                        Hatch(color: Tokens.ramp[2])
-                            .frame(height: slpH)
-                            .clipShape(RoundedRectangle(cornerRadius: 2))
-                        OverlapBar(
-                            mac: macSec > 0 ? max(2, height(Double(macSec))) : 0,
-                            pc: pcSec > 0 ? max(2, height(Double(pcSec))) : 0,
-                            macColor: bucket.hour == nowHour ? ThemeColors.accent : Tokens.ramp[3],
-                            pcColor: ThemeColors.deviceBDark,
-                            radius: 2
-                        )
-                    }
-                } else if hasActive {
+
+                let slpSplit = state.deviceSplit(devSleepMap)
+                let macSlpSec = slpSplit.mac >= 60 ? slpSplit.mac : 0
+                let pcSlpSec = slpSplit.pc >= 60 ? slpSplit.pc : 0
+
+                let macActiveH = macSec > 0 ? max(2, height(Double(macSec))) : 0
+                var macSlpH = macSlpSec > 0 ? max(2, height(Double(macSlpSec))) : 0
+                if macActiveH > 0 && macActiveH + macSlpH > barsHeight {
+                    macSlpH = max(0, barsHeight - macActiveH)
+                }
+
+                let pcActiveH = pcSec > 0 ? max(2, height(Double(pcSec))) : 0
+                var pcSlpH = pcSlpSec > 0 ? max(2, height(Double(pcSlpSec))) : 0
+                if pcActiveH > 0 && pcActiveH + pcSlpH > barsHeight {
+                    pcSlpH = max(0, barsHeight - pcActiveH)
+                }
+
+                if macActiveH > 0 || pcActiveH > 0 || macSlpH > 0 || pcSlpH > 0 {
                     OverlapBar(
-                        mac: macSec > 0 ? max(2, height(Double(macSec))) : 0,
-                        pc: pcSec > 0 ? max(2, height(Double(pcSec))) : 0,
+                        mac: macActiveH,
+                        pc: pcActiveH,
                         macColor: bucket.hour == nowHour ? ThemeColors.accent : Tokens.ramp[3],
                         pcColor: ThemeColors.deviceBDark,
+                        macSleep: macSlpH,
+                        pcSleep: pcSlpH,
                         radius: 2
                     )
                 } else if slp {
@@ -163,25 +175,30 @@ public struct HourlyChartView: View {
                 }
             } else {
                 let sec = bucket.uptimeSeconds >= 60 ? bucket.uptimeSeconds : 0
-                if sec > 0 && slp {
-                    let activeH = max(2, height(Double(sec)))
-                    let slpH = max(2, min(barsHeight - activeH, barsHeight * 0.7))
+                let totalSlpSec = devSleepMap.values.reduce(0, +)
+                let slpHourSec = totalSlpSec >= 60 ? totalSlpSec : (slp ? 1800 : 0)
+                let actH = sec > 0 ? max(2, height(Double(sec))) : 0
+                var slpH = slpHourSec > 0 ? max(2, height(Double(slpHourSec))) : 0
+                if actH > 0 && actH + slpH > barsHeight {
+                    slpH = max(0, barsHeight - actH)
+                }
+                let totalH = actH + slpH
+                if totalH > 0 {
                     VStack(spacing: 0) {
-                        Hatch(color: Tokens.ramp[2])
-                            .frame(height: slpH)
-                            .clipShape(RoundedRectangle(cornerRadius: 2))
-                        RoundedRectangle(cornerRadius: 2)
+                        if slpH > 0 {
+                            Hatch(color: bucket.hour == nowHour ? ThemeColors.accent : Tokens.ramp[2])
+                                .frame(height: slpH)
+                                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 2, topTrailingRadius: 2))
+                        }
+                        if actH > 0 {
+                            UnevenRoundedRectangle(
+                                topLeadingRadius: slpH > 0 ? 0 : 2,
+                                topTrailingRadius: slpH > 0 ? 0 : 2
+                            )
                             .fill(color(sec, hour: bucket.hour))
-                            .frame(height: activeH)
+                            .frame(height: actH)
+                        }
                     }
-                } else if sec > 0 {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(color(sec, hour: bucket.hour))
-                        .frame(height: max(2, height(Double(sec))))
-                } else if slp {
-                    Hatch(color: Tokens.ramp[2])
-                        .frame(height: barsHeight * 0.7)
-                        .clipShape(RoundedRectangle(cornerRadius: 2))
                 } else {
                     EmptyView()
                 }
@@ -218,6 +235,37 @@ public struct HourlyChartView: View {
 
     private func detailPanel(_ hour: Int) -> some View {
         let d = BarDetail.forHour(result: result, hour: hour)
+        let localName = state.deviceADisplayName()
+        let remoteName = state.deviceBDisplayName()
+
+        let devSleepMap: [String: Int64] = Dictionary(grouping: result.sleepBands, by: { $0.deviceId ?? "" })
+            .mapValues { bands in
+                let start = result.dayStartUtc + Int64(hour) * 3600
+                let end = start + 3600
+                return bands.reduce(0) { sum, b in
+                    let o = min(b.endUtc, end) - max(b.startUtc, start)
+                    return sum + (o > 0 ? o : 0)
+                }
+            }
+        let slpSplit = state.deviceSplit(devSleepMap)
+        let macSlpSec = slpSplit.mac >= 60 ? slpSplit.mac : 0
+        let pcSlpSec = slpSplit.pc >= 60 ? slpSplit.pc : 0
+
+        let subtitleText: String
+        if d.uptimeSeconds > 0 || d.appSeconds > 0 {
+            subtitleText = "\(Formatters.paddedHM(d.uptimeSeconds)) uptime · \(Formatters.paddedHM(d.appSeconds)) app time"
+        } else if macSlpSec >= 60 && pcSlpSec >= 60 {
+            subtitleText = "Both devices asleep"
+        } else if macSlpSec >= 60 {
+            subtitleText = "\(localName) asleep \(Formatters.paddedHM(macSlpSec))"
+        } else if pcSlpSec >= 60 {
+            subtitleText = "\(remoteName) asleep \(Formatters.paddedHM(pcSlpSec))"
+        } else if isAsleep(hour) {
+            subtitleText = "\(localName) asleep · paused"
+        } else {
+            subtitleText = "No activity this hour"
+        }
+
         return VStack(alignment: .leading, spacing: 12) {
             // Header
             HStack(alignment: .top) {
@@ -225,9 +273,7 @@ public struct HourlyChartView: View {
                     Text(Formatters.hour24Range(hour))
                         .font(.system(size: 18, weight: .bold))
                         .foregroundColor(ThemeColors.textPrimary)
-                    Text(d.uptimeSeconds > 0 || d.appSeconds > 0
-                         ? "\(Formatters.paddedHM(d.uptimeSeconds)) uptime · \(Formatters.paddedHM(d.appSeconds)) app time"
-                         : (isAsleep(hour) ? "Asleep · paused" : "No activity this hour"))
+                    Text(subtitleText)
                         .font(.system(size: 11))
                         .foregroundColor(ThemeColors.textMuted)
                 }
@@ -253,33 +299,36 @@ public struct HourlyChartView: View {
             }
 
             // Dedicated device breakdown row
-            if state.showsDeviceSplit, let byDev = d.byDevice, byDev.count > 0 {
-                let localName = state.deviceADisplayName()
-                let remoteName = state.deviceBDisplayName()
-                let split = state.deviceSplit(byDev.mapValues { $0.uptimeSeconds > 0 ? $0.uptimeSeconds : $0.appSeconds })
-                if split.mac > 0 || split.pc > 0 {
-                    HStack(spacing: 12) {
-                        if split.mac > 0 {
-                            HStack(spacing: 4) {
-                                Circle().fill(ThemeColors.accent).frame(width: 7, height: 7)
-                                Text("\(localName) \(Formatters.paddedHM(split.mac))")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(ThemeColors.textPrimary)
-                            }
-                        }
-                        if split.pc > 0 {
-                            HStack(spacing: 4) {
-                                RoundedRectangle(cornerRadius: 1.5).fill(ThemeColors.deviceB).frame(width: 7, height: 7)
-                                Text("\(remoteName) \(Formatters.paddedHM(split.pc))")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(ThemeColors.textPrimary)
-                            }
-                        }
-                        if d.onBothSeconds > 0 {
-                            Text("\(Formatters.paddedHM(d.onBothSeconds)) on both")
+            let split = state.deviceSplit(d.byDevice?.mapValues { $0.uptimeSeconds > 0 ? $0.uptimeSeconds : $0.appSeconds })
+            let showDevRow = state.showsDeviceSplit || macSlpSec >= 60 || pcSlpSec >= 60
+            if showDevRow && (split.mac > 0 || split.pc > 0 || macSlpSec >= 60 || pcSlpSec >= 60) {
+                HStack(spacing: 12) {
+                    if split.mac > 0 || macSlpSec >= 60 {
+                        HStack(spacing: 4) {
+                            Circle().fill(ThemeColors.accent).frame(width: 7, height: 7)
+                            let macText = split.mac > 0 && macSlpSec >= 60
+                                ? "\(localName) \(Formatters.paddedHM(split.mac)) · asleep \(Formatters.paddedHM(macSlpSec))"
+                                : (split.mac > 0 ? "\(localName) \(Formatters.paddedHM(split.mac))" : "\(localName) asleep \(Formatters.paddedHM(macSlpSec))")
+                            Text(macText)
                                 .font(.system(size: 11))
-                                .foregroundColor(ThemeColors.textMuted)
+                                .foregroundColor(ThemeColors.textPrimary)
                         }
+                    }
+                    if split.pc > 0 || pcSlpSec >= 60 {
+                        HStack(spacing: 4) {
+                            RoundedRectangle(cornerRadius: 1.5).fill(ThemeColors.deviceB).frame(width: 7, height: 7)
+                            let pcText = split.pc > 0 && pcSlpSec >= 60
+                                ? "\(remoteName) \(Formatters.paddedHM(split.pc)) · asleep \(Formatters.paddedHM(pcSlpSec))"
+                                : (split.pc > 0 ? "\(remoteName) \(Formatters.paddedHM(split.pc))" : "\(remoteName) asleep \(Formatters.paddedHM(pcSlpSec))")
+                            Text(pcText)
+                                .font(.system(size: 11))
+                                .foregroundColor(ThemeColors.textPrimary)
+                        }
+                    }
+                    if d.onBothSeconds > 0 {
+                        Text("\(Formatters.paddedHM(d.onBothSeconds)) on both")
+                            .font(.system(size: 11))
+                            .foregroundColor(ThemeColors.textMuted)
                     }
                 }
             }

@@ -457,7 +457,7 @@ public sealed class WeekView : UserControl, ILiveView
         var content = PanelContents.ForDay(detail, focus is null ? null : (focus.AppId, focus.Name));
         var compares = UsagePhrases.PanelLines(content).Select(l => (Str(l.Label), Str(l.Value), l.Good)).ToList();
         var apps = content.Apps.Select(x => (x.Name, x.Seconds, _themes.AppSlot(x.AppId), x.AppId)).ToList();
-        List<(string Name, long UptimeSeconds, bool IsLocal)>? devList = null;
+        List<DeviceBarInfo>? devList = null;
         if (content.DeviceUptimes is { Count: > 0 } devUptimes)
         {
             devList = new();
@@ -465,7 +465,7 @@ public sealed class WeekView : UserControl, ILiveView
             {
                 var isLoc = DeviceInfoService.IsLocal(_deviceInfo, devId, _live?.LocalDeviceId);
                 var name = DeviceInfoService.GetName(_deviceInfo, devId, isLoc);
-                if (du.UptimeSeconds > 0) devList.Add((name, du.UptimeSeconds, isLoc));
+                if (du.UptimeSeconds > 0) devList.Add(new DeviceBarInfo(name, du.UptimeSeconds, isLoc));
             }
         }
         _panel.ShowCard(

@@ -185,7 +185,7 @@ internal static class UsageUptime
         return MergeBands(bands);
     }
 
-    private static List<SleepBand> MergeBands(List<(long S, long E)> bands)
+    private static List<SleepBand> MergeBands(List<(long S, long E)> bands, string? deviceId = null)
     {
         var merged = new List<SleepBand>();
         foreach (var (s, e) in bands.OrderBy(b => b.S))
@@ -193,32 +193,35 @@ internal static class UsageUptime
             if (e <= s) continue;
             if (merged.Count > 0 && s <= merged[^1].EndUtc)
                 merged[^1] = merged[^1] with { EndUtc = Math.Max(merged[^1].EndUtc, e) };
-            else merged.Add(new SleepBand(s, e));
+            else merged.Add(new SleepBand(s, e, deviceId));
         }
         return merged;
     }
 
     public static List<SleepBand> SleepBands(List<UsageSeg> segs, long d0, long nowUtc, string? liveDeviceId = null)
     {
-        var bands = new List<(long S, long E)>();
+        var result = new List<SleepBand>();
         foreach (var group in segs.GroupBy(s => s.DeviceId ?? ""))
         {
+            var devId = string.IsNullOrEmpty(group.Key) ? null : group.Key;
             var devSegs = group.OrderBy(s => s.Start).ToList();
             var isLive = !string.IsNullOrEmpty(liveDeviceId) && string.Equals(group.Key, liveDeviceId, StringComparison.OrdinalIgnoreCase);
+            var devBands = new List<(long S, long E)>();
             foreach (var s in devSegs.Where(s => s.Sleep && s.End >= d0 && s.End <= nowUtc))
             {
                 var next = devSegs.Where(x => x.Start > s.End).Select(x => (long?)x.Start).FirstOrDefault();
                 if (next is { } n)
                 {
-                    bands.Add((s.End, Math.Min(n, nowUtc)));
+                    devBands.Add((s.End, Math.Min(n, nowUtc)));
                 }
                 else if (isLive)
                 {
-                    bands.Add((s.End, nowUtc));
+                    devBands.Add((s.End, nowUtc));
                 }
             }
+            result.AddRange(MergeBands(devBands, devId));
         }
-        return MergeBands(bands);
+        return result.OrderBy(b => b.StartUtc).ToList();
     }
 
     /// <summary>

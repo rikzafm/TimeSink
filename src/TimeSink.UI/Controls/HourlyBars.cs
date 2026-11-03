@@ -141,13 +141,29 @@ public sealed class HourlyBars : FrameworkElement
         var accent = CurrentBrush ?? (TryFindResource("Brush.Accent") as Brush);
         var typical = TypicalBrush ?? DefaultTypicalBrush;
 
+        long GetDeviceSleep(string? devId, int hour)
+        {
+            if (SleepBands is not { Count: > 0 }) return 0;
+            var start = DayStartUtc + (long)hour * 3600;
+            var end = start + 3600;
+            long sec = 0;
+            foreach (var b in SleepBands)
+            {
+                if (devId != null && b.DeviceId != null && !string.Equals(b.DeviceId, devId, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var o = Math.Min(b.EndUtc, end) - Math.Max(b.StartUtc, start);
+                if (o > 0) sec += o;
+            }
+            return Math.Min(3600, sec);
+        }
+
         bool IsHourAsleep(int hour)
         {
             if (SleepBands is { Count: > 0 })
             {
                 var start = DayStartUtc + (long)hour * 3600;
                 var end = start + 3600;
-                return SleepBands.Any(b => Math.Min(b.EndUtc, end) - Math.Max(b.StartUtc, start) >= 1800);
+                return SleepBands.Any(b => Math.Min(b.EndUtc, end) - Math.Max(b.StartUtc, start) >= 60);
             }
             if (SleepFractions is { Count: > 0 })
             {
@@ -166,6 +182,20 @@ public sealed class HourlyBars : FrameworkElement
             if (f > 0.75) return h3 ?? Brushes.ForestGreen;
             if (f > 0.5) return h2 ?? Brushes.OliveDrab;
             return h1 ?? Brushes.DarkOliveGreen;
+        }
+
+        void DrawHatchedBlock(Rect rect, Brush hatchBrush)
+        {
+            if (rect.Height <= 0.5 || rect.Width <= 0.5) return;
+            dc.PushClip(new RectangleGeometry(rect, 2, 2));
+            var pen = new Pen(hatchBrush, 1.5);
+            pen.Freeze();
+            var step = (1.5 + 1.5) * 1.414;
+            for (var hx = rect.Left - rect.Height; hx < rect.Right; hx += step)
+            {
+                dc.DrawLine(pen, new Point(hx, rect.Bottom), new Point(hx + rect.Height, rect.Top));
+            }
+            dc.Pop();
         }
 
         for (var i = 0; i < 24; i++)
@@ -189,69 +219,104 @@ public sealed class HourlyBars : FrameworkElement
             }
             else
             {
-                double activeH = 0;
-                if (DeviceScope == TimeSink.Core.Devices.DeviceScope.All && bucket.ByDevice != null && bucket.ByDevice.Count > 0)
+                if (DeviceScope == TimeSink.Core.Devices.DeviceScope.All)
                 {
                     long secLocal = 0, secRemote = 0;
+                    string? remoteDevId = null;
                     if (LocalDeviceId != null)
                     {
-                        if (bucket.ByDevice.TryGetValue(LocalDeviceId, out var dhA)) secLocal = dhA.UptimeSeconds;
-                        foreach (var (devId, dh) in bucket.ByDevice)
+                        if (bucket.ByDevice != null && bucket.ByDevice.TryGetValue(LocalDeviceId, out var dhA)) secLocal = dhA.UptimeSeconds;
+                        if (bucket.ByDevice != null)
                         {
-                            if (devId != LocalDeviceId) secRemote += dh.UptimeSeconds;
+                            foreach (var (devId, dh) in bucket.ByDevice)
+                            {
+                                if (devId != LocalDeviceId) { secRemote += dh.UptimeSeconds; remoteDevId ??= devId; }
+                            }
                         }
                     }
-                    else
+                    else if (bucket.ByDevice != null)
                     {
                         var first = true;
-                        foreach (var dh in bucket.ByDevice.Values)
+                        foreach (var (devId, dh) in bucket.ByDevice)
                         {
                             if (first) { secLocal = dh.UptimeSeconds; first = false; }
-                            else secRemote += dh.UptimeSeconds;
+                            else { secRemote += dh.UptimeSeconds; remoteDevId ??= devId; }
                         }
                     }
+                    if (remoteDevId == null && SleepBands != null)
+                    {
+                        foreach (var b in SleepBands)
+                        {
+                            if (b.DeviceId != null && (LocalDeviceId == null || !string.Equals(b.DeviceId, LocalDeviceId, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                remoteDevId = b.DeviceId;
+                                break;
+                            }
+                        }
+                    }
+
+                    long sleepLocal = GetDeviceSleep(LocalDeviceId, i);
+                    long sleepRemote = GetDeviceSleep(remoteDevId, i);
+
                     var hLocal = secLocal >= MinActivitySeconds ? Math.Max(2.0, (secLocal / scale) * plotH) : 0;
-                    var hRemote = secRemote >= MinActivitySeconds ? Math.Max(2.0, (secRemote / scale) * plotH) : 0;
+                    var slpLocal = sleepLocal >= MinActivitySeconds ? Math.Max(2.0, (sleepLocal / scale) * plotH) : 0;
+                    if (hLocal > 0 && hLocal + slpLocal > plotH) slpLocal = Math.Max(0, plotH - hLocal);
+                    var totalLocal = hLocal + slpLocal;
 
-                    if (hLocal > 0 || hRemote > 0)
+                    var hRemote = secRemote >= MinActivitySeconds ? Math.Max(2.0, (secRemote / scale) * plotH) : 0;
+                    var slpRemote = sleepRemote >= MinActivitySeconds ? Math.Max(2.0, (sleepRemote / scale) * plotH) : 0;
+                    if (hRemote > 0 && hRemote + slpRemote > plotH) slpRemote = Math.Max(0, plotH - hRemote);
+                    var totalRemote = hRemote + slpRemote;
+
+                    if (totalLocal > 0 || totalRemote > 0)
                     {
-                        activeH = Math.Max(hLocal, hRemote);
-                        var (back, front) = OverlapBars.Layout(x, barW, hLocal, hRemote);
-                        void DrawDeviceBar(OverlapBarGeometry g)
+                        var (back, front) = OverlapBars.Layout(x, barW, totalLocal, totalRemote);
+                        void DrawBarPiece(OverlapBarGeometry g)
                         {
-                            if (g.Height <= 0.5) return;
-                            var brush = g.IsDeviceA ? (i == nowH ? accent : h3)
-                                                    : (DeviceBBrush ?? h2);
-                            dc.DrawRoundedRectangle(brush, null, new Rect(g.X, plotTop + plotH - g.Height, g.Width, g.Height), 2, 2);
+                            if (g.Width <= 0.5) return;
+                            var actH = g.IsDeviceA ? hLocal : hRemote;
+                            var slpH = g.IsDeviceA ? slpLocal : slpRemote;
+                            var solidBrush = g.IsDeviceA ? (i == nowH ? accent : h3) : (DeviceBBrush ?? h2);
+                            var hatchBrush = g.IsDeviceA ? (DeviceABrush ?? accent ?? h3) : (DeviceBBrush ?? h2);
+
+                            if (actH > 0.5)
+                            {
+                                dc.DrawRoundedRectangle(solidBrush, null, new Rect(g.X, plotTop + plotH - actH, g.Width, actH), 2, 2);
+                            }
+                            if (slpH > 0.5)
+                            {
+                                DrawHatchedBlock(new Rect(g.X, plotTop + plotH - actH - slpH, g.Width, slpH), hatchBrush ?? Brushes.Gray);
+                            }
                         }
-                        DrawDeviceBar(back);
-                        DrawDeviceBar(front);
+                        DrawBarPiece(back);
+                        DrawBarPiece(front);
+                    }
+                    else if (isAsleep)
+                    {
+                        var asleepH = plotH * 0.7;
+                        DrawHatchedBlock(new Rect(x, plotTop + plotH - asleepH, barW, asleepH), h2 ?? MutedBrush ?? Brushes.Gray);
                     }
                 }
-                else if (bucket.UptimeSeconds >= MinActivitySeconds)
+                else
                 {
-                    activeH = Math.Max(2.0, (bucket.UptimeSeconds / scale) * plotH);
-                    var brush = GetBarBrush(bucket.UptimeSeconds, i);
-                    dc.DrawRoundedRectangle(brush, null, new Rect(x, plotTop + plotH - activeH, barW, activeH), 2, 2);
-                }
+                    // Single device mode
+                    var sec = bucket.UptimeSeconds;
+                    var sleepSec = GetDeviceSleep(LocalDeviceId, i);
+                    if (sleepSec == 0 && isAsleep) sleepSec = 1800;
 
-                if (isAsleep)
-                {
-                    var asleepH = activeH > 0 ? Math.Min(plotH - activeH, plotH * 0.7) : plotH * 0.7;
-                    if (asleepH > 0.5)
+                    var activeH = sec >= MinActivitySeconds ? Math.Max(2.0, (sec / scale) * plotH) : 0;
+                    var slpH = sleepSec >= MinActivitySeconds ? Math.Max(2.0, (sleepSec / scale) * plotH) : 0;
+                    if (activeH > 0 && activeH + slpH > plotH) slpH = Math.Max(0, plotH - activeH);
+
+                    if (activeH > 0.5)
                     {
-                        var rect = new Rect(x, plotTop + plotH - activeH - asleepH, barW, asleepH);
-                        dc.PushClip(new RectangleGeometry(rect, 2, 2));
-
-                        var hatchBrush = h2 ?? MutedBrush ?? Brushes.Gray;
-                        var pen = new Pen(hatchBrush, 1.5);
-                        pen.Freeze();
-                        var step = (1.5 + 1.5) * 1.414;
-                        for (var hx = rect.Left - rect.Height; hx < rect.Right; hx += step)
-                        {
-                            dc.DrawLine(pen, new Point(hx, rect.Bottom), new Point(hx + rect.Height, rect.Top));
-                        }
-                        dc.Pop();
+                        var brush = GetBarBrush(bucket.UptimeSeconds, i);
+                        dc.DrawRoundedRectangle(brush, null, new Rect(x, plotTop + plotH - activeH, barW, activeH), 2, 2);
+                    }
+                    if (slpH > 0.5)
+                    {
+                        var hatchBrush = i == nowH ? accent : (h2 ?? MutedBrush ?? Brushes.Gray);
+                        DrawHatchedBlock(new Rect(x, plotTop + plotH - activeH - slpH, barW, slpH), hatchBrush ?? Brushes.Gray);
                     }
                 }
             }

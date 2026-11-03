@@ -485,24 +485,67 @@ public struct OverlapBar: View {
     let pc: CGFloat
     let macColor: Color
     let pcColor: Color
+    var macSleep: CGFloat = 0
+    var pcSleep: CGFloat = 0
     var radius: CGFloat = 3
+
+    public init(mac: CGFloat, pc: CGFloat, macColor: Color, pcColor: Color, macSleep: CGFloat = 0, pcSleep: CGFloat = 0, radius: CGFloat = 3) {
+        self.mac = mac
+        self.pc = pc
+        self.macColor = macColor
+        self.pcColor = pcColor
+        self.macSleep = macSleep
+        self.pcSleep = pcSleep
+        self.radius = radius
+    }
 
     public var body: some View {
         GeometryReader { geo in
-            let both = mac > 0 && pc > 0
+            let totalMac = mac + macSleep
+            let totalPc = pc + pcSleep
+            let both = totalMac > 0 && totalPc > 0
             let w = geo.size.width * (both ? 0.66 : 1)
-            let macBar = UnevenRoundedRectangle(topLeadingRadius: radius, topTrailingRadius: radius).fill(macColor)
-                .frame(width: w, height: mac)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            let pcBar = UnevenRoundedRectangle(topLeadingRadius: radius, topTrailingRadius: radius).fill(pcColor)
-                .frame(width: w, height: pc)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+
+            let macBar = VStack(spacing: 0) {
+                if macSleep > 0 {
+                    Hatch(color: macColor)
+                        .frame(width: w, height: macSleep)
+                        .clipShape(UnevenRoundedRectangle(topLeadingRadius: radius, topTrailingRadius: radius))
+                }
+                if mac > 0 {
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: macSleep > 0 ? 0 : radius,
+                        topTrailingRadius: macSleep > 0 ? 0 : radius
+                    )
+                    .fill(macColor)
+                    .frame(width: w, height: mac)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+
+            let pcBar = VStack(spacing: 0) {
+                if pcSleep > 0 {
+                    Hatch(color: pcColor)
+                        .frame(width: w, height: pcSleep)
+                        .clipShape(UnevenRoundedRectangle(topLeadingRadius: radius, topTrailingRadius: radius))
+                }
+                if pc > 0 {
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: pcSleep > 0 ? 0 : radius,
+                        topTrailingRadius: pcSleep > 0 ? 0 : radius
+                    )
+                    .fill(pcColor)
+                    .frame(width: w, height: pc)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+
             ZStack {
-                if mac > 0 && pc > 0 {
-                    if mac <= pc { pcBar; macBar } else { macBar; pcBar }
-                } else if mac > 0 {
+                if both {
+                    if totalMac <= totalPc { pcBar; macBar } else { macBar; pcBar }
+                } else if totalMac > 0 {
                     macBar
-                } else if pc > 0 {
+                } else if totalPc > 0 {
                     pcBar
                 }
             }

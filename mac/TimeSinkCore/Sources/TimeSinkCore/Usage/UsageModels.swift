@@ -34,10 +34,12 @@ public struct UsageSeg: Sendable, Equatable {
 public struct SleepBand: Sendable, Equatable {
     public let startUtc: Int64
     public let endUtc: Int64
+    public let deviceId: String?
 
-    public init(startUtc: Int64, endUtc: Int64) {
+    public init(startUtc: Int64, endUtc: Int64, deviceId: String? = nil) {
         self.startUtc = startUtc
         self.endUtc = endUtc
+        self.deviceId = deviceId
     }
 }
 

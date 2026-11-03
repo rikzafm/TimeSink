@@ -370,12 +370,28 @@ public partial class TodayView : UserControl, ILiveView
         Panel.Hide();
     }
 
+    private static long GetDeviceSleepSeconds(string? deviceId, int hour, long dayStartUtc, IReadOnlyList<SleepBand>? bands)
+    {
+        if (bands is not { Count: > 0 }) return 0;
+        var start = dayStartUtc + (long)hour * 3600;
+        var end = start + 3600;
+        long total = 0;
+        foreach (var b in bands)
+        {
+            if (deviceId != null && b.DeviceId != null && !string.Equals(b.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var overlap = Math.Min(b.EndUtc, end) - Math.Max(b.StartUtc, start);
+            if (overlap > 0) total += overlap;
+        }
+        return Math.Min(3600, total);
+    }
+
     private static bool IsHourAsleep(int hour, long dayStartUtc, IReadOnlyList<SleepBand>? bands)
     {
         if (bands is not { Count: > 0 }) return false;
         var start = dayStartUtc + (long)hour * 3600;
         var end = start + 3600;
-        return bands.Any(b => Math.Min(b.EndUtc, end) - Math.Max(b.StartUtc, start) >= 1800);
+        return bands.Any(b => Math.Min(b.EndUtc, end) - Math.Max(b.StartUtc, start) >= 60);
     }
 
     private string HourRange(int h) => $"{Hour(h)} – {Hour((h + 1) % 24)}";
@@ -424,27 +440,90 @@ public partial class TodayView : UserControl, ILiveView
         var c = PanelContents.ForHour(r, h);
         var compares = UsagePhrases.PanelLines(c).Select(l => (Str(l.Label), Str(l.Value), l.Good)).ToList();
         var isSlp = IsHourAsleep(h, r.DayStartUtc, r.SleepBands);
-        var subtitle = (c.UptimeSeconds > 0 || c.TotalSeconds > 0)
-            ? $"{UsageText.HoursMinutes(c.UptimeSeconds)} uptime · {UsageText.HoursMinutes(c.TotalSeconds)} app time"
-            : (isSlp ? Str(StringKeys.LegendAsleepGeneric) : Str(PanelStringKeys.HourEmpty));
         var summary = UsagePhrases.HourSessionSummary(c, Clock);
 
-        List<(string Name, long UptimeSeconds, bool IsLocal)>? devList = null;
+        List<DeviceBarInfo>? devList = null;
         long onBoth = 0;
-        if (h >= 0 && h < r.Hours.Count && r.Hours[h].ByDevice is { Count: > 0 } byDev)
+        var hourBucket = h >= 0 && h < r.Hours.Count ? r.Hours[h] : null;
+        var byDev = hourBucket?.ByDevice;
+
+        var devIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (_live?.LocalDeviceId != null) devIds.Add(_live.LocalDeviceId);
+        if (byDev != null)
+        {
+            foreach (var k in byDev.Keys) devIds.Add(k);
+        }
+        if (r.SleepBands != null)
+        {
+            var hStart = r.DayStartUtc + (long)h * 3600;
+            var hEnd = hStart + 3600;
+            foreach (var b in r.SleepBands)
+            {
+                if (b.DeviceId != null && Math.Min(b.EndUtc, hEnd) > Math.Max(b.StartUtc, hStart))
+                    devIds.Add(b.DeviceId);
+            }
+        }
+
+        if (devIds.Count > 0)
         {
             devList = new();
-            foreach (var (devId, dh) in byDev)
+            foreach (var devId in devIds)
             {
                 var isLoc = IsLocalDevice(devId);
                 var name = GetDeviceName(devId, isLoc);
-                var u = dh.UptimeSeconds > 0 ? dh.UptimeSeconds : dh.AppSeconds;
-                if (u > 0) devList.Add((name, u, isLoc));
+                long u = 0;
+                if (byDev != null && byDev.TryGetValue(devId, out var dh))
+                {
+                    u = dh.UptimeSeconds > 0 ? dh.UptimeSeconds : dh.AppSeconds;
+                }
+                var slpSec = GetDeviceSleepSeconds(devId, h, r.DayStartUtc, r.SleepBands);
+                if (u > 0 || slpSec >= 60)
+                {
+                    devList.Add(new DeviceBarInfo(name, u, slpSec, isLoc));
+                }
             }
             if (devList.Count > 1)
             {
                 var sumU = devList.Sum(d => d.UptimeSeconds);
                 if (sumU > c.UptimeSeconds) onBoth = sumU - c.UptimeSeconds;
+            }
+        }
+
+        if (devList == null || devList.Count == 0)
+        {
+            var slpSec = GetDeviceSleepSeconds(null, h, r.DayStartUtc, r.SleepBands);
+            if (slpSec >= 60)
+            {
+                var isLoc = true;
+                var name = GetDeviceName(_live?.LocalDeviceId, isLoc);
+                devList = new() { new DeviceBarInfo(name, 0, slpSec, isLoc) };
+            }
+        }
+
+        string subtitle;
+        if (c.UptimeSeconds > 0 || c.TotalSeconds > 0)
+        {
+            subtitle = $"{UsageText.HoursMinutes(c.UptimeSeconds)} uptime · {UsageText.HoursMinutes(c.TotalSeconds)} app time";
+        }
+        else
+        {
+            var sleepingDevs = devList?.Where(d => d.SleepSeconds >= 60).ToList();
+            if (sleepingDevs != null && sleepingDevs.Count > 1)
+            {
+                subtitle = "Both devices asleep";
+            }
+            else if (sleepingDevs != null && sleepingDevs.Count == 1)
+            {
+                subtitle = $"{sleepingDevs[0].Name} asleep {UsageText.HoursMinutes(sleepingDevs[0].SleepSeconds)}";
+            }
+            else if (isSlp)
+            {
+                var defaultName = GetDeviceName(_live?.LocalDeviceId, true);
+                subtitle = $"{defaultName} asleep · paused";
+            }
+            else
+            {
+                subtitle = Str(PanelStringKeys.HourEmpty);
             }
         }
         var apps = c.Apps.Select(a => (a.Name, a.Seconds, _themes.AppSlot(a.AppId), a.AppId)).ToList();

@@ -18,7 +18,7 @@ public sealed record TodaySession(long StartUtc, long EndUtc, bool IsOpen, long?
     public long FullSeconds => Math.Max(0, EndUtc - FullStartUtc);
 }
 
-public sealed record SleepBand(long StartUtc, long EndUtc);
+public sealed record SleepBand(long StartUtc, long EndUtc, string? DeviceId = null);
 
 /// <summary>App time and distinct apps active in one hour for one device.</summary>
 public sealed record DeviceHour(long AppSeconds, int DistinctApps, long UptimeSeconds = 0);

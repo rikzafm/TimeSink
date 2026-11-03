@@ -7,6 +7,13 @@ using TimeSink.Core.Usage;
 
 namespace TimeSink.UI.Controls;
 
+public readonly record struct DeviceBarInfo(string Name, long UptimeSeconds, long SleepSeconds, bool IsLocal)
+{
+    public DeviceBarInfo(string name, long uptimeSeconds, bool isLocal) : this(name, uptimeSeconds, 0, isLocal) { }
+    public static implicit operator DeviceBarInfo((string Name, long UptimeSeconds, bool IsLocal) d) => new(d.Name, d.UptimeSeconds, 0, d.IsLocal);
+    public static implicit operator DeviceBarInfo((string Name, long UptimeSeconds, long SleepSeconds, bool IsLocal) d) => new(d.Name, d.UptimeSeconds, d.SleepSeconds, d.IsLocal);
+}
+
 /// <summary>
 /// The panel under a clicked bar (Today hour, Week day): title and subtitle, a close button, a share-of-time bar per app,
 /// optional session lines, comparison lines and one optional action link. Built in code; every colour, font and radius is a
@@ -79,7 +86,7 @@ public sealed class DetailPanel : Border
         IReadOnlyList<(string Name, long Seconds, int Palette, long AppId)> apps,
         string summaryPhrase,
         IReadOnlyList<(string Label, string Value, bool Good)> compares,
-        IReadOnlyList<(string Name, long UptimeSeconds, bool IsLocal)>? devices = null,
+        IReadOnlyList<DeviceBarInfo>? devices = null,
         long onBothSeconds = 0,
         Action<long>? onAppClicked = null)
     {
@@ -92,7 +99,7 @@ public sealed class DetailPanel : Border
         IReadOnlyList<(string Name, long Seconds, int Palette, long AppId)> apps,
         IReadOnlyList<(string Label, string Value, bool Good)>? compares,
         int sessionCount = 0,
-        IReadOnlyList<(string Name, long UptimeSeconds, bool IsLocal)>? devices = null,
+        IReadOnlyList<DeviceBarInfo>? devices = null,
         long onBothSeconds = 0,
         string? summaryPhrase = null,
         string? actionText = null,
@@ -138,17 +145,33 @@ public sealed class DetailPanel : Border
         _body.Children.Add(head);
 
         // Dedicated device breakdown row
-        if (devices != null && devices.Count > 0 && (devices.Count > 1 || onBothSeconds > 0))
+        if (devices != null && devices.Count > 0 && (devices.Count > 1 || onBothSeconds > 0 || devices.Any(d => d.SleepSeconds >= 60)))
         {
             var devRow = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
-            foreach (var (devName, devUptime, isLocal) in devices)
+            foreach (var (devName, devUptime, devSleep, isLocal) in devices)
             {
+                if (devUptime <= 0 && devSleep < 60) continue;
                 var devItem = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
                 var marker = new DeviceMarker { IsLocal = isLocal, Width = 7, Height = 7, Margin = new Thickness(0, 0, 5, 0), VerticalAlignment = VerticalAlignment.Center };
                 devItem.Children.Add(marker);
+
+                string statusText;
+                if (devUptime > 0 && devSleep >= 60)
+                {
+                    statusText = $"{devName} {UsageText.HoursMinutes(devUptime)} · asleep {UsageText.HoursMinutes(devSleep)}";
+                }
+                else if (devSleep >= 60)
+                {
+                    statusText = $"{devName} asleep {UsageText.HoursMinutes(devSleep)}";
+                }
+                else
+                {
+                    statusText = $"{devName} {UsageText.HoursMinutes(devUptime)}";
+                }
+
                 var txt = new TextBlock
                 {
-                    Text = $"{devName} {UsageText.HoursMinutes(devUptime)}",
+                    Text = statusText,
                     VerticalAlignment = VerticalAlignment.Center,
                     FontSize = 11,
                 };
@@ -167,7 +190,10 @@ public sealed class DetailPanel : Border
                 bothTxt.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
                 devRow.Children.Add(bothTxt);
             }
-            _body.Children.Add(devRow);
+            if (devRow.Children.Count > 0)
+            {
+                _body.Children.Add(devRow);
+            }
         }
 
         // Segmented bar
