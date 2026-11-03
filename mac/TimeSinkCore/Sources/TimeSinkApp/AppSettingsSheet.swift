@@ -68,7 +68,7 @@ public struct AppSettingsSheet: View {
         .alert("Stop tracking?", isPresented: $state.appSettingsShowingStopConfirm) {
             Button("Stop tracking", role: .destructive) {
                 try? MacAppLibrary(db: state.db).stopTracking(appId: currentAppId)
-                state.refresh()
+                if let onTick = state.onTickRequest { onTick() } else { state.refresh() }
                 onDismiss()
             }
             Button("Cancel", role: .cancel) {}
@@ -78,7 +78,7 @@ public struct AppSettingsSheet: View {
         .alert("Clear history?", isPresented: $state.appSettingsShowingClearConfirm) {
             Button("Clear all history", role: .destructive) {
                 try? MacAppLibrary(db: state.db).clearHistory(appId: currentAppId)
-                state.refresh()
+                if let onTick = state.onTickRequest { onTick() } else { state.refresh() }
                 loadDetails()
             }
             Button("Cancel", role: .cancel) {}
@@ -90,7 +90,7 @@ public struct AppSettingsSheet: View {
                 if let candidate = candidateForMain {
                     if (try? MacAppLibrary(db: state.db).makeMain(aliasId: candidate.id)) == true {
                         currentAppId = candidate.id
-                        state.refresh()
+                        if let onTick = state.onTickRequest { onTick() } else { state.refresh() }
                         loadDetails()
                     }
                 }
@@ -220,7 +220,7 @@ public struct AppSettingsSheet: View {
             if let childId {
                 Button(action: {
                     try? MacAppLibrary(db: state.db).unmerge(appId: childId)
-                    state.refresh()
+                    if let onTick = state.onTickRequest { onTick() } else { state.refresh() }
                     loadDetails()
                 }) {
                     IconView(.close, size: 10, weight: 1.6, color: ThemeColors.textMuted)
@@ -368,6 +368,6 @@ public struct AppSettingsSheet: View {
     private func saveChanges() {
         guard loaded, !displayName.isEmpty else { return }
         try? MacAppLibrary(db: state.db).updateApp(appId: currentAppId, displayName: displayName, kind: kind, isBackground: isBackground)
-        state.refresh()
+        if let onTick = state.onTickRequest { onTick() } else { state.refresh() }
     }
 }

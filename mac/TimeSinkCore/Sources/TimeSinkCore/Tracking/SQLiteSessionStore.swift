@@ -8,7 +8,8 @@ public final class SQLiteSessionStore: SessionStore, @unchecked Sendable {
     }
 
     public var dataVersion: Int64? {
-        try? db.scalarInt("PRAGMA data_version;")
+        guard let pragma = try? db.scalarInt("PRAGMA data_version;") else { return nil }
+        return pragma &+ db.appsChangeCounter
     }
 
     public func getTrackedApps() throws -> [TrackedApp] {

@@ -902,7 +902,11 @@ public final class AppState: ObservableObject {
                 triggerSyncNow()
             }
             loadDeviceInfo()
-            refresh()
+            if let onTick = onTickRequest {
+                onTick()
+            } else {
+                refresh()
+            }
             objectWillChange.send()
         } catch {
             NSLog("Failed to merge cross-device apps: \(error)")

@@ -319,6 +319,47 @@ final class TrackingEngineTests: XCTestCase {
         XCTAssertNotNil(sessions[0].endUtc)
         XCTAssertEqual(sessions[0].endReason, EndReasons.exit)
     }
+
+    func testSameConnectionAppAdditionUpdatesDataVersionAndDetectsRunningApp() throws {
+        let rig = try TrackingTestRig()
+        let initialVersion = rig.store.dataVersion
+
+        // Add Zen Browser on the SAME connection (simulating UI trackApp)
+        let library = MacAppLibrary(db: rig.db)
+        let zenId = try library.trackApp(
+            exePath: "/Applications/Zen Browser.app",
+            displayName: "Zen",
+            category: "Other",
+            kind: .other,
+            isBackground: false,
+            bundleId: "app.zen-browser.zen",
+            deviceId: rig.deviceId
+        )
+
+        // Verify dataVersion incremented on the same connection
+        XCTAssertNotEqual(rig.store.dataVersion, initialVersion)
+
+        // Align added_utc with simulated test time
+        try rig.db.exec("UPDATE apps SET added_utc = \(unix(0)) WHERE id = \(zenId);")
+
+        // Process is running with matching bundleId
+        rig.procs.running.append(ProcInfo(
+            pid: 1234,
+            name: "Zen Browser",
+            fullPath: "/Applications/Zen Browser.app/Contents/MacOS/zen",
+            startUtc: rig.atTime(0),
+            bundleId: "app.zen-browser.zen"
+        ))
+
+        // Reload picks it up because dataVersion changed on the same connection
+        try rig.engine.reloadTrackedApps()
+        try rig.tick(0)
+
+        let sessions = try rig.getAllSessions()
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions.first?.appId, zenId)
+        XCTAssertNil(sessions.first?.endUtc)
+    }
 }
 
 // MARK: - Helper Counting Store

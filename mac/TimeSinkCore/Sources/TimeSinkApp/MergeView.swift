@@ -292,7 +292,7 @@ public struct MergeView: View {
         let change = changes
         try? lib.merge(mainId: mainAppId, candidateIds: change.add.map(\.appId))
         for c in change.remove { try? lib.unmerge(appId: c.appId) }
-        state.refresh()
+        if let onTick = state.onTickRequest { onTick() } else { state.refresh() }
         onDismiss()
     }
 }

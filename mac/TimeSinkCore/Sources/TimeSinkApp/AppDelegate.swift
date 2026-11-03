@@ -122,6 +122,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private func tick() {
         let now = Date()
         processProvider?.reconcileRunningApplications()
+        try? engine.reloadTrackedApps()
         try? engine.onTick(now)
         appState?.checkAutoBackup()
         appState?.refresh()

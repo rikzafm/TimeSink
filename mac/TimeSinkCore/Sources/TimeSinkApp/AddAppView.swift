@@ -206,12 +206,12 @@ public struct AddAppView: View {
         return HStack(spacing: width == 38 ? 12 : 10) {
             iconButton(.gamepad, width: width, border: game ? ThemeColors.accent : ThemeColors.border, color: game ? ThemeColors.accent : ThemeColors.textDim, help: "Game type") {
                 try? library.updateApp(appId: app.id, displayName: app.displayName, kind: game ? .other : .game, isBackground: app.isBackground)
-                state.refresh()
+                if let onTick = state.onTickRequest { onTick() } else { state.refresh() }
                 reloadAll()
             }
             iconButton(.layers, width: width, border: isBg ? ThemeColors.accent : ThemeColors.border, color: isBg ? ThemeColors.accent : ThemeColors.textDim, help: "Background app") {
                 try? library.updateApp(appId: app.id, displayName: app.displayName, kind: app.kind, isBackground: !isBg)
-                state.refresh()
+                if let onTick = state.onTickRequest { onTick() } else { state.refresh() }
                 reloadAll()
             }
             iconButton(.eye, width: width, color: eyeLime ? ThemeColors.accent : ThemeColors.textDim, help: "Stop tracking") { stop(app.id) }
@@ -681,7 +681,11 @@ public struct AddAppView: View {
     private func stop(_ id: Int64) {
         try? library.stopTracking(appId: id)
         reloadAll()
-        state.refresh()
+        if let onTick = state.onTickRequest {
+            onTick()
+        } else {
+            state.refresh()
+        }
     }
 
     private func track(path: String, name: String, bundleId: String? = nil) {
@@ -696,7 +700,11 @@ public struct AddAppView: View {
             )
             addedThisSession += 1
             reloadAll()
-            state.refresh()
+            if let onTick = state.onTickRequest {
+                onTick()
+            } else {
+                state.refresh()
+            }
         } catch {
             NSLog("Failed to track app: \(error)")
         }

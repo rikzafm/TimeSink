@@ -33,6 +33,20 @@ public final class SQLiteDatabase: @unchecked Sendable {
     public let path: String
     private var db: OpaquePointer?
     public let key: Data?
+    private let counterLock = NSLock()
+    private var _appsChangeCounter: Int64 = 0
+
+    public var appsChangeCounter: Int64 {
+        counterLock.lock()
+        defer { counterLock.unlock() }
+        return _appsChangeCounter
+    }
+
+    public func incrementAppsChangeCounter() {
+        counterLock.lock()
+        _appsChangeCounter &+= 1
+        counterLock.unlock()
+    }
 
     public init(path: String, key: Data? = nil, allowPlaintext: Bool = false) throws {
         self.path = path
@@ -85,6 +99,23 @@ public final class SQLiteDatabase: @unchecked Sendable {
         try exec("PRAGMA journal_mode = WAL;")
         try exec("PRAGMA busy_timeout = 5000;")
         try exec("PRAGMA foreign_keys = ON;")
+
+        setupAppsUpdateHook(for: validHandle)
+    }
+
+    private func setupAppsUpdateHook(for handle: OpaquePointer) {
+        sqlite3_update_hook(
+            handle,
+            { userData, _, _, tableName, _ in
+                guard let tableName else { return }
+                if strcmp(tableName, "apps") == 0 || strcmp(tableName, "apps_new") == 0 {
+                    guard let ctx = userData else { return }
+                    let dbInstance = Unmanaged<SQLiteDatabase>.fromOpaque(ctx).takeUnretainedValue()
+                    dbInstance.incrementAppsChangeCounter()
+                }
+            },
+            Unmanaged.passUnretained(self).toOpaque()
+        )
     }
 
     public static func inMemory() throws -> SQLiteDatabase {
@@ -97,6 +128,7 @@ public final class SQLiteDatabase: @unchecked Sendable {
 
     public func close() {
         if let handle = db {
+            sqlite3_update_hook(handle, nil, nil)
             sqlite3_close_v2(handle)
             db = nil
         }

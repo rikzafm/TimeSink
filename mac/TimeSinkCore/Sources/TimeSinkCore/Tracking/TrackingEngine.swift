@@ -79,7 +79,6 @@ public final class TrackingEngine: @unchecked Sendable {
     public func onTick(_ now: Date) throws {
         if stopped || suspended { return }
         let n = Int64(now.timeIntervalSince1970)
-        try reloadTrackedApps()
 
         if let last = lastTick {
             if n < last {
