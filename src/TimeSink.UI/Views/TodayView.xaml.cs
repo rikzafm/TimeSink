@@ -368,15 +368,25 @@ public partial class TodayView : UserControl, ILiveView
         Panel.Hide();
     }
 
+    private static bool IsHourAsleep(int hour, long dayStartUtc, IReadOnlyList<SleepBand>? bands)
+    {
+        if (bands is not { Count: > 0 }) return false;
+        var start = dayStartUtc + (long)hour * 3600;
+        var end = start + 3600;
+        return bands.Any(b => Math.Min(b.EndUtc, end) - Math.Max(b.StartUtc, start) >= 1800);
+    }
+
     private string HourRange(int h) => $"{Hour(h)} – {Hour((h + 1) % 24)}";
 
     private void OnHourHovered(int h, Point p)
     {
         if (h < 0 || _result is not { } r) { _tip.IsOpen = false; return; }
         var d = BarDetail.ForHour(r, h);
+        var isSlp = IsHourAsleep(h, r.DayStartUtc, r.SleepBands);
         var headline = d.UptimeSeconds > 0
             ? $"{HourRange(h)} · {UsageText.HoursMinutes(d.UptimeSeconds)} uptime"
-            : (d.AppSeconds > 0 ? $"{HourRange(h)} · {UsageText.HoursMinutes(d.AppSeconds)}" : $"{HourRange(h)} · no activity");
+            : (d.AppSeconds > 0 ? $"{HourRange(h)} · {UsageText.HoursMinutes(d.AppSeconds)}"
+                : (isSlp ? $"{HourRange(h)} · {Str(StringKeys.LegendAsleepGeneric)}" : $"{HourRange(h)} · no activity"));
         var lines = new List<string> { headline };
         lines.AddRange(d.Apps.Take(3).Select(a => $"{a.Name} {UsageText.HoursMinutes(a.Seconds)}"));
         _tip.Content = string.Join(Environment.NewLine, lines);
@@ -411,9 +421,10 @@ public partial class TodayView : UserControl, ILiveView
         if (_result is not { } r) return;
         var c = PanelContents.ForHour(r, h);
         var compares = UsagePhrases.PanelLines(c).Select(l => (Str(l.Label), Str(l.Value), l.Good)).ToList();
+        var isSlp = IsHourAsleep(h, r.DayStartUtc, r.SleepBands);
         var subtitle = (c.UptimeSeconds > 0 || c.TotalSeconds > 0)
             ? $"{UsageText.HoursMinutes(c.UptimeSeconds)} uptime · {UsageText.HoursMinutes(c.TotalSeconds)} app time"
-            : Str(PanelStringKeys.HourEmpty);
+            : (isSlp ? Str(StringKeys.LegendAsleepGeneric) : Str(PanelStringKeys.HourEmpty));
         var summary = UsagePhrases.HourSessionSummary(c, Clock);
         Panel.ShowHourCard(
             HourRange(h),

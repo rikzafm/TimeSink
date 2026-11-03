@@ -34,7 +34,7 @@ internal static class UsageRank
 }
 
 /// <summary>One session clipped to what the queries need: its group, its real app, bounds, whether it is still open and whether it ended by sleep.</summary>
-internal readonly record struct UsageSeg(long Group, long AppId, long Start, long End, bool Open, bool Sleep, string DeviceId = "");
+internal readonly record struct UsageSeg(long Group, long AppId, long Start, long End, bool Open, bool Sleep, string DeviceId = "", bool Off = false);
 
 /// <summary>
 /// The apps and sessions loaders shared by every usage query (decision 56): unknown apps are excluded, and retired apps
@@ -64,8 +64,9 @@ internal static class UsageLoader
             }
             else end = s.EndUtc!.Value;
             // A shutdown close is the PC being off, like a sleep close: the gap to the next session is not uptime.
-            var sleep = s.EndReason is EndReasons.Sleep or EndReasons.Shutdown;
-            list.Add(new UsageSeg(app.Group, s.AppId, s.StartUtc, end, open, sleep && !open, app.DeviceId ?? ""));
+            var sleep = s.EndReason is EndReasons.Sleep;
+            var off = s.EndReason is EndReasons.Shutdown;
+            list.Add(new UsageSeg(app.Group, s.AppId, s.StartUtc, end, open, sleep && !open, app.DeviceId ?? "", off && !open));
         }
         return list;
     }

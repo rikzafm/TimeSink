@@ -589,7 +589,7 @@ public enum TodayQuery {
             openSessionCount: openSegs.count,
             hours: hourBuckets,
             hasTypical: typicalDays > 0,
-            sleepBands: UsageUptime.sleepBands(segs: segs, d0: d0, nowUtc: min(nowUtc, d1)),
+            sleepBands: UsageUptime.sleepBands(segs: segs, d0: d0, nowUtc: min(nowUtc, d1), liveDeviceId: isToday ? window.localDeviceId : nil),
             firstApp: firstTile,
             longestSession: longestTile,
             totalVsYesterdaySeconds: total - yesterdayByNow,

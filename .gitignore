@@ -3,11 +3,13 @@ design/*
 bin/
 obj/
 artifacts/
+ui/
+*.exe
+*.dll
+*.pdb
 .vs/
 *.user
 .local/
 .build/
 .swiftpm/
 .agents/
-
-

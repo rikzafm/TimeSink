@@ -560,4 +560,38 @@ public sealed class SyncWriterReaderTests(ITestOutputHelper output)
         var pcApp1OnMacId = rig.Scalar<long>(dstDb, "SELECT id FROM apps WHERE exe_path = 'c:\\apps\\app1.exe'");
         rig.Scalar<long>(dstDb, $"SELECT canonical_id FROM apps WHERE id = {macApp3Id}").Should().Be(pcApp1OnMacId);
     }
+
+    [Fact]
+    public void Import_updates_existing_app_with_empty_bundle_id_when_snapshot_provides_bundle_id()
+    {
+        using var rig = new BackupTestRig();
+        var syncFolder = rig.P("sync");
+        var now = DateTimeOffset.Parse("2026-11-01T12:00:00Z");
+
+        // 1. Setup Mac DB with populated bundle_id
+        var macDb = rig.NewDb("mac.db", (@"/Applications/OneDrive.app", 1761984000, 1761987600));
+        SetDevice(rig, macDb, "dev-mac-001", "MacBook", "macos");
+        rig.Exec(macDb, "UPDATE apps SET bundle_id = 'com.microsoft.OneDrive-mac' WHERE exe_path = '/Applications/OneDrive.app'");
+
+        var snap = SyncWriter.Write(macDb, syncFolder, now);
+
+        // 2. Setup PC DB where the remote Mac app was previously imported with empty bundle_id
+        var pcDb = rig.NewDb("pc.db", (@"c:\windows\notepad.exe", 1761900000, 1761903600));
+        SetDevice(rig, pcDb, "dev-win-001", "PC", "windows");
+
+        // Pre-insert the remote device and the Mac app with empty bundle_id (simulating older sync import)
+        rig.Exec(pcDb, "INSERT INTO devices (device_id, name, platform, is_local, first_seen_utc, state) " +
+                       "VALUES ('dev-mac-001', 'MacBook', 'macos', 0, '2026-11-01T00:00:00Z', 'active'); " +
+                       "INSERT INTO apps (exe_path, bundle_id, device_id, display_name, category, state, added_utc) " +
+                       "VALUES ('/Applications/OneDrive.app', '', 'dev-mac-001', 'OneDrive', 'Work', 'tracked', 1761980000);");
+
+        // 3. Import snapshot - must succeed without UNIQUE constraint failure on (device_id, exe_path)
+        var result = SyncReader.Import(snap, pcDb, TimeZoneInfo.Utc);
+        result.Status.Should().Be(SyncStatus.Success);
+        result.AppsAdded.Should().Be(0); // App was updated, not duplicated
+
+        // Verify bundle_id was updated on the existing app
+        rig.Scalar<string>(pcDb, "SELECT bundle_id FROM apps WHERE device_id = 'dev-mac-001' AND exe_path = '/Applications/OneDrive.app'")
+            .Should().Be("com.microsoft.OneDrive-mac");
+    }
 }

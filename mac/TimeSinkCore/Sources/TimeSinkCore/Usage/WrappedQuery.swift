@@ -154,7 +154,8 @@ public enum WrappedQuery {
                     end: en,
                     open: s.open,
                     sleep: s.sleep,
-                    deviceId: s.deviceId
+                    deviceId: s.deviceId,
+                    off: s.off
                 ))
             }
         }

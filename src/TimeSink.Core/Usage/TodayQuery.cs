@@ -276,7 +276,7 @@ public static class TodayQuery
         var openSegs = isToday ? segs.Where(s => s.Open).ToList() : [];
         return new TodayResult(date, d0, d1, nowUtc, total,
             openSegs.Select(s => s.Group).Distinct().Count(), openSegs.Count,
-            hours, typicalDays > 0, UsageUptime.SleepBands(segs, d0, Math.Min(nowUtc, d1)), first, longest, total - yesterdayByNow, rows,
+            hours, typicalDays > 0, UsageUptime.SleepBands(segs, d0, Math.Min(nowUtc, d1), isToday ? window.LocalDeviceId : null), first, longest, total - yesterdayByNow, rows,
             uptime, uptimeVs, zone, start.FirstDay, gamesOnly, devUptimes.Count > 0 ? devUptimes : null, onBoth);
     }
 }

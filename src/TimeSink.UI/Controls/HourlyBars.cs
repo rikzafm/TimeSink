@@ -187,76 +187,73 @@ public sealed class HourlyBars : FrameworkElement
             {
                 // Future hours: no bar outline drawn
             }
-            else if (isAsleep)
-            {
-                var upH = (bucket.UptimeSeconds / scale) * plotH;
-                if (upH > 0.5)
-                {
-                    var upBrush = GetBarBrush(bucket.UptimeSeconds, i);
-                    dc.DrawRoundedRectangle(upBrush, null, new Rect(x, plotTop + plotH - upH, barW, upH), 2, 2);
-                }
-
-                var asleepH = Math.Max(upH, plotH * 0.7);
-                var rect = new Rect(x, plotTop + plotH - asleepH, barW, asleepH);
-                dc.PushClip(new RectangleGeometry(rect, 2, 2));
-
-                var hatchBrush = h2 ?? MutedBrush ?? Brushes.Gray;
-                var pen = new Pen(hatchBrush, 1.5);
-                pen.Freeze();
-                var step = (1.5 + 1.5) * 1.414;
-                for (var hx = rect.Left - rect.Height; hx < rect.Right; hx += step)
-                {
-                    dc.DrawLine(pen, new Point(hx, rect.Bottom), new Point(hx + rect.Height, rect.Top));
-                }
-                dc.Pop();
-            }
-            else if (DeviceScope == TimeSink.Core.Devices.DeviceScope.All && bucket.ByDevice != null && bucket.ByDevice.Count > 0)
-            {
-                long secLocal = 0, secRemote = 0;
-                if (LocalDeviceId != null)
-                {
-                    if (bucket.ByDevice.TryGetValue(LocalDeviceId, out var dhA)) secLocal = dhA.UptimeSeconds;
-                    foreach (var (devId, dh) in bucket.ByDevice)
-                    {
-                        if (devId != LocalDeviceId) secRemote += dh.UptimeSeconds;
-                    }
-                }
-                else
-                {
-                    var first = true;
-                    foreach (var dh in bucket.ByDevice.Values)
-                    {
-                        if (first) { secLocal = dh.UptimeSeconds; first = false; }
-                        else secRemote += dh.UptimeSeconds;
-                    }
-                }
-                var hLocal = secLocal >= MinActivitySeconds ? Math.Max(2.0, (secLocal / scale) * plotH) : 0;
-                var hRemote = secRemote >= MinActivitySeconds ? Math.Max(2.0, (secRemote / scale) * plotH) : 0;
-
-                if (hLocal > 0 || hRemote > 0)
-                {
-                    var (back, front) = OverlapBars.Layout(x, barW, hLocal, hRemote);
-                    void DrawDeviceBar(OverlapBarGeometry g)
-                    {
-                        if (g.Height <= 0.5) return;
-                        var brush = g.IsDeviceA ? (i == nowH ? accent : h3)
-                                                : (DeviceBBrush ?? h2);
-                        dc.DrawRoundedRectangle(brush, null, new Rect(g.X, plotTop + plotH - g.Height, g.Width, g.Height), 2, 2);
-                    }
-                    DrawDeviceBar(back);
-                    DrawDeviceBar(front);
-                }
-                else
-                {
-                    var upBrush = GetBarBrush(0, i);
-                    dc.DrawRoundedRectangle(upBrush, null, new Rect(x, plotTop + plotH - 2.0, barW, 2.0), 2, 2);
-                }
-            }
             else
             {
-                var barH = bucket.UptimeSeconds >= MinActivitySeconds ? Math.Max(2.0, (bucket.UptimeSeconds / scale) * plotH) : 2.0;
-                var brush = GetBarBrush(bucket.UptimeSeconds >= MinActivitySeconds ? bucket.UptimeSeconds : 0, i);
-                dc.DrawRoundedRectangle(brush, null, new Rect(x, plotTop + plotH - barH, barW, barH), 2, 2);
+                double activeH = 0;
+                if (DeviceScope == TimeSink.Core.Devices.DeviceScope.All && bucket.ByDevice != null && bucket.ByDevice.Count > 0)
+                {
+                    long secLocal = 0, secRemote = 0;
+                    if (LocalDeviceId != null)
+                    {
+                        if (bucket.ByDevice.TryGetValue(LocalDeviceId, out var dhA)) secLocal = dhA.UptimeSeconds;
+                        foreach (var (devId, dh) in bucket.ByDevice)
+                        {
+                            if (devId != LocalDeviceId) secRemote += dh.UptimeSeconds;
+                        }
+                    }
+                    else
+                    {
+                        var first = true;
+                        foreach (var dh in bucket.ByDevice.Values)
+                        {
+                            if (first) { secLocal = dh.UptimeSeconds; first = false; }
+                            else secRemote += dh.UptimeSeconds;
+                        }
+                    }
+                    var hLocal = secLocal >= MinActivitySeconds ? Math.Max(2.0, (secLocal / scale) * plotH) : 0;
+                    var hRemote = secRemote >= MinActivitySeconds ? Math.Max(2.0, (secRemote / scale) * plotH) : 0;
+
+                    if (hLocal > 0 || hRemote > 0)
+                    {
+                        activeH = Math.Max(hLocal, hRemote);
+                        var (back, front) = OverlapBars.Layout(x, barW, hLocal, hRemote);
+                        void DrawDeviceBar(OverlapBarGeometry g)
+                        {
+                            if (g.Height <= 0.5) return;
+                            var brush = g.IsDeviceA ? (i == nowH ? accent : h3)
+                                                    : (DeviceBBrush ?? h2);
+                            dc.DrawRoundedRectangle(brush, null, new Rect(g.X, plotTop + plotH - g.Height, g.Width, g.Height), 2, 2);
+                        }
+                        DrawDeviceBar(back);
+                        DrawDeviceBar(front);
+                    }
+                }
+                else if (bucket.UptimeSeconds >= MinActivitySeconds)
+                {
+                    activeH = Math.Max(2.0, (bucket.UptimeSeconds / scale) * plotH);
+                    var brush = GetBarBrush(bucket.UptimeSeconds, i);
+                    dc.DrawRoundedRectangle(brush, null, new Rect(x, plotTop + plotH - activeH, barW, activeH), 2, 2);
+                }
+
+                if (isAsleep)
+                {
+                    var asleepH = activeH > 0 ? Math.Min(plotH - activeH, plotH * 0.7) : plotH * 0.7;
+                    if (asleepH > 0.5)
+                    {
+                        var rect = new Rect(x, plotTop + plotH - activeH - asleepH, barW, asleepH);
+                        dc.PushClip(new RectangleGeometry(rect, 2, 2));
+
+                        var hatchBrush = h2 ?? MutedBrush ?? Brushes.Gray;
+                        var pen = new Pen(hatchBrush, 1.5);
+                        pen.Freeze();
+                        var step = (1.5 + 1.5) * 1.414;
+                        for (var hx = rect.Left - rect.Height; hx < rect.Right; hx += step)
+                        {
+                            dc.DrawLine(pen, new Point(hx, rect.Bottom), new Point(hx + rect.Height, rect.Top));
+                        }
+                        dc.Pop();
+                    }
+                }
             }
 
             // Selection highlight

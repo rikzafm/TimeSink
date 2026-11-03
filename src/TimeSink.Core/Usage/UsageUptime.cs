@@ -51,7 +51,7 @@ internal static class UsageUptime
         var end = live ? to : inRange.Count > 0 ? Math.Min(to, inRange.Max(s => s.End)) : start;
         if (end <= start) return [];
 
-        var bands = SleepBands(segs, start, end);
+        var bands = InactiveBands(segs, start, end);
         var intervals = new List<UptimeInterval>();
         var cursor = start;
         foreach (var b in bands.OrderBy(b => b.StartUtc))
@@ -173,14 +173,20 @@ internal static class UsageUptime
     }
 
     /// <summary>From each sleep-close to the next session start of any app (or now), merged and clipped to today.</summary>
-    public static List<SleepBand> SleepBands(List<UsageSeg> segs, long d0, long nowUtc)
+    /// <summary>From each sleep or shutdown close to the next session start of any app (or now), merged and clipped to today.</summary>
+    public static List<SleepBand> InactiveBands(List<UsageSeg> segs, long d0, long nowUtc)
     {
         var bands = new List<(long S, long E)>();
-        foreach (var s in segs.Where(s => s.Sleep && s.End >= d0 && s.End <= nowUtc))
+        foreach (var s in segs.Where(s => (s.Sleep || s.Off) && s.End >= d0 && s.End <= nowUtc))
         {
             var next = segs.Where(x => x.Start > s.End).Select(x => x.Start).DefaultIfEmpty(nowUtc).Min();
             bands.Add((s.End, Math.Min(next, nowUtc)));
         }
+        return MergeBands(bands);
+    }
+
+    private static List<SleepBand> MergeBands(List<(long S, long E)> bands)
+    {
         var merged = new List<SleepBand>();
         foreach (var (s, e) in bands.OrderBy(b => b.S))
         {
@@ -190,6 +196,29 @@ internal static class UsageUptime
             else merged.Add(new SleepBand(s, e));
         }
         return merged;
+    }
+
+    public static List<SleepBand> SleepBands(List<UsageSeg> segs, long d0, long nowUtc, string? liveDeviceId = null)
+    {
+        var bands = new List<(long S, long E)>();
+        foreach (var group in segs.GroupBy(s => s.DeviceId ?? ""))
+        {
+            var devSegs = group.OrderBy(s => s.Start).ToList();
+            var isLive = !string.IsNullOrEmpty(liveDeviceId) && string.Equals(group.Key, liveDeviceId, StringComparison.OrdinalIgnoreCase);
+            foreach (var s in devSegs.Where(s => s.Sleep && s.End >= d0 && s.End <= nowUtc))
+            {
+                var next = devSegs.Where(x => x.Start > s.End).Select(x => (long?)x.Start).FirstOrDefault();
+                if (next is { } n)
+                {
+                    bands.Add((s.End, Math.Min(n, nowUtc)));
+                }
+                else if (isLive)
+                {
+                    bands.Add((s.End, nowUtc));
+                }
+            }
+        }
+        return MergeBands(bands);
     }
 
     /// <summary>

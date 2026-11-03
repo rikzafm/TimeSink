@@ -295,19 +295,17 @@ public enum SyncReader {
             var allSnapshotApps: [(srcId: Int64, dstId: Int64, canonicalId: Int64?)] = []
             for a in srcApps {
                 var dstId: Int64 = 0
-                if let bundle = a.bundleId, !bundle.isEmpty {
-                    let findStmt = try db.prepare("SELECT id FROM main.apps WHERE device_id = ?1 AND bundle_id = ?2;")
-                    try findStmt.bind(text: a.deviceId, at: 1)
-                    try findStmt.bind(text: bundle, at: 2)
-                    if try findStmt.step() {
-                        dstId = findStmt.columnInt64(at: 0)
-                    }
-                } else {
-                    let findStmt = try db.prepare("SELECT id FROM main.apps WHERE device_id = ?1 AND exe_path = ?2 COLLATE NOCASE;")
-                    try findStmt.bind(text: a.deviceId, at: 1)
-                    try findStmt.bind(text: a.exePath, at: 2)
-                    if try findStmt.step() {
-                        dstId = findStmt.columnInt64(at: 0)
+                let findExeStmt = try db.prepare("SELECT id FROM main.apps WHERE device_id = ?1 AND exe_path = ?2 COLLATE NOCASE;")
+                try findExeStmt.bind(text: a.deviceId, at: 1)
+                try findExeStmt.bind(text: a.exePath, at: 2)
+                if try findExeStmt.step() {
+                    dstId = findExeStmt.columnInt64(at: 0)
+                } else if let bundle = a.bundleId, !bundle.isEmpty {
+                    let findBundleStmt = try db.prepare("SELECT id FROM main.apps WHERE device_id = ?1 AND bundle_id = ?2;")
+                    try findBundleStmt.bind(text: a.deviceId, at: 1)
+                    try findBundleStmt.bind(text: bundle, at: 2)
+                    if try findBundleStmt.step() {
+                        dstId = findBundleStmt.columnInt64(at: 0)
                     }
                 }
 
@@ -339,21 +337,27 @@ public enum SyncReader {
                 } else if a.deviceId.caseInsensitiveCompare(manifest.deviceId) == .orderedSame {
                     let updStmt = try db.prepare("""
                         UPDATE main.apps SET
-                            display_name = ?1,
-                            category = ?2,
-                            state = ?3,
-                            retired_utc = ?4,
-                            is_background = ?5,
-                            kind = ?6
-                        WHERE id = ?7;
+                            exe_path = ?1,
+                            bundle_id = CASE WHEN ?2 IS NOT NULL AND ?2 != '' THEN ?2 ELSE bundle_id END,
+                            package_family = CASE WHEN ?3 IS NOT NULL AND ?3 != '' THEN ?3 ELSE package_family END,
+                            display_name = ?4,
+                            category = ?5,
+                            state = ?6,
+                            retired_utc = ?7,
+                            is_background = ?8,
+                            kind = ?9
+                        WHERE id = ?10;
                         """)
-                    try updStmt.bind(text: a.displayName, at: 1)
-                    try updStmt.bind(text: a.category, at: 2)
-                    try updStmt.bind(text: a.state, at: 3)
-                    if let r = a.retiredUtc { try updStmt.bind(int64: r, at: 4) } else { try updStmt.bindNull(at: 4) }
-                    try updStmt.bind(int64: a.isBackground, at: 5)
-                    if let k = a.kind { try updStmt.bind(int64: k, at: 6) } else { try updStmt.bindNull(at: 6) }
-                    try updStmt.bind(int64: dstId, at: 7)
+                    try updStmt.bind(text: a.exePath, at: 1)
+                    if let b = a.bundleId { try updStmt.bind(text: b, at: 2) } else { try updStmt.bindNull(at: 2) }
+                    if let f = a.packageFamily { try updStmt.bind(text: f, at: 3) } else { try updStmt.bindNull(at: 3) }
+                    try updStmt.bind(text: a.displayName, at: 4)
+                    try updStmt.bind(text: a.category, at: 5)
+                    try updStmt.bind(text: a.state, at: 6)
+                    if let r = a.retiredUtc { try updStmt.bind(int64: r, at: 7) } else { try updStmt.bindNull(at: 7) }
+                    try updStmt.bind(int64: a.isBackground, at: 8)
+                    if let k = a.kind { try updStmt.bind(int64: k, at: 9) } else { try updStmt.bindNull(at: 9) }
+                    try updStmt.bind(int64: dstId, at: 10)
                     _ = try updStmt.step()
                 }
 
@@ -391,15 +395,15 @@ public enum SyncReader {
             let hasCrossTable = try db.prepare("SELECT COUNT(*) FROM src.sqlite_master WHERE type='table' AND name='cross_device_merges';")
             if try hasCrossTable.step(), hasCrossTable.columnInt64(at: 0) > 0 {
                 func findAppInMain(dev: String, exe: String, bundle: String) throws -> Int64? {
+                    let stmtExe = try db.prepare("SELECT id FROM main.apps WHERE device_id = ?1 AND exe_path = ?2 COLLATE NOCASE LIMIT 1;")
+                    try stmtExe.bind(text: dev, at: 1)
+                    try stmtExe.bind(text: exe, at: 2)
+                    if try stmtExe.step() { return stmtExe.columnInt64(at: 0) }
+
                     if !bundle.isEmpty {
                         let stmt = try db.prepare("SELECT id FROM main.apps WHERE device_id = ?1 AND bundle_id = ?2 LIMIT 1;")
                         try stmt.bind(text: dev, at: 1)
                         try stmt.bind(text: bundle, at: 2)
-                        if try stmt.step() { return stmt.columnInt64(at: 0) }
-                    } else {
-                        let stmt = try db.prepare("SELECT id FROM main.apps WHERE device_id = ?1 AND exe_path = ?2 COLLATE NOCASE LIMIT 1;")
-                        try stmt.bind(text: dev, at: 1)
-                        try stmt.bind(text: exe, at: 2)
                         if try stmt.step() { return stmt.columnInt64(at: 0) }
                     }
                     return nil

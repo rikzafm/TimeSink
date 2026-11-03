@@ -37,13 +37,15 @@ public sealed class UsageLoaderTests : IDisposable
     }
 
     [Theory]
-    [InlineData("sleep", true)]
-    [InlineData("shutdown", true)]
-    [InlineData("exit", false)]
-    public void Sleep_and_shutdown_closes_are_flagged_as_the_pc_being_off(string reason, bool off)
+    [InlineData("sleep", true, false)]
+    [InlineData("shutdown", false, true)]
+    [InlineData("exit", false, false)]
+    public void Sleep_and_shutdown_closes_are_flagged_correctly(string reason, bool sleep, bool off)
     {
         _f.Exec($"INSERT INTO sessions(app_id,start_utc,end_utc,last_seen_utc,end_reason) VALUES ({_f.Chrome}, {Day + 100}, {Day + 200}, {Day + 200}, '{reason}')");
-        Segments(null, Apps()).Single(s => s.Start == Day + 100).Sleep.Should().Be(off);
+        var seg = Segments(null, Apps()).Single(s => s.Start == Day + 100);
+        seg.Sleep.Should().Be(sleep);
+        seg.Off.Should().Be(off);
     }
 
     [Fact]

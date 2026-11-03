@@ -339,25 +339,29 @@ public static partial class SyncReader
                         long dstId;
                         using (var findCmd = conn.CreateCommand())
                         {
-                            if (!string.IsNullOrEmpty(bundleId))
-                            {
-                                findCmd.CommandText = "SELECT id FROM main.apps WHERE device_id = $devId AND bundle_id = $bundleId;";
-                                findCmd.Parameters.AddWithValue("$devId", devId);
-                                findCmd.Parameters.AddWithValue("$bundleId", bundleId);
-                            }
-                            else
-                            {
-                                findCmd.CommandText = "SELECT id FROM main.apps WHERE device_id = $devId AND exe_path = $path COLLATE NOCASE;";
-                                findCmd.Parameters.AddWithValue("$devId", devId);
-                                findCmd.Parameters.AddWithValue("$path", exePath);
-                            }
+                            findCmd.CommandText = "SELECT id FROM main.apps WHERE device_id = $devId AND exe_path = $path COLLATE NOCASE;";
+                            findCmd.Parameters.AddWithValue("$devId", devId);
+                            findCmd.Parameters.AddWithValue("$path", exePath);
                             var existingId = findCmd.ExecuteScalar();
+
+                            if (existingId is null && !string.IsNullOrEmpty(bundleId))
+                            {
+                                using var findBundleCmd = conn.CreateCommand();
+                                findBundleCmd.CommandText = "SELECT id FROM main.apps WHERE device_id = $devId AND bundle_id = $bundleId;";
+                                findBundleCmd.Parameters.AddWithValue("$devId", devId);
+                                findBundleCmd.Parameters.AddWithValue("$bundleId", bundleId);
+                                existingId = findBundleCmd.ExecuteScalar();
+                            }
+
                             if (existingId is long id)
                             {
                                 dstId = id;
                                 using var updCmd = conn.CreateCommand();
                                 updCmd.CommandText = """
                                     UPDATE main.apps SET
+                                        exe_path = $p,
+                                        bundle_id = CASE WHEN $b IS NOT NULL AND $b != '' THEN $b ELSE bundle_id END,
+                                        package_family = CASE WHEN $f IS NOT NULL AND $f != '' THEN $f ELSE package_family END,
                                         display_name = $n,
                                         category = $c,
                                         state = $s,
@@ -366,6 +370,9 @@ public static partial class SyncReader
                                         kind = $k
                                     WHERE id = $id;
                                     """;
+                                updCmd.Parameters.AddWithValue("$p", exePath);
+                                updCmd.Parameters.AddWithValue("$b", (object?)bundleId ?? DBNull.Value);
+                                updCmd.Parameters.AddWithValue("$f", (object?)packageFamily ?? DBNull.Value);
                                 updCmd.Parameters.AddWithValue("$n", displayName);
                                 updCmd.Parameters.AddWithValue("$c", category);
                                 updCmd.Parameters.AddWithValue("$s", state);
@@ -454,19 +461,21 @@ public static partial class SyncReader
                     long? FindAppInMain(string targetDev, string targetExe, string targetBundle)
                     {
                         using var fCmd = conn.CreateCommand();
+                        fCmd.CommandText = "SELECT id FROM main.apps WHERE device_id = $d AND exe_path = $p COLLATE NOCASE LIMIT 1;";
+                        fCmd.Parameters.AddWithValue("$d", targetDev);
+                        fCmd.Parameters.AddWithValue("$p", targetExe);
+                        var found = fCmd.ExecuteScalar() as long?;
+                        if (found.HasValue) return found;
+
                         if (!string.IsNullOrEmpty(targetBundle))
                         {
-                            fCmd.CommandText = "SELECT id FROM main.apps WHERE device_id = $d AND bundle_id = $b LIMIT 1;";
-                            fCmd.Parameters.AddWithValue("$d", targetDev);
-                            fCmd.Parameters.AddWithValue("$b", targetBundle);
+                            using var fbCmd = conn.CreateCommand();
+                            fbCmd.CommandText = "SELECT id FROM main.apps WHERE device_id = $d AND bundle_id = $b LIMIT 1;";
+                            fbCmd.Parameters.AddWithValue("$d", targetDev);
+                            fbCmd.Parameters.AddWithValue("$b", targetBundle);
+                            return fbCmd.ExecuteScalar() as long?;
                         }
-                        else
-                        {
-                            fCmd.CommandText = "SELECT id FROM main.apps WHERE device_id = $d AND exe_path = $p COLLATE NOCASE LIMIT 1;";
-                            fCmd.Parameters.AddWithValue("$d", targetDev);
-                            fCmd.Parameters.AddWithValue("$p", targetExe);
-                        }
-                        return fCmd.ExecuteScalar() as long?;
+                        return null;
                     }
 
                     var validCrossSubordinates = new HashSet<long>();

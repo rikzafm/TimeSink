@@ -70,7 +70,8 @@ public enum UsageDays {
                         end: mergedEnd,
                         open: current.seg.open || next.seg.open,
                         sleep: current.seg.sleep && next.seg.sleep,
-                        deviceId: current.seg.deviceId
+                        deviceId: current.seg.deviceId,
+                        off: current.seg.off && next.seg.off
                     )
                     current = UsageSlice(
                         day: current.day,

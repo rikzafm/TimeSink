@@ -46,7 +46,12 @@ public struct HourlyChartView: View {
 
     private func tooltipText(_ hour: Int) -> String {
         let d = BarDetail.forHour(result: result, hour: hour)
-        var lines = ["\(Formatters.hourRange(hour)) · " + (d.uptimeSeconds > 0 ? "\(Formatters.paddedHM(d.uptimeSeconds)) uptime" : (d.appSeconds > 0 ? "\(Formatters.paddedHM(d.appSeconds)) app time" : "no activity"))]
+        let isSlp = isAsleep(hour)
+        let status = d.uptimeSeconds > 0
+            ? "\(Formatters.paddedHM(d.uptimeSeconds)) uptime"
+            : (d.appSeconds > 0 ? "\(Formatters.paddedHM(d.appSeconds)) app time"
+                : (isSlp ? "asleep" : "no activity"))
+        var lines = ["\(Formatters.hourRange(hour)) · \(status)"]
         for a in d.apps.prefix(3) {
             lines.append("\(a.name) \(Formatters.paddedHM(a.seconds))")
         }
@@ -119,32 +124,68 @@ public struct HourlyChartView: View {
     private func barView(_ bucket: HourBucket) -> some View {
         if bucket.hour > nowHour {
             EmptyView()
-        } else if isAsleep(bucket.hour) {
-            Hatch(color: Tokens.ramp[2])
-                .frame(height: max(height(Double(bucket.uptimeSeconds)), barsHeight * 0.7))
-                .clipShape(RoundedRectangle(cornerRadius: 2))
-        } else if split {
-            let parts = state.deviceSplit(bucket.byDevice?.mapValues(\.uptimeSeconds))
-            let macSec = parts.mac >= 60 ? parts.mac : 0
-            let pcSec = parts.pc >= 60 ? parts.pc : 0
-            if macSec > 0 || pcSec > 0 {
-                OverlapBar(
-                    mac: macSec > 0 ? max(2, height(Double(macSec))) : 0,
-                    pc: pcSec > 0 ? max(2, height(Double(pcSec))) : 0,
-                    macColor: bucket.hour == nowHour ? ThemeColors.accent : Tokens.ramp[3],
-                    pcColor: ThemeColors.deviceBDark,
-                    radius: 2
-                )
-            } else {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(bucket.hour == nowHour ? ThemeColors.accent : Tokens.ramp[0])
-                    .frame(height: 2)
-            }
         } else {
-            let sec = bucket.uptimeSeconds >= 60 ? bucket.uptimeSeconds : 0
-            RoundedRectangle(cornerRadius: 2)
-                .fill(color(sec, hour: bucket.hour))
-                .frame(height: sec > 0 ? max(2, height(Double(sec))) : 2)
+            let slp = isAsleep(bucket.hour)
+            if split {
+                let parts = state.deviceSplit(bucket.byDevice?.mapValues(\.uptimeSeconds))
+                let macSec = parts.mac >= 60 ? parts.mac : 0
+                let pcSec = parts.pc >= 60 ? parts.pc : 0
+                let hasActive = macSec > 0 || pcSec > 0
+                if hasActive && slp {
+                    let activeH = max(macSec > 0 ? height(Double(macSec)) : 0, pcSec > 0 ? height(Double(pcSec)) : 0)
+                    let slpH = max(2, min(barsHeight - activeH, barsHeight * 0.7))
+                    VStack(spacing: 0) {
+                        Hatch(color: Tokens.ramp[2])
+                            .frame(height: slpH)
+                            .clipShape(RoundedRectangle(cornerRadius: 2))
+                        OverlapBar(
+                            mac: macSec > 0 ? max(2, height(Double(macSec))) : 0,
+                            pc: pcSec > 0 ? max(2, height(Double(pcSec))) : 0,
+                            macColor: bucket.hour == nowHour ? ThemeColors.accent : Tokens.ramp[3],
+                            pcColor: ThemeColors.deviceBDark,
+                            radius: 2
+                        )
+                    }
+                } else if hasActive {
+                    OverlapBar(
+                        mac: macSec > 0 ? max(2, height(Double(macSec))) : 0,
+                        pc: pcSec > 0 ? max(2, height(Double(pcSec))) : 0,
+                        macColor: bucket.hour == nowHour ? ThemeColors.accent : Tokens.ramp[3],
+                        pcColor: ThemeColors.deviceBDark,
+                        radius: 2
+                    )
+                } else if slp {
+                    Hatch(color: Tokens.ramp[2])
+                        .frame(height: barsHeight * 0.7)
+                        .clipShape(RoundedRectangle(cornerRadius: 2))
+                } else {
+                    EmptyView()
+                }
+            } else {
+                let sec = bucket.uptimeSeconds >= 60 ? bucket.uptimeSeconds : 0
+                if sec > 0 && slp {
+                    let activeH = max(2, height(Double(sec)))
+                    let slpH = max(2, min(barsHeight - activeH, barsHeight * 0.7))
+                    VStack(spacing: 0) {
+                        Hatch(color: Tokens.ramp[2])
+                            .frame(height: slpH)
+                            .clipShape(RoundedRectangle(cornerRadius: 2))
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(color(sec, hour: bucket.hour))
+                            .frame(height: activeH)
+                    }
+                } else if sec > 0 {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(color(sec, hour: bucket.hour))
+                        .frame(height: max(2, height(Double(sec))))
+                } else if slp {
+                    Hatch(color: Tokens.ramp[2])
+                        .frame(height: barsHeight * 0.7)
+                        .clipShape(RoundedRectangle(cornerRadius: 2))
+                } else {
+                    EmptyView()
+                }
+            }
         }
     }
 
@@ -186,7 +227,7 @@ public struct HourlyChartView: View {
                         .foregroundColor(ThemeColors.textPrimary)
                     Text(d.uptimeSeconds > 0 || d.appSeconds > 0
                          ? "\(Formatters.paddedHM(d.uptimeSeconds)) uptime · \(Formatters.paddedHM(d.appSeconds)) app time"
-                         : "No activity this hour")
+                         : (isAsleep(hour) ? "Asleep · paused" : "No activity this hour"))
                         .font(.system(size: 11))
                         .foregroundColor(ThemeColors.textMuted)
                 }

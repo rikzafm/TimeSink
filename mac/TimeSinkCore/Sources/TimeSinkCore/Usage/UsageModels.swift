@@ -8,6 +8,7 @@ public struct UsageSeg: Sendable, Equatable {
     public let open: Bool
     public let sleep: Bool
     public let deviceId: String
+    public let off: Bool
 
     public init(
         group: Int64,
@@ -16,7 +17,8 @@ public struct UsageSeg: Sendable, Equatable {
         end: Int64,
         open: Bool,
         sleep: Bool,
-        deviceId: String = ""
+        deviceId: String = "",
+        off: Bool = false
     ) {
         self.group = group
         self.appId = appId
@@ -25,6 +27,7 @@ public struct UsageSeg: Sendable, Equatable {
         self.open = open
         self.sleep = sleep
         self.deviceId = deviceId
+        self.off = off
     }
 }
 

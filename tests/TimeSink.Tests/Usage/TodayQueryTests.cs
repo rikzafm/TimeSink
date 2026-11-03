@@ -117,6 +117,17 @@ public sealed class TodayQueryTests : IDisposable
     }
 
     [Fact]
+    public void Shutdown_close_does_not_create_sleep_band()
+    {
+        using var f = new TodayFixture();
+        f.Session(f.Code, TodayFixture.U(2026, 3, 11, 6), TodayFixture.U(2026, 3, 11, 7), "shutdown");
+        var r = Q.Today(f.DbPath, Now, TimeZoneInfo.Utc);
+        // Only the 9:30-11:00 sleep band should exist; the 7:00 shutdown gap is NOT a sleep band
+        r.SleepBands.Should().ContainSingle();
+        r.SleepBands[0].StartUtc.Should().Be(TodayFixture.U(2026, 3, 11, 9, 30));
+    }
+
+    [Fact]
     public void Tiles_first_app_longest_session_and_vs_yesterday_by_now()
     {
         var r = Run();

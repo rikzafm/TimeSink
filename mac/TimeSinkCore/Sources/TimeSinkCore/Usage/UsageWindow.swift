@@ -90,7 +90,8 @@ public final class UsageWindow: @unchecked Sendable {
                 }
             }
 
-            let sleep = (s.endReason == "sleep" || s.endReason == "shutdown") && !isOpen
+            let sleep = s.endReason == "sleep" && !isOpen
+            let off = s.endReason == "shutdown" && !isOpen
             segs.append(UsageSeg(
                 group: app.group,
                 appId: s.appId,
@@ -98,7 +99,8 @@ public final class UsageWindow: @unchecked Sendable {
                 end: endUtc,
                 open: isOpen,
                 sleep: sleep,
-                deviceId: app.deviceId
+                deviceId: app.deviceId,
+                off: off
             ))
         }
 
