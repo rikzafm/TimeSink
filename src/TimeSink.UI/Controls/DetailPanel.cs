@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using TimeSink.Core.Usage;
 
@@ -20,7 +21,7 @@ public sealed class DetailPanel : Border
 
     public DetailPanel()
     {
-        Padding = new Thickness(12, 9, 12, 10);
+        Padding = new Thickness(14, 12, 14, 12);
         Margin = new Thickness(0, 2, 0, 12);
         Visibility = Visibility.Collapsed;
         SetResourceReference(BackgroundProperty, "Brush.Panel");
@@ -39,101 +40,16 @@ public sealed class DetailPanel : Border
         IReadOnlyList<(string Label, string Value, bool Good)> compares,
         string? actionText = null, Action? action = null)
     {
-        _body.Children.Clear();
-
-        var head = new Grid();
-        head.ColumnDefinitions.Add(new ColumnDefinition());
-        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var titles = new StackPanel();
-        titles.Children.Add(Text(title, "Brush.Text", "Double.FontSize.Title", FontWeights.SemiBold));
-        titles.Children.Add(Text(subtitle, "Brush.TextMuted", "Double.FontSize.Small"));
-        var close = new Button { Content = "✕", Style = (Style)Application.Current.FindResource("LinkButton"), VerticalAlignment = VerticalAlignment.Top };
-        close.Click += (_, _) => { Hide(); CloseRequested?.Invoke(); };
-        Grid.SetColumn(close, 1);
-        head.Children.Add(titles);
-        head.Children.Add(close);
-        _body.Children.Add(head);
-
-        var total = Math.Max(1, apps.Sum(a => a.Seconds));
-        foreach (var (name, seconds, palette) in apps)
-        {
-            var brush = "Brush.App" + palette;
-            var line = new Grid { Margin = new Thickness(0, 8, 0, 0) };
-            line.ColumnDefinitions.Add(new ColumnDefinition());
-            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var label = Text(name, "Brush.Text", "Double.FontSize.Body", FontWeights.SemiBold);
-            label.TextTrimming = TextTrimming.CharacterEllipsis;
-            var value = Text($"{UsageText.HoursMinutes(seconds)} · {UsageText.Share(seconds / (double)total)}",
-                "Brush.TextSoft", "Double.FontSize.Small");
-            value.SetResourceReference(TextBlock.FontFamilyProperty, "FontFamily.Numbers");
-            Grid.SetColumn(value, 1);
-            line.Children.Add(label);
-            line.Children.Add(value);
-            _body.Children.Add(line);
-
-            var track = new Grid { Height = 6, Margin = new Thickness(0, 3, 0, 0) };
-            var trackBg = new Border();
-            trackBg.SetResourceReference(Border.BackgroundProperty, "Brush.BorderSoft");
-            trackBg.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
-            track.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(seconds, GridUnitType.Star) });
-            track.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(0, total - seconds), GridUnitType.Star) });
-            var fill = new Border();
-            fill.SetResourceReference(Border.BackgroundProperty, brush);
-            fill.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
-            Grid.SetColumnSpan(trackBg, 2);
-            track.Children.Add(trackBg);
-            track.Children.Add(fill);
-            _body.Children.Add(track);
-        }
-
-        if (sessions.Count > 0)
-        {
-            _body.Children.Add(Text("Sessions", "Brush.TextMuted", "Double.FontSize.Small", margin: new Thickness(0, 10, 0, 2)));
-            foreach (var (left, middle, right) in sessions)
-            {
-                var row = new Grid { Margin = new Thickness(0, 1, 0, 1) };
-                row.ColumnDefinitions.Add(new ColumnDefinition());
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(56) });
-                var mid = Text(middle, "Brush.TextMuted", "Double.FontSize.Small");
-                var end = Text(right, "Brush.Text", "Double.FontSize.Small", FontWeights.SemiBold);
-                end.TextAlignment = TextAlignment.Right;
-                Grid.SetColumn(mid, 1);
-                Grid.SetColumn(end, 2);
-                row.Children.Add(Text(left, "Brush.TextSoft", "Double.FontSize.Small"));
-                row.Children.Add(mid);
-                row.Children.Add(end);
-                _body.Children.Add(row);
-            }
-        }
-
-        if (compares.Count > 0)
-        {
-            var sep = new Border { Height = 1, Margin = new Thickness(0, 10, 0, 6) };
-            sep.SetResourceReference(Border.BackgroundProperty, "Brush.BorderSoft");
-            _body.Children.Add(sep);
-            foreach (var (label, value, good) in compares)
-            {
-                var row = new Grid { Margin = new Thickness(0, 1, 0, 1) };
-                row.ColumnDefinitions.Add(new ColumnDefinition());
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                var v = Text(value, good ? "Brush.Accent" : "Brush.Warning", "Double.FontSize.Small", FontWeights.SemiBold);
-                Grid.SetColumn(v, 1);
-                row.Children.Add(Text(label, "Brush.TextMuted", "Double.FontSize.Small"));
-                row.Children.Add(v);
-                _body.Children.Add(row);
-            }
-        }
-
-        if (actionText is not null && action is not null)
-        {
-            var go = new Button { Content = actionText, Style = (Style)Application.Current.FindResource("LinkButton"), Margin = new Thickness(0, 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
-            go.SetResourceReference(Control.ForegroundProperty, "Brush.Accent");
-            go.Click += (_, _) => action();
-            _body.Children.Add(go);
-        }
-
-        Visibility = Visibility.Visible;
+        ShowCard(title, subtitle,
+            apps.Select(a => (a.Name, a.Seconds, a.Palette, 0L)).ToList(),
+            compares,
+            sessionCount: 0,
+            devices: null,
+            onBothSeconds: 0,
+            summaryPhrase: null,
+            actionText: actionText,
+            action: action,
+            onAppClicked: null);
     }
 
     public void ShowHourCard(
@@ -144,11 +60,50 @@ public sealed class DetailPanel : Border
         string summaryPhrase,
         IReadOnlyList<(string Label, string Value, bool Good)> compares)
     {
+        ShowCard(title, subtitle,
+            apps.Select(a => (a.Name, a.Seconds, a.Palette, 0L)).ToList(),
+            compares,
+            sessionCount: sessionCount,
+            devices: null,
+            onBothSeconds: 0,
+            summaryPhrase: summaryPhrase,
+            actionText: null,
+            action: null,
+            onAppClicked: null);
+    }
+
+    public void ShowHourCard(
+        string title,
+        int sessionCount,
+        string subtitle,
+        IReadOnlyList<(string Name, long Seconds, int Palette, long AppId)> apps,
+        string summaryPhrase,
+        IReadOnlyList<(string Label, string Value, bool Good)> compares,
+        IReadOnlyList<(string Name, long UptimeSeconds, bool IsLocal)>? devices = null,
+        long onBothSeconds = 0,
+        Action<long>? onAppClicked = null)
+    {
+        ShowCard(title, subtitle, apps, compares, sessionCount, devices, onBothSeconds, summaryPhrase, actionText: null, action: null, onAppClicked: onAppClicked);
+    }
+
+    public void ShowCard(
+        string title,
+        string subtitle,
+        IReadOnlyList<(string Name, long Seconds, int Palette, long AppId)> apps,
+        IReadOnlyList<(string Label, string Value, bool Good)>? compares,
+        int sessionCount = 0,
+        IReadOnlyList<(string Name, long UptimeSeconds, bool IsLocal)>? devices = null,
+        long onBothSeconds = 0,
+        string? summaryPhrase = null,
+        string? actionText = null,
+        Action? action = null,
+        Action<long>? onAppClicked = null)
+    {
         _body.Children.Clear();
         Padding = new Thickness(14, 12, 14, 12);
         Visibility = Visibility.Visible;
 
-        // Header: Title on left, session count badge on right
+        // Header: Title on left, session count badge & close button on right
         var head = new Grid { Margin = new Thickness(0, 0, 0, 8) };
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -165,16 +120,55 @@ public sealed class DetailPanel : Border
         Grid.SetColumn(titles, 0);
         head.Children.Add(titles);
 
+        var rightStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
         if (sessionCount > 0)
         {
             var badgeText = Text($"{sessionCount} {(sessionCount == 1 ? "session" : "sessions")}", "Brush.TextMuted", "Double.FontSize.Small");
-            badgeText.VerticalAlignment = VerticalAlignment.Top;
-            badgeText.Margin = new Thickness(0, 4, 0, 0);
-            Grid.SetColumn(badgeText, 1);
-            head.Children.Add(badgeText);
+            badgeText.VerticalAlignment = VerticalAlignment.Center;
+            badgeText.Margin = new Thickness(0, 0, 10, 0);
+            rightStack.Children.Add(badgeText);
         }
 
+        var close = new Button { Content = "✕", Style = (Style)Application.Current.FindResource("LinkButton"), VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand };
+        close.Click += (_, _) => { Hide(); CloseRequested?.Invoke(); };
+        rightStack.Children.Add(close);
+
+        Grid.SetColumn(rightStack, 1);
+        head.Children.Add(rightStack);
         _body.Children.Add(head);
+
+        // Dedicated device breakdown row
+        if (devices != null && devices.Count > 0 && (devices.Count > 1 || onBothSeconds > 0))
+        {
+            var devRow = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
+            foreach (var (devName, devUptime, isLocal) in devices)
+            {
+                var devItem = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
+                var marker = new DeviceMarker { IsLocal = isLocal, Width = 7, Height = 7, Margin = new Thickness(0, 0, 5, 0), VerticalAlignment = VerticalAlignment.Center };
+                devItem.Children.Add(marker);
+                var txt = new TextBlock
+                {
+                    Text = $"{devName} {UsageText.HoursMinutes(devUptime)}",
+                    VerticalAlignment = VerticalAlignment.Center,
+                    FontSize = 11,
+                };
+                txt.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextSoft");
+                devItem.Children.Add(txt);
+                devRow.Children.Add(devItem);
+            }
+            if (onBothSeconds > 0)
+            {
+                var bothTxt = new TextBlock
+                {
+                    Text = $"{UsageText.HoursMinutes(onBothSeconds)} on both",
+                    VerticalAlignment = VerticalAlignment.Center,
+                    FontSize = 11,
+                };
+                bothTxt.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+                devRow.Children.Add(bothTxt);
+            }
+            _body.Children.Add(devRow);
+        }
 
         // Segmented bar
         if (apps.Count > 0)
@@ -215,7 +209,7 @@ public sealed class DetailPanel : Border
 
             for (var i = 0; i < apps.Count; i++)
             {
-                var (name, seconds, palette) = apps[i];
+                var (name, seconds, palette, appId) = apps[i];
                 var col = (i % 2) * 2;
                 var row = i / 2;
 
@@ -250,6 +244,14 @@ public sealed class DetailPanel : Border
                 item.Children.Add(appLabel);
                 item.Children.Add(duration);
 
+                if (onAppClicked != null && appId > 0)
+                {
+                    item.Cursor = Cursors.Hand;
+                    item.ToolTip = $"Inspect {name}";
+                    var capturedId = appId;
+                    item.MouseLeftButtonUp += (_, _) => onAppClicked(capturedId);
+                }
+
                 Grid.SetColumn(item, col);
                 Grid.SetRow(item, row);
                 grid.Children.Add(item);
@@ -261,12 +263,12 @@ public sealed class DetailPanel : Border
         if (!string.IsNullOrWhiteSpace(summaryPhrase))
         {
             var summary = Text(summaryPhrase, "Brush.TextMuted", "Double.FontSize.Small");
-            summary.Margin = new Thickness(0, 10, 0, 12);
+            summary.Margin = new Thickness(0, 8, 0, 10);
             _body.Children.Add(summary);
         }
 
-        // Comparison (Typical for this hour)
-        if (compares.Count > 0)
+        // Comparison metrics
+        if (compares != null && compares.Count > 0)
         {
             var divider = new Border { Height = 1, Margin = new Thickness(0, 4, 0, 10) };
             divider.SetResourceReference(Border.BackgroundProperty, "Brush.BorderSoft");
@@ -289,6 +291,22 @@ public sealed class DetailPanel : Border
 
                 _body.Children.Add(compGrid);
             }
+        }
+
+        // Action button (e.g. Open in Today)
+        if (actionText is not null && action is not null)
+        {
+            var go = new Button
+            {
+                Content = actionText,
+                Style = (Style)Application.Current.FindResource("LinkButton"),
+                Margin = new Thickness(0, 8, 0, 0),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Cursor = Cursors.Hand
+            };
+            go.SetResourceReference(Control.ForegroundProperty, "Brush.Accent");
+            go.Click += (_, _) => action();
+            _body.Children.Add(go);
         }
     }
 

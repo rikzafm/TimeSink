@@ -258,7 +258,6 @@ public struct WeekTabView: View {
 
     @ViewBuilder
     private func dayDetailCard(_ detail: DayDetail) -> some View {
-        let total = max(1, detail.totalSeconds)
         let sortedApps: [BarApp] = {
             if let focusId = focusAppId, let idx = detail.apps.firstIndex(where: { $0.appId == focusId }) {
                 var list = detail.apps
@@ -269,12 +268,12 @@ public struct WeekTabView: View {
             return detail.apps
         }()
 
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             // Header: Title & Close
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(Formatters.dayText(detail.date, format: "EEEE, d MMMM yyyy"))
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 18, weight: .bold))
                         .foregroundColor(ThemeColors.textPrimary)
 
                     let spanText: String = {
@@ -314,38 +313,42 @@ public struct WeekTabView: View {
                 .buttonStyle(.plain)
             }
 
-            // App breakdown bars
-            if !sortedApps.isEmpty {
-                VStack(spacing: 7) {
-                    ForEach(sortedApps, id: \.appId) { app in
-                        let sharePct = detail.totalSeconds > 0 ? Int((Double(app.seconds) / Double(detail.totalSeconds) * 100).rounded()) : 0
-                        Button(action: { state.openAppDetail(appId: app.appId) }) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack {
-                                    Text(app.name)
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(ThemeColors.textPrimary)
-                                        .lineLimit(1)
-                                    Spacer()
-                                    Text("\(Formatters.paddedHM(app.seconds)) · \(sharePct)%")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(ThemeColors.textMuted)
-                                }
-                                GeometryReader { geo in
-                                    ZStack(alignment: .leading) {
-                                        RoundedRectangle(cornerRadius: 3).fill(ThemeColors.barBackground)
-                                        RoundedRectangle(cornerRadius: 3)
-                                            .fill(Tokens.appColor(app.name))
-                                            .frame(width: max(4, geo.size.width * CGFloat(app.seconds) / CGFloat(total)))
-                                    }
-                                }
-                                .frame(height: 6)
+            // Dedicated device breakdown row
+            if state.showsDeviceSplit, let devUptimes = detail.deviceUptimes, !devUptimes.isEmpty {
+                let localName = state.deviceADisplayName()
+                let remoteName = state.deviceBDisplayName()
+                let split = state.deviceSplit(devUptimes.mapValues { $0.uptimeSeconds })
+                if split.mac > 0 || split.pc > 0 {
+                    HStack(spacing: 12) {
+                        if split.mac > 0 {
+                            HStack(spacing: 4) {
+                                Circle().fill(ThemeColors.accent).frame(width: 7, height: 7)
+                                Text("\(localName) \(Formatters.paddedHM(split.mac))")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(ThemeColors.textPrimary)
                             }
                         }
-                        .buttonStyle(.plain)
-                        .help("Click to inspect \(app.name)")
+                        if split.pc > 0 {
+                            HStack(spacing: 4) {
+                                RoundedRectangle(cornerRadius: 1.5).fill(ThemeColors.deviceB).frame(width: 7, height: 7)
+                                Text("\(remoteName) \(Formatters.paddedHM(split.pc))")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(ThemeColors.textPrimary)
+                            }
+                        }
+                        if detail.onBothSeconds > 0 {
+                            Text("\(Formatters.paddedHM(detail.onBothSeconds)) on both")
+                                .font(.system(size: 11))
+                                .foregroundColor(ThemeColors.textMuted)
+                        }
                     }
                 }
+            }
+
+            // Segmented app time bar & 2-column app list
+            if !sortedApps.isEmpty {
+                segmentedBar(sortedApps, totalSeconds: detail.totalSeconds)
+                twoColumnAppList(sortedApps)
             }
 
             // Comparison metrics
@@ -394,9 +397,71 @@ public struct WeekTabView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10).fill(ThemeColors.surfaceActive))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ThemeColors.accent, lineWidth: 1))
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 12).fill(ThemeColors.surfaceActive))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(ThemeColors.accent, lineWidth: 1))
+    }
+
+    private func segmentedBar(_ apps: [BarApp], totalSeconds: Int64) -> some View {
+        GeometryReader { geo in
+            let total = max(1, totalSeconds)
+            let spacing: CGFloat = 2
+            let totalSpacing = spacing * CGFloat(max(0, apps.count - 1))
+            let availableWidth = max(0, geo.size.width - totalSpacing)
+            HStack(spacing: spacing) {
+                ForEach(apps, id: \.appId) { app in
+                    let w = max(2, availableWidth * CGFloat(app.seconds) / CGFloat(total))
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Tokens.appColor(app.name))
+                        .frame(width: w, height: 8)
+                }
+            }
+        }
+        .frame(height: 8)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+
+    private func twoColumnAppList(_ apps: [BarApp]) -> some View {
+        let pairs = stride(from: 0, to: apps.count, by: 2).map { i -> (BarApp, BarApp?) in
+            (apps[i], i + 1 < apps.count ? apps[i + 1] : nil)
+        }
+        return VStack(spacing: 7) {
+            ForEach(Array(pairs.enumerated()), id: \.offset) { _, pair in
+                HStack(spacing: 16) {
+                    appCardRow(pair.0)
+                        .frame(maxWidth: .infinity)
+                    if let second = pair.1 {
+                        appCardRow(second)
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Spacer()
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func appCardRow(_ app: BarApp) -> some View {
+        Button(action: { state.openAppDetail(appId: app.appId) }) {
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(Tokens.appColor(app.name))
+                    .frame(width: 8, height: 8)
+                Text(app.name)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(ThemeColors.textPrimary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text(Formatters.paddedHM(app.seconds))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(ThemeColors.textPrimary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Click to inspect \(app.name)")
     }
 
     private func historyView(_ result: WeekResult) -> some View {

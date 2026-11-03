@@ -154,8 +154,8 @@ public partial class FlyoutWindow : Window
     // Built on first visit only.
     private UIElement CreateBody(ShellTab tab) => tab switch
     {
-        ShellTab.Today => new TodayView(_dbPath, _themes, Live),
-        ShellTab.Week => new WeekView(_dbPath, _themes, Live, OpenDayInToday),
+        ShellTab.Today => new TodayView(_dbPath, _themes, Live, ShowAppDetail),
+        ShellTab.Week => new WeekView(_dbPath, _themes, Live, OpenDayInToday, ShowAppDetail),
         ShellTab.Month => new MonthView(_dbPath, _themes, Live, this),
         ShellTab.Year => new YearView(_dbPath, _themes, Live),
         ShellTab.All => new AllView(_dbPath, _themes, Live, this, ShowAppDetail),

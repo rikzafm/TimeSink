@@ -41,6 +41,8 @@ public struct HourDetail: Sendable, Equatable {
     public let typicalAppSeconds: Double
     public let apps: [BarApp]
     public let sessions: [BarSession]
+    public let byDevice: [String: DeviceHour]?
+    public let onBothSeconds: Int64
 
     public init(
         hour: Int,
@@ -51,7 +53,9 @@ public struct HourDetail: Sendable, Equatable {
         typicalUptimeSeconds: Double = 0,
         typicalAppSeconds: Double = 0,
         apps: [BarApp],
-        sessions: [BarSession]
+        sessions: [BarSession],
+        byDevice: [String: DeviceHour]? = nil,
+        onBothSeconds: Int64 = 0
     ) {
         self.hour = hour
         self.startUtc = startUtc
@@ -62,6 +66,8 @@ public struct HourDetail: Sendable, Equatable {
         self.typicalAppSeconds = typicalAppSeconds
         self.apps = apps
         self.sessions = sessions
+        self.byDevice = byDevice
+        self.onBothSeconds = onBothSeconds
     }
 }
 
@@ -100,6 +106,14 @@ public enum BarDetail {
         }
         let sortedSessions = sessions.sorted { $0.startUtc < $1.startUtc }
 
+        var onBoth: Int64 = 0
+        if let byDev = bucket.byDevice, byDev.count > 1 {
+            let sumU = byDev.values.reduce(0) { $0 + $1.uptimeSeconds }
+            if sumU > bucket.uptimeSeconds {
+                onBoth = sumU - bucket.uptimeSeconds
+            }
+        }
+
         return HourDetail(
             hour: hour,
             startUtc: pieces.first?.start ?? result.dayStartUtc,
@@ -109,8 +123,9 @@ public enum BarDetail {
             typicalUptimeSeconds: bucket.typicalUptimeSeconds,
             typicalAppSeconds: bucket.typicalAppSeconds,
             apps: sortedApps,
-            sessions: sortedSessions
+            sessions: sortedSessions,
+            byDevice: bucket.byDevice,
+            onBothSeconds: onBoth
         )
     }
 }
-

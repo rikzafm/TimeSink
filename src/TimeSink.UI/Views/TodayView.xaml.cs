@@ -31,6 +31,7 @@ public partial class TodayView : UserControl, ILiveView
     private readonly LiveState _live;
     private readonly UsageSnapshotLoader _loader;
     private readonly LiveViewDriver _driver;
+    private readonly Action<long>? _showAppDetail;
     private readonly HashSet<long> _expanded = new();
     private readonly Dictionary<long, (TextBlock Time, TextBlock Status, TodayAppRow Row)> _rowViews = new();
 
@@ -88,11 +89,12 @@ public partial class TodayView : UserControl, ILiveView
         return "Mac";
     }
 
-    public TodayView(string dbPath, ThemeService themes, LiveState live)
+    public TodayView(string dbPath, ThemeService themes, LiveState live, Action<long>? showAppDetail = null)
     {
         _dbPath = dbPath;
         _themes = themes;
         _live = live;
+        _showAppDetail = showAppDetail;
         LoadDeviceInfo();
         InitializeComponent();
         // WPF doesn't clamp CornerRadius like CSS does, so a huge value draws an oval: use half the height.
@@ -426,13 +428,40 @@ public partial class TodayView : UserControl, ILiveView
             ? $"{UsageText.HoursMinutes(c.UptimeSeconds)} uptime · {UsageText.HoursMinutes(c.TotalSeconds)} app time"
             : (isSlp ? Str(StringKeys.LegendAsleepGeneric) : Str(PanelStringKeys.HourEmpty));
         var summary = UsagePhrases.HourSessionSummary(c, Clock);
+
+        List<(string Name, long UptimeSeconds, bool IsLocal)>? devList = null;
+        long onBoth = 0;
+        if (h >= 0 && h < r.Hours.Count && r.Hours[h].ByDevice is { Count: > 0 } byDev)
+        {
+            devList = new();
+            foreach (var (devId, dh) in byDev)
+            {
+                var isLoc = IsLocalDevice(devId);
+                var name = GetDeviceName(devId, isLoc);
+                var u = dh.UptimeSeconds > 0 ? dh.UptimeSeconds : dh.AppSeconds;
+                if (u > 0) devList.Add((name, u, isLoc));
+            }
+            if (devList.Count > 1)
+            {
+                var sumU = devList.Sum(d => d.UptimeSeconds);
+                if (sumU > c.UptimeSeconds) onBoth = sumU - c.UptimeSeconds;
+            }
+        }
+        var apps = c.Apps.Select(a => (a.Name, a.Seconds, _themes.AppSlot(a.AppId), a.AppId)).ToList();
         Panel.ShowHourCard(
             HourRange(h),
             c.SessionCount,
             subtitle,
-            c.Apps.Select(a => (a.Name, a.Seconds, _themes.AppSlot(a.AppId))).ToList(),
+            apps,
             summary,
-            compares);
+            compares,
+            devList,
+            onBoth,
+            onAppClicked: appId =>
+            {
+                if (_showAppDetail != null) _showAppDetail(appId);
+                else JumpToApp(appId);
+            });
     }
 
     /// <summary>The "Tracked today" label only shows under the untracked card.</summary>

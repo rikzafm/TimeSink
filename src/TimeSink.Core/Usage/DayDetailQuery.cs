@@ -10,7 +10,9 @@ public sealed record DayDetail(
     long? LastEndUtc,
     IReadOnlyList<BarApp> Apps,
     double WeekAverageSeconds,
-    long SameDayLastWeekSeconds);
+    long SameDayLastWeekSeconds,
+    IReadOnlyDictionary<string, DeviceUptime>? DeviceUptimes = null,
+    long OnBothSeconds = 0);
 
 /// <summary>
 /// The Week day panel (decision 148): one database open and one live context for the clicked day, its week and the
@@ -39,6 +41,6 @@ public static class DayDetailQuery
         long? first = sessions.Count == 0 ? null : sessions.Min(s => s.StartUtc);
         long? last = sessions.Count == 0 ? null : sessions.Max(s => s.EndUtc);
         var column = week.Days.FirstOrDefault(d => d.Date == day);
-        return new DayDetail(thisDay.Date, column?.Seconds ?? thisDay.UptimeSeconds, first, last, apps, week.AverageSeconds, lastWeek.UptimeSeconds);
+        return new DayDetail(thisDay.Date, column?.Seconds ?? thisDay.UptimeSeconds, first, last, apps, week.AverageSeconds, lastWeek.UptimeSeconds, thisDay.DeviceUptimes, thisDay.OnBothSeconds);
     }
 }

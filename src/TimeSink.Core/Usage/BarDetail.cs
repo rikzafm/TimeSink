@@ -19,7 +19,9 @@ public sealed record HourDetail(
     double TypicalUptimeSeconds,
     IReadOnlyList<BarApp> Apps,
     IReadOnlyList<BarSession> Sessions,
-    double TypicalAppSeconds = 0);
+    double TypicalAppSeconds = 0,
+    IReadOnlyDictionary<string, DeviceHour>? ByDevice = null,
+    long OnBothSeconds = 0);
 
 public static class BarDetail
 {
@@ -53,9 +55,17 @@ public static class BarDetail
         var uptimeSecs = bucket?.UptimeSeconds ?? 0;
         var typUptimeSecs = bucket?.TypicalUptimeSeconds ?? 0;
         var typAppSecs = bucket?.TypicalAppSeconds ?? 0;
+        var byDev = bucket?.ByDevice;
+        long onBoth = 0;
+        if (byDev != null && byDev.Count > 1)
+        {
+            var sumUptime = byDev.Values.Sum(v => v.UptimeSeconds);
+            if (sumUptime > uptimeSecs)
+                onBoth = sumUptime - uptimeSecs;
+        }
         return new HourDetail(hour, windows.Count > 0 ? windows[0].S : r.DayStartUtc, windows.Count > 0 ? windows[^1].E : r.DayStartUtc,
             uptimeSecs, apps.Sum(a => a.Seconds), typUptimeSecs,
             apps.OrderByDescending(a => a.Seconds).ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList(),
-            sessions.OrderBy(s => s.StartUtc).ToList(), typAppSecs);
+            sessions.OrderBy(s => s.StartUtc).ToList(), typAppSecs, byDev, onBoth);
     }
 }

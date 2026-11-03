@@ -8,6 +8,8 @@ public struct DayDetail: Sendable, Equatable {
     public let apps: [BarApp]
     public let weekAverageSeconds: Double
     public let sameDayLastWeekSeconds: Int64
+    public let deviceUptimes: [String: DeviceUptime]?
+    public let onBothSeconds: Int64
 
     public init(
         date: String,
@@ -16,7 +18,9 @@ public struct DayDetail: Sendable, Equatable {
         lastEndUtc: Int64?,
         apps: [BarApp],
         weekAverageSeconds: Double,
-        sameDayLastWeekSeconds: Int64
+        sameDayLastWeekSeconds: Int64,
+        deviceUptimes: [String: DeviceUptime]? = nil,
+        onBothSeconds: Int64 = 0
     ) {
         self.date = date
         self.totalSeconds = totalSeconds
@@ -25,6 +29,8 @@ public struct DayDetail: Sendable, Equatable {
         self.apps = apps
         self.weekAverageSeconds = weekAverageSeconds
         self.sameDayLastWeekSeconds = sameDayLastWeekSeconds
+        self.deviceUptimes = deviceUptimes
+        self.onBothSeconds = onBothSeconds
     }
 }
 
@@ -75,8 +81,9 @@ public enum DayDetailQuery {
             lastEndUtc: last,
             apps: apps,
             weekAverageSeconds: weekAvg,
-            sameDayLastWeekSeconds: lastWeek.uptimeSeconds
+            sameDayLastWeekSeconds: lastWeek.uptimeSeconds,
+            deviceUptimes: thisDay.deviceUptimes,
+            onBothSeconds: thisDay.onBothSeconds
         )
     }
 }
-

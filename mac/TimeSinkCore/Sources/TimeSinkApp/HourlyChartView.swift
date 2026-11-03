@@ -232,14 +232,57 @@ public struct HourlyChartView: View {
                         .foregroundColor(ThemeColors.textMuted)
                 }
                 Spacer()
-                if !d.sessions.isEmpty {
-                    Text("\(d.sessions.count) session\(d.sessions.count == 1 ? "" : "s")")
-                        .font(.system(size: 11))
-                        .foregroundColor(ThemeColors.textMuted)
-                        .padding(.top, 2)
+                HStack(spacing: 8) {
+                    if !d.sessions.isEmpty {
+                        Text("\(d.sessions.count) session\(d.sessions.count == 1 ? "" : "s")")
+                            .font(.system(size: 11))
+                            .foregroundColor(ThemeColors.textMuted)
+                            .padding(.top, 2)
+                    }
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.18)) { selectedHour = nil }
+                    }) {
+                        Text("✕")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(ThemeColors.textMuted)
+                            .padding(4)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
 
+            // Dedicated device breakdown row
+            if state.showsDeviceSplit, let byDev = d.byDevice, byDev.count > 0 {
+                let localName = state.deviceADisplayName()
+                let remoteName = state.deviceBDisplayName()
+                let split = state.deviceSplit(byDev.mapValues { $0.uptimeSeconds > 0 ? $0.uptimeSeconds : $0.appSeconds })
+                if split.mac > 0 || split.pc > 0 {
+                    HStack(spacing: 12) {
+                        if split.mac > 0 {
+                            HStack(spacing: 4) {
+                                Circle().fill(ThemeColors.accent).frame(width: 7, height: 7)
+                                Text("\(localName) \(Formatters.paddedHM(split.mac))")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(ThemeColors.textPrimary)
+                            }
+                        }
+                        if split.pc > 0 {
+                            HStack(spacing: 4) {
+                                RoundedRectangle(cornerRadius: 1.5).fill(ThemeColors.deviceB).frame(width: 7, height: 7)
+                                Text("\(remoteName) \(Formatters.paddedHM(split.pc))")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(ThemeColors.textPrimary)
+                            }
+                        }
+                        if d.onBothSeconds > 0 {
+                            Text("\(Formatters.paddedHM(d.onBothSeconds)) on both")
+                                .font(.system(size: 11))
+                                .foregroundColor(ThemeColors.textMuted)
+                        }
+                    }
+                }
+            }
             // Segmented app time bar & 2-column app list
             if !d.apps.isEmpty {
                 segmentedBar(d.apps, totalSeconds: d.appSeconds)
@@ -318,19 +361,24 @@ public struct HourlyChartView: View {
     }
 
     private func appRow(_ app: BarApp) -> some View {
-        HStack(spacing: 7) {
-            Circle()
-                .fill(Tokens.appColor(app.name))
-                .frame(width: 8, height: 8)
-            Text(app.name)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(ThemeColors.textPrimary)
-                .lineLimit(1)
-            Spacer(minLength: 4)
-            Text(Formatters.paddedHM(app.seconds))
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(ThemeColors.textPrimary)
+        Button(action: { state.openAppDetail(appId: app.appId) }) {
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(Tokens.appColor(app.name))
+                    .frame(width: 8, height: 8)
+                Text(app.name)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(ThemeColors.textPrimary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text(Formatters.paddedHM(app.seconds))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(ThemeColors.textPrimary)
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .help("Click to inspect \(app.name)")
     }
 
     private func sessionSummaryText(_ d: HourDetail) -> String {

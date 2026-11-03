@@ -30,7 +30,10 @@ public sealed record PanelContent(
     IReadOnlyList<BarApp> Apps,
     IReadOnlyList<BarSession> Sessions,
     IReadOnlyList<PanelComparison> Comparisons,
-    long UptimeSeconds = 0);
+    long UptimeSeconds = 0,
+    IReadOnlyDictionary<string, DeviceUptime>? DeviceUptimes = null,
+    long OnBothSeconds = 0,
+    IReadOnlyDictionary<string, DeviceHour>? ByDeviceHour = null);
 
 /// <summary>Builds the <see cref="PanelContent"/> of a Today hour bar and of a Week day column.</summary>
 public static class PanelContents
@@ -43,7 +46,7 @@ public static class PanelContents
         if (r.HasTypical)
             comparisons.Add(new PanelComparison(PanelComparisonKind.TypicalForHour,
                 (long)Math.Round(d.UptimeSeconds - d.TypicalUptimeSeconds), (long)Math.Round(d.TypicalUptimeSeconds)));
-        return new PanelContent(d.AppSeconds, d.Sessions.Count, null, null, null, d.Apps, d.Sessions, comparisons, d.UptimeSeconds);
+        return new PanelContent(d.AppSeconds, d.Sessions.Count, null, null, null, d.Apps, d.Sessions, comparisons, d.UptimeSeconds, null, d.OnBothSeconds, d.ByDevice);
     }
 
     /// <summary>
@@ -71,6 +74,6 @@ public static class PanelContents
             new(PanelComparisonKind.VsSameDayLastWeek, d.TotalSeconds - d.SameDayLastWeekSeconds),
         };
         var span = d.FirstStartUtc is not null && d.LastEndUtc is not null;
-        return new PanelContent(d.TotalSeconds, 0, span ? d.FirstStartUtc : null, span ? d.LastEndUtc : null, focused, apps, [], comparisons);
+        return new PanelContent(d.TotalSeconds, 0, span ? d.FirstStartUtc : null, span ? d.LastEndUtc : null, focused, apps, [], comparisons, d.TotalSeconds, d.DeviceUptimes, d.OnBothSeconds);
     }
 }
