@@ -60,11 +60,6 @@ public struct M004_Devices: Migration {
         if !hasDeviceId {
             try rebuildAppsTable(db: db, defaultDeviceId: deviceId)
         }
-
-        let hasUpdatedUtc = (try db.scalarInt("SELECT COUNT(*) FROM pragma_table_info('apps') WHERE name = 'updated_utc';") ?? 0) > 0
-        if !hasUpdatedUtc {
-            try db.exec("ALTER TABLE apps ADD COLUMN updated_utc INTEGER NOT NULL DEFAULT 0;")
-        }
     }
 
     private func rebuildAppsTable(db: SQLiteDatabase, defaultDeviceId: String) throws {
@@ -84,8 +79,7 @@ public struct M004_Devices: Migration {
             added_utc      INTEGER NOT NULL,
             retired_utc    INTEGER NULL,
             is_background  INTEGER NOT NULL DEFAULT 0,
-            kind           INTEGER NULL,
-            updated_utc    INTEGER NOT NULL DEFAULT 0
+            kind           INTEGER NULL
         );
 
         CREATE UNIQUE INDEX ux_apps_device_exe ON apps_new(device_id, exe_path COLLATE NOCASE);

@@ -3,12 +3,23 @@ import Foundation
 @testable import TimeSinkCore
 
 final class MigrationTests: XCTestCase {
+    func testExistingVersion4DatabaseGainsUpdatedUtcColumn() throws {
+        let db = try SQLiteDatabase.inMemory()
+        try Migrator.apply(to: db, migrations: [M001_Initial(), M002_BackgroundApps(), M003_AppKind(), M004_Devices()])
+        XCTAssertEqual(db.userVersion, 4)
+        XCTAssertEqual(try db.scalarInt("SELECT COUNT(*) FROM pragma_table_info('apps') WHERE name = 'updated_utc';"), 0)
+
+        try Migrator.apply(to: db)
+        XCTAssertEqual(db.userVersion, 5)
+        XCTAssertEqual(try db.scalarInt("SELECT COUNT(*) FROM pragma_table_info('apps') WHERE name = 'updated_utc';"), 1)
+    }
+
     func testMigrationsApplyCleanlyToVersion4() throws {
         let db = try SQLiteDatabase.inMemory()
         XCTAssertEqual(db.userVersion, 0)
 
         try Migrator.apply(to: db)
-        XCTAssertEqual(db.userVersion, 4)
+        XCTAssertEqual(db.userVersion, 5)
 
         // Verify tables exist
         let tablesStmt = try db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name;")
@@ -93,7 +104,7 @@ final class MigrationTests: XCTestCase {
                 return
             }
             XCTAssertEqual(cur, 99)
-            XCTAssertEqual(latest, 4)
+            XCTAssertEqual(latest, 5)
         }
     }
 }

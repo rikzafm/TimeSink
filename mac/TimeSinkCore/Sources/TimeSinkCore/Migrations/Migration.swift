@@ -24,7 +24,8 @@ public final class Migrator {
         M001_Initial(),
         M002_BackgroundApps(),
         M003_AppKind(),
-        M004_Devices()
+        M004_Devices(),
+        M005_AppUpdatedUtc()
     ]
 
     public static var latestVersion: Int32 {

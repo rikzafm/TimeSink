@@ -28,7 +28,7 @@ public sealed class M004DevicesMigrationTests : IDisposable
         var path = NewDbPath("fresh.db");
         using var db = Db.Open(path);
 
-        db.SchemaVersion.Should().Be(4);
+        db.SchemaVersion.Should().Be(5);
         var deviceId = db.GetSetting("device.id");
         deviceId.Should().NotBeNullOrWhiteSpace();
 
@@ -89,7 +89,7 @@ public sealed class M004DevicesMigrationTests : IDisposable
         // 2. Open with Db.Open which triggers migration M004
         using (var db = Db.Open(path))
         {
-            db.SchemaVersion.Should().Be(4);
+            db.SchemaVersion.Should().Be(5);
 
             var deviceId = db.GetSetting("device.id");
             deviceId.Should().NotBeNullOrWhiteSpace();
@@ -165,7 +165,7 @@ public sealed class M004DevicesMigrationTests : IDisposable
 
         using (var db2 = Db.Open(path))
         {
-            db2.SchemaVersion.Should().Be(4);
+            db2.SchemaVersion.Should().Be(5);
             db2.GetApps().Should().ContainSingle();
         }
     }

@@ -85,7 +85,7 @@ public sealed class EncryptionStressTests : IDisposable
         // 3. Open database via Db.Open (which cleans stale files and migrates)
         using (var db = Db.Open(dbPath, _key))
         {
-            db.SchemaVersion.Should().Be(4);
+            db.SchemaVersion.Should().Be(5);
             var apps = db.GetApps();
             apps.Should().HaveCount(2);
             apps.Select(a => a.DisplayName).Should().Contain(["Stress App 1", "Stress App 2"]);
@@ -144,7 +144,7 @@ public sealed class EncryptionStressTests : IDisposable
         // 2. Open database via Db.Open
         using (var db = Db.Open(dbPath, _key))
         {
-            db.SchemaVersion.Should().Be(4);
+            db.SchemaVersion.Should().Be(5);
             var apps = db.GetApps();
             apps.Should().HaveCount(1);
             apps[0].DisplayName.Should().Be("Bak App");
@@ -490,7 +490,7 @@ public sealed class EncryptionStressTests : IDisposable
         // Migrate via Db.Open
         using (var db = Db.Open(dbPath, _key))
         {
-            db.SchemaVersion.Should().Be(4);
+            db.SchemaVersion.Should().Be(5);
             using var cmdCount = db.Connection.CreateCommand();
             cmdCount.CommandText = "SELECT COUNT(*) FROM apps;";
             Convert.ToInt32(cmdCount.ExecuteScalar()).Should().Be(appCount);
@@ -608,7 +608,7 @@ public sealed class EncryptionStressTests : IDisposable
 
         // 2. Open with Db.Open using default DPAPI key
         using var db = Db.Open(testDb);
-        db.SchemaVersion.Should().Be(4);
+        db.SchemaVersion.Should().Be(5);
         var apps = db.GetApps();
         apps.Should().HaveCount(1);
         apps[0].ExePath.Should().Be(@"c:\smoke\test.exe");

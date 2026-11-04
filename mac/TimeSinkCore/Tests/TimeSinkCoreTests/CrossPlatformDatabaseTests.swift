@@ -7,7 +7,7 @@ final class CrossPlatformDatabaseTests: XCTestCase {
         let db = try SQLiteDatabase.inMemory()
         try Migrator.apply(to: db)
 
-        XCTAssertEqual(db.userVersion, 4)
+        XCTAssertEqual(db.userVersion, 5)
 
         // Verify index names match M004 in C#
         let indexesStmt = try db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' ORDER BY name;")
