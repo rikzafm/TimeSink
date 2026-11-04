@@ -52,6 +52,7 @@ let package = Package(
             name: "TimeSinkCoreTests",
             dependencies: [
                 "TimeSinkCore",
+                "TimeSinkApp",
                 .product(name: "SQLCipher", package: "SQLCipher.swift")
             ],
             path: "Tests/TimeSinkCoreTests",

@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using TimeSink.Core.Data;
+using TimeSink.Core.Security;
 
 namespace TimeSink.Tests.Backup;
 
@@ -8,7 +9,27 @@ public sealed class BackupTestRig : IDisposable
 {
     public string Dir { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "timesink-backup-" + Guid.NewGuid().ToString("N"));
 
-    public BackupTestRig() => Directory.CreateDirectory(Dir);
+    private sealed class FallbackKeyManager : IKeyManager
+    {
+        private byte[] _dbKey = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+        private string? _syncPassphrase;
+        public byte[] GetOrCreateDatabaseKey() => (byte[])_dbKey.Clone();
+        public void DeleteDatabaseKey() => _dbKey = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+        public string? GetSyncPassphrase() => _syncPassphrase;
+        public void SetSyncPassphrase(string passphrase) => _syncPassphrase = passphrase;
+        public bool HasSyncPassphrase() => !string.IsNullOrEmpty(_syncPassphrase);
+        public void ClearSyncPassphrase() => _syncPassphrase = null;
+    }
+
+    public BackupTestRig()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            try { _ = Db.KeyManager; }
+            catch (PlatformNotSupportedException) { Db.KeyManager = new FallbackKeyManager(); }
+        }
+        Directory.CreateDirectory(Dir);
+    }
 
     public string P(string name) => System.IO.Path.Combine(Dir, name);
 

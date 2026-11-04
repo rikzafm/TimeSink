@@ -246,10 +246,18 @@ public enum SyncReader {
                 try? db.exec("DROP TABLE temp.idmap;")
             }
 
-            let selectSrcApps = try db.prepare("""
-                SELECT id, canonical_id, exe_path, bundle_id, device_id, package_family, display_name, category, state, added_utc, retired_utc, is_background, kind
-                FROM src.apps;
-                """)
+            var hasUpdatedUtcInSrc = false
+            let pragmaStmt = try db.prepare("PRAGMA src.table_info(apps);")
+            while try pragmaStmt.step() {
+                if let colName = pragmaStmt.columnText(at: 1), colName == "updated_utc" {
+                    hasUpdatedUtcInSrc = true
+                    break
+                }
+            }
+            let selectSrcAppsSql = hasUpdatedUtcInSrc
+                ? "SELECT id, canonical_id, exe_path, bundle_id, device_id, package_family, display_name, category, state, added_utc, retired_utc, is_background, kind, updated_utc FROM src.apps;"
+                : "SELECT id, canonical_id, exe_path, bundle_id, device_id, package_family, display_name, category, state, added_utc, retired_utc, is_background, kind, 0 FROM src.apps;"
+            let selectSrcApps = try db.prepare(selectSrcAppsSql)
 
             struct SrcApp {
                 let id: Int64
@@ -265,6 +273,7 @@ public enum SyncReader {
                 let retiredUtc: Int64?
                 let isBackground: Int64
                 let kind: Int64?
+                let updatedUtc: Int64
             }
 
             var srcApps: [SrcApp] = []
@@ -287,7 +296,8 @@ public enum SyncReader {
                     addedUtc: selectSrcApps.columnInt64(at: 9),
                     retiredUtc: selectSrcApps.columnInt64(at: 10) == 0 ? nil : selectSrcApps.columnInt64(at: 10),
                     isBackground: selectSrcApps.columnInt64(at: 11),
-                    kind: resolvedKind
+                    kind: resolvedKind,
+                    updatedUtc: selectSrcApps.columnInt64(at: 13)
                 ))
             }
 
@@ -313,9 +323,9 @@ public enum SyncReader {
                     let insStmt = try db.prepare("""
                         INSERT INTO main.apps (
                             exe_path, bundle_id, device_id, package_family, display_name,
-                            category, state, added_utc, retired_utc, is_background, kind
+                            category, state, added_utc, retired_utc, is_background, kind, updated_utc
                         ) VALUES (
-                            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11
+                            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12
                         );
                         """)
                     try insStmt.bind(text: a.exePath, at: 1)
@@ -329,47 +339,99 @@ public enum SyncReader {
                     if let r = a.retiredUtc { try insStmt.bind(int64: r, at: 9) }
                     try insStmt.bind(int64: a.isBackground, at: 10)
                     if let k = a.kind { try insStmt.bind(int64: k, at: 11) } else { try insStmt.bindNull(at: 11) }
+                    try insStmt.bind(int64: a.updatedUtc, at: 12)
                     _ = try insStmt.step()
 
                     dstId = db.lastInsertRowid
                     appsAdded += 1
                     newlyInsertedApps.append((a.id, dstId, a.canonicalId))
-                } else if a.deviceId.caseInsensitiveCompare(manifest.deviceId) == .orderedSame {
-                    let updStmt = try db.prepare("""
-                        UPDATE main.apps SET
-                            exe_path = ?1,
-                            bundle_id = CASE WHEN ?2 IS NOT NULL AND ?2 != '' THEN ?2 ELSE bundle_id END,
-                            package_family = CASE WHEN ?3 IS NOT NULL AND ?3 != '' THEN ?3 ELSE package_family END,
-                            display_name = ?4,
-                            category = ?5,
-                            state = ?6,
-                            retired_utc = ?7,
-                            is_background = CASE
-                                WHEN ?8 != 0 THEN 1
-                                WHEN is_background != 0 THEN 1
-                                WHEN canonical_id IS NOT NULL AND (SELECT is_background FROM main.apps WHERE id = main.apps.canonical_id) != 0 THEN 1
-                                ELSE 0
-                            END,
-                            kind = CASE
-                                WHEN ?9 IS NOT NULL AND ?9 != 0 THEN ?9
-                                WHEN kind IS NOT NULL AND kind != 0 THEN kind
-                                WHEN canonical_id IS NOT NULL AND (SELECT kind FROM main.apps WHERE id = main.apps.canonical_id) IS NOT NULL AND (SELECT kind FROM main.apps WHERE id = main.apps.canonical_id) != 0
-                                    THEN (SELECT kind FROM main.apps WHERE id = main.apps.canonical_id)
-                                ELSE COALESCE(?9, 0)
-                            END
-                        WHERE id = ?10;
-                        """)
-                    try updStmt.bind(text: a.exePath, at: 1)
-                    if let b = a.bundleId { try updStmt.bind(text: b, at: 2) } else { try updStmt.bindNull(at: 2) }
-                    if let f = a.packageFamily { try updStmt.bind(text: f, at: 3) } else { try updStmt.bindNull(at: 3) }
-                    try updStmt.bind(text: a.displayName, at: 4)
-                    try updStmt.bind(text: a.category, at: 5)
-                    try updStmt.bind(text: a.state, at: 6)
-                    if let r = a.retiredUtc { try updStmt.bind(int64: r, at: 7) } else { try updStmt.bindNull(at: 7) }
-                    try updStmt.bind(int64: a.isBackground, at: 8)
-                    if let k = a.kind { try updStmt.bind(int64: k, at: 9) } else { try updStmt.bindNull(at: 9) }
-                    try updStmt.bind(int64: dstId, at: 10)
-                    _ = try updStmt.step()
+                } else {
+                    let localUpdatedUtc: Int64
+                    let checkStmt = try db.prepare("SELECT updated_utc FROM main.apps WHERE id = ?1;")
+                    try checkStmt.bind(int64: dstId, at: 1)
+                    if try checkStmt.step() {
+                        localUpdatedUtc = checkStmt.columnInt64(at: 0)
+                    } else {
+                        localUpdatedUtc = 0
+                    }
+
+                    if a.deviceId.caseInsensitiveCompare(manifest.deviceId) == .orderedSame {
+                        let updStmt = try db.prepare("""
+                            UPDATE main.apps SET
+                                exe_path = ?1,
+                                bundle_id = CASE WHEN ?2 IS NOT NULL AND ?2 != '' THEN ?2 ELSE bundle_id END,
+                                package_family = CASE WHEN ?3 IS NOT NULL AND ?3 != '' THEN ?3 ELSE package_family END,
+                                display_name = CASE WHEN ?11 >= ?12 THEN ?4 ELSE display_name END,
+                                category = CASE WHEN ?11 >= ?12 THEN ?5 ELSE category END,
+                                state = ?6,
+                                retired_utc = ?7,
+                                is_background = CASE
+                                    WHEN ?11 >= ?12 THEN (CASE WHEN ?8 != 0 THEN 1 ELSE 0 END)
+                                    WHEN ?8 != 0 THEN 1
+                                    WHEN is_background != 0 THEN 1
+                                    WHEN canonical_id IS NOT NULL AND (SELECT is_background FROM main.apps WHERE id = main.apps.canonical_id) != 0 THEN 1
+                                    ELSE 0
+                                END,
+                                kind = CASE
+                                    WHEN ?11 >= ?12 THEN (CASE WHEN ?9 IS NOT NULL AND ?9 != 0 THEN ?9 ELSE COALESCE(?9, 0) END)
+                                    WHEN ?9 IS NOT NULL AND ?9 != 0 THEN ?9
+                                    WHEN kind IS NOT NULL AND kind != 0 THEN kind
+                                    WHEN canonical_id IS NOT NULL AND (SELECT kind FROM main.apps WHERE id = main.apps.canonical_id) IS NOT NULL AND (SELECT kind FROM main.apps WHERE id = main.apps.canonical_id) != 0
+                                        THEN (SELECT kind FROM main.apps WHERE id = main.apps.canonical_id)
+                                    ELSE COALESCE(?9, 0)
+                                END,
+                                updated_utc = CASE WHEN ?11 >= ?12 THEN ?11 ELSE updated_utc END
+                            WHERE id = ?10;
+                            """)
+                        try updStmt.bind(text: a.exePath, at: 1)
+                        if let b = a.bundleId { try updStmt.bind(text: b, at: 2) } else { try updStmt.bindNull(at: 2) }
+                        if let f = a.packageFamily { try updStmt.bind(text: f, at: 3) } else { try updStmt.bindNull(at: 3) }
+                        try updStmt.bind(text: a.displayName, at: 4)
+                        try updStmt.bind(text: a.category, at: 5)
+                        try updStmt.bind(text: a.state, at: 6)
+                        if let r = a.retiredUtc { try updStmt.bind(int64: r, at: 7) } else { try updStmt.bindNull(at: 7) }
+                        try updStmt.bind(int64: a.isBackground, at: 8)
+                        if let k = a.kind { try updStmt.bind(int64: k, at: 9) } else { try updStmt.bindNull(at: 9) }
+                        try updStmt.bind(int64: dstId, at: 10)
+                        try updStmt.bind(int64: a.updatedUtc, at: 11)
+                        try updStmt.bind(int64: localUpdatedUtc, at: 12)
+                        _ = try updStmt.step()
+                    } else if a.updatedUtc > localUpdatedUtc {
+                        // Remote edit for this app (e.g. Mac app whose classification was modified on Windows)
+                        let updRemoteStmt = try db.prepare("""
+                            UPDATE main.apps SET
+                                display_name = ?1,
+                                category = ?2,
+                                is_background = ?3,
+                                kind = ?4,
+                                updated_utc = ?5
+                            WHERE id = ?6;
+                            """)
+                        try updRemoteStmt.bind(text: a.displayName, at: 1)
+                        try updRemoteStmt.bind(text: a.category, at: 2)
+                        try updRemoteStmt.bind(int64: a.isBackground, at: 3)
+                        if let k = a.kind { try updRemoteStmt.bind(int64: k, at: 4) } else { try updRemoteStmt.bindNull(at: 4) }
+                        try updRemoteStmt.bind(int64: a.updatedUtc, at: 5)
+                        try updRemoteStmt.bind(int64: dstId, at: 6)
+                        _ = try updRemoteStmt.step()
+
+                        // Also propagate to merged group members on local device
+                        let propStmt = try db.prepare("""
+                            UPDATE main.apps SET
+                                category = ?1,
+                                kind = ?2,
+                                is_background = ?3,
+                                updated_utc = ?4
+                            WHERE (canonical_id = ?5 OR id = (SELECT canonical_id FROM main.apps WHERE id = ?5))
+                              AND updated_utc <= ?4;
+                            """)
+                        try propStmt.bind(text: a.category, at: 1)
+                        if let k = a.kind { try propStmt.bind(int64: k, at: 2) } else { try propStmt.bindNull(at: 2) }
+                        try propStmt.bind(int64: a.isBackground, at: 3)
+                        try propStmt.bind(int64: a.updatedUtc, at: 4)
+                        try propStmt.bind(int64: dstId, at: 5)
+                        _ = try propStmt.step()
+                    }
                 }
 
                 allSnapshotApps.append((a.id, dstId, a.canonicalId))

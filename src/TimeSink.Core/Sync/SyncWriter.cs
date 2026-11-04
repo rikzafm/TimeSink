@@ -163,7 +163,8 @@ public static class SyncWriter
                     added_utc      INTEGER NOT NULL,
                     retired_utc    INTEGER NULL,
                     is_background  INTEGER NOT NULL DEFAULT 0,
-                    kind           INTEGER NULL
+                    kind           INTEGER NULL,
+                    updated_utc    INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE UNIQUE INDEX ux_apps_device_exe ON apps(device_id, exe_path COLLATE NOCASE);
                 CREATE INDEX ix_apps_device_bundle ON apps(device_id, bundle_id);
@@ -223,14 +224,15 @@ public static class SyncWriter
                 INSERT OR IGNORE INTO snap.apps (
                     id, canonical_id, exe_path, bundle_id, device_id,
                     package_family, display_name, category, state,
-                    added_utc, retired_utc, is_background, kind
+                    added_utc, retired_utc, is_background, kind, updated_utc
                 )
                 SELECT DISTINCT
                     id, canonical_id, exe_path, bundle_id, device_id,
                     package_family, display_name, category, state,
-                    added_utc, retired_utc, is_background, kind
+                    added_utc, retired_utc, is_background, kind, updated_utc
                 FROM main.apps
                 WHERE device_id = $devId
+                   OR updated_utc > 0
                    OR id IN (SELECT canonical_id FROM main.apps WHERE device_id = $devId AND canonical_id IS NOT NULL)
                    OR canonical_id IN (SELECT id FROM main.apps WHERE device_id = $devId);
 
@@ -243,12 +245,11 @@ public static class SyncWriter
                 JOIN main.apps a ON a.id = s.app_id
                 WHERE a.device_id = $devId;
 
-                INSERT INTO snap.icons (app_id, png, hash)
+                INSERT OR IGNORE INTO snap.icons (app_id, png, hash)
                 SELECT
                     i.app_id, i.png, i.hash
                 FROM main.icons i
-                JOIN main.apps a ON a.id = i.app_id
-                WHERE a.device_id = $devId;
+                JOIN snap.apps a ON a.id = i.app_id;
 
                 INSERT INTO snap.cross_device_merges (
                     source_device_id, source_exe_path, source_bundle_id,

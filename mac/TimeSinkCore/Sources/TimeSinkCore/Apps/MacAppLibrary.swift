@@ -209,11 +209,14 @@ public final class MacAppLibrary: @unchecked Sendable {
     }
 
     public func updateApp(appId: Int64, displayName: String, kind: AppKind, isBackground: Bool) throws {
+        let now = Int64(Date().timeIntervalSince1970)
         let stmt = try db.prepare("""
             UPDATE apps SET
                 display_name = CASE WHEN id = ?4 THEN ?1 ELSE display_name END,
                 kind = ?2,
-                is_background = ?3
+                category = ?5,
+                is_background = ?3,
+                updated_utc = ?6
             WHERE id = (SELECT COALESCE(canonical_id, id) FROM apps WHERE id = ?4)
                OR canonical_id = (SELECT COALESCE(canonical_id, id) FROM apps WHERE id = ?4);
             """)
@@ -221,6 +224,8 @@ public final class MacAppLibrary: @unchecked Sendable {
         try stmt.bind(int64: kind.rawValue, at: 2)
         try stmt.bind(int64: isBackground ? 1 : 0, at: 3)
         try stmt.bind(int64: appId, at: 4)
+        try stmt.bind(text: kind == .other ? "Other" : kind.displayName, at: 5)
+        try stmt.bind(int64: now, at: 6)
         _ = try stmt.step()
     }
 

@@ -145,16 +145,12 @@ public struct HourlyChartView: View {
                 let pcSlpSec = slpSplit.pc >= 60 ? slpSplit.pc : 0
 
                 let macActiveH = macSec > 0 ? max(2, height(Double(macSec))) : 0
-                var macSlpH = macSlpSec > 0 ? max(2, height(Double(macSlpSec))) : 0
-                if macActiveH > 0 && macActiveH + macSlpH > barsHeight {
-                    macSlpH = max(0, barsHeight - macActiveH)
-                }
+                let rawMacSlpH = macSlpSec > 0 ? max(2, height(Double(macSlpSec))) : 0
+                let macSlpH = (macActiveH > 0 && macActiveH + rawMacSlpH > barsHeight) ? max(0, barsHeight - macActiveH) : rawMacSlpH
 
                 let pcActiveH = pcSec > 0 ? max(2, height(Double(pcSec))) : 0
-                var pcSlpH = pcSlpSec > 0 ? max(2, height(Double(pcSlpSec))) : 0
-                if pcActiveH > 0 && pcActiveH + pcSlpH > barsHeight {
-                    pcSlpH = max(0, barsHeight - pcActiveH)
-                }
+                let rawPcSlpH = pcSlpSec > 0 ? max(2, height(Double(pcSlpSec))) : 0
+                let pcSlpH = (pcActiveH > 0 && pcActiveH + rawPcSlpH > barsHeight) ? max(0, barsHeight - pcActiveH) : rawPcSlpH
 
                 if macActiveH > 0 || pcActiveH > 0 || macSlpH > 0 || pcSlpH > 0 {
                     OverlapBar(
@@ -178,10 +174,8 @@ public struct HourlyChartView: View {
                 let totalSlpSec = devSleepMap.values.reduce(0, +)
                 let slpHourSec = totalSlpSec >= 60 ? totalSlpSec : (slp ? 1800 : 0)
                 let actH = sec > 0 ? max(2, height(Double(sec))) : 0
-                var slpH = slpHourSec > 0 ? max(2, height(Double(slpHourSec))) : 0
-                if actH > 0 && actH + slpH > barsHeight {
-                    slpH = max(0, barsHeight - actH)
-                }
+                let rawSlpH = slpHourSec > 0 ? max(2, height(Double(slpHourSec))) : 0
+                let slpH = (actH > 0 && actH + rawSlpH > barsHeight) ? max(0, barsHeight - actH) : rawSlpH
                 let totalH = actH + slpH
                 if totalH > 0 {
                     VStack(spacing: 0) {

@@ -305,15 +305,28 @@ public static partial class SyncReader
                 var snapshotApps = new List<(long SrcId, long DstId, long? CanonicalId)>();
                 using (var cmd = conn.CreateCommand())
                 {
-                    cmd.CommandText = """
-                        SELECT id, canonical_id, exe_path, bundle_id, device_id, package_family, display_name, category, state, added_utc, retired_utc, is_background, kind
-                        FROM src.apps;
-                        """;
+                    bool hasUpdatedUtcInSrc = false;
+                    using (var checkSrcCmd = conn.CreateCommand())
+                    {
+                        checkSrcCmd.CommandText = "PRAGMA src.table_info(apps);";
+                        using var pragmaReader = checkSrcCmd.ExecuteReader();
+                        while (pragmaReader.Read())
+                        {
+                            if (string.Equals(pragmaReader.GetString(1), "updated_utc", StringComparison.OrdinalIgnoreCase))
+                            {
+                                hasUpdatedUtcInSrc = true;
+                                break;
+                            }
+                        }
+                    }
+                    cmd.CommandText = hasUpdatedUtcInSrc
+                        ? "SELECT id, canonical_id, exe_path, bundle_id, device_id, package_family, display_name, category, state, added_utc, retired_utc, is_background, kind, updated_utc FROM src.apps;"
+                        : "SELECT id, canonical_id, exe_path, bundle_id, device_id, package_family, display_name, category, state, added_utc, retired_utc, is_background, kind, 0 FROM src.apps;";
                     using var r = cmd.ExecuteReader();
                     var srcApps = new List<object?[]>();
                     while (r.Read())
                     {
-                        var row = new object?[13];
+                        var row = new object?[14];
                         r.GetValues(row);
                         srcApps.Add(row);
                     }
@@ -335,6 +348,7 @@ public static partial class SyncReader
                         var isBackground = Convert.ToInt32(a[11] ?? 0);
                         var kind = a[12] as long?;
                         var effectiveKind = kind ?? (long)AppKinds.Detect(exePath, displayName);
+                        var updatedUtc = Convert.ToInt64(a[13] ?? 0);
 
                         long dstId;
                         using (var findCmd = conn.CreateCommand())
@@ -356,6 +370,15 @@ public static partial class SyncReader
                             if (existingId is long id)
                             {
                                 dstId = id;
+                                long localUpdatedUtc = 0;
+                                using (var checkLocalCmd = conn.CreateCommand())
+                                {
+                                    checkLocalCmd.CommandText = "SELECT updated_utc FROM main.apps WHERE id = $id";
+                                    checkLocalCmd.Parameters.AddWithValue("$id", dstId);
+                                    var obj = checkLocalCmd.ExecuteScalar();
+                                    if (obj is long lu) localUpdatedUtc = lu;
+                                }
+
                                 if (string.Equals(devId, manifest.DeviceId, StringComparison.OrdinalIgnoreCase))
                                 {
                                     using var updCmd = conn.CreateCommand();
@@ -364,23 +387,26 @@ public static partial class SyncReader
                                             exe_path = $p,
                                             bundle_id = CASE WHEN $b IS NOT NULL AND $b != '' THEN $b ELSE bundle_id END,
                                             package_family = CASE WHEN $f IS NOT NULL AND $f != '' THEN $f ELSE package_family END,
-                                            display_name = $n,
-                                            category = $c,
+                                            display_name = CASE WHEN $updUtc >= $localUpdUtc THEN $n ELSE display_name END,
+                                            category = CASE WHEN $updUtc >= $localUpdUtc THEN $c ELSE category END,
                                             state = $s,
                                             retired_utc = $r,
                                             is_background = CASE
+                                                WHEN $updUtc >= $localUpdUtc THEN (CASE WHEN $bg != 0 THEN 1 ELSE 0 END)
                                                 WHEN $bg != 0 THEN 1
                                                 WHEN is_background != 0 THEN 1
                                                 WHEN canonical_id IS NOT NULL AND (SELECT is_background FROM main.apps WHERE id = main.apps.canonical_id) != 0 THEN 1
                                                 ELSE 0
                                             END,
                                             kind = CASE
+                                                WHEN $updUtc >= $localUpdUtc THEN (CASE WHEN $k != 0 THEN $k ELSE $k END)
                                                 WHEN $k != 0 THEN $k
                                                 WHEN kind IS NOT NULL AND kind != 0 THEN kind
                                                 WHEN canonical_id IS NOT NULL AND (SELECT kind FROM main.apps WHERE id = main.apps.canonical_id) IS NOT NULL AND (SELECT kind FROM main.apps WHERE id = main.apps.canonical_id) != 0
                                                     THEN (SELECT kind FROM main.apps WHERE id = main.apps.canonical_id)
                                                 ELSE $k
-                                            END
+                                            END,
+                                            updated_utc = CASE WHEN $updUtc >= $localUpdUtc THEN $updUtc ELSE updated_utc END
                                         WHERE id = $id;
                                         """;
                                     updCmd.Parameters.AddWithValue("$p", exePath);
@@ -393,7 +419,46 @@ public static partial class SyncReader
                                     updCmd.Parameters.AddWithValue("$bg", isBackground);
                                     updCmd.Parameters.AddWithValue("$k", effectiveKind);
                                     updCmd.Parameters.AddWithValue("$id", dstId);
+                                    updCmd.Parameters.AddWithValue("$updUtc", updatedUtc);
+                                    updCmd.Parameters.AddWithValue("$localUpdUtc", localUpdatedUtc);
                                     updCmd.ExecuteNonQuery();
+                                }
+                                else if (updatedUtc > localUpdatedUtc)
+                                {
+                                    using var updRemoteCmd = conn.CreateCommand();
+                                    updRemoteCmd.CommandText = """
+                                        UPDATE main.apps SET
+                                            display_name = $n,
+                                            category = $c,
+                                            is_background = $bg,
+                                            kind = $k,
+                                            updated_utc = $updUtc
+                                        WHERE id = $id;
+                                        """;
+                                    updRemoteCmd.Parameters.AddWithValue("$n", displayName);
+                                    updRemoteCmd.Parameters.AddWithValue("$c", category);
+                                    updRemoteCmd.Parameters.AddWithValue("$bg", isBackground);
+                                    updRemoteCmd.Parameters.AddWithValue("$k", effectiveKind);
+                                    updRemoteCmd.Parameters.AddWithValue("$updUtc", updatedUtc);
+                                    updRemoteCmd.Parameters.AddWithValue("$id", dstId);
+                                    updRemoteCmd.ExecuteNonQuery();
+
+                                    using var propCmd = conn.CreateCommand();
+                                    propCmd.CommandText = """
+                                        UPDATE main.apps SET
+                                            category = $c,
+                                            kind = $k,
+                                            is_background = $bg,
+                                            updated_utc = $updUtc
+                                        WHERE (canonical_id = $id OR id = (SELECT canonical_id FROM main.apps WHERE id = $id))
+                                          AND updated_utc <= $updUtc;
+                                        """;
+                                    propCmd.Parameters.AddWithValue("$c", category);
+                                    propCmd.Parameters.AddWithValue("$k", effectiveKind);
+                                    propCmd.Parameters.AddWithValue("$bg", isBackground);
+                                    propCmd.Parameters.AddWithValue("$updUtc", updatedUtc);
+                                    propCmd.Parameters.AddWithValue("$id", dstId);
+                                    propCmd.ExecuteNonQuery();
                                 }
                             }
                             else
@@ -402,9 +467,9 @@ public static partial class SyncReader
                                 insCmd.CommandText = """
                                     INSERT INTO main.apps (
                                         exe_path, bundle_id, device_id, package_family, display_name,
-                                        category, state, added_utc, retired_utc, is_background, kind
+                                        category, state, added_utc, retired_utc, is_background, kind, updated_utc
                                     ) VALUES (
-                                        $p, $b, $d, $f, $n, $c, $s, $a, $r, $bg, $k
+                                        $p, $b, $d, $f, $n, $c, $s, $a, $r, $bg, $k, $updUtc
                                     ) RETURNING id;
                                     """;
                                 insCmd.Parameters.AddWithValue("$p", exePath);
@@ -418,6 +483,7 @@ public static partial class SyncReader
                                 insCmd.Parameters.AddWithValue("$r", (object?)retiredUtc ?? DBNull.Value);
                                 insCmd.Parameters.AddWithValue("$bg", isBackground);
                                 insCmd.Parameters.AddWithValue("$k", effectiveKind);
+                                insCmd.Parameters.AddWithValue("$updUtc", updatedUtc);
                                 dstId = (long)insCmd.ExecuteScalar()!;
                                 appsAdded++;
                                 newlyInsertedApps.Add((srcId, dstId, canonicalId));

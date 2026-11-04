@@ -168,15 +168,37 @@ public struct AppSettingsSheet: View {
 
     private var settingsCard: some View {
         VStack(spacing: 0) {
-            row("Game type", "Used by Year › Wrapped", divider: false) {
-                Segmented(
-                    options: [(AppKind.other, "Other"), (.game, "Game"), (.gacha, "Gacha"), (.socialMedia, "Social Media"), (.browsing, "Browsing"), (.coding, "Coding"), (.productivity, "Productivity"), (.entertainment, "Entertainment")],
-                    selection: Binding(get: { kind }, set: { kind = $0; saveChanges() }),
-                    hPad: 9,
-                    radius: 7,
-                    fill: Tokens.well,
-                    border: ThemeColors.borderSubtle
-                )
+            row("Category", "Used by Year › Wrapped", divider: false) {
+                Menu {
+                    ForEach(AppKind.allCases, id: \.self) { k in
+                        Button(action: {
+                            kind = k
+                            saveChanges()
+                        }) {
+                            HStack {
+                                Text(k.displayName)
+                                if kind == k {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(kind.displayName)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(ThemeColors.textPrimary)
+                        Text("▾")
+                            .font(.system(size: 9))
+                            .foregroundColor(ThemeColors.textMuted)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Tokens.well))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(ThemeColors.borderSubtle, lineWidth: 1))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
             }
             row("Foreground only", "Only track when focused in front; ignore background time") {
                 TSSwitch(isOn: Binding(get: { isBackground }, set: { isBackground = $0; saveChanges() }))
@@ -368,6 +390,7 @@ public struct AppSettingsSheet: View {
     private func saveChanges() {
         guard loaded, !displayName.isEmpty else { return }
         try? MacAppLibrary(db: state.db).updateApp(appId: currentAppId, displayName: displayName, kind: kind, isBackground: isBackground)
+        state.syncHost?.syncNow()
         if let onTick = state.onTickRequest { onTick() } else { state.refresh() }
     }
 }

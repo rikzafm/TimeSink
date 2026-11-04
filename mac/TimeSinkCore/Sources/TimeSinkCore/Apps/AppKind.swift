@@ -1,6 +1,6 @@
 import Foundation
 
-public enum AppKind: Int64, Sendable, Codable {
+public enum AppKind: Int64, Sendable, Codable, CaseIterable {
     case other = 0
     case game = 1
     case gacha = 2
@@ -9,6 +9,19 @@ public enum AppKind: Int64, Sendable, Codable {
     case coding = 5
     case productivity = 6
     case entertainment = 7
+
+    public var displayName: String {
+        switch self {
+        case .other: return "Other"
+        case .game: return "Game"
+        case .gacha: return "Gacha"
+        case .socialMedia: return "Social Media"
+        case .browsing: return "Browsing"
+        case .coding: return "Coding"
+        case .productivity: return "Productivity"
+        case .entertainment: return "Entertainment"
+        }
+    }
 }
 
 public enum AppKinds {

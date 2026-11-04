@@ -36,6 +36,19 @@ public final class UsageWindow: @unchecked Sendable {
         return try? db.scalarText("SELECT COALESCE((SELECT value FROM settings WHERE key = 'device.id'), (SELECT device_id FROM devices WHERE is_local = 1))")
     }
 
+    public var devicePlatforms: [String: String] {
+        var dict: [String: String] = [:]
+        guard let stmt = try? db.prepare("SELECT device_id, platform FROM devices WHERE state != 'forgotten'") else {
+            return dict
+        }
+        while (try? stmt.step()) == true {
+            if let dev = stmt.columnText(at: 0), let plat = stmt.columnText(at: 1) {
+                dict[dev] = plat
+            }
+        }
+        return dict
+    }
+
     public var apps: AppGroups {
         if let cached = _apps { return cached }
         let loaded = (try? AppGroups.load(db: db, includeRetired: false, gamesOnly: context.gamesOnly, deviceScope: context.deviceScope)) ?? AppGroups(apps: [:])

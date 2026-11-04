@@ -100,6 +100,19 @@ internal static class M004_Devices
         {
             RebuildAppsTable(connection, deviceId);
         }
+
+        bool hasUpdatedUtc;
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('apps') WHERE name = 'updated_utc'";
+            hasUpdatedUtc = ((long?)cmd.ExecuteScalar() ?? 0) > 0;
+        }
+        if (!hasUpdatedUtc)
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "ALTER TABLE apps ADD COLUMN updated_utc INTEGER NOT NULL DEFAULT 0";
+            cmd.ExecuteNonQuery();
+        }
     }
 
     private static void RebuildAppsTable(SqliteConnection connection, string defaultDeviceId)
@@ -126,7 +139,8 @@ internal static class M004_Devices
                     added_utc      INTEGER NOT NULL,
                     retired_utc    INTEGER NULL,
                     is_background  INTEGER NOT NULL DEFAULT 0,
-                    kind           INTEGER NULL
+                    kind           INTEGER NULL,
+                    updated_utc    INTEGER NOT NULL DEFAULT 0
                 );
 
                 CREATE UNIQUE INDEX ux_apps_device_exe ON apps_new(device_id, exe_path COLLATE NOCASE);

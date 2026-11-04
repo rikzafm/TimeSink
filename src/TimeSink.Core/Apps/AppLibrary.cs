@@ -145,10 +145,12 @@ public sealed class AppLibrary : IDisposable
     /// </summary>
     public void SetBackground(long appId, bool background)
     {
-        using var cmd = Cmd(@"UPDATE apps SET is_background=$b
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        using var cmd = Cmd(@"UPDATE apps SET is_background=$b, updated_utc=$now
             WHERE id = (SELECT COALESCE(canonical_id, id) FROM apps WHERE id=$id)
                OR canonical_id = (SELECT COALESCE(canonical_id, id) FROM apps WHERE id=$id)");
         cmd.Parameters.AddWithValue("$b", background ? 1 : 0);
+        cmd.Parameters.AddWithValue("$now", now);
         cmd.Parameters.AddWithValue("$id", appId);
         cmd.ExecuteNonQuery();
     }
@@ -159,10 +161,13 @@ public sealed class AppLibrary : IDisposable
     /// </summary>
     public void SetKind(long appId, AppKind kind)
     {
-        using var cmd = Cmd(@"UPDATE apps SET kind=$k
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        using var cmd = Cmd(@"UPDATE apps SET kind=$k, category=$cat, updated_utc=$now
             WHERE id = (SELECT COALESCE(canonical_id, id) FROM apps WHERE id=$id)
                OR canonical_id = (SELECT COALESCE(canonical_id, id) FROM apps WHERE id=$id)");
         cmd.Parameters.AddWithValue("$k", (int)kind);
+        cmd.Parameters.AddWithValue("$cat", kind == AppKind.Other ? "Other" : kind.ToString());
+        cmd.Parameters.AddWithValue("$now", now);
         cmd.Parameters.AddWithValue("$id", appId);
         cmd.ExecuteNonQuery();
     }
@@ -172,8 +177,10 @@ public sealed class AppLibrary : IDisposable
     {
         name = name.Trim();
         if (name.Length == 0) return false;
-        using var cmd = Cmd("UPDATE apps SET display_name=$n WHERE id=$id");
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        using var cmd = Cmd("UPDATE apps SET display_name=$n, updated_utc=$now WHERE id=$id");
         cmd.Parameters.AddWithValue("$n", name);
+        cmd.Parameters.AddWithValue("$now", now);
         cmd.Parameters.AddWithValue("$id", appId);
         return cmd.ExecuteNonQuery() > 0;
     }

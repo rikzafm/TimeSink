@@ -2,7 +2,27 @@ import Foundation
 
 /// Best available publisher for an app, read from its bundle.
 public enum AppVendor {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cache: [String: String] = [:]
+
     public static func name(executable: String) -> String {
+        lock.lock()
+        if let cached = cache[executable] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        let result = extractName(executable: executable)
+
+        lock.lock()
+        cache[executable] = result
+        lock.unlock()
+
+        return result
+    }
+
+    private static func extractName(executable: String) -> String {
         guard let bundlePath = MacIconCache.resolveBundlePath(from: executable),
               let bundle = Bundle(path: bundlePath) else { return "" }
         if bundle.bundleIdentifier?.hasPrefix("com.apple.") == true { return "Apple" }

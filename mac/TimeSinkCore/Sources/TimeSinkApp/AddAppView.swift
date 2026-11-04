@@ -201,14 +201,22 @@ public struct AddAppView: View {
     }
 
     private func trackedButtons(_ app: TrackedAppItem, width: CGFloat, eyeLime: Bool) -> some View {
-        let game = app.kind != .other
         let isBg = app.isBackground
+        let isKindActive = app.kind != .other
         return HStack(spacing: width == 38 ? 12 : 10) {
-            iconButton(.gamepad, width: width, border: game ? ThemeColors.accent : ThemeColors.border, color: game ? ThemeColors.accent : ThemeColors.textDim, help: "Game type") {
-                try? library.updateApp(appId: app.id, displayName: app.displayName, kind: game ? .other : .game, isBackground: app.isBackground)
+            iconButton(
+                app.kind.icon,
+                width: width,
+                border: isKindActive ? ThemeColors.accent : ThemeColors.border,
+                color: isKindActive ? ThemeColors.accent : ThemeColors.textDim,
+                help: "Counts as: \(app.kind.displayName). Click to change it for Year > Wrapped."
+            ) {
+                let next = AppKinds.next(app.kind)
+                try? library.updateApp(appId: app.id, displayName: app.displayName, kind: next, isBackground: app.isBackground)
                 if let onTick = state.onTickRequest { onTick() } else { state.refresh() }
                 reloadAll()
             }
+
             iconButton(.layers, width: width, border: isBg ? ThemeColors.accent : ThemeColors.border, color: isBg ? ThemeColors.accent : ThemeColors.textDim, help: "Background app") {
                 try? library.updateApp(appId: app.id, displayName: app.displayName, kind: app.kind, isBackground: !isBg)
                 if let onTick = state.onTickRequest { onTick() } else { state.refresh() }
@@ -259,7 +267,7 @@ public struct AddAppView: View {
 
     private var runningTab: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 12) {
+            LazyVStack(alignment: .leading, spacing: 12) {
                 Text("Open on your Mac right now")
                     .font(.system(size: 12))
                     .foregroundColor(ThemeColors.textMuted)
@@ -486,7 +494,7 @@ public struct AddAppView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 32)
                 } else {
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         ForEach(shown) { trackedRow($0) }
                     }
                 }

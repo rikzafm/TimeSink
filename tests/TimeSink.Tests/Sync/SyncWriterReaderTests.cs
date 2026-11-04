@@ -719,4 +719,46 @@ public sealed class SyncWriterReaderTests(ITestOutputHelper output)
             main.Kind.Should().Be(TimeSink.Core.Apps.AppKind.Coding);
         }
     }
+
+    [Fact]
+    public void Bidirectional_sync_updates_remote_app_classification_back_to_originating_device()
+    {
+        using var rig = new BackupTestRig();
+        var syncFolder = rig.P("sync");
+        var now = DateTimeOffset.Parse("2026-11-01T12:00:00Z");
+
+        // 1. Setup Mac source DB with Safari
+        var macDb = rig.NewDb("mac.db", (@"/Applications/Safari.app", 1761984000, 1761987600));
+        SetDevice(rig, macDb, "dev-mac-001", "MacBook Air", "macos");
+
+        // 2. Setup Windows DB
+        var winDb = rig.NewDb("win.db", (@"C:\Tools\Notepad.exe", 1761900000, 1761903600));
+        SetDevice(rig, winDb, "dev-win-001", "Desktop PC", "windows");
+
+        // 3. Mac exports, Windows imports
+        var macSnap1 = SyncWriter.Write(macDb, syncFolder, now, "1.0.0");
+        SyncReader.Import(macSnap1, winDb, TimeZoneInfo.Utc);
+
+        // 4. On Windows, user changes category of Mac's Safari to Coding
+        long winSafariId;
+        using (var lib = TimeSink.Core.Apps.AppLibrary.Open(winDb))
+        {
+            winSafariId = lib.Tracked().Single(t => t.ExePath.Contains("Safari")).Id;
+            lib.SetKind(winSafariId, TimeSink.Core.Apps.AppKind.Coding);
+        }
+
+        // 5. Windows exports snapshot
+        var winSnap = SyncWriter.Write(winDb, syncFolder, now.AddMinutes(5), "1.0.0");
+
+        // 6. Mac imports Windows snapshot
+        var importRes = SyncReader.Import(winSnap, macDb, TimeZoneInfo.Utc);
+        importRes.Status.Should().Be(SyncStatus.Success);
+
+        // 7. Verify Mac's local Safari app is now Coding!
+        using (var lib = TimeSink.Core.Apps.AppLibrary.Open(macDb))
+        {
+            var macSafari = lib.Tracked().Single(t => t.ExePath.Contains("Safari"));
+            macSafari.Kind.Should().Be(TimeSink.Core.Apps.AppKind.Coding);
+        }
+    }
 }

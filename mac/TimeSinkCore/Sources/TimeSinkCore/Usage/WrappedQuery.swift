@@ -53,6 +53,9 @@ public struct WrappedResult: Sendable, Equatable {
     public let longestSessions: [WrappedApp]?
     public let deviceTotals: [String: Int64]?
     public let onBothSeconds: Int64
+    public let pcTop: WrappedKindTop?
+    public let macTop: WrappedKindTop?
+    public let deviceTops: [String: WrappedKindTop]?
 
     public var equivalentDays: Int { Int(totalSeconds / 86400) }
     public var equivalentHours: Int { Int((totalSeconds % 86400) / 3600) }
@@ -86,7 +89,10 @@ public struct WrappedResult: Sendable, Equatable {
         entertainmentTop: WrappedKindTop? = nil,
         longestSessions: [WrappedApp]?,
         deviceTotals: [String: Int64]?,
-        onBothSeconds: Int64
+        onBothSeconds: Int64,
+        pcTop: WrappedKindTop? = nil,
+        macTop: WrappedKindTop? = nil,
+        deviceTops: [String: WrappedKindTop]? = nil
     ) {
         self.year = year
         self.nowUtc = nowUtc
@@ -116,6 +122,9 @@ public struct WrappedResult: Sendable, Equatable {
         self.longestSessions = longestSessions
         self.deviceTotals = deviceTotals
         self.onBothSeconds = onBothSeconds
+        self.pcTop = pcTop
+        self.macTop = macTop
+        self.deviceTops = deviceTops
     }
 }
 
@@ -176,12 +185,29 @@ public enum WrappedQuery {
         }
 
         let months = MonthRollup(segs: windowed, zone: zone, nowUtc: nowUtc, onSinceUtc: onSinceUtc, gamesOnly: gamesOnly)
+        var perDeviceGroup: [String: [Int64: Int64]] = [:]
+        var perPlatformGroup: [String: [Int64: Int64]] = [:]
+        let devicePlatforms = window.devicePlatforms
+
         for sl in UsageDays.slices(windowed, zone: zone) {
             let len = sl.end - sl.start
             if sl.year != todayYear { continue }
             perDay[sl.day, default: 0] += len
             perGroup[sl.seg.group, default: 0] += len
             totalAppSeconds += len
+
+            let dev = sl.seg.deviceId
+            let devKey = !dev.isEmpty ? dev : (window.localDeviceId ?? "local")
+            perDeviceGroup[devKey, default: [:]][sl.seg.group, default: 0] += len
+
+            let plat: String
+            if !dev.isEmpty, let p = devicePlatforms[dev] ?? devicePlatforms[dev.lowercased()] {
+                plat = p.lowercased()
+            } else {
+                plat = "macos"
+            }
+            perPlatformGroup[plat, default: [:]][sl.seg.group, default: 0] += len
+
             for p in UsageDays.hourPieces(from: sl.start, to: sl.end, zone: zone) {
                 if p.hour >= 0 && p.hour < 24 {
                     perHour[p.hour] += (p.end - p.start)
@@ -220,6 +246,39 @@ public enum WrappedQuery {
             let o = Array(list.dropFirst(podiumSize).prefix(othersSize))
             let sumSecs = list.reduce(0) { $0 + $1.seconds }
             return WrappedKindTop(podium: p, others: o, seconds: sumSecs)
+        }
+
+        func buildGroupTop(_ groupSecs: [Int64: Int64]) -> WrappedKindTop {
+            var list: [WrappedApp] = []
+            for (grpId, secs) in groupSecs where !UsageRank.isBackground(apps: apps, group: grpId) && secs > 0 {
+                list.append(WrappedApp(appId: grpId, name: UsageRank.nameOf(apps: apps, group: grpId), seconds: secs))
+            }
+            let rankedGroup = UsageRank.rank(items: list, apps: apps, groupOf: { $0.appId }, amountOf: { $0.seconds })
+            let p = Array(rankedGroup.prefix(podiumSize))
+            let o = Array(rankedGroup.dropFirst(podiumSize).prefix(othersSize))
+            let sumSecs = rankedGroup.reduce(0) { $0 + $1.seconds }
+            return WrappedKindTop(podium: p, others: o, seconds: sumSecs)
+        }
+
+        let pcTop: WrappedKindTop? = {
+            if let winSecs = perPlatformGroup["windows"], winSecs.values.reduce(0, +) > 0 {
+                return buildGroupTop(winSecs)
+            }
+            return nil
+        }()
+
+        let macTop: WrappedKindTop? = {
+            if let macSecs = perPlatformGroup["macos"], macSecs.values.reduce(0, +) > 0 {
+                return buildGroupTop(macSecs)
+            }
+            return nil
+        }()
+
+        var devTops: [String: WrappedKindTop] = [:]
+        for (k, v) in perDeviceGroup {
+            if v.values.reduce(0, +) > 0 {
+                devTops[k] = buildGroupTop(v)
+            }
         }
 
         var longestSessionApps: [WrappedApp] = []
@@ -319,7 +378,10 @@ public enum WrappedQuery {
             entertainmentTop: topOfKind(.entertainment),
             longestSessions: longest,
             deviceTotals: wrappedDeviceTotals.isEmpty ? nil : wrappedDeviceTotals,
-            onBothSeconds: wrappedOnBoth
+            onBothSeconds: wrappedOnBoth,
+            pcTop: pcTop,
+            macTop: macTop,
+            deviceTops: devTops.isEmpty ? nil : devTops
         )
     }
 }

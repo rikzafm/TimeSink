@@ -195,10 +195,11 @@ public struct FlowLayout: Layout {
 public enum TSIcon {
     case gamepad, gear, gearLarge, eye, eyeSlash, lashes, layers, back, close, search, searchSmall
     case folder, upload, clock, history, tableOptions, triangleLeft, triangleRight, sync, sliders, chartBars
+    case sparkle, socialMedia, browsing, coding, productivity, entertainment, appsGrid
 
     var box: CGFloat {
         switch self {
-        case .gamepad, .gear, .gearLarge, .sync: return 24
+        case .gamepad, .gear, .gearLarge, .sync, .sparkle, .socialMedia, .browsing, .coding, .productivity, .entertainment, .appsGrid: return 24
         case .eye, .eyeSlash, .layers: return 18
         case .lashes: return 20
         case .close: return 14
@@ -300,8 +301,37 @@ public enum TSIcon {
             line(pt(4, 12.5), pt(4, 8.5))
             line(pt(8, 12.5), pt(8, 3.5))
             line(pt(12, 12.5), pt(12, 6))
+        case .appsGrid:
+            p = SVGPath.parse("M5 5h5v5H5zM14 5h5v5h-5zM5 14h5v5H5zM14 14h5v5h-5z")
+        case .sparkle:
+            p = SVGPath.parse("M12 3l2 7 7 2-7 2-2 7-2-7-7-2 7-2z")
+        case .socialMedia:
+            p = SVGPath.parse("M15.5 2H3.5A2.5 2.5 0 0 0 1 4.5V15l3 4.5 3.5-4.5h7.5a2.5 2.5 0 0 0 2.5-2.5v-8A2.5 2.5 0 0 0 15.5 2zM18 7h3a2 2 0 0 1 2 2v7.5l-3 5-3.5-4.5H12")
+        case .browsing:
+            p = SVGPath.parse("M12 1a11 11 0 1 0 11 11A11 11 0 0 0 12 1zm4.2 6.4l-1.6 5.6-7.2 3.2 1.6-5.6z")
+        case .coding:
+            p = SVGPath.parse("M7 4.5L0.8 11.2 7 18M17 4.5l6.2 6.7L17 18M14.2 2L9.8 20.5")
+        case .productivity:
+            p = SVGPath.parse("M6 1.5h12a4 4 0 0 1 4 4v13a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4v-13a4 4 0 0 1 4-4zm.5 7l2 2 3.5-3.5M14 9h4M6.5 15.5l2 2 3.5-3.5M14 16h4")
+        case .entertainment:
+            p = SVGPath.parse("M1 9h22v10a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2zm2.8-6.8l18.4 3.6-.6 2.7H1.5zm3.7.8L6.2 8.5M14 4.5l-1 4M9.5 12.5l5.5 3-5.5 3z")
         }
         return p
+    }
+}
+
+extension AppKind {
+    public var icon: TSIcon {
+        switch self {
+        case .game: return .gamepad
+        case .gacha: return .sparkle
+        case .socialMedia: return .socialMedia
+        case .browsing: return .browsing
+        case .coding: return .coding
+        case .productivity: return .productivity
+        case .entertainment: return .entertainment
+        case .other: return .appsGrid
+        }
     }
 }
 
@@ -399,6 +429,11 @@ public struct TSSwitch: View {
     }
 }
 
+@MainActor
+private enum AppTileImageCache {
+    static let cache = NSCache<NSData, NSImage>()
+}
+
 /// App tile: the real icon when there is one, otherwise a coloured letter.
 public struct AppTile: View {
     let name: String
@@ -409,9 +444,21 @@ public struct AppTile: View {
     var fill: Color = ThemeColors.surface
     var border: Color = ThemeColors.borderSubtle
 
+    private var iconImage: NSImage? {
+        guard let png = png else { return nil }
+        if let cached = AppTileImageCache.cache.object(forKey: png as NSData) {
+            return cached
+        }
+        if let img = NSImage(data: png) {
+            AppTileImageCache.cache.setObject(img, forKey: png as NSData)
+            return img
+        }
+        return nil
+    }
+
     public var body: some View {
         ZStack {
-            if let png, let img = NSImage(data: png) {
+            if let img = iconImage {
                 Image(nsImage: img).resizable().scaledToFit()
             } else {
                 RoundedRectangle(cornerRadius: radius).fill(fill)

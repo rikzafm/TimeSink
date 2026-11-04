@@ -222,6 +222,18 @@ public sealed class AppCatalogue
         catch (Exception e) when (IsBusyOrMissing(e)) { return CatalogueOutcome.Unavailable; }
         if (change.Kind == ChangeKind.Retire) foreach (var path in change.ExePaths) NoteStopped(path);
         else if (change.Kind == ChangeKind.Restore) foreach (var path in change.ExePaths) NoteAddedElsewhere(path);
+        if (change.Kind is ChangeKind.SetKind or ChangeKind.Rename or ChangeKind.SetBackground or ChangeKind.MakeMain or ChangeKind.Unmerge)
+        {
+            try
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    using var ev = System.Threading.EventWaitHandle.OpenExisting(TimeSink.Core.Backup.AgentSignals.SyncNowEventName);
+                    ev.Set();
+                }
+            }
+            catch { }
+        }
         return CatalogueOutcome.Done;
     }
 

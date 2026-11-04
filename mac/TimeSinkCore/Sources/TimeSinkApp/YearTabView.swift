@@ -781,24 +781,24 @@ public struct WrappedCardView: View {
             if state.wrappedGroupByPlatform {
                 // Local device first on Mac: Mac then PC
                 if let macTop = result.macTop, !macTop.podium.isEmpty {
-                    let title = macTop.podium.first.map { "\(.name) kept you company most." } ?? "No apps yet."
+                    let title = macTop.podium.first.map { "\($0.name) kept you company most." } ?? "No apps yet."
                     list.append(.deviceTop(eyebrow: "YOUR MAC'S TOP APPS", title: title, podium: macTop.podium, others: macTop.others))
                 }
                 if let pcTop = result.pcTop, !pcTop.podium.isEmpty {
-                    let title = pcTop.podium.first.map { "\(.name) kept you company most." } ?? "No apps yet."
+                    let title = pcTop.podium.first.map { "\($0.name) kept you company most." } ?? "No apps yet."
                     list.append(.deviceTop(eyebrow: "YOUR PC'S TOP APPS", title: title, podium: pcTop.podium, others: pcTop.others))
                 }
             } else if let devTops = result.deviceTops, !devTops.isEmpty {
                 let localId = state.localDeviceId
                 if !localId.isEmpty, let localTop = devTops[localId], !localTop.podium.isEmpty {
                     let name = state.deviceDisplayName(localId).uppercased()
-                    let title = localTop.podium.first.map { "\(.name) kept you company most." } ?? "No apps yet."
+                    let title = localTop.podium.first.map { "\($0.name) kept you company most." } ?? "No apps yet."
                     list.append(.deviceTop(eyebrow: "YOUR \(name)'S TOP APPS", title: title, podium: localTop.podium, others: localTop.others))
                 }
-                for (devId, top) in devTops.sorted(by: { .key < .key }) {
+                for (devId, top) in devTops.sorted(by: { $0.key < $1.key }) {
                     if devId == localId || top.podium.isEmpty { continue }
                     let name = state.deviceDisplayName(devId).uppercased()
-                    let title = top.podium.first.map { "\(.name) kept you company most." } ?? "No apps yet."
+                    let title = top.podium.first.map { "\($0.name) kept you company most." } ?? "No apps yet."
                     list.append(.deviceTop(eyebrow: "YOUR \(name)'S TOP APPS", title: title, podium: top.podium, others: top.others))
                 }
             }

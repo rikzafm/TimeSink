@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 @testable import TimeSinkCore
+@testable import TimeSinkApp
 
 final class AppStateTests: XCTestCase {
     func testAppStateQueriesAndTabSwitching() throws {
@@ -417,10 +418,11 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(detailRes?.name, "Antigravity")
     }
 
+    @MainActor
     func testTodayExpandedAppIdEscNavigationAndTabSwitch() throws {
         let db = try SQLiteDatabase(path: ":memory:")
         try Migrator.apply(to: db)
-        let state = AppState(db: db)
+        let state = TimeSinkApp.AppState(db: db)
 
         state.selectedTab = .today
         XCTAssertNil(state.todayExpandedAppId)

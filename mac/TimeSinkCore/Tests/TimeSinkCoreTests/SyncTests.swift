@@ -411,5 +411,62 @@ final class SyncTests: XCTestCase {
         dbMac.close()
         dbWin.close()
     }
+
+    func testBidirectionalRemoteAppClassificationSyncUpdatesLocalApp() throws {
+        let dbMac = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: dbMac)
+        let macId = try dbMac.scalarText("SELECT device_id FROM devices LIMIT 1;") ?? "mac-1"
+
+        let dbWin = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: dbWin)
+        let winId = "win-pc-1"
+        try dbWin.exec("""
+            UPDATE settings SET value = '\(winId)' WHERE key = 'device.id';
+            UPDATE devices SET device_id = '\(winId)', name = 'Windows PC', platform = 'windows';
+            """)
+
+        let macLib = MacAppLibrary(db: dbMac)
+        let safariId = try macLib.trackApp(
+            exePath: "/Applications/Safari.app",
+            displayName: "Safari",
+            category: "Other",
+            deviceId: macId
+        )
+
+        let tempFolder = (NSTemporaryDirectory() as NSString).appendingPathComponent("sync-bidi-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(atPath: tempFolder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: tempFolder) }
+
+        // 1. Mac exports its snapshot and Windows imports it
+        let macSnap = try SyncWriter.write(db: dbMac, syncFolder: tempFolder)
+        _ = try SyncReader.import(syncFile: macSnap, db: dbWin)
+
+        // Windows now has Safari
+        let winSafariId = try dbWin.scalarInt("SELECT id FROM apps WHERE device_id = '\(macId)' AND exe_path = '/Applications/Safari.app';")!
+        let initialWinCat = try dbWin.scalarText("SELECT category FROM apps WHERE id = \(winSafariId);")
+        XCTAssertEqual(initialWinCat, "Other")
+
+        // 2. In Windows app, user changes category of Mac's Safari to "Coding" (kind = 5)
+        let updateTime = Int64(Date().timeIntervalSince1970) + 10
+        try dbWin.exec("""
+            UPDATE apps SET category = 'Coding', kind = 5, updated_utc = \(updateTime) WHERE id = \(winSafariId);
+            """)
+
+        // 3. Windows exports snapshot
+        let winSnap = try SyncWriter.write(db: dbWin, syncFolder: tempFolder)
+
+        // 4. Mac imports Windows snapshot
+        let importRes = try SyncReader.import(syncFile: winSnap, db: dbMac)
+        XCTAssertEqual(importRes.status, .success)
+
+        // 5. Verify Mac version of the app updated to Coding!
+        let macCategory = try dbMac.scalarText("SELECT category FROM apps WHERE id = \(safariId);")
+        let macKind = try dbMac.scalarInt("SELECT kind FROM apps WHERE id = \(safariId);")
+        let macUpdatedUtc = try dbMac.scalarInt("SELECT updated_utc FROM apps WHERE id = \(safariId);")
+
+        XCTAssertEqual(macCategory, "Coding")
+        XCTAssertEqual(macKind, 5)
+        XCTAssertEqual(macUpdatedUtc, updateTime)
+    }
 }
 
