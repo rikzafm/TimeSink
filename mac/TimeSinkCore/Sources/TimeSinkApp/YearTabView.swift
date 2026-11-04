@@ -766,6 +766,11 @@ public struct WrappedCardView: View {
         case deviceTop(eyebrow: String, title: String, podium: [WrappedApp], others: [WrappedApp])
         case games
         case gacha
+        case socialMedia
+        case browsing
+        case coding
+        case productivity
+        case entertainment
         case longestSessions
         case habits
     }
@@ -800,6 +805,11 @@ public struct WrappedCardView: View {
         }
         list.append(.games)
         list.append(.gacha)
+        list.append(.socialMedia)
+        list.append(.browsing)
+        list.append(.coding)
+        list.append(.productivity)
+        list.append(.entertainment)
         list.append(.longestSessions)
         list.append(.habits)
         return list
@@ -847,13 +857,21 @@ public struct WrappedCardView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch index {
-        case 0: totalCard
-        case 1: podiumCard(eyebrow: "YOUR TOP APPS", title: result.podium.first.map { "\($0.name) kept you company most." } ?? "No apps yet.", podium: result.podium, others: result.others, emptyMessage: "No apps tracked yet.")
-        case 2: podiumCard(eyebrow: "YOUR TOP GAMES", title: result.gamesTop?.podium.first.map { "\($0.name) ate your evenings." } ?? "No games yet.", podium: result.gamesTop?.podium ?? [], others: result.gamesTop?.others ?? [], emptyMessage: "No games tracked yet. Mark one in Add app.")
-        case 3: podiumCard(eyebrow: "YOUR TOP GACHA", title: result.gachaTop?.podium.first.map { "\($0.name) got your pulls." } ?? "No gacha games yet.", podium: result.gachaTop?.podium ?? [], others: result.gachaTop?.others ?? [], emptyMessage: "No gacha games tracked yet. Mark one in Add app.")
-        case 4: podiumCard(eyebrow: "YOUR LONGEST SESSIONS", title: result.longestSessions?.first.map { "\($0.name) held on the longest." } ?? "No sessions yet.", podium: result.longestSessions ?? [], others: [], emptyMessage: "No sessions tracked yet.")
-        default: habitsCard
+        let allCards = Self.cards(state: state, result: result)
+        let item = index < allCards.count ? allCards[index] : .habits
+        switch item {
+        case .total: totalCard
+        case .topApps: podiumCard(eyebrow: "YOUR TOP APPS", title: result.podium.first.map { "\($0.name) kept you company most." } ?? "No apps yet.", podium: result.podium, others: result.others, emptyMessage: "No apps tracked yet.")
+        case .deviceTop(let eyebrow, let title, let podium, let others): podiumCard(eyebrow: eyebrow, title: title, podium: podium, others: others, emptyMessage: "No apps tracked yet.")
+        case .games: podiumCard(eyebrow: "YOUR TOP GAMES", title: result.gamesTop?.podium.first.map { "\($0.name) ate your evenings." } ?? "No games yet.", podium: result.gamesTop?.podium ?? [], others: result.gamesTop?.others ?? [], emptyMessage: "No games tracked yet. Mark one in Add app.")
+        case .gacha: podiumCard(eyebrow: "YOUR TOP GACHA", title: result.gachaTop?.podium.first.map { "\($0.name) got your pulls." } ?? "No gacha games yet.", podium: result.gachaTop?.podium ?? [], others: result.gachaTop?.others ?? [], emptyMessage: "No gacha games tracked yet. Mark one in Add app.")
+        case .socialMedia: podiumCard(eyebrow: "YOUR TOP SOCIAL MEDIA", title: result.socialMediaTop?.podium.first.map { "\($0.name) kept you connected." } ?? "No social media apps yet.", podium: result.socialMediaTop?.podium ?? [], others: result.socialMediaTop?.others ?? [], emptyMessage: "No social media apps tracked yet. Mark one in Add app.")
+        case .browsing: podiumCard(eyebrow: "YOUR TOP BROWSING", title: result.browsingTop?.podium.first.map { "\($0.name) was your window to the web." } ?? "No browsing apps yet.", podium: result.browsingTop?.podium ?? [], others: result.browsingTop?.others ?? [], emptyMessage: "No browsing apps tracked yet. Mark one in Add app.")
+        case .coding: podiumCard(eyebrow: "YOUR TOP CODING", title: result.codingTop?.podium.first.map { "\($0.name) saw your commits." } ?? "No coding apps yet.", podium: result.codingTop?.podium ?? [], others: result.codingTop?.others ?? [], emptyMessage: "No coding apps tracked yet. Mark one in Add app.")
+        case .productivity: podiumCard(eyebrow: "YOUR TOP PRODUCTIVITY", title: result.productivityTop?.podium.first.map { "\($0.name) drove your focus." } ?? "No productivity apps yet.", podium: result.productivityTop?.podium ?? [], others: result.productivityTop?.others ?? [], emptyMessage: "No productivity apps tracked yet. Mark one in Add app.")
+        case .entertainment: podiumCard(eyebrow: "YOUR TOP ENTERTAINMENT", title: result.entertainmentTop?.podium.first.map { "\($0.name) kept you entertained." } ?? "No entertainment apps yet.", podium: result.entertainmentTop?.podium ?? [], others: result.entertainmentTop?.others ?? [], emptyMessage: "No entertainment apps tracked yet. Mark one in Add app.")
+        case .longestSessions: podiumCard(eyebrow: "YOUR LONGEST SESSIONS", title: result.longestSessions?.first.map { "\($0.name) held on the longest." } ?? "No sessions yet.", podium: result.longestSessions ?? [], others: [], emptyMessage: "No sessions tracked yet.")
+        case .habits: habitsCard
         }
     }
 

@@ -356,31 +356,34 @@ public static partial class SyncReader
                             if (existingId is long id)
                             {
                                 dstId = id;
-                                using var updCmd = conn.CreateCommand();
-                                updCmd.CommandText = """
-                                    UPDATE main.apps SET
-                                        exe_path = $p,
-                                        bundle_id = CASE WHEN $b IS NOT NULL AND $b != '' THEN $b ELSE bundle_id END,
-                                        package_family = CASE WHEN $f IS NOT NULL AND $f != '' THEN $f ELSE package_family END,
-                                        display_name = $n,
-                                        category = $c,
-                                        state = $s,
-                                        retired_utc = $r,
-                                        is_background = $bg,
-                                        kind = $k
-                                    WHERE id = $id;
-                                    """;
-                                updCmd.Parameters.AddWithValue("$p", exePath);
-                                updCmd.Parameters.AddWithValue("$b", (object?)bundleId ?? DBNull.Value);
-                                updCmd.Parameters.AddWithValue("$f", (object?)packageFamily ?? DBNull.Value);
-                                updCmd.Parameters.AddWithValue("$n", displayName);
-                                updCmd.Parameters.AddWithValue("$c", category);
-                                updCmd.Parameters.AddWithValue("$s", state);
-                                updCmd.Parameters.AddWithValue("$r", (object?)retiredUtc ?? DBNull.Value);
-                                updCmd.Parameters.AddWithValue("$bg", isBackground);
-                                updCmd.Parameters.AddWithValue("$k", effectiveKind);
-                                updCmd.Parameters.AddWithValue("$id", dstId);
-                                updCmd.ExecuteNonQuery();
+                                if (string.Equals(devId, manifest.DeviceId, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    using var updCmd = conn.CreateCommand();
+                                    updCmd.CommandText = """
+                                        UPDATE main.apps SET
+                                            exe_path = $p,
+                                            bundle_id = CASE WHEN $b IS NOT NULL AND $b != '' THEN $b ELSE bundle_id END,
+                                            package_family = CASE WHEN $f IS NOT NULL AND $f != '' THEN $f ELSE package_family END,
+                                            display_name = $n,
+                                            category = $c,
+                                            state = $s,
+                                            retired_utc = $r,
+                                            is_background = $bg,
+                                            kind = $k
+                                        WHERE id = $id;
+                                        """;
+                                    updCmd.Parameters.AddWithValue("$p", exePath);
+                                    updCmd.Parameters.AddWithValue("$b", (object?)bundleId ?? DBNull.Value);
+                                    updCmd.Parameters.AddWithValue("$f", (object?)packageFamily ?? DBNull.Value);
+                                    updCmd.Parameters.AddWithValue("$n", displayName);
+                                    updCmd.Parameters.AddWithValue("$c", category);
+                                    updCmd.Parameters.AddWithValue("$s", state);
+                                    updCmd.Parameters.AddWithValue("$r", (object?)retiredUtc ?? DBNull.Value);
+                                    updCmd.Parameters.AddWithValue("$bg", isBackground);
+                                    updCmd.Parameters.AddWithValue("$k", effectiveKind);
+                                    updCmd.Parameters.AddWithValue("$id", dstId);
+                                    updCmd.ExecuteNonQuery();
+                                }
                             }
                             else
                             {
@@ -497,7 +500,13 @@ public static partial class SyncReader
                             if (sId.HasValue && tId.HasValue && sId.Value != tId.Value)
                             {
                                 using var upCross = conn.CreateCommand();
-                                upCross.CommandText = "UPDATE main.apps SET canonical_id = $t WHERE id = $s;";
+                                upCross.CommandText = """
+                                    UPDATE main.apps
+                                    SET canonical_id = $t,
+                                        kind = COALESCE((SELECT kind FROM main.apps WHERE id = $t), kind),
+                                        is_background = (SELECT is_background FROM main.apps WHERE id = $t)
+                                    WHERE id = $s;
+                                    """;
                                 upCross.Parameters.AddWithValue("$t", tId.Value);
                                 upCross.Parameters.AddWithValue("$s", sId.Value);
                                 upCross.ExecuteNonQuery();

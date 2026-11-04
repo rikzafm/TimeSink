@@ -52,6 +52,26 @@ public static class WrappedStringKeys
     public const string NoGames = "wrapNoGames";
     public const string NoGacha = "wrapNoGacha";
     public const string CardNameLongest = "wrapCardNameLongest";
+    public const string CardNameSocialMedia = "wrapCardNameSocialMedia";
+    public const string CardSocialMediaLabel = "wrapCardSocialMediaLabel";
+    public const string SocialMediaHeadline = "wrapSocialMediaHeadline";
+    public const string NoSocialMedia = "wrapNoSocialMedia";
+    public const string CardNameBrowsing = "wrapCardNameBrowsing";
+    public const string CardBrowsingLabel = "wrapCardBrowsingLabel";
+    public const string BrowsingHeadline = "wrapBrowsingHeadline";
+    public const string NoBrowsing = "wrapNoBrowsing";
+    public const string CardNameCoding = "wrapCardNameCoding";
+    public const string CardCodingLabel = "wrapCardCodingLabel";
+    public const string CodingHeadline = "wrapCodingHeadline";
+    public const string NoCoding = "wrapNoCoding";
+    public const string CardNameProductivity = "wrapCardNameProductivity";
+    public const string CardProductivityLabel = "wrapCardProductivityLabel";
+    public const string ProductivityHeadline = "wrapProductivityHeadline";
+    public const string NoProductivity = "wrapNoProductivity";
+    public const string CardNameEntertainment = "wrapCardNameEntertainment";
+    public const string CardEntertainmentLabel = "wrapCardEntertainmentLabel";
+    public const string EntertainmentHeadline = "wrapEntertainmentHeadline";
+    public const string NoEntertainment = "wrapNoEntertainment";
     public const string Card6Label = "wrapCard6Label";
     public const string LongestHeadline = "wrapLongestHeadline";
     public const string CardPcLabel = "wrapCardPcLabel";
@@ -74,6 +94,11 @@ public static class WrappedStringKeys
         Peak, PeakValue, PeakSub, Noon, NoonSub, NoonSubEarly, CardNameTotal, CardNameTop, CardNameHabits, Prev, Next, GoTo,
         Save, SaveDone, SaveTitle, SaveFilter,
         CardNameGames, CardNameGacha, Card4Label, GamesHeadline, Card5Label, GachaHeadline, NoGames, NoGacha,
+        CardNameSocialMedia, CardSocialMediaLabel, SocialMediaHeadline, NoSocialMedia,
+        CardNameBrowsing, CardBrowsingLabel, BrowsingHeadline, NoBrowsing,
+        CardNameCoding, CardCodingLabel, CodingHeadline, NoCoding,
+        CardNameProductivity, CardProductivityLabel, ProductivityHeadline, NoProductivity,
+        CardNameEntertainment, CardEntertainmentLabel, EntertainmentHeadline, NoEntertainment,
         CardNameLongest, Card6Label, LongestHeadline,
         CardPcLabel, CardMacLabel, CardDeviceLabel, CardNamePc, CardNameMac,
     ];

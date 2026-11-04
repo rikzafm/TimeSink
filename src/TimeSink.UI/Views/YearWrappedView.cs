@@ -32,7 +32,7 @@ public sealed class YearWrappedView : UserControl, IYearSubView
     private const int RefreshEverySeconds = 30;
     private const double SwipeDistance = 40;
 
-    private enum CardKind { Total, TopApps, DeviceTop, Games, Gacha, LongestSessions, Habits }
+    private enum CardKind { Total, TopApps, DeviceTop, Games, Gacha, SocialMedia, Browsing, Coding, Productivity, Entertainment, LongestSessions, Habits }
     private sealed record CardItem(CardKind Kind, string NameKey, string? DeviceId = null, string? Platform = null, string? DeviceName = null, WrappedKindTop? Top = null);
 
     private readonly string _dbPath;
@@ -193,6 +193,11 @@ public sealed class YearWrappedView : UserControl, IYearSubView
 
         list.Add(new(CardKind.Games, WrappedStringKeys.CardNameGames));
         list.Add(new(CardKind.Gacha, WrappedStringKeys.CardNameGacha));
+        list.Add(new(CardKind.SocialMedia, WrappedStringKeys.CardNameSocialMedia));
+        list.Add(new(CardKind.Browsing, WrappedStringKeys.CardNameBrowsing));
+        list.Add(new(CardKind.Coding, WrappedStringKeys.CardNameCoding));
+        list.Add(new(CardKind.Productivity, WrappedStringKeys.CardNameProductivity));
+        list.Add(new(CardKind.Entertainment, WrappedStringKeys.CardNameEntertainment));
         list.Add(new(CardKind.LongestSessions, WrappedStringKeys.CardNameLongest));
         list.Add(new(CardKind.Habits, WrappedStringKeys.CardNameHabits));
         return list;
@@ -233,6 +238,11 @@ public sealed class YearWrappedView : UserControl, IYearSubView
         }
         AppIcons.Load(_dbPath, result.Podium.Concat(result.Others)
             .Concat(result.GamesTop?.Podium ?? []).Concat(result.GachaTop?.Podium ?? [])
+            .Concat(result.SocialMediaTop?.Podium ?? []).Concat(result.SocialMediaTop?.Others ?? [])
+            .Concat(result.BrowsingTop?.Podium ?? []).Concat(result.BrowsingTop?.Others ?? [])
+            .Concat(result.CodingTop?.Podium ?? []).Concat(result.CodingTop?.Others ?? [])
+            .Concat(result.ProductivityTop?.Podium ?? []).Concat(result.ProductivityTop?.Others ?? [])
+            .Concat(result.EntertainmentTop?.Podium ?? []).Concat(result.EntertainmentTop?.Others ?? [])
             .Concat(result.LongestSessions ?? []).Concat(extraApps).Select(a => a.AppId));
         Redraw();
 #if DEBUG
@@ -265,6 +275,11 @@ public sealed class YearWrappedView : UserControl, IYearSubView
                 CardKind.DeviceTop => WrappedStringKeys.Card2Label,
                 CardKind.Games => WrappedStringKeys.Card4Label,
                 CardKind.Gacha => WrappedStringKeys.Card5Label,
+                CardKind.SocialMedia => WrappedStringKeys.CardSocialMediaLabel,
+                CardKind.Browsing => WrappedStringKeys.CardBrowsingLabel,
+                CardKind.Coding => WrappedStringKeys.CardCodingLabel,
+                CardKind.Productivity => WrappedStringKeys.CardProductivityLabel,
+                CardKind.Entertainment => WrappedStringKeys.CardEntertainmentLabel,
                 CardKind.LongestSessions => WrappedStringKeys.Card6Label,
                 _ => WrappedStringKeys.Card3Label
             };
@@ -285,6 +300,11 @@ public sealed class YearWrappedView : UserControl, IYearSubView
                 WrappedStringKeys.TopHeadline, item.Top?.Podium, item.Top?.Others, "", isDeviceSpecific: true),
             CardKind.Games => Podium(Str(WrappedStringKeys.Card4Label), WrappedStringKeys.GamesHeadline, r.GamesTop?.Podium, r.GamesTop?.Others, WrappedStringKeys.NoGames),
             CardKind.Gacha => Podium(Str(WrappedStringKeys.Card5Label), WrappedStringKeys.GachaHeadline, r.GachaTop?.Podium, r.GachaTop?.Others, WrappedStringKeys.NoGacha),
+            CardKind.SocialMedia => Podium(Str(WrappedStringKeys.CardSocialMediaLabel), WrappedStringKeys.SocialMediaHeadline, r.SocialMediaTop?.Podium, r.SocialMediaTop?.Others, WrappedStringKeys.NoSocialMedia),
+            CardKind.Browsing => Podium(Str(WrappedStringKeys.CardBrowsingLabel), WrappedStringKeys.BrowsingHeadline, r.BrowsingTop?.Podium, r.BrowsingTop?.Others, WrappedStringKeys.NoBrowsing),
+            CardKind.Coding => Podium(Str(WrappedStringKeys.CardCodingLabel), WrappedStringKeys.CodingHeadline, r.CodingTop?.Podium, r.CodingTop?.Others, WrappedStringKeys.NoCoding),
+            CardKind.Productivity => Podium(Str(WrappedStringKeys.CardProductivityLabel), WrappedStringKeys.ProductivityHeadline, r.ProductivityTop?.Podium, r.ProductivityTop?.Others, WrappedStringKeys.NoProductivity),
+            CardKind.Entertainment => Podium(Str(WrappedStringKeys.CardEntertainmentLabel), WrappedStringKeys.EntertainmentHeadline, r.EntertainmentTop?.Podium, r.EntertainmentTop?.Others, WrappedStringKeys.NoEntertainment),
             CardKind.LongestSessions => Podium(Str(WrappedStringKeys.Card6Label), WrappedStringKeys.LongestHeadline, r.LongestSessions, null, "", isLongest: true),
             _ => Habits(r),
         };

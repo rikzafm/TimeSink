@@ -156,7 +156,7 @@ public final class AppState: ObservableObject {
     private func healUntypedGachaApps() {
         for name in AppKinds.gachaNames {
             let escaped = name.replacingOccurrences(of: "'", with: "''")
-            try? db.exec("UPDATE apps SET kind = 2 WHERE (kind IS NULL OR kind = 0) AND (LOWER(display_name) LIKE '%\(escaped)%' OR LOWER(exe_path) LIKE '%\(escaped)%');")
+            try? db.exec("UPDATE apps SET kind = 2 WHERE kind IS NULL AND (LOWER(display_name) LIKE '%\(escaped)%' OR LOWER(exe_path) LIKE '%\(escaped)%');")
         }
     }
 

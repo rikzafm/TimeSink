@@ -129,4 +129,41 @@ public sealed class AppLibraryTests : IDisposable
         LetterTile.PaletteIndex(LetterTile.KeyFor(@"C:\A\x.exe"), 6)
             .Should().Be(LetterTile.PaletteIndex(LetterTile.KeyFor(@"c:\a\X.EXE"), 6)).And.BeInRange(0, 5);
     }
+
+    [Fact]
+    public void SetKind_and_SetBackground_update_both_canonical_app_and_merged_aliases()
+    {
+        using var lib = AppLibrary.Open(_path);
+        var main = lib.AddTracked(new NewApp(@"C:\Tools\Main.exe", "Main App", null), 100, null).AppId;
+        var alias = lib.AddTracked(new NewApp(@"C:\steamapps\common\Game\game.exe", "Alias Game", null), 100, null).AppId;
+        lib.Merge(alias, main).Should().BeTrue();
+
+        lib.SetKind(main, AppKind.Coding);
+        lib.SetBackground(main, true);
+
+        using (var db = Db.Open(_path))
+        using (var cmd = db.Connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT id, kind, is_background FROM apps WHERE id IN ($m, $a)";
+            cmd.Parameters.AddWithValue("$m", main);
+            cmd.Parameters.AddWithValue("$a", alias);
+            using var r = cmd.ExecuteReader();
+            var count = 0;
+            while (r.Read())
+            {
+                r.GetInt64(1).Should().Be((long)AppKind.Coding);
+                r.GetInt64(2).Should().Be(1);
+                count++;
+            }
+            count.Should().Be(2);
+        }
+
+        var tracked = lib.Tracked();
+        var grp = tracked.Single(t => t.Id == main);
+        grp.Kind.Should().Be(AppKind.Coding);
+        grp.Background.Should().BeTrue();
+
+        lib.SetKind(main, AppKind.Other);
+        lib.Tracked().Single(t => t.Id == main).Kind.Should().Be(AppKind.Other);
+    }
 }

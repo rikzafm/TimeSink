@@ -98,13 +98,16 @@ public final class AppGroups: @unchecked Sendable {
             let members = dict.values.filter { $0.group == gid }
             guard members.count > 1 else { continue }
 
+            let main = members.first(where: { $0.id == gid }) ?? members[0]
             let effectiveKind: AppKind
-            if members.contains(where: { $0.kind == .gacha }) {
+            if main.kind != .other {
+                effectiveKind = main.kind
+            } else if members.contains(where: { $0.kind == .gacha }) {
                 effectiveKind = .gacha
             } else if members.contains(where: { $0.kind == .game }) {
                 effectiveKind = .game
             } else {
-                effectiveKind = members.first(where: { $0.id == gid })?.kind ?? members[0].kind
+                effectiveKind = members.first(where: { $0.kind != .other })?.kind ?? .other
             }
             let effectiveBg = members.contains(where: { $0.background })
 
@@ -181,7 +184,7 @@ public final class AppGroups: @unchecked Sendable {
     public func onlyGames() -> AppGroups {
         let filtered = apps.filter {
             let main = apps[$0.value.group] ?? $0.value
-            return main.kind != .other
+            return AppKinds.isGame(main.kind)
         }
         return AppGroups(apps: Dictionary(uniqueKeysWithValues: filtered.map { ($0.key, $0.value) }))
     }

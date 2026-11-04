@@ -214,7 +214,7 @@ public sealed partial class AddAppView
     {
         var path = new System.Windows.Shapes.Path
         {
-            Data = Geometry.Parse(pathData), StrokeThickness = 2, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
+            Data = Geometry.Parse(pathData), StrokeThickness = 1.75, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
         };
         path.SetResourceReference(Shape.StrokeProperty, brushKey);
         var canvas = new Canvas { Width = 24, Height = 24 };
@@ -226,7 +226,7 @@ public sealed partial class AddAppView
     private UIElement KindDropdown(TrackedEntry app)
     {
         // a boxed control; the border turns accent on hover or while open
-        var face = new Border { Width = 132, Height = 36, Cursor = Cursors.Hand, BorderThickness = new Thickness(1) };
+        var face = new Border { Width = 150, Height = 36, Cursor = Cursors.Hand, BorderThickness = new Thickness(1) };
         face.SetResourceReference(Border.BackgroundProperty, "Brush.Surface");
         face.SetResourceReference(Border.BorderBrushProperty, "Brush.Border");
         face.SetResourceReference(Border.CornerRadiusProperty, "CornerRadius.Small");
@@ -252,8 +252,8 @@ public sealed partial class AddAppView
         System.Windows.Automation.AutomationProperties.SetName(face, TimeText.Str(AddAppStrings.Kind));
 
         var menu = new StackPanel();
-        var popup = new Popup { PlacementTarget = face, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true, Width = 132 };
-        foreach (var kind in new[] { AppKind.Other, AppKind.Game, AppKind.Gacha })
+        var popup = new Popup { PlacementTarget = face, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true, Width = 150 };
+        foreach (var kind in new[] { AppKind.Other, AppKind.Game, AppKind.Gacha, AppKind.SocialMedia, AppKind.Browsing, AppKind.Coding, AppKind.Productivity, AppKind.Entertainment })
         {
             var item = new Border { Padding = new Thickness(10, 8, 10, 8), Cursor = Cursors.Hand, Background = Brushes.Transparent };
             var picked = kind == app.Kind;
@@ -268,7 +268,12 @@ public sealed partial class AddAppView
             item.MouseEnter += (_, _) => item.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
             item.MouseLeave += (_, _) => item.Background = Brushes.Transparent;
             var k = kind;
-            item.MouseLeftButtonUp += (_, _) => { popup.IsOpen = false; if (k != app.Kind) SetKind(app.Id, k, RefreshSettings); };
+            item.PreviewMouseLeftButtonDown += (s, e) =>
+            {
+                e.Handled = true;
+                popup.IsOpen = false;
+                if (k != app.Kind) SetKind(app.Id, k, RefreshSettings);
+            };
             menu.Children.Add(item);
         }
         var frame = new Border { BorderThickness = new Thickness(1), Margin = new Thickness(0, 4, 0, 8), Child = menu };
@@ -301,10 +306,30 @@ public sealed partial class AddAppView
         return host;
     }
 
-    private static string KindIcon(AppKind kind) => kind switch { AppKind.Gacha => IconSparkle, AppKind.Game => IconGamepad, _ => IconApps };
+    private static string KindIcon(AppKind kind) => kind switch
+    {
+        AppKind.Gacha => IconSparkle,
+        AppKind.Game => IconGamepad,
+        AppKind.SocialMedia => IconSocialMedia,
+        AppKind.Browsing => IconBrowsing,
+        AppKind.Coding => IconCoding,
+        AppKind.Productivity => IconProductivity,
+        AppKind.Entertainment => IconEntertainment,
+        _ => IconApps
+    };
 
     private static string KindName(AppKind kind) =>
-        TimeText.Str(kind switch { AppKind.Game => AddAppStrings.KindGame, AppKind.Gacha => AddAppStrings.KindGacha, _ => AddAppStrings.KindOther });
+        TimeText.Str(kind switch
+        {
+            AppKind.Game => AddAppStrings.KindGame,
+            AppKind.Gacha => AddAppStrings.KindGacha,
+            AppKind.SocialMedia => AddAppStrings.KindSocialMedia,
+            AppKind.Browsing => AddAppStrings.KindBrowsing,
+            AppKind.Coding => AddAppStrings.KindCoding,
+            AppKind.Productivity => AddAppStrings.KindProductivity,
+            AppKind.Entertainment => AddAppStrings.KindEntertainment,
+            _ => AddAppStrings.KindOther
+        });
 
     private UIElement MergedSection(TrackedEntry app)
     {

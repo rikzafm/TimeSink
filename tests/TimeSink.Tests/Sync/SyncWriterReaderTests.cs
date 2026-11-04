@@ -594,4 +594,47 @@ public sealed class SyncWriterReaderTests(ITestOutputHelper output)
         rig.Scalar<string>(pcDb, "SELECT bundle_id FROM apps WHERE device_id = 'dev-mac-001' AND exe_path = '/Applications/OneDrive.app'")
             .Should().Be("com.microsoft.OneDrive-mac");
     }
+
+    [Fact]
+    public void Import_does_not_overwrite_local_app_kind_when_remote_snapshot_contains_cross_device_merged_apps()
+    {
+        using var rig = new BackupTestRig();
+        var syncFolder = rig.P("sync");
+        var now = DateTimeOffset.Parse("2026-11-01T12:00:00Z");
+
+        var srcDb = rig.NewDb("source.db", (@"/Applications/Antigravity.app", 1761984000, 1761987600));
+        SetDevice(rig, srcDb, "dev-mac-001", "MacBook Air", "macos");
+
+        var dstDb = rig.NewDb("dest.db", (@"C:\Tools\Antigravity.exe", 1761984000, 1761987600));
+        SetDevice(rig, dstDb, "dev-win-001", "Desktop PC", "windows");
+
+        long winAppId;
+        using (var lib = TimeSink.Core.Apps.AppLibrary.Open(dstDb))
+        {
+            winAppId = lib.Tracked().Single().Id;
+            lib.SetKind(winAppId, TimeSink.Core.Apps.AppKind.Coding);
+        }
+
+        rig.Exec(srcDb, "INSERT INTO devices (device_id, name, platform, is_local, first_seen_utc, state) VALUES ('dev-win-001', 'Desktop PC', 'windows', 0, '2026-11-01T00:00:00Z', 'active');");
+        rig.Exec(srcDb, "INSERT INTO apps (exe_path, display_name, category, state, added_utc, is_background, kind, device_id) VALUES ('C:\\Tools\\Antigravity.exe', 'Antigravity', 'Other', 'tracked', 100, 0, 0, 'dev-win-001');");
+        long macWinId;
+        using (var c = rig.Open(srcDb))
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "SELECT id FROM apps WHERE device_id = 'dev-win-001';";
+            macWinId = (long)cmd.ExecuteScalar()!;
+            cmd.CommandText = $"UPDATE apps SET canonical_id = {macWinId} WHERE device_id = 'dev-mac-001';";
+            cmd.ExecuteNonQuery();
+        }
+
+        var snapshotPath = SyncWriter.Write(srcDb, syncFolder, now, "1.0.0");
+
+        var result = SyncReader.Import(snapshotPath, dstDb, TimeZoneInfo.Utc);
+        result.Status.Should().Be(SyncStatus.Success);
+
+        using (var lib = TimeSink.Core.Apps.AppLibrary.Open(dstDb))
+        {
+            lib.Tracked().Single(t => t.Id == winAppId).Kind.Should().Be(TimeSink.Core.Apps.AppKind.Coding);
+        }
+    }
 }

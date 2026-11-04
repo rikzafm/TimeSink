@@ -318,13 +318,18 @@ public sealed partial class AddAppView
     private const string IconGamepad = "M7,8 L17,8 C20,8 21.5,11 21,15 C20.7,17.5 18.5,18 17.5,16.5 L16,15 L8,15 L6.5,16.5 C5.5,18 3.3,17.5 3,15 C2.5,11 4,8 7,8 Z M8,10.5 L8,13 M6.8,11.7 L9.2,11.7 M16.5,11 L16.6,11 M18,12.5 L18.1,12.5";
     private const string IconApps = "M5,5 L10,5 L10,10 L5,10 Z M14,5 L19,5 L19,10 L14,10 Z M5,14 L10,14 L10,19 L5,19 Z M14,14 L19,14 L19,19 L14,19 Z";
     private const string IconSparkle = "M12,3 L14,10 L21,12 L14,14 L12,21 L10,14 L3,12 L10,10 Z";
+    private const string IconSocialMedia = "M15.5,2 H3.5 A2.5,2.5 0 0 0 1,4.5 V15 L4,19.5 L7.5,15 H15.5 A2.5,2.5 0 0 0 18,12.5 V4.5 A2.5,2.5 0 0 0 15.5,2 Z M18,7 H21 A2,2 0 0 1 23,9 V16.5 L20,21.5 L16.5,17 H12";
+    private const string IconBrowsing = "M12,1 A11,11 0 1 0 12,23 A11,11 0 1 0 12,1 Z M16.2,7.4 L14.6,13.0 L7.4,16.2 L9.0,10.6 Z";
+    private const string IconCoding = "M7,4.5 L0.8,11.2 L7,18 M17,4.5 L23.2,11.2 L17,18 M14.2,2 L9.8,20.5";
+    private const string IconProductivity = "M6,1.5 H18 A4,4 0 0 1 22,5.5 V18.5 A4,4 0 0 1 18,22.5 H6 A4,4 0 0 1 2,18.5 V5.5 A4,4 0 0 1 6,1.5 Z M6.5,8.5 L8.5,10.5 L12,7 M14,9 H18 M6.5,15.5 L8.5,17.5 L12,14 M14,16 H18";
+    private const string IconEntertainment = "M1,9 H23 V19 A2,2 0 0 1 21,21 H3 A2,2 0 0 1 1,19 Z M3.8,2.2 L22.2,5.8 L21.6,8.5 H1.5 Z M7.5,3 L6.2,8.5 M14,4.5 L13,8.5 M9.5,12.5 L15,15.5 L9.5,18.5 Z";
 
     /// <summary>The per-row game-type button: cycles Other, Game, Gacha (what Year > Wrapped counts the app as); lit unless Other.</summary>
     private Button KindSwitch(AppKind kind, Action toggle)
     {
-        var name = TimeText.Str(kind switch { AppKind.Game => AddAppStrings.KindGame, AppKind.Gacha => AddAppStrings.KindGacha, _ => AddAppStrings.KindOther });
+        var name = KindName(kind);
         var on = kind != AppKind.Other;
-        var b = ActionIcon(kind == AppKind.Gacha ? IconSparkle : IconGamepad, on ? PillStyle.Done : PillStyle.Quiet, AddAppStrings.Kind, AddAppStrings.Kind, lit: on);
+        var b = ActionIcon(KindIcon(kind), on ? PillStyle.Done : PillStyle.Quiet, AddAppStrings.Kind, AddAppStrings.Kind, lit: on);
         b.ToolTip = TimeText.Str(AddAppStrings.KindTip, name);
         b.Margin = new Thickness(0, 0, 6, 0);
         b.Click += (_, _) => toggle();

@@ -16,13 +16,18 @@ public sealed class AppKindTests : IDisposable
         AppKinds.Detect(exe, name).Should().Be(expected);
 
     [Fact]
-    public void A_stored_kind_beats_detection_and_next_cycles_other_game_gacha()
+    public void A_stored_kind_beats_detection_and_next_cycles_all_eight_categories()
     {
         AppKinds.Resolve(0, @"C:\Steam\steamapps\common\Hades\Hades.exe", "Hades").Should().Be(AppKind.Other);
         AppKinds.Resolve(null, @"C:\Steam\steamapps\common\Hades\Hades.exe", "Hades").Should().Be(AppKind.Game);
         AppKinds.Next(AppKind.Other).Should().Be(AppKind.Game);
         AppKinds.Next(AppKind.Game).Should().Be(AppKind.Gacha);
-        AppKinds.Next(AppKind.Gacha).Should().Be(AppKind.Other);
+        AppKinds.Next(AppKind.Gacha).Should().Be(AppKind.SocialMedia);
+        AppKinds.Next(AppKind.SocialMedia).Should().Be(AppKind.Browsing);
+        AppKinds.Next(AppKind.Browsing).Should().Be(AppKind.Coding);
+        AppKinds.Next(AppKind.Coding).Should().Be(AppKind.Productivity);
+        AppKinds.Next(AppKind.Productivity).Should().Be(AppKind.Entertainment);
+        AppKinds.Next(AppKind.Entertainment).Should().Be(AppKind.Other);
     }
 
     [Fact]
@@ -41,5 +46,42 @@ public sealed class AppKindTests : IDisposable
         r.GamesTop.Seconds.Should().Be(10800 + 600);
         r.GachaTop!.Podium.Select(a => a.Name).Should().Equal("Gamma");
         r.GachaTop.Others.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Wrapped_splits_new_categories_into_their_own_podiums()
+    {
+        using (var lib = AppLibrary.Open(_f.DbPath))
+        {
+            lib.SetKind(_f.Alpha, AppKind.SocialMedia);
+            lib.SetKind(_f.Beta, AppKind.Coding);
+            lib.SetKind(_f.Gamma, AppKind.Browsing);
+            lib.SetKind(_f.Delta, AppKind.Productivity);
+        }
+
+        var r = Q.Wrapped(_f.DbPath, WrappedFixture.Now, WrappedFixture.Zone);
+
+        r.SocialMediaTop!.Podium.Select(a => a.Name).Should().Equal("Alpha");
+        r.CodingTop!.Podium.Select(a => a.Name).Should().Equal("Beta");
+        r.BrowsingTop!.Podium.Select(a => a.Name).Should().Equal("Gamma");
+        r.ProductivityTop!.Podium.Select(a => a.Name).Should().Equal("Delta");
+        r.EntertainmentTop!.Podium.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Games_filter_excludes_social_media_browsing_coding_productivity_entertainment()
+    {
+        using (var lib = AppLibrary.Open(_f.DbPath))
+        {
+            lib.SetKind(_f.Alpha, AppKind.SocialMedia);
+            lib.SetKind(_f.Beta, AppKind.Game);
+            lib.SetKind(_f.Gamma, AppKind.Gacha);
+            lib.SetKind(_f.Delta, AppKind.Coding);
+        }
+
+        var r = Q.Wrapped(_f.DbPath, WrappedFixture.Now, WrappedFixture.Zone, gamesOnly: true);
+
+        // Alpha (SocialMedia) and Delta (Coding) are excluded when gamesOnly is true
+        r.Podium.Select(a => a.Name).Should().Equal("Beta", "Gamma");
     }
 }

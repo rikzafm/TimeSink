@@ -77,6 +77,11 @@ public static class AddAppStrings
     public const string KindOther = "addKindOther";
     public const string KindGame = "addKindGame";
     public const string KindGacha = "addKindGacha";
+    public const string KindSocialMedia = "addKindSocialMedia";
+    public const string KindBrowsing = "addKindBrowsing";
+    public const string KindCoding = "addKindCoding";
+    public const string KindProductivity = "addKindProductivity";
+    public const string KindEntertainment = "addKindEntertainment";
 
     public const string SettingsMeta = "addSettingsMeta";
     public const string SettingsType = "addSettingsType";
@@ -136,7 +141,7 @@ public static class AddAppStrings
         TabTracked, TrackedSearch, TrackedHeader, TrackedEmpty, TrackedEmptySynced, ScopeSynced, TrackedNoPublisher, TrackedCount, Manage, Rename, Merge, Stop,
         RenameLabel, Save, Cancel, MergeTitle, MergeSub, MergePreview, MergePick, MergeInto, Unmerge, StopTitle, StopBody, KeepTracking,
         FilterUntracked, FilterAll, SubStopped, SubInstalled, MergeStarts, MergeCount, SaveChanges,
-        Background, BackgroundTip, BackgroundApp, Kind, KindTip, KindOther, KindGame, KindGacha,
+        Background, BackgroundTip, BackgroundApp, Kind, KindTip, KindOther, KindGame, KindGacha, KindSocialMedia, KindBrowsing, KindCoding, KindProductivity, KindEntertainment,
         SettingsMeta, SettingsType, SettingsTypeSub, SettingsBackgroundSub, SettingsMerged, SettingsMergedNone, MergedOne, MergedMany,
         SettingsAbout, ShowInFolder, SettingsDanger, ClearHistory, ClearTitle, ClearBody, ClearConfirm, ClearTitle2, ClearBody2, ClearTitle3, ClearBody3, ClearNo, ClearYes, ClearStep, SettingsHint, TrackedHint, DangerNote,
         ChangeMain, ChangeMainTitle, ChangeMainConfirm, ChangeMainBody,

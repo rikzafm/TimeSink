@@ -170,7 +170,7 @@ public struct AppSettingsSheet: View {
         VStack(spacing: 0) {
             row("Game type", "Used by Year › Wrapped", divider: false) {
                 Segmented(
-                    options: [(AppKind.other, "Other"), (.game, "Game"), (.gacha, "Gacha")],
+                    options: [(AppKind.other, "Other"), (.game, "Game"), (.gacha, "Gacha"), (.socialMedia, "Social Media"), (.browsing, "Browsing"), (.coding, "Coding"), (.productivity, "Productivity"), (.entertainment, "Entertainment")],
                     selection: Binding(get: { kind }, set: { kind = $0; saveChanges() }),
                     hPad: 9,
                     radius: 7,

@@ -4,6 +4,11 @@ public enum AppKind: Int64, Sendable, Codable {
     case other = 0
     case game = 1
     case gacha = 2
+    case socialMedia = 3
+    case browsing = 4
+    case coding = 5
+    case productivity = 6
+    case entertainment = 7
 }
 
 public enum AppKinds {
@@ -44,11 +49,20 @@ public enum AppKinds {
         return detect(exePath: exePath, displayName: displayName)
     }
 
+    public static func isGame(_ kind: AppKind) -> Bool {
+        kind == .game || kind == .gacha
+    }
+
     public static func next(_ kind: AppKind) -> AppKind {
         switch kind {
         case .other: return .game
         case .game: return .gacha
-        case .gacha: return .other
+        case .gacha: return .socialMedia
+        case .socialMedia: return .browsing
+        case .browsing: return .coding
+        case .coding: return .productivity
+        case .productivity: return .entertainment
+        case .entertainment: return .other
         }
     }
 }

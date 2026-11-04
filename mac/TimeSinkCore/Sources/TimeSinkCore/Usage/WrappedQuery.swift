@@ -1,4 +1,4 @@
-﻿import Foundation
+import Foundation
 
 public struct WrappedApp: Sendable, Equatable {
     public let appId: Int64
@@ -45,6 +45,11 @@ public struct WrappedResult: Sendable, Equatable {
     public let beforeNoonPercent: Int
     public let gamesTop: WrappedKindTop?
     public let gachaTop: WrappedKindTop?
+    public let socialMediaTop: WrappedKindTop?
+    public let browsingTop: WrappedKindTop?
+    public let codingTop: WrappedKindTop?
+    public let productivityTop: WrappedKindTop?
+    public let entertainmentTop: WrappedKindTop?
     public let longestSessions: [WrappedApp]?
     public let deviceTotals: [String: Int64]?
     public let onBothSeconds: Int64
@@ -74,6 +79,11 @@ public struct WrappedResult: Sendable, Equatable {
         beforeNoonPercent: Int,
         gamesTop: WrappedKindTop?,
         gachaTop: WrappedKindTop?,
+        socialMediaTop: WrappedKindTop? = nil,
+        browsingTop: WrappedKindTop? = nil,
+        codingTop: WrappedKindTop? = nil,
+        productivityTop: WrappedKindTop? = nil,
+        entertainmentTop: WrappedKindTop? = nil,
         longestSessions: [WrappedApp]?,
         deviceTotals: [String: Int64]?,
         onBothSeconds: Int64
@@ -98,6 +108,11 @@ public struct WrappedResult: Sendable, Equatable {
         self.beforeNoonPercent = beforeNoonPercent
         self.gamesTop = gamesTop
         self.gachaTop = gachaTop
+        self.socialMediaTop = socialMediaTop
+        self.browsingTop = browsingTop
+        self.codingTop = codingTop
+        self.productivityTop = productivityTop
+        self.entertainmentTop = entertainmentTop
         self.longestSessions = longestSessions
         self.deviceTotals = deviceTotals
         self.onBothSeconds = onBothSeconds
@@ -297,6 +312,11 @@ public enum WrappedQuery {
             beforeNoonPercent: beforeNoonPct,
             gamesTop: topOfKind(.game),
             gachaTop: topOfKind(.gacha),
+            socialMediaTop: topOfKind(.socialMedia),
+            browsingTop: topOfKind(.browsing),
+            codingTop: topOfKind(.coding),
+            productivityTop: topOfKind(.productivity),
+            entertainmentTop: topOfKind(.entertainment),
             longestSessions: longest,
             deviceTotals: wrappedDeviceTotals.isEmpty ? nil : wrappedDeviceTotals,
             onBothSeconds: wrappedOnBoth

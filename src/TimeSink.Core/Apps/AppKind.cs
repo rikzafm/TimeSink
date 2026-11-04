@@ -1,7 +1,17 @@
 namespace TimeSink.Core.Apps;
 
-/// <summary>What a tracked app is for the Year > Wrapped game pages. Stored as <c>apps.kind</c> (NULL = detect).</summary>
-public enum AppKind { Other = 0, Game = 1, Gacha = 2 }
+/// <summary>What a tracked app is for Year > Wrapped and category grouping. Stored as <c>apps.kind</c> (NULL = detect).</summary>
+public enum AppKind
+{
+    Other = 0,
+    Game = 1,
+    Gacha = 2,
+    SocialMedia = 3,
+    Browsing = 4,
+    Coding = 5,
+    Productivity = 6,
+    Entertainment = 7
+}
 
 public static class AppKinds
 {
@@ -31,6 +41,19 @@ public static class AppKinds
     public static AppKind Resolve(long? stored, string exePath, string displayName) =>
         stored is { } k && Enum.IsDefined(typeof(AppKind), (int)k) ? (AppKind)(int)k : Detect(exePath, displayName);
 
-    /// <summary>The next kind in the row button's cycle: Other, Game, Gacha, Other.</summary>
-    public static AppKind Next(AppKind kind) => kind switch { AppKind.Other => AppKind.Game, AppKind.Game => AppKind.Gacha, _ => AppKind.Other };
+    /// <summary>Whether this kind represents a game (Game or Gacha).</summary>
+    public static bool IsGame(AppKind kind) => kind is AppKind.Game or AppKind.Gacha;
+
+    /// <summary>The next kind in the row button's cycle: Other -> Game -> Gacha -> SocialMedia -> Browsing -> Coding -> Productivity -> Entertainment -> Other.</summary>
+    public static AppKind Next(AppKind kind) => kind switch
+    {
+        AppKind.Other => AppKind.Game,
+        AppKind.Game => AppKind.Gacha,
+        AppKind.Gacha => AppKind.SocialMedia,
+        AppKind.SocialMedia => AppKind.Browsing,
+        AppKind.Browsing => AppKind.Coding,
+        AppKind.Coding => AppKind.Productivity,
+        AppKind.Productivity => AppKind.Entertainment,
+        _ => AppKind.Other
+    };
 }

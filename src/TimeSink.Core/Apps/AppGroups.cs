@@ -73,9 +73,12 @@ internal sealed class AppGroups
             var members = grp.ToList();
             if (members.Count <= 1) continue;
 
-            var effectiveKind = members.Any(m => m.Kind == AppKind.Gacha) ? AppKind.Gacha
+            var main = members.FirstOrDefault(m => m.Id == grp.Key) ?? members[0];
+            var effectiveKind = main.Kind != AppKind.Other
+                ? main.Kind
+                : members.Any(m => m.Kind == AppKind.Gacha) ? AppKind.Gacha
                 : members.Any(m => m.Kind == AppKind.Game) ? AppKind.Game
-                : (members.FirstOrDefault(m => m.Id == grp.Key) ?? members[0]).Kind;
+                : members.FirstOrDefault(m => m.Kind != AppKind.Other)?.Kind ?? AppKind.Other;
             var effectiveBg = members.Any(m => m.Background);
 
             foreach (var m in members)
@@ -130,5 +133,5 @@ internal sealed class AppGroups
 
     /// <summary>The groups whose Main app is a Game or Gacha game; a Merged app follows its Main app.</summary>
     internal AppGroups OnlyGames() =>
-        new(_apps.Where(p => (_apps.TryGetValue(p.Value.Group, out var main) ? main : p.Value).Kind != AppKind.Other).ToDictionary(p => p.Key, p => p.Value));
+        new(_apps.Where(p => AppKinds.IsGame((_apps.TryGetValue(p.Value.Group, out var main) ? main : p.Value).Kind)).ToDictionary(p => p.Key, p => p.Value));
 }

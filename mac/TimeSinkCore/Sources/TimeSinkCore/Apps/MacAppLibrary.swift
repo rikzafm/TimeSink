@@ -210,7 +210,12 @@ public final class MacAppLibrary: @unchecked Sendable {
 
     public func updateApp(appId: Int64, displayName: String, kind: AppKind, isBackground: Bool) throws {
         let stmt = try db.prepare("""
-            UPDATE apps SET display_name = ?1, kind = ?2, is_background = ?3 WHERE id = ?4;
+            UPDATE apps SET
+                display_name = CASE WHEN id = ?4 THEN ?1 ELSE display_name END,
+                kind = ?2,
+                is_background = ?3
+            WHERE id = (SELECT COALESCE(canonical_id, id) FROM apps WHERE id = ?4)
+               OR canonical_id = (SELECT COALESCE(canonical_id, id) FROM apps WHERE id = ?4);
             """)
         try stmt.bind(text: displayName, at: 1)
         try stmt.bind(int64: kind.rawValue, at: 2)
@@ -222,7 +227,13 @@ public final class MacAppLibrary: @unchecked Sendable {
     public func merge(mainId: Int64, candidateIds: [Int64]) throws {
         try db.transaction {
             for cId in candidateIds where cId != mainId {
-                let stmt = try db.prepare("UPDATE apps SET canonical_id = ?1 WHERE id = ?2;")
+                let stmt = try db.prepare("""
+                    UPDATE apps SET
+                        canonical_id = ?1,
+                        kind = (SELECT kind FROM apps WHERE id = ?1),
+                        is_background = (SELECT is_background FROM apps WHERE id = ?1)
+                    WHERE id = ?2;
+                    """)
                 try stmt.bind(int64: mainId, at: 1)
                 try stmt.bind(int64: cId, at: 2)
                 _ = try stmt.step()

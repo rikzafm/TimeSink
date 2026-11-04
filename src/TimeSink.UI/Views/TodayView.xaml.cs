@@ -25,6 +25,8 @@ public partial class TodayView : UserControl, ILiveView
     private const double DialSize = 150;
 #if DEBUG
     private static readonly bool ExpandAll = Environment.GetEnvironmentVariable("TS_EXPAND") == "1"; // test aid for screenshots (decision 115)
+#else
+    private const bool ExpandAll = false;
 #endif
 
     private readonly string _dbPath;

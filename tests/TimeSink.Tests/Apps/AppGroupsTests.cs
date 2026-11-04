@@ -58,7 +58,7 @@ public sealed class AppGroupsTests : IDisposable
     {
         var groups = AppGroups.From(
         [
-            MainApp(1) with { Kind = AppKind.Game }, MainApp(2) with { Kind = AppKind.Gacha }, MainApp(3),
+            MainApp(1) with { Kind = AppKind.Game }, MainApp(2) with { Kind = AppKind.Gacha }, MainApp(3), MainApp(6) with { Kind = AppKind.Coding },
             MergedApp(4, 1), MergedApp(5, 3),
         ]).OnlyGames();
 
@@ -154,6 +154,19 @@ public sealed class AppGroupsTests : IDisposable
         thisMacGroups.ContainsKey(65).Should().BeTrue();
         thisMacGroups.GroupOf(65).Should().Be(65);
         UsageRank.NameOf(thisMacGroups, 65).Should().Be("Antigravity");
-        UsageRank.NameOf(thisMacGroups, 19).Should().Be("Antigravity");
+        UsageRank.NameOf(allGroups, 19).Should().Be("Antigravity");
+    }
+
+    [Fact]
+    public void Canonical_app_kind_takes_precedence_over_alias_detected_game_kind()
+    {
+        var main = new GroupedApp(1, 1, "Antigravity IDE", 0, Background: false, Kind: AppKind.Coding);
+        var alias = new GroupedApp(2, 1, "Steam Helper", 0, Background: false, Kind: AppKind.Game);
+
+        var groups = AppGroups.From([main, alias]);
+
+        groups[1].Kind.Should().Be(AppKind.Coding);
+        groups[2].Kind.Should().Be(AppKind.Coding);
+        UsageRank.KindOf(groups, 1).Should().Be(AppKind.Coding);
     }
 }

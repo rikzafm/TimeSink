@@ -1,4 +1,4 @@
-﻿namespace TimeSink.Core.Usage;
+namespace TimeSink.Core.Usage;
 
 /// <summary>The podium for one kind of app (games, gacha games): top three, the next three, and the kind's total app-seconds.</summary>
 public sealed record WrappedKindTop(IReadOnlyList<WrappedApp> Podium, IReadOnlyList<WrappedApp> Others, long Seconds)
@@ -36,6 +36,11 @@ public sealed record WrappedResult(
     int BeforeNoonPercent,
     WrappedKindTop? GamesTop = null,
     WrappedKindTop? GachaTop = null,
+    WrappedKindTop? SocialMediaTop = null,
+    WrappedKindTop? BrowsingTop = null,
+    WrappedKindTop? CodingTop = null,
+    WrappedKindTop? ProductivityTop = null,
+    WrappedKindTop? EntertainmentTop = null,
     IReadOnlyList<WrappedApp>? LongestSessions = null,
     IReadOnlyDictionary<string, long>? DeviceTotals = null,
     long OnBothSeconds = 0,

@@ -170,7 +170,7 @@ public static class WrappedQuery
             bestLen == 0 ? null : DateOnly.FromDayNumber(bestStartDay + bestLen - 1),
             busiest, busiestSecs, delta, peak, peakSecs,
             total == 0 ? 0 : (int)Math.Round(beforeNoon * 100.0 / total, MidpointRounding.AwayFromZero),
-            TopOf(Apps.AppKind.Game), TopOf(Apps.AppKind.Gacha), longest,
+            TopOf(Apps.AppKind.Game), TopOf(Apps.AppKind.Gacha), TopOf(Apps.AppKind.SocialMedia), TopOf(Apps.AppKind.Browsing), TopOf(Apps.AppKind.Coding), TopOf(Apps.AppKind.Productivity), TopOf(Apps.AppKind.Entertainment), longest,
             wrappedDeviceTotals.Count > 0 ? wrappedDeviceTotals : null, wrappedOnBoth,
             busiestMonthDevice.Count > 0 ? busiestMonthDevice : null,
             beforeNoonDevice.Count > 0 ? beforeNoonDevice : null,
