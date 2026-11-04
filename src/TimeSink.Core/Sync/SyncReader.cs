@@ -368,8 +368,19 @@ public static partial class SyncReader
                                             category = $c,
                                             state = $s,
                                             retired_utc = $r,
-                                            is_background = $bg,
-                                            kind = $k
+                                            is_background = CASE
+                                                WHEN $bg != 0 THEN 1
+                                                WHEN is_background != 0 THEN 1
+                                                WHEN canonical_id IS NOT NULL AND (SELECT is_background FROM main.apps WHERE id = main.apps.canonical_id) != 0 THEN 1
+                                                ELSE 0
+                                            END,
+                                            kind = CASE
+                                                WHEN $k != 0 THEN $k
+                                                WHEN kind IS NOT NULL AND kind != 0 THEN kind
+                                                WHEN canonical_id IS NOT NULL AND (SELECT kind FROM main.apps WHERE id = main.apps.canonical_id) IS NOT NULL AND (SELECT kind FROM main.apps WHERE id = main.apps.canonical_id) != 0
+                                                    THEN (SELECT kind FROM main.apps WHERE id = main.apps.canonical_id)
+                                                ELSE $k
+                                            END
                                         WHERE id = $id;
                                         """;
                                     updCmd.Parameters.AddWithValue("$p", exePath);
@@ -503,9 +514,26 @@ public static partial class SyncReader
                                 upCross.CommandText = """
                                     UPDATE main.apps
                                     SET canonical_id = $t,
-                                        kind = COALESCE((SELECT kind FROM main.apps WHERE id = $t), kind),
-                                        is_background = (SELECT is_background FROM main.apps WHERE id = $t)
+                                        kind = CASE
+                                            WHEN (SELECT kind FROM main.apps WHERE id = $t) IS NOT NULL AND (SELECT kind FROM main.apps WHERE id = $t) != 0
+                                                THEN (SELECT kind FROM main.apps WHERE id = $t)
+                                            WHEN kind IS NOT NULL AND kind != 0 THEN kind
+                                            ELSE 0
+                                        END,
+                                        is_background = CASE
+                                            WHEN (SELECT is_background FROM main.apps WHERE id = $t) != 0 THEN 1
+                                            WHEN is_background != 0 THEN 1
+                                            ELSE 0
+                                        END
                                     WHERE id = $s;
+
+                                    UPDATE main.apps
+                                    SET kind = (SELECT kind FROM main.apps WHERE id = $s),
+                                        is_background = CASE WHEN (SELECT is_background FROM main.apps WHERE id = $s) != 0 THEN 1 ELSE is_background END
+                                    WHERE id = $t
+                                      AND (kind IS NULL OR kind = 0)
+                                      AND (SELECT kind FROM main.apps WHERE id = $s) IS NOT NULL
+                                      AND (SELECT kind FROM main.apps WHERE id = $s) != 0;
                                     """;
                                 upCross.Parameters.AddWithValue("$t", tId.Value);
                                 upCross.Parameters.AddWithValue("$s", sId.Value);
@@ -542,6 +570,36 @@ public static partial class SyncReader
                             clearCmd.ExecuteNonQuery();
                         }
                     }
+                }
+
+                // 3c. Harmonize kind and is_background across all merged groups
+                using (var harmCmd = conn.CreateCommand())
+                {
+                    harmCmd.CommandText = """
+                        UPDATE main.apps
+                        SET kind = (SELECT kind FROM main.apps c WHERE c.id = apps.canonical_id)
+                        WHERE canonical_id IS NOT NULL
+                          AND (kind IS NULL OR kind = 0)
+                          AND (SELECT kind FROM main.apps c WHERE c.id = apps.canonical_id) IS NOT NULL
+                          AND (SELECT kind FROM main.apps c WHERE c.id = apps.canonical_id) != 0;
+
+                        UPDATE main.apps
+                        SET kind = (SELECT a.kind FROM main.apps a WHERE a.canonical_id = apps.id AND a.kind IS NOT NULL AND a.kind != 0 LIMIT 1)
+                        WHERE (kind IS NULL OR kind = 0)
+                          AND EXISTS (SELECT 1 FROM main.apps a WHERE a.canonical_id = apps.id AND a.kind IS NOT NULL AND a.kind != 0);
+
+                        UPDATE main.apps
+                        SET is_background = 1
+                        WHERE is_background = 0
+                          AND canonical_id IS NOT NULL
+                          AND (SELECT is_background FROM main.apps c WHERE c.id = apps.canonical_id) != 0;
+
+                        UPDATE main.apps
+                        SET is_background = 1
+                        WHERE is_background = 0
+                          AND EXISTS (SELECT 1 FROM main.apps a WHERE a.canonical_id = apps.id AND a.is_background != 0);
+                        """;
+                    harmCmd.ExecuteNonQuery();
                 }
 
                 // 4. Merge icons

@@ -33,6 +33,7 @@ public sealed class SyncHost : IDisposable
     private DateTimeOffset _lastExportUtc = DateTimeOffset.MinValue;
     private long _lastSessionCount = -1;
     private long _lastMaxLastSeen = -1;
+    private long _lastAppsFingerprint = -1;
     private DateTimeOffset _backoffUntil = DateTimeOffset.MinValue;
     private bool _disposed;
     private int _executing;
@@ -114,7 +115,8 @@ public sealed class SyncHost : IDisposable
 
             // 1. Export local snapshot if due or forced
             var sessionsChanged = HasSessionsChanged(db, localDeviceId, out var count, out var maxLastSeen);
-            var exportDue = forceExport || _lastExportUtc == DateTimeOffset.MinValue || (now - _lastExportUtc >= _exportInterval && sessionsChanged);
+            var appsChanged = HasAppsChanged(db, localDeviceId, out var appsFingerprint);
+            var exportDue = forceExport || _lastExportUtc == DateTimeOffset.MinValue || (now - _lastExportUtc >= _exportInterval && sessionsChanged) || appsChanged;
 
             if (exportDue)
             {
@@ -124,6 +126,7 @@ public sealed class SyncHost : IDisposable
                     _lastExportUtc = now;
                     _lastSessionCount = count;
                     _lastMaxLastSeen = maxLastSeen;
+                    _lastAppsFingerprint = appsFingerprint;
                     db.SetSetting(Setting.SyncLastExportUtc.Key, now.ToUnixTimeSeconds().ToString());
                     _log?.Invoke($"sync: exported local snapshot ({count} sessions)");
                 }
@@ -242,6 +245,27 @@ public sealed class SyncHost : IDisposable
         }
 
         return count != _lastSessionCount || maxLastSeen != _lastMaxLastSeen;
+    }
+
+    private bool HasAppsChanged(Db db, string localDeviceId, out long fingerprint)
+    {
+        fingerprint = 0;
+        using var cmd = db.Connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT COUNT(*), COALESCE(SUM(kind), 0), COALESCE(SUM(is_background), 0), COALESCE(SUM(COALESCE(canonical_id, 0)), 0), COALESCE(MAX(added_utc), 0)
+            FROM apps
+            WHERE device_id = $devId
+               OR id IN (SELECT canonical_id FROM apps WHERE device_id = $devId AND canonical_id IS NOT NULL)
+               OR canonical_id IN (SELECT id FROM apps WHERE device_id = $devId);
+            """;
+        cmd.Parameters.AddWithValue("$devId", localDeviceId);
+        using var r = cmd.ExecuteReader();
+        if (r.Read())
+        {
+            fingerprint = HashCode.Combine(r.GetInt64(0), r.GetInt64(1), r.GetInt64(2), HashCode.Combine(r.GetInt64(3), r.GetInt64(4)));
+        }
+
+        return _lastAppsFingerprint != -1 && fingerprint != _lastAppsFingerprint;
     }
 
     private void UpdateSyncState(Db db, DateTimeOffset now, bool anyRemoteFound, bool placeholderDetected)
