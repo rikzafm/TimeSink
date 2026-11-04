@@ -131,10 +131,10 @@ public struct AppDetailView: View {
 
         return HStack(spacing: 12) {
             ZStack {
-                RoundedRectangle(cornerRadius: 11).fill(ThemeColors.accent)
                 if let png = state.iconCache.getCachedIcon(forAppId: result.appId), let img = NSImage(data: png) {
                     Image(nsImage: img).resizable().padding(5)
                 } else {
+                    RoundedRectangle(cornerRadius: 11).fill(ThemeColors.accent)
                     Text(String(result.name.prefix(1)).uppercased())
                         .font(.system(size: 20, weight: .bold))
                         .foregroundColor(ThemeColors.background)
