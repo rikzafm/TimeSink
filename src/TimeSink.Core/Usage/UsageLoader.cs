@@ -65,7 +65,7 @@ internal static class UsageLoader
             else end = s.EndUtc!.Value;
             // A shutdown close is the PC being off, like a sleep close: the gap to the next session is not uptime.
             var sleep = s.EndReason is EndReasons.Sleep;
-            var off = s.EndReason is EndReasons.Shutdown;
+            var off = s.EndReason is EndReasons.Shutdown or EndReasons.Crash;
             list.Add(new UsageSeg(app.Group, s.AppId, s.StartUtc, end, open, sleep && !open, app.DeviceId ?? "", off && !open));
         }
         return list;

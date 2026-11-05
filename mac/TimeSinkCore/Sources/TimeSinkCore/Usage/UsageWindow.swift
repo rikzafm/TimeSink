@@ -104,7 +104,7 @@ public final class UsageWindow: @unchecked Sendable {
             }
 
             let sleep = s.endReason == "sleep" && !isOpen
-            let off = s.endReason == "shutdown" && !isOpen
+            let off = (s.endReason == "shutdown" || s.endReason == "crash") && !isOpen
             segs.append(UsageSeg(
                 group: app.group,
                 appId: s.appId,

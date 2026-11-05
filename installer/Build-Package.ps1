@@ -25,6 +25,9 @@ function Run([string]$what, [scriptblock]$cmd) {
     if ($LASTEXITCODE -ne 0) { throw "$what failed (exit $LASTEXITCODE)" }
 }
 
+# Sanitize PATH: stray quotes (e.g. from software installers) break cmd.exe batch scripts invoked during Native AOT link (findvcvarsall.bat / vcvars.bat)
+$env:PATH = $env:PATH -replace '"', ''
+
 $vsInstaller = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer'
 if (-not (Get-Command vswhere.exe -ErrorAction SilentlyContinue)) {
     if (-not (Test-Path (Join-Path $vsInstaller 'vswhere.exe'))) { throw "vswhere.exe not found in $vsInstaller; install the Visual Studio C++ Build Tools (needed by Native AOT)." }
@@ -70,4 +73,11 @@ if (-not $SkipInstaller) {
     }
 }
 
-if ($Test) { Run 'verify portable zip' { & pwsh -NoProfile -File "$PSScriptRoot\Test-Package.ps1" -Zip $zip -Smoke } }
+if ($Test) {
+    $testArgs = @('-Zip', $zip, '-Smoke')
+    $installerPath = Join-Path $art "TimeSink-Setup-$Version.exe"
+    if (-not $SkipInstaller -and (Test-Path $installerPath)) {
+        $testArgs += @('-Installer', $installerPath, '-TestInstaller')
+    }
+    Run 'verify portable zip and installer update' { & pwsh -NoProfile -File "$PSScriptRoot\Test-Package.ps1" @testArgs }
+}

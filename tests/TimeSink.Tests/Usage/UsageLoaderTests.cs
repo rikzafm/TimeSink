@@ -39,6 +39,7 @@ public sealed class UsageLoaderTests : IDisposable
     [Theory]
     [InlineData("sleep", true, false)]
     [InlineData("shutdown", false, true)]
+    [InlineData("crash", false, true)]
     [InlineData("exit", false, false)]
     public void Sleep_and_shutdown_closes_are_flagged_correctly(string reason, bool sleep, bool off)
     {
