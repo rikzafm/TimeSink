@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using TimeSink.Core.Devices;
 using TimeSink.Core.Usage;
 
 namespace TimeSink.Tests.Usage;
@@ -147,5 +148,33 @@ public sealed class UsageSnapshotLoaderTests
         loader.Start();
 
         (await loader.Refresh(_ => 1, _ => { })).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Refresh_reads_dynamic_device_scope_and_local_device_id_on_each_call()
+    {
+        var scope = DeviceScope.This;
+        var localDevId = "dev-1";
+        var loader = new UsageSnapshotLoader(
+            () => Now, TimeZoneInfo.Utc, () => null, () => null, () => WeekStart.Mon,
+            deviceScope: () => scope, localDeviceId: () => localDevId);
+        loader.Start();
+
+        DeviceScope? capturedScope = null;
+        string? capturedDevId = null;
+
+        var ok1 = await loader.Refresh(c => (c.DeviceScope, c.LocalDeviceId), res => (capturedScope, capturedDevId) = res);
+        ok1.Should().BeTrue();
+        capturedScope.Should().Be(DeviceScope.This);
+        capturedDevId.Should().Be("dev-1");
+
+        // Dynamically toggle scope and change device id
+        scope = DeviceScope.All;
+        localDevId = "dev-2";
+
+        var ok2 = await loader.Refresh(c => (c.DeviceScope, c.LocalDeviceId), res => (capturedScope, capturedDevId) = res);
+        ok2.Should().BeTrue();
+        capturedScope.Should().Be(DeviceScope.All);
+        capturedDevId.Should().Be("dev-2");
     }
 }

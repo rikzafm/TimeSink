@@ -71,7 +71,7 @@ public partial class FlyoutWindow : Window
         {
             using var devConn = Db.CreateConnection(_dbPath, Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly);
             using var devCmd = devConn.CreateCommand();
-            devCmd.CommandText = "SELECT value FROM settings WHERE key = 'device.id';";
+            devCmd.CommandText = "SELECT COALESCE((SELECT value FROM settings WHERE key = 'device.id'), (SELECT device_id FROM devices WHERE is_local = 1));";
             Live.LocalDeviceId = devCmd.ExecuteScalar() as string;
         }
         catch { }
@@ -171,6 +171,7 @@ public partial class FlyoutWindow : Window
         ShowGamesState();
         SerialWriter.Run(() => AppSettings.ForFile(_dbPath).Set(Setting.GamesOnly, on));
         Live.NotifyDataChanged();
+        RefreshActiveBody();
     }
 
     private void ShowGamesState()
@@ -187,6 +188,16 @@ public partial class FlyoutWindow : Window
         UpdateDeviceScopeButtons();
         UpdateFooterStatus();
         Live.NotifyDataChanged();
+        RefreshActiveBody();
+    }
+
+    private void RefreshActiveBody()
+    {
+        (Body.Content as TodayView)?.Refresh();
+        (Body.Content as WeekView)?.Refresh();
+        (Body.Content as MonthView)?.Refresh();
+        (Body.Content as YearView)?.Refresh();
+        (Body.Content as AllView)?.Refresh();
     }
 
     private static string Str(string key, params object[] args) => TimeText.Str(key, args);
@@ -501,11 +512,7 @@ public partial class FlyoutWindow : Window
         Place();
         Activate();
         (Body.Content as TodayView)?.ResetToToday(); // the flyout opens on the live day
-        (Body.Content as TodayView)?.Refresh(); // data went stale while waiting off-screen
-        (Body.Content as WeekView)?.Refresh();
-        (Body.Content as MonthView)?.Refresh();
-        (Body.Content as YearView)?.Refresh();
-        (Body.Content as AllView)?.Refresh();
+        RefreshActiveBody(); // data went stale while waiting off-screen
         // Report once the move has been processed and the frame is idle.
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, () =>
             StartupTrace.FlushRevealed((DateTime.Now - signalled).TotalMilliseconds));

@@ -116,6 +116,12 @@ public sealed class WeekView : UserControl, ILiveView
         cardStack.Children.Add(_columns);
         cardStack.Children.Add(_deviceLegend);
         _chartCard.Child = cardStack;
+        _chartCard.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
+        _chartCard.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
+        _chartCard.BorderThickness = new Thickness(1);
+        _chartCard.CornerRadius = new CornerRadius(10);
+        _chartCard.Padding = new Thickness(12, 14, 12, 10);
+        _chartCard.Margin = new Thickness(0, 4, 0, 8);
 
         var header = new Grid { Margin = new Thickness(0, 2, 0, 10) };
         var left = new StackPanel { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
@@ -190,8 +196,8 @@ public sealed class WeekView : UserControl, ILiveView
             e.Handled = true;
         };
 
-        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope);
-        _panelLoader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope);
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope, () => _live.LocalDeviceId);
+        _panelLoader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope, () => _live.LocalDeviceId);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw,
             isIdle: () => Window.GetWindow(this) is FlyoutWindow { IsRevealed: false }); // warm standby: stay idle
         Unloaded += (_, _) => Stop();
@@ -267,23 +273,6 @@ public sealed class WeekView : UserControl, ILiveView
         _columns.LocalDeviceId = _live?.LocalDeviceId;
         if (_columns.DeviceScope == TimeSink.Core.Devices.DeviceScope.All)
         {
-            _total.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
-            _streak.Visibility = Visibility.Collapsed;
-            _streakSub.Visibility = Visibility.Collapsed;
-            _delta.Visibility = Visibility.Collapsed;
-            if (r.ChangeSeconds is { } change)
-            {
-                var isUp = change >= 0;
-                var sign = isUp ? "+" : "-";
-                _deltaAll.Text = $"{sign}{UsageText.HoursMinutes(Math.Abs(change))} vs last week";
-                _deltaAll.SetResourceReference(TextBlock.ForegroundProperty, isUp ? "Brush.Accent" : "Brush.Danger");
-                _deltaAll.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                _deltaAll.Visibility = Visibility.Collapsed;
-            }
-
             _deviceSummaryRow.LoadDeviceInfo(_dbPath);
             _deviceSummaryRow.Update(r.DeviceTotals, r.OnBothSeconds, _live?.LocalDeviceId);
             _deviceSummaryRow.Visibility = Visibility.Visible;
@@ -291,36 +280,27 @@ public sealed class WeekView : UserControl, ILiveView
             if (_deviceInfo.Count == 0) _deviceInfo = DeviceInfoService.Load(_dbPath);
             UpdateLegend(r.DeviceTotals, _live?.LocalDeviceId);
             _deviceLegend.Visibility = Visibility.Visible;
-
-
-            _chartCard.SetResourceReference(Border.BackgroundProperty, "Brush.SurfaceAlt");
-            _chartCard.SetResourceReference(Border.BorderBrushProperty, "Brush.BorderSoft");
-            _chartCard.BorderThickness = new Thickness(1);
-            _chartCard.CornerRadius = new CornerRadius(10);
-            _chartCard.Padding = new Thickness(12, 14, 12, 10);
-            _chartCard.Margin = new Thickness(0, 4, 0, 8);
-
         }
         else
         {
-            _total.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Accent");
-            _streak.Visibility = Visibility.Visible;
-            _streakSub.Visibility = Visibility.Visible;
-            _deltaAll.Visibility = Visibility.Collapsed;
-
-            var parts = UsagePhrases.WeekSummary(r);
-            _delta.Text = string.Join(" · ", parts.Select(p => Str(p)));
-            _delta.Visibility = parts.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-
             _deviceSummaryRow.Visibility = Visibility.Collapsed;
             _deviceLegend.Visibility = Visibility.Collapsed;
+        }
 
-            _chartCard.Background = null;
-            _chartCard.BorderBrush = null;
-            _chartCard.BorderThickness = new Thickness(0);
-            _chartCard.CornerRadius = new CornerRadius(0);
-            _chartCard.Padding = new Thickness(0);
-            _chartCard.Margin = new Thickness(0);
+        _streak.Visibility = Visibility.Collapsed;
+        _streakSub.Visibility = Visibility.Collapsed;
+        _delta.Visibility = Visibility.Collapsed;
+        if (r.ChangeSeconds is { } change)
+        {
+            var isUp = change >= 0;
+            var sign = isUp ? "+" : "-";
+            _deltaAll.Text = $"{sign}{UsageText.HoursMinutes(Math.Abs(change))} vs last week";
+            _deltaAll.SetResourceReference(TextBlock.ForegroundProperty, isUp ? "Brush.Accent" : "Brush.Danger");
+            _deltaAll.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            _deltaAll.Visibility = Visibility.Collapsed;
         }
         _columns.Days = r.Days;
         _trend.Values = r.WeekTotals;

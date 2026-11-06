@@ -93,17 +93,15 @@ public struct WeekTabView: View {
 
                 Spacer()
 
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(result.streakDays)-day streak")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(ThemeColors.textPrimary)
-                    Text("apps open daily")
-                        .font(.system(size: 11))
-                        .foregroundColor(ThemeColors.textMuted)
+                if result.previousWeekTotalSeconds > 0 {
+                    let delta = result.totalSeconds - result.previousWeekTotalSeconds
+                    let isUp = delta >= 0
+                    let sign = isUp ? "+" : "-"
+                    Text("\(sign)\(Formatters.paddedHM(abs(delta))) vs last week")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(isUp ? ThemeColors.accent : ThemeColors.danger)
                 }
             }
-
-            comparisonAndAverage(result)
         }
     }
 
@@ -111,32 +109,6 @@ public struct WeekTabView: View {
         selectedDate = nil
         dayDetail = nil
         focusAppId = nil
-    }
-
-    private func comparisonAndAverage(_ result: WeekResult) -> some View {
-        let daysCounted = max(1, result.days.filter { !$0.isFuture }.count)
-        let avgSeconds = result.totalSeconds / Int64(daysCounted)
-        let avgText = "avg \(Formatters.paddedHM(avgSeconds)) / day"
-
-        let vsText = state.weeksBack == 0 ? "vs last week so far" : "vs last week"
-        let delta = result.totalSeconds - result.previousWeekTotalSeconds
-        let isPositive = delta >= 0
-        let arrow = isPositive ? "▲" : "▼"
-        let diffText = "\(arrow) \(Formatters.paddedHM(abs(delta))) \(vsText)"
-
-        let fullText: String
-        if result.previousWeekTotalSeconds > 0 {
-            fullText = "\(diffText) · \(avgText)"
-        } else if result.totalSeconds > 0 {
-            fullText = avgText
-        } else {
-            fullText = "avg 0m / day"
-        }
-
-        return Text(fullText)
-            .font(.system(size: 11))
-            .foregroundColor(ThemeColors.textMuted)
-            .lineLimit(1)
     }
 
     private func columnsView(_ result: WeekResult) -> some View {
@@ -253,7 +225,26 @@ public struct WeekTabView: View {
                 }
             }
             .padding(.top, 5)
+
+            if state.showsDeviceSplit {
+                let localName = state.deviceADisplayName()
+                let remoteName = state.deviceBDisplayName()
+                HStack(spacing: 8) {
+                    Circle().fill(ThemeColors.deviceA).frame(width: 7, height: 7)
+                    Text(localName).font(.system(size: 10)).foregroundColor(ThemeColors.textMuted)
+                    RoundedRectangle(cornerRadius: 1.5).fill(ThemeColors.deviceB).frame(width: 7, height: 7)
+                    Text(remoteName).font(.system(size: 10)).foregroundColor(ThemeColors.textMuted)
+                    Text("Overlapping bars = both on · label is uptime, overlap once")
+                        .font(.system(size: 10))
+                        .foregroundColor(ThemeColors.textMuted)
+                        .lineLimit(1)
+                }
+                .padding(.top, 8)
+            }
         }
+        .padding(EdgeInsets(top: 14, leading: 12, bottom: 10, trailing: 12))
+        .background(RoundedRectangle(cornerRadius: 10).fill(ThemeColors.surfaceActive))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ThemeColors.borderSubtle, lineWidth: 1))
     }
 
     @ViewBuilder

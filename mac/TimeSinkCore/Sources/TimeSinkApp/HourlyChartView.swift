@@ -60,22 +60,27 @@ public struct HourlyChartView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ZStack(alignment: .topLeading) {
-                VStack(spacing: 0) {
-                    Spacer(minLength: 0)
-                    bars.frame(height: barsHeight)
-                    axis.frame(height: 16)
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack(alignment: .topLeading) {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        bars.frame(height: barsHeight)
+                        axis.frame(height: 16)
+                    }
+                    if isLive { nowFlag }
                 }
-                if isLive { nowFlag }
+                .frame(height: 78)
+
+                legend
             }
-            .frame(height: 78)
+            .padding(EdgeInsets(top: 14, leading: 12, bottom: 10, trailing: 12))
+            .background(RoundedRectangle(cornerRadius: 10).fill(ThemeColors.surfaceActive))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ThemeColors.borderSubtle, lineWidth: 1))
 
             if let h = selectedHour {
                 detailPanel(h)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
-
-            legend
         }
         .onExitCommand {
             withAnimation(.easeInOut(duration: 0.18)) { selectedHour = nil }

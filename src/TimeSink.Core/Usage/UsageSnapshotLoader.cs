@@ -77,7 +77,7 @@ public sealed class UsageSnapshotLoader
         _dbPath = dbPath;
         _gamesOnly = gamesOnly ?? (() => false);
         _deviceScope = deviceScope ?? (() => dbPath != null ? AppSettings.ForFile(dbPath).Get(Setting.DeviceScope) : DeviceScope.This);
-        _localDeviceId = localDeviceId ?? (() => dbPath != null ? AppSettings.ForFile(dbPath).Get(Setting.DeviceId) : null);
+        _localDeviceId = localDeviceId ?? (() => dbPath != null ? DeviceInfoService.GetLocalDeviceId(dbPath) : null);
         _clock = clock;
         _zone = zone;
         _running = running;

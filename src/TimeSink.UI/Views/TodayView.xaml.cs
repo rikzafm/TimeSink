@@ -148,7 +148,7 @@ public partial class TodayView : UserControl, ILiveView
             ClosePanel();
             e.Handled = true;
         };
-        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope);
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope, () => _live.LocalDeviceId);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(1), Load, Redraw, onTick: OnTick, onLiveChanged: Refresh);
         Unloaded += (_, _) => Stop();
     }
@@ -162,10 +162,10 @@ public partial class TodayView : UserControl, ILiveView
         _driver.Stop();
     }
 
-    /// <summary>Live-state refresh: a past day is static, so pipe changes and the timer leave it alone.</summary>
+    /// <summary>Refresh data for current day or browsed past day.</summary>
     public void Refresh()
     {
-        if (_day is null) Load();
+        Load();
     }
 
     /// <summary>Show a given local day (today or earlier); today goes back to the live view.</summary>

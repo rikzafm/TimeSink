@@ -51,7 +51,7 @@ public partial class MonthView : UserControl, ILiveView
         SelBar.HoverChanged += ShowBarNote;
         SelBar.SegmentClicked += _ => ShowBarNote(-1);
         DeviceSummary.LoadDeviceInfo(dbPath);
-        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope);
+        _loader = UsageSnapshotLoader.ForDb(dbPath, () => _live.RunningIds, SignInTime.Cached, () => _live.GamesOnly, () => _live.DeviceScope, () => _live.LocalDeviceId);
         (_year, _month) = (_loader.Today.Year, _loader.Today.Month);
         _driver = new LiveViewDriver(_live, _themes, _loader, TimeSpan.FromSeconds(RefreshEverySeconds), Refresh, Redraw,
             onLiveChanged: () => { if (_result?.IsCurrent == true) Refresh(); }, // only the current month follows the live state

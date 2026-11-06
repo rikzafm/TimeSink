@@ -57,59 +57,69 @@
 
             <WrapPanel x:Name="DeviceSummaryRow" Margin="0,2,0,8" Visibility="Collapsed"/>
 
-            <c:HourlyBars x:Name="Chart" Height="62" Margin="0,0,0,2"
-                          TextElement.FontFamily="{DynamicResource FontFamily.Numbers}"
-                          LabelFontFamily="{DynamicResource FontFamily.Numbers}"
-                          LabelFontSize="10"
-                          BarBrush="{DynamicResource Brush.Heat2}" CurrentBrush="{DynamicResource Brush.Accent}"
-                          Heat0="{DynamicResource Brush.Heat0}" Heat1="{DynamicResource Brush.Heat1}"
-                          Heat2="{DynamicResource Brush.Heat2}" Heat3="{DynamicResource Brush.Heat3}"
-                          DeviceABrush="{DynamicResource Brush.DeviceA}" DeviceBBrush="{DynamicResource Brush.DeviceB}"
-                          Cursor="Hand"
-                          MutedBrush="{DynamicResource Brush.TextMuted}" LabelTextBrush="{DynamicResource Brush.OnAccent}"/>
-            <Grid x:Name="Axis" Margin="0,0,0,8" Height="16"/>
-            <c:DetailPanel x:Name="Panel"/>
+            <Border x:Name="ChartCard"
+                    Background="{DynamicResource Brush.SurfaceAlt}"
+                    BorderBrush="{DynamicResource Brush.BorderSoft}"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    Padding="12,14,12,10"
+                    Margin="0,4,0,8">
+                <StackPanel>
+                    <c:HourlyBars x:Name="Chart" Height="62" Margin="0,0,0,2"
+                                  TextElement.FontFamily="{DynamicResource FontFamily.Numbers}"
+                                  LabelFontFamily="{DynamicResource FontFamily.Numbers}"
+                                  LabelFontSize="10"
+                                  BarBrush="{DynamicResource Brush.Heat2}" CurrentBrush="{DynamicResource Brush.Accent}"
+                                  Heat0="{DynamicResource Brush.Heat0}" Heat1="{DynamicResource Brush.Heat1}"
+                                  Heat2="{DynamicResource Brush.Heat2}" Heat3="{DynamicResource Brush.Heat3}"
+                                  DeviceABrush="{DynamicResource Brush.DeviceA}" DeviceBBrush="{DynamicResource Brush.DeviceB}"
+                                  Cursor="Hand"
+                                  MutedBrush="{DynamicResource Brush.TextMuted}" LabelTextBrush="{DynamicResource Brush.OnAccent}"/>
+                    <Grid x:Name="Axis" Margin="0,0,0,8" Height="16"/>
+                    <WrapPanel x:Name="LegendPanel" Margin="0">
+                        <StackPanel x:Name="LegendAppsOpen" Orientation="Horizontal" Margin="0,0,14,0">
+                            <Rectangle Width="8" Height="8" RadiusX="2" RadiusY="2" Fill="{DynamicResource Brush.Accent}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                            <TextBlock Style="{StaticResource Small}" FontSize="10" Text="{DynamicResource Str.LegendAppsOpen}"/>
+                        </StackPanel>
+                        <StackPanel x:Name="LegendDeviceA" Orientation="Horizontal" Margin="0,0,9,0" Visibility="Collapsed">
+                            <Rectangle Width="8" Height="8" RadiusX="2" RadiusY="2" Fill="{DynamicResource Brush.Heat3}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="LegendDeviceAText" Style="{StaticResource Small}" FontSize="10"/>
+                        </StackPanel>
+                        <StackPanel x:Name="LegendDeviceB" Orientation="Horizontal" Margin="0,0,9,0" Visibility="Collapsed">
+                            <Rectangle Width="8" Height="8" RadiusX="2" RadiusY="2" Fill="{DynamicResource Brush.DeviceB}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="LegendDeviceBText" Style="{StaticResource Small}" FontSize="10"/>
+                        </StackPanel>
+                        <StackPanel x:Name="LegendOverlap" Orientation="Horizontal" Margin="0,0,9,0" Visibility="Collapsed">
+                            <Grid Width="12" Height="8" Margin="0,0,5,0" VerticalAlignment="Center">
+                                <Rectangle Width="7" Height="8" RadiusX="1" RadiusY="1" Fill="{DynamicResource Brush.Heat3}" HorizontalAlignment="Left" VerticalAlignment="Bottom"/>
+                                <Rectangle Width="7" Height="5" RadiusX="1" RadiusY="1" Fill="{DynamicResource Brush.DeviceB}" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
+                            </Grid>
+                            <TextBlock Style="{StaticResource Small}" FontSize="10" Text="{DynamicResource Str.LegendOverlapping}"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Rectangle Width="8" Height="8" RadiusX="2" RadiusY="2" Margin="0,0,5,0" VerticalAlignment="Center">
+                                <Rectangle.Fill>
+                                    <DrawingBrush Viewport="0,0,3,3" ViewportUnits="Absolute" TileMode="Tile">
+                                        <DrawingBrush.Drawing>
+                                            <GeometryDrawing>
+                                                <GeometryDrawing.Pen>
+                                                    <Pen Brush="{DynamicResource Brush.TextMuted}" Thickness="1.5"/>
+                                                </GeometryDrawing.Pen>
+                                                <GeometryDrawing.Geometry>
+                                                    <LineGeometry StartPoint="0,3" EndPoint="3,0"/>
+                                                </GeometryDrawing.Geometry>
+                                            </GeometryDrawing>
+                                        </DrawingBrush.Drawing>
+                                    </DrawingBrush>
+                                </Rectangle.Fill>
+                            </Rectangle>
+                            <TextBlock x:Name="LegendAsleepText" Style="{StaticResource Small}" FontSize="10" Text="{DynamicResource Str.LegendAsleep}"/>
+                        </StackPanel>
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
 
-            <WrapPanel x:Name="LegendPanel" Margin="0,0,0,12">
-                <StackPanel x:Name="LegendAppsOpen" Orientation="Horizontal" Margin="0,0,14,0">
-                    <Rectangle Width="8" Height="8" RadiusX="2" RadiusY="2" Fill="{DynamicResource Brush.Accent}" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                    <TextBlock Style="{StaticResource Small}" FontSize="10" Text="{DynamicResource Str.LegendAppsOpen}"/>
-                </StackPanel>
-                <StackPanel x:Name="LegendDeviceA" Orientation="Horizontal" Margin="0,0,9,0" Visibility="Collapsed">
-                    <Rectangle Width="8" Height="8" RadiusX="2" RadiusY="2" Fill="{DynamicResource Brush.Heat3}" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="LegendDeviceAText" Style="{StaticResource Small}" FontSize="10"/>
-                </StackPanel>
-                <StackPanel x:Name="LegendDeviceB" Orientation="Horizontal" Margin="0,0,9,0" Visibility="Collapsed">
-                    <Rectangle Width="8" Height="8" RadiusX="2" RadiusY="2" Fill="{DynamicResource Brush.DeviceB}" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="LegendDeviceBText" Style="{StaticResource Small}" FontSize="10"/>
-                </StackPanel>
-                <StackPanel x:Name="LegendOverlap" Orientation="Horizontal" Margin="0,0,9,0" Visibility="Collapsed">
-                    <Grid Width="12" Height="8" Margin="0,0,5,0" VerticalAlignment="Center">
-                        <Rectangle Width="7" Height="8" RadiusX="1" RadiusY="1" Fill="{DynamicResource Brush.Heat3}" HorizontalAlignment="Left" VerticalAlignment="Bottom"/>
-                        <Rectangle Width="7" Height="5" RadiusX="1" RadiusY="1" Fill="{DynamicResource Brush.DeviceB}" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
-                    </Grid>
-                    <TextBlock Style="{StaticResource Small}" FontSize="10" Text="{DynamicResource Str.LegendOverlapping}"/>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal">
-                    <Rectangle Width="8" Height="8" RadiusX="2" RadiusY="2" Margin="0,0,5,0" VerticalAlignment="Center">
-                        <Rectangle.Fill>
-                            <DrawingBrush Viewport="0,0,3,3" ViewportUnits="Absolute" TileMode="Tile">
-                                <DrawingBrush.Drawing>
-                                    <GeometryDrawing>
-                                        <GeometryDrawing.Pen>
-                                            <Pen Brush="{DynamicResource Brush.TextMuted}" Thickness="1.5"/>
-                                        </GeometryDrawing.Pen>
-                                        <GeometryDrawing.Geometry>
-                                            <LineGeometry StartPoint="0,3" EndPoint="3,0"/>
-                                        </GeometryDrawing.Geometry>
-                                    </GeometryDrawing>
-                                </DrawingBrush.Drawing>
-                            </DrawingBrush>
-                        </Rectangle.Fill>
-                    </Rectangle>
-                    <TextBlock x:Name="LegendAsleepText" Style="{StaticResource Small}" FontSize="10" Text="{DynamicResource Str.LegendAsleep}"/>
-                </StackPanel>
-            </WrapPanel>
+            <c:DetailPanel x:Name="Panel" Margin="0,0,0,8"/>
 
             <TextBlock x:Name="EarlyHint" Style="{StaticResource Small}" TextWrapping="Wrap" Margin="0,0,0,10"
                        Text="{DynamicResource Str.TodayEarlyHint}" Visibility="Collapsed"/>
