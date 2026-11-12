@@ -141,6 +141,7 @@ public final class DataExport: Sendable {
             try db.exec("DELETE FROM sessions;")
             try db.exec("DELETE FROM daily_usage;")
             try db.exec("DELETE FROM icons;")
+            try db.exec("DELETE FROM settings WHERE key LIKE 'sync.imported.%';")
         }
     }
 
