@@ -98,11 +98,14 @@ public static partial class SyncReader
 
     public const string FingerprintKeyPrefix = "sync.imported.";
 
+    /// <summary>SQL LIKE pattern matching every fingerprint row.</summary>
+    public const string FingerprintKeyLike = FingerprintKeyPrefix + "%";
+
     /// <summary>Forget every recorded import fingerprint so the next check re-imports (passphrase or encryption change).</summary>
     public static void ClearFingerprints(Db db)
     {
         using var cmd = db.Connection.CreateCommand();
-        cmd.CommandText = "DELETE FROM settings WHERE key LIKE 'sync.imported.%';";
+        cmd.CommandText = $"DELETE FROM settings WHERE key LIKE '{FingerprintKeyLike}';";
         cmd.ExecuteNonQuery();
     }
 

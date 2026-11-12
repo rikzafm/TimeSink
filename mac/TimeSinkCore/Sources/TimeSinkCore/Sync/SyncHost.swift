@@ -1,4 +1,10 @@
 import Foundation
+import CryptoKit
+
+/// Values of the `sync.state` setting. Mirrors `Setting.SyncStates` on the PC.
+public enum SyncStates {
+    public static let exportFailed = "export_failed"
+}
 
 public enum SyncDeviceStatus: String, Sendable, Equatable {
     case upToDate = "Up to date"
@@ -30,13 +36,13 @@ public final class SyncHost: @unchecked Sendable {
     private var folderFileDescriptor: Int32 = -1
     private let lock = NSLock()
     // An encryption failure skips only that file until its retry fingerprint (file stamp, passphrase, sync.encrypted)
-    // changes. A skipped file was never imported, so it gets no `sync.imported.*` fingerprint and no unchangedStamps entry.
+    // changes. A skipped file was never imported, so it gets no fingerprint row (SyncReader.fingerprintKeyPrefix) and no unchangedStamps entry.
     private struct RetrySkip { let fingerprint: String; let status: SyncStatus; let message: String? }
     private var retrySkips: [String: RetrySkip] = [:]    // guarded by `retryLock` (cleared from other threads)
     private let retryLock = NSLock()
     private var loggedStatus: [String: String] = [:]     // guarded by `lock`
     private var unchangedStamps: [String: String] = [:]
-    private var fingerprintCount: Int64 = -1
+    private var fingerprintDigest: String? = nil
 
     // Export failure retry: one quick retry after `exportRetryDelay`, then the 5-minute timer.
     var exportRetryDelay: TimeInterval = 30
@@ -194,6 +200,16 @@ public final class SyncHost: @unchecked Sendable {
         NSLog("%@", text)
     }
 
+    /// Hash of every fingerprint row (key and value), so any forget, re-import or restore changes it.
+    private static func fingerprintDigest(_ db: SQLiteDatabase) throws -> String {
+        let stmt = try db.prepare("SELECT key, value FROM settings WHERE key LIKE '\(SyncReader.fingerprintKeyLike)' ORDER BY key;")
+        var rows = ""
+        while try stmt.step() {
+            rows += (stmt.columnText(at: 0) ?? "") + "\u{1}" + (stmt.columnText(at: 1) ?? "") + "\u{2}"
+        }
+        return SHA256.hash(data: Data(rows.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
     private static func encryptionStateString(_ status: SyncStatus) -> String {
         switch status {
         case .encryptionKeyMissing: return "encryption_key_missing"
@@ -226,6 +242,7 @@ public final class SyncHost: @unchecked Sendable {
         var importSucceeded = false
         var encryptionError: SyncStatus? = nil
         var exportError: String? = nil
+        var importError: String? = nil
 
         // 1. Export local snapshot
         do {
@@ -235,7 +252,7 @@ public final class SyncHost: @unchecked Sendable {
             try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.last_export_utc', '\(nowUnix)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
             exportFailureStreak = 0
             // Drop the stale failure marker so getDeviceStatus() does not read it back.
-            try? db.exec("UPDATE settings SET value = 'pending' WHERE key = 'sync.state' AND value = 'export_failed'; DELETE FROM settings WHERE key = 'sync.last_error';")
+            try? db.exec("UPDATE settings SET value = 'pending' WHERE key = 'sync.state' AND value = '\(SyncStates.exportFailed)'; DELETE FROM settings WHERE key = 'sync.last_error';")
         } catch {
             NSLog("SyncWriter error: \(error)")
             needsReconnect = true
@@ -251,11 +268,12 @@ public final class SyncHost: @unchecked Sendable {
             let files = try fm.contentsOfDirectory(atPath: folder)
             let localDevId = (try db.scalarText("SELECT value FROM settings WHERE key = 'device.id';")) ?? ""
 
-            // Fingerprint rows are cleared by forget/delete/passphrase change; a changed count drops the skip cache.
-            let fpCount = (try db.scalarInt("SELECT COUNT(*) FROM settings WHERE key LIKE 'sync.imported.%';")) ?? 0
-            if fpCount != fingerprintCount {
+            // Fingerprint rows are cleared by forget/delete/passphrase change/restore; any change in their keys or values
+            // (not just their count, so forget-then-reimport is caught too) drops the skip cache.
+            let fpDigest = try SyncHost.fingerprintDigest(db)
+            if fpDigest != fingerprintDigest {
                 unchangedStamps.removeAll()
-                fingerprintCount = fpCount
+                fingerprintDigest = fpDigest
             }
 
             // In-memory only; changes when the stored passphrase or the sync.encrypted setting changes.
@@ -278,12 +296,22 @@ public final class SyncHost: @unchecked Sendable {
                 if let skip = retrySkip(for: fullPath) {
                     if skip.fingerprint == retryFp {
                         if encryptionError == nil { encryptionError = skip.status }
+                        if importError == nil { importError = skip.message ?? skip.status.rawValue }
                         continue   // keep scanning the other files
                     }
                     setRetrySkip(nil, for: fullPath)
                 }
 
-                let result = try SyncReader.import(syncFile: fullPath, db: db, timeZone: timeZone, keyManager: keyManager)
+                // One bad file must not abort the scan; SyncReader detaches its own attach on throw.
+                let result: SyncImportResult
+                do {
+                    result = try SyncReader.import(syncFile: fullPath, db: db, timeZone: timeZone, keyManager: keyManager)
+                } catch {
+                    NSLog("SyncReader import error (\(file)): \(error)")
+                    if importError == nil { importError = SyncExportHealth.shortErrorText(error) }
+                    needsReconnect = true   // reset after the scan, so the remaining files still import
+                    continue
+                }
                 if result.status == .unchanged {
                     unchangedStamps[fullPath] = stamp
                     loggedStatus[fullPath] = nil
@@ -295,6 +323,7 @@ public final class SyncHost: @unchecked Sendable {
                            result.status == .remoteNotEncrypted {
                     // Not imported, so no `sync.imported.*` fingerprint is recorded for it (SyncReader only writes one on success).
                     if encryptionError == nil { encryptionError = result.status }
+                    if importError == nil { importError = result.message ?? result.status.rawValue }
                     setRetrySkip(RetrySkip(fingerprint: retryFp, status: result.status, message: result.message), for: fullPath)
                     logStatusOnce(fullPath, key: "\(result.status.rawValue)|\(retryFp)",
                                   "sync: \(file): \(result.status.rawValue) (\(result.message ?? ""))")
@@ -303,6 +332,7 @@ public final class SyncHost: @unchecked Sendable {
                            result.status == .failed {
                     logStatusOnce(fullPath, key: "\(result.status.rawValue)|\(stamp)",
                                   "sync: \(file): \(result.status.rawValue) (\(result.message ?? ""))")
+                    if result.status != .deviceForgotten, importError == nil { importError = result.message ?? result.status.rawValue }
                 }
             }
 
@@ -320,7 +350,7 @@ public final class SyncHost: @unchecked Sendable {
         if let err = encryptionError {
             stateStr = SyncHost.encryptionStateString(err)
         } else if exportError != nil {
-            stateStr = "export_failed"
+            stateStr = SyncStates.exportFailed
         } else {
             let status = getDeviceStatus()
             switch status {
@@ -332,10 +362,18 @@ public final class SyncHost: @unchecked Sendable {
             case .encryptionKeyMissing: stateStr = "encryption_key_missing"
             case .encryptionKeyWrong: stateStr = "encryption_key_wrong"
             case .remoteNotEncrypted: stateStr = "remote_not_encrypted"
-            case .exportFailed: stateStr = "export_failed"
+            case .exportFailed: stateStr = SyncStates.exportFailed
             }
         }
         try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.state', '\(stateStr)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+
+        // sync.last_error: export error first, then import/encryption error, cleared when neither (as on the PC).
+        if let lastError = exportError ?? importError {
+            let safe = lastError.replacingOccurrences(of: "'", with: "''")
+            try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.last_error', '\(safe)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        } else {
+            try? db.exec("DELETE FROM settings WHERE key = 'sync.last_error';")
+        }
 
         // A thrown error may have left an attach or transaction open; start clean next run.
         if needsReconnect { resetSyncConnection() }
@@ -358,7 +396,7 @@ public final class SyncHost: @unchecked Sendable {
             return .encryptionKeyWrong
         } else if currentState == "remote_not_encrypted" {
             return .remoteNotEncrypted
-        } else if currentState == "export_failed" {
+        } else if currentState == SyncStates.exportFailed {
             return .exportFailed
         }
 

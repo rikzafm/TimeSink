@@ -145,7 +145,7 @@ public struct DevicesSyncView: View {
                     }
 
                     // Diagnostic Banner for export failure
-                    if state.syncState == "export_failed" {
+                    if state.syncState == SyncStates.exportFailed {
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 13))
@@ -604,7 +604,7 @@ public struct DevicesSyncView: View {
     private func deviceStatus(dev: DeviceRow, index: Int, activeRemoteCount: Int) -> StatusInfo {
         if dev.state == "forgotten" {
             return StatusInfo(text: "Forgotten", color: ThemeColors.textMuted)
-        } else if dev.isLocal && state.syncState == "export_failed" {
+        } else if dev.isLocal && state.syncState == SyncStates.exportFailed {
             return StatusInfo(text: "Couldn't write file", color: ThemeColors.danger)
         } else if dev.isLocal {
             return StatusInfo(text: "Up to date", color: ThemeColors.deviceA)

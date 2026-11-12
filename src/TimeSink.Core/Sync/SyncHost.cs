@@ -37,7 +37,7 @@ public sealed class SyncHost : IDisposable
     private DateTimeOffset _backoffUntil = DateTimeOffset.MinValue;
     private bool _disposed;
     private int _executing;
-    private long _fingerprintCount = -1;
+    private string? _fingerprintDigest;
     private readonly Dictionary<string, FileStamp> _unchangedFiles = new(StringComparer.OrdinalIgnoreCase);
 
     // Encryption failures skip only their own file until its retry fingerprint changes. A file in here was NOT imported,
@@ -165,12 +165,13 @@ public sealed class SyncHost : IDisposable
 
             // 2. Scan folder and import snapshots from other devices
             bool anyRemoteFound = false;
-            // Fingerprint rows are cleared by forget/delete/DeleteAll; a changed count invalidates the in-memory skip cache.
-            var fingerprintCount = CountFingerprints(db);
-            if (fingerprintCount != _fingerprintCount)
+            // Fingerprint rows are cleared by forget/delete/DeleteAll/restore; any change in their keys or values (not just
+            // their count, so forget-then-reimport is caught too) invalidates the in-memory skip cache.
+            var fingerprintDigest = FingerprintDigest(db);
+            if (fingerprintDigest != _fingerprintDigest)
             {
                 _unchangedFiles.Clear();
-                _fingerprintCount = fingerprintCount;
+                _fingerprintDigest = fingerprintDigest;
             }
             bool placeholderDetected = false;
             string? encryptionState = null;
@@ -203,7 +204,8 @@ public sealed class SyncHost : IDisposable
                     if (stamp is not null && _unchangedFiles.TryGetValue(file, out var seen) && seen == stamp)
                         continue;
 
-                    var retryFp = stamp is null ? null : $"{stamp.Length}:{stamp.LastWriteUtc.Ticks}|{passHash}|{encryptedSetting}";
+                    var stampKey = stamp is null ? "" : $"{stamp.Length}:{stamp.LastWriteUtc.Ticks}";
+                    var retryFp = stamp is null ? null : $"{stampKey}|{passHash}|{encryptedSetting}";
                     if (retryFp is not null && _retrySkips.TryGetValue(file, out var skip))
                     {
                         if (skip.Fingerprint == retryFp)
@@ -216,7 +218,7 @@ public sealed class SyncHost : IDisposable
                     }
 
                     var result = SyncReader.Import(file, _dbPath, _zone, _keyManager);
-                    if (result.Status is not (SyncStatus.EncryptionKeyMissing or SyncStatus.EncryptionKeyWrong or SyncStatus.RemoteNotEncrypted))
+                    if (!IsEncryptionTrouble(result.Status))
                         _retrySkips.Remove(file);
                     if (result.Status is SyncStatus.Success or SyncStatus.Unchanged)
                         _loggedStatus.Remove(file);
@@ -239,7 +241,7 @@ public sealed class SyncHost : IDisposable
                     {
                         _log?.Invoke($"sync: third device snapshot ignored: {name}");
                     }
-                    else if (result.Status is SyncStatus.EncryptionKeyMissing or SyncStatus.EncryptionKeyWrong or SyncStatus.RemoteNotEncrypted)
+                    else if (IsEncryptionTrouble(result.Status))
                     {
                         encryptionState ??= EncryptionStateOf(result.Status);
                         importError ??= result.Message;
@@ -255,7 +257,7 @@ public sealed class SyncHost : IDisposable
                     else if (result.Status != SyncStatus.SelfFile)
                     {
                         // BadHash, NewerFormat, DeviceForgotten, ConflictCopy, Failed: one line per change of status or file.
-                        LogStatusOnce(file, result.Status + "|" + (stamp is null ? "" : $"{stamp.Length}:{stamp.LastWriteUtc.Ticks}"),
+                        LogStatusOnce(file, result.Status + "|" + stampKey,
                             $"sync: {name}: {result.Status}" + (string.IsNullOrEmpty(result.Message) ? "" : $" ({result.Message})"));
                         if (result.Status != SyncStatus.DeviceForgotten) importError ??= result.Message ?? result.Status.ToString();
                     }
@@ -297,6 +299,9 @@ public sealed class SyncHost : IDisposable
         }
     }
 
+    private static bool IsEncryptionTrouble(SyncStatus status) =>
+        status is SyncStatus.EncryptionKeyMissing or SyncStatus.EncryptionKeyWrong or SyncStatus.RemoteNotEncrypted;
+
     private static string EncryptionStateOf(SyncStatus status) => status switch
     {
         SyncStatus.EncryptionKeyMissing => Setting.SyncStates.EncryptionKeyMissing,
@@ -324,11 +329,16 @@ public sealed class SyncHost : IDisposable
         _log?.Invoke(text);
     }
 
-    private static long CountFingerprints(Db db)
+    /// <summary>Hash of every fingerprint row (key and value), so any forget, re-import or restore changes it.</summary>
+    private static string FingerprintDigest(Db db)
     {
         using var cmd = db.Connection.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM settings WHERE key LIKE 'sync.imported.%';";
-        return (long)(cmd.ExecuteScalar() ?? 0L);
+        cmd.CommandText = $"SELECT key, value FROM settings WHERE key LIKE '{SyncReader.FingerprintKeyLike}' ORDER BY key;";
+        using var r = cmd.ExecuteReader();
+        var sb = new System.Text.StringBuilder();
+        while (r.Read())
+            sb.Append(r.GetString(0)).Append('').Append(r.IsDBNull(1) ? "" : r.GetString(1)).Append('');
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(sb.ToString())));
     }
 
     private void CheckSafe(bool forceExport)

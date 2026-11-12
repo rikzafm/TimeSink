@@ -26,7 +26,7 @@ internal static class StartupTrace
         Log($"{kind} ms={since:0}{extra} [{detail}]");
     }
 
-    private static void Log(string line)
+    internal static void Log(string line)
     {
         try
         {

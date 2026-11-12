@@ -810,4 +810,29 @@ final class SyncTests: XCTestCase {
         XCTAssertFalse(text.contains("/"))
         XCTAssertFalse(text.contains("'"))
     }
+
+    /// Bug 6 pin (mirrors SyncEncryptionRecoveryTests on the PC): the Mac encrypts when `sync.encrypted` is true OR a sync
+    /// passphrase exists, the PC only when `sync.encrypted` is true. This documents the Mac half so the follow-up ticket flips it.
+    /// Uses InMemoryKeyManager, so no keychain is touched and nothing needs skipping.
+    func testDocumentsCurrentMismatchMacEncryptsWhenPassphraseExistsEvenIfSyncEncryptedIsOff() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+        let folder = try makeTempDir("sync-bug6-pin")
+        defer { try? FileManager.default.removeItem(atPath: folder) }
+        let keys = InMemoryKeyManager(initialSyncPassphrase: "has-passphrase")
+        XCTAssertNotEqual((try db.scalarText("SELECT value FROM settings WHERE key = 'sync.encrypted';"))?.lowercased(), "true")
+
+        let path = try SyncWriter.write(db: db, syncFolder: folder, keyManager: keys)
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        proc.arguments = ["-p", path, SyncManifest.entryName]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        try proc.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        proc.waitUntilExit()
+        let manifest = try JSONDecoder().decode(SyncManifest.self, from: data)
+        XCTAssertTrue(manifest.encrypted, "current Mac rule; the PC would write false here")
+    }
 }
