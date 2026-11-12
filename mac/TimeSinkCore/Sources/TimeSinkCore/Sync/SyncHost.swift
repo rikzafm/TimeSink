@@ -30,6 +30,8 @@ public final class SyncHost: @unchecked Sendable {
     private var folderFileDescriptor: Int32 = -1
     private let lock = NSLock()
     private var isPausedDueToEncryptionError: Bool = false
+    private var unchangedStamps: [String: String] = [:]
+    private var fingerprintCount: Int64 = -1
 
     // Export failure retry: one quick retry after `exportRetryDelay`, then the 5-minute timer.
     var exportRetryDelay: TimeInterval = 30
@@ -215,6 +217,13 @@ public final class SyncHost: @unchecked Sendable {
             let files = try fm.contentsOfDirectory(atPath: folder)
             let localDevId = (try db.scalarText("SELECT value FROM settings WHERE key = 'device.id';")) ?? ""
 
+            // Fingerprint rows are cleared by forget/delete/passphrase change; a changed count drops the skip cache.
+            let fpCount = (try db.scalarInt("SELECT COUNT(*) FROM settings WHERE key LIKE 'sync.imported.%';")) ?? 0
+            if fpCount != fingerprintCount {
+                unchangedStamps.removeAll()
+                fingerprintCount = fpCount
+            }
+
             for file in files where file.hasSuffix(SyncWriter.extension) && !file.hasSuffix(".tmp") {
                 let fullPath = (folder as NSString).appendingPathComponent(file)
                 let baseName = (file as NSString).deletingPathExtension
@@ -222,8 +231,14 @@ public final class SyncHost: @unchecked Sendable {
                     continue
                 }
 
+                let attrs = try? fm.attributesOfItem(atPath: fullPath)
+                let stamp = "\(attrs?[.size] ?? 0):\((attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)"
+                if unchangedStamps[fullPath] == stamp { continue }
+
                 let result = try SyncReader.import(syncFile: fullPath, db: db, timeZone: timeZone, keyManager: keyManager)
-                if result.status == .success {
+                if result.status == .unchanged {
+                    unchangedStamps[fullPath] = stamp
+                } else if result.status == .success {
                     importSucceeded = true
                 } else if result.status == .encryptionKeyMissing ||
                            result.status == .encryptionKeyWrong ||

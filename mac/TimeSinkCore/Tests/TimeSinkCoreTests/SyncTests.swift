@@ -59,12 +59,54 @@ final class SyncTests: XCTestCase {
         let sessionsCount = (try dbPC.scalarInt("SELECT COUNT(*) FROM sessions;")) ?? 0
         XCTAssertEqual(sessionsCount, 1)
 
-        // Idempotent re-import
+        // Unchanged file is skipped via the fingerprint
+        let unchanged = try SyncReader.import(syncFile: snapPath, db: dbPC)
+        XCTAssertEqual(unchanged.status, .unchanged)
+
+        // Idempotent re-import (fingerprint cleared so the merge itself runs)
+        SyncReader.clearFingerprints(db: dbPC)
         let res2 = try SyncReader.import(syncFile: snapPath, db: dbPC)
         XCTAssertEqual(res2.status, .success)
         XCTAssertEqual(res2.appsAdded, 0)
         XCTAssertEqual(res2.sessionsAdded, 0)
         XCTAssertEqual(res2.sessionsSkipped, 1)
+    }
+
+    func testUnchangedRemoteFileIsSkippedUntilHistoryDeleted() throws {
+        let dbMac = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: dbMac)
+        let macId = try dbMac.scalarText("SELECT device_id FROM devices LIMIT 1;") ?? "mac-1"
+        let macAppLib = MacAppLibrary(db: dbMac)
+        let safariId = try macAppLib.trackApp(
+            exePath: "/Applications/Safari.app",
+            displayName: "Safari",
+            category: "Browser",
+            deviceId: macId
+        )
+        try dbMac.exec("INSERT INTO sessions (id, app_id, start_utc, end_utc, last_seen_utc, end_reason) VALUES (1, \(safariId), 1000, 2000, 2000, 'exit');")
+
+        let tempFolder = (NSTemporaryDirectory() as NSString).appendingPathComponent("sync-unchanged-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(atPath: tempFolder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: tempFolder) }
+        let snapPath = try SyncWriter.write(db: dbMac, syncFolder: tempFolder)
+
+        let dbPC = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: dbPC)
+        try dbPC.exec("UPDATE settings SET value = 'pc-remote-2' WHERE key = 'device.id'; UPDATE devices SET device_id = 'pc-remote-2', name = 'Gaming PC', platform = 'windows';")
+
+        XCTAssertEqual(try SyncReader.import(syncFile: snapPath, db: dbPC).status, .success)
+        XCTAssertEqual(try SyncReader.import(syncFile: snapPath, db: dbPC).status, .unchanged)
+
+        // Deleting the device history clears the fingerprint and forces a re-import
+        try dbPC.exec("DELETE FROM sessions; DELETE FROM daily_usage; DELETE FROM apps WHERE device_id = '\(macId)'; DELETE FROM devices WHERE device_id = '\(macId)'; DELETE FROM settings WHERE key = 'sync.imported.\(macId)';")
+        let again = try SyncReader.import(syncFile: snapPath, db: dbPC)
+        XCTAssertEqual(again.status, .success)
+        XCTAssertEqual(again.sessionsAdded, 1)
+
+        // DataExport.deleteAllHistory clears fingerprints
+        try DataExport.deleteAllHistory(db: dbPC, confirmation: "DELETE")
+        let remaining = (try dbPC.scalarInt("SELECT COUNT(*) FROM settings WHERE key LIKE 'sync.imported.%';")) ?? -1
+        XCTAssertEqual(remaining, 0)
     }
 
     func testConflictCopyAndPlaceholderIgnored() throws {

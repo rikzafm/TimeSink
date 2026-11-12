@@ -122,7 +122,7 @@ public static class DeviceIdentity
     public static void ForgetDevice(Db db, string deviceId)
     {
         using var cmd = db.Connection.CreateCommand();
-        cmd.CommandText = "UPDATE devices SET state = 'forgotten' WHERE device_id = $id";
+        cmd.CommandText = "UPDATE devices SET state = 'forgotten' WHERE device_id = $id; DELETE FROM settings WHERE key = 'sync.imported.' || $id;";
         cmd.Parameters.AddWithValue("$id", deviceId);
         cmd.ExecuteNonQuery();
     }
@@ -138,6 +138,7 @@ public static class DeviceIdentity
                 DELETE FROM daily_usage WHERE app_id IN (SELECT id FROM apps WHERE device_id = $id);
                 DELETE FROM apps WHERE device_id = $id;
                 DELETE FROM devices WHERE device_id = $id;
+                DELETE FROM settings WHERE key = 'sync.imported.' || $id;
                 """;
             cmd.Parameters.AddWithValue("$id", deviceId);
             cmd.ExecuteNonQuery();

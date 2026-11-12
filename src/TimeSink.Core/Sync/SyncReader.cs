@@ -93,6 +93,34 @@ public static partial class SyncReader
     [DllImport("libSystem.dylib", EntryPoint = "stat$INODE64", SetLastError = true)]
     private static extern int stat64([MarshalAs(UnmanagedType.LPUTF8Str)] string path, byte[] statBuf);
 
+    /// <summary>Settings key holding the fingerprint of the last imported file of a remote device.</summary>
+    public static string FingerprintKey(string deviceId) => FingerprintKeyPrefix + deviceId;
+
+    public const string FingerprintKeyPrefix = "sync.imported.";
+
+    /// <summary>Forget every recorded import fingerprint so the next check re-imports (passphrase or encryption change).</summary>
+    public static void ClearFingerprints(Db db)
+    {
+        using var cmd = db.Connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM settings WHERE key LIKE 'sync.imported.%';";
+        cmd.ExecuteNonQuery();
+    }
+
+    private static string Fingerprint(SyncManifest manifest) =>
+        manifest.Hash + ":" + manifest.CreatedUtc.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>True when this exact file (hash + createdUtc) was already imported and the remote device row is still active.</summary>
+    private static bool IsUnchanged(string dbPath, SyncManifest manifest)
+    {
+        using var db = Db.Open(dbPath);
+        if (db.GetSetting(FingerprintKey(manifest.DeviceId)) != Fingerprint(manifest))
+            return false;
+        using var cmd = db.Connection.CreateCommand();
+        cmd.CommandText = "SELECT state FROM devices WHERE device_id = $id;";
+        cmd.Parameters.AddWithValue("$id", manifest.DeviceId);
+        return cmd.ExecuteScalar() as string == "active";
+    }
+
     public static SyncImportResult Import(string syncFile, string dbPath, TimeZoneInfo zone, IKeyManager? keyManager = null)
     {
         if (!File.Exists(syncFile))
@@ -125,6 +153,9 @@ public static partial class SyncReader
                 {
                     manifest = SyncManifest.Parse(s.ReadToEnd());
                 }
+
+                if (IsUnchanged(dbPath, manifest))
+                    return new SyncImportResult(SyncStatus.Unchanged, null, 0, 0, 0, 0);
 
                 var dbEntry = zip.GetEntry(SyncManifest.DbEntryName);
                 if (dbEntry == null)
@@ -291,6 +322,14 @@ public static partial class SyncReader
                     cmd.Parameters.AddWithValue("$platform", manifest.Platform);
                     cmd.Parameters.AddWithValue("$now", nowIso);
                     cmd.Parameters.AddWithValue("$fileUtc", fileUtcIso);
+                    cmd.ExecuteNonQuery();
+                }
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "INSERT INTO main.settings (key, value) VALUES ($k, $v) ON CONFLICT(key) DO UPDATE SET value = $v;";
+                    cmd.Parameters.AddWithValue("$k", FingerprintKey(manifest.DeviceId));
+                    cmd.Parameters.AddWithValue("$v", Fingerprint(manifest));
                     cmd.ExecuteNonQuery();
                 }
 

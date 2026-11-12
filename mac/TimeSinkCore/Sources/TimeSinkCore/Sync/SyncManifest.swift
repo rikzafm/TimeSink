@@ -94,6 +94,7 @@ public enum SyncStatus: String, Sendable, Equatable {
     case encryptionKeyMissing = "encryption_key_missing"
     case encryptionKeyWrong = "encryption_key_wrong"
     case remoteNotEncrypted = "remote_not_encrypted"
+    case unchanged
 }
 
 public struct SyncImportResult: Sendable, Equatable {

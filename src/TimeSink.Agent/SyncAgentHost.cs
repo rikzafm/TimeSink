@@ -40,6 +40,7 @@ internal sealed class SyncAgentHost : IDisposable
         using (var db = Db.Open(_dbPath))
         {
             db.SetSetting(Setting.SyncEncrypted.Key, "true");
+            SyncReader.ClearFingerprints(db);
 
             var state = db.GetSetting(Setting.SyncState.Key);
             if (state is "encryption_key_missing" or "encryption_key_wrong" or "remote_not_encrypted")
@@ -58,6 +59,7 @@ internal sealed class SyncAgentHost : IDisposable
         using (var db = Db.Open(_dbPath))
         {
             db.SetSetting(Setting.SyncEncrypted.Key, "false");
+            SyncReader.ClearFingerprints(db);
         }
         _sync.SyncNow();
     }

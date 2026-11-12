@@ -704,6 +704,7 @@ public final class AppState: ObservableObject {
         guard !trimmed.isEmpty else { return }
         try KeychainKeyManager.shared.setSyncPassphrase(trimmed)
         try db.exec("INSERT INTO settings (key, value) VALUES ('sync.encrypted', 'true') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        SyncReader.clearFingerprints(db: db)
         if syncState == "encryption_key_missing" || syncState == "encryption_key_wrong" {
             try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.state', 'synced') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
         }
@@ -720,6 +721,7 @@ public final class AppState: ObservableObject {
     public func clearSyncPassphrase() throws {
         try KeychainKeyManager.shared.clearSyncPassphrase()
         try db.exec("INSERT INTO settings (key, value) VALUES ('sync.encrypted', 'false') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        SyncReader.clearFingerprints(db: db)
         self.syncEncrypted = false
         self.hasSyncPassphrase = false
         loadSettings()
@@ -829,6 +831,7 @@ public final class AppState: ObservableObject {
             let stmt = try db.prepare("UPDATE devices SET state = 'forgotten' WHERE device_id = ?;")
             try stmt.bind(text: deviceId, at: 1)
             _ = try stmt.step()
+            try db.exec("DELETE FROM settings WHERE key = '\(SyncReader.fingerprintKey(deviceId: deviceId).replacingOccurrences(of: "'", with: "''"))';")
             loadDeviceInfo()
             refresh()
         } catch {}
@@ -842,6 +845,7 @@ public final class AppState: ObservableObject {
                 try db.exec("DELETE FROM icons WHERE app_id IN (SELECT id FROM apps WHERE device_id = '\(deviceId)');")
                 try db.exec("DELETE FROM apps WHERE device_id = '\(deviceId)';")
                 try db.exec("DELETE FROM devices WHERE device_id = '\(deviceId)';")
+                try db.exec("DELETE FROM settings WHERE key = '\(SyncReader.fingerprintKey(deviceId: deviceId).replacingOccurrences(of: "'", with: "''"))';")
             }
             let acc = UsageAccumulator(store: SQLiteSessionStore(db: db), timeZone: .current)
             try acc.rebuildAll()
