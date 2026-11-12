@@ -37,6 +37,17 @@ public sealed class SyncHost : IDisposable
     private DateTimeOffset _backoffUntil = DateTimeOffset.MinValue;
     private bool _disposed;
     private int _executing;
+    private long _fingerprintCount = -1;
+    private readonly Dictionary<string, FileStamp> _unchangedFiles = new(StringComparer.OrdinalIgnoreCase);
+
+    private sealed record FileStamp(long Length, DateTime LastWriteUtc)
+    {
+        public static FileStamp? Of(string path)
+        {
+            try { var i = new FileInfo(path); return new FileStamp(i.Length, i.LastWriteTimeUtc); }
+            catch (IOException) { return null; }
+        }
+    }
 
     public SyncHost(
         string dbPath,
@@ -139,6 +150,13 @@ public sealed class SyncHost : IDisposable
 
             // 2. Scan folder and import snapshots from other devices
             bool anyRemoteFound = false;
+            // Fingerprint rows are cleared by forget/delete/DeleteAll; a changed count invalidates the in-memory skip cache.
+            var fingerprintCount = CountFingerprints(db);
+            if (fingerprintCount != _fingerprintCount)
+            {
+                _unchangedFiles.Clear();
+                _fingerprintCount = fingerprintCount;
+            }
             bool placeholderDetected = false;
 
             try
@@ -154,8 +172,16 @@ public sealed class SyncHost : IDisposable
                         continue;
                     }
 
+                    var stamp = FileStamp.Of(file);
+                    if (stamp is not null && _unchangedFiles.TryGetValue(file, out var seen) && seen == stamp)
+                        continue;
+
                     var result = SyncReader.Import(file, _dbPath, _zone, _keyManager);
-                    if (result.Status == SyncStatus.Success)
+                    if (result.Status == SyncStatus.Unchanged)
+                    {
+                        if (stamp is not null) _unchangedFiles[file] = stamp;
+                    }
+                    else if (result.Status == SyncStatus.Success)
                     {
                         anyRemoteFound = true;
                         db.SetSetting(Setting.SyncLastImportUtc.Key, now.ToUnixTimeSeconds().ToString());
@@ -217,6 +243,13 @@ public sealed class SyncHost : IDisposable
         {
             Interlocked.Exchange(ref _executing, 0);
         }
+    }
+
+    private static long CountFingerprints(Db db)
+    {
+        using var cmd = db.Connection.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM settings WHERE key LIKE 'sync.imported.%';";
+        return (long)(cmd.ExecuteScalar() ?? 0L);
     }
 
     private void CheckSafe(bool forceExport)

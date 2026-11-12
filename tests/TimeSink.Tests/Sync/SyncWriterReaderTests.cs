@@ -93,7 +93,8 @@ public sealed class SyncWriterReaderTests(ITestOutputHelper output)
 
         var snapshotFingerprint = rig.Fingerprint(dstDb);
 
-        // Second import of the identical file
+        // Second import of the identical file (fingerprint cleared so the merge path itself is exercised)
+        rig.Exec(dstDb, "DELETE FROM settings WHERE key LIKE 'sync.imported.%'");
         var second = SyncReader.Import(snapshotPath, dstDb, TimeZoneInfo.Utc);
         second.Status.Should().Be(SyncStatus.Success);
         second.AppsAdded.Should().Be(0);
@@ -103,6 +104,98 @@ public sealed class SyncWriterReaderTests(ITestOutputHelper output)
 
         // Verify fingerprint has not changed
         rig.Fingerprint(dstDb).Should().Be(snapshotFingerprint);
+    }
+
+    private static (string Snapshot, string DstDb) ExportAndPrepareDestination(BackupTestRig rig, DateTimeOffset now)
+    {
+        var srcDb = rig.NewDb("source.db",
+            (@"/Applications/Xcode.app", 1761984000, 1761987600),
+            (@"/Applications/Safari.app", 1761988000, 1761989800));
+        SetDevice(rig, srcDb, "dev-mac-001", "MacBook Air", "macos");
+        var snapshot = SyncWriter.Write(srcDb, rig.P("sync"), now, "1.0.0");
+        var dstDb = rig.NewDb("dest.db");
+        SetDevice(rig, dstDb, "dev-win-001", "Desktop PC", "windows");
+        return (snapshot, dstDb);
+    }
+
+    [Fact]
+    public void Import_of_unchanged_file_returns_Unchanged_and_writes_nothing()
+    {
+        using var rig = new BackupTestRig();
+        var (snapshot, dstDb) = ExportAndPrepareDestination(rig, DateTimeOffset.Parse("2026-11-01T12:00:00Z"));
+
+        SyncReader.Import(snapshot, dstDb, TimeZoneInfo.Utc).Status.Should().Be(SyncStatus.Success);
+        rig.Scalar<string>(dstDb, "SELECT value FROM settings WHERE key = 'sync.imported.dev-mac-001'")
+            .Should().EndWith(":2026-11-01T12:00:00Z");
+        var before = rig.Fingerprint(dstDb);
+        var importedAt = rig.Scalar<string>(dstDb, "SELECT last_import_utc FROM devices WHERE device_id = 'dev-mac-001'");
+
+        var second = SyncReader.Import(snapshot, dstDb, TimeZoneInfo.Utc);
+
+        second.Status.Should().Be(SyncStatus.Unchanged);
+        rig.Fingerprint(dstDb).Should().Be(before);
+        rig.Scalar<string>(dstDb, "SELECT last_import_utc FROM devices WHERE device_id = 'dev-mac-001'").Should().Be(importedAt);
+    }
+
+    [Fact]
+    public void Re_exported_file_imports_again()
+    {
+        using var rig = new BackupTestRig();
+        var (snapshot, dstDb) = ExportAndPrepareDestination(rig, DateTimeOffset.Parse("2026-11-01T12:00:00Z"));
+        SyncReader.Import(snapshot, dstDb, TimeZoneInfo.Utc).Status.Should().Be(SyncStatus.Success);
+
+        var srcDb = rig.P("source.db");
+        rig.Exec(srcDb, "INSERT INTO sessions (app_id, start_utc, end_utc, last_seen_utc, end_reason) " +
+                        "SELECT id, 1761995000, 1761996000, 1761996000, 'exit' FROM apps LIMIT 1");
+        SyncWriter.Write(srcDb, rig.P("sync"), DateTimeOffset.Parse("2026-11-01T12:05:00Z"), "1.0.0");
+
+        var result = SyncReader.Import(snapshot, dstDb, TimeZoneInfo.Utc);
+
+        result.Status.Should().Be(SyncStatus.Success);
+        result.SessionsAdded.Should().Be(1);
+    }
+
+    [Fact]
+    public void Deleting_device_history_forces_a_reimport()
+    {
+        using var rig = new BackupTestRig();
+        var (snapshot, dstDb) = ExportAndPrepareDestination(rig, DateTimeOffset.Parse("2026-11-01T12:00:00Z"));
+        SyncReader.Import(snapshot, dstDb, TimeZoneInfo.Utc).Status.Should().Be(SyncStatus.Success);
+
+        using (var db = Db.Open(dstDb)) DeviceIdentity.DeleteDeviceHistory(db, "dev-mac-001");
+
+        var result = SyncReader.Import(snapshot, dstDb, TimeZoneInfo.Utc);
+        result.Status.Should().Be(SyncStatus.Success);
+        result.SessionsAdded.Should().Be(2);
+    }
+
+    [Fact]
+    public void Missing_remote_device_row_prevents_Unchanged_even_with_a_stale_fingerprint()
+    {
+        using var rig = new BackupTestRig();
+        var (snapshot, dstDb) = ExportAndPrepareDestination(rig, DateTimeOffset.Parse("2026-11-01T12:00:00Z"));
+        SyncReader.Import(snapshot, dstDb, TimeZoneInfo.Utc).Status.Should().Be(SyncStatus.Success);
+
+        rig.Exec(dstDb, "PRAGMA foreign_keys = OFF; DELETE FROM sessions WHERE app_id IN (SELECT id FROM apps WHERE device_id = 'dev-mac-001'); " +
+                        "DELETE FROM daily_usage WHERE app_id IN (SELECT id FROM apps WHERE device_id = 'dev-mac-001'); " +
+                        "DELETE FROM apps WHERE device_id = 'dev-mac-001'; DELETE FROM devices WHERE device_id = 'dev-mac-001'; PRAGMA foreign_keys = ON;");
+
+        SyncReader.Import(snapshot, dstDb, TimeZoneInfo.Utc).Status.Should().Be(SyncStatus.Success);
+    }
+
+    [Fact]
+    public void Forgetting_a_device_and_DeleteAll_clear_fingerprints()
+    {
+        using var rig = new BackupTestRig();
+        var (snapshot, dstDb) = ExportAndPrepareDestination(rig, DateTimeOffset.Parse("2026-11-01T12:00:00Z"));
+        SyncReader.Import(snapshot, dstDb, TimeZoneInfo.Utc).Status.Should().Be(SyncStatus.Success);
+
+        using (var db = Db.Open(dstDb)) DeviceIdentity.ForgetDevice(db, "dev-mac-001");
+        rig.Scalar<long>(dstDb, "SELECT COUNT(*) FROM settings WHERE key LIKE 'sync.imported.%'").Should().Be(0);
+
+        rig.Exec(dstDb, "INSERT INTO settings (key, value) VALUES ('sync.imported.x', 'a:b')");
+        TimeSink.Core.Backup.HistoryDeleter.DeleteAll(dstDb, "DELETE");
+        rig.Scalar<long>(dstDb, "SELECT COUNT(*) FROM settings WHERE key LIKE 'sync.imported.%'").Should().Be(0);
     }
 
     [Fact]

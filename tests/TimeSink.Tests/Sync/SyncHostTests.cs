@@ -132,6 +132,53 @@ public sealed class SyncHostTests
     }
 
     [Fact]
+    public void Repeated_checks_on_unchanged_remote_file_import_once_and_leave_data_alone()
+    {
+        using var rig = new BackupTestRig();
+        var syncFolder = rig.P("shared_cloud");
+        Directory.CreateDirectory(syncFolder);
+        var macDb = rig.NewDb("mac.db", (@"/Applications/Safari.app", 1761984000, 1761987600));
+        rig.Exec(macDb, "PRAGMA foreign_keys = OFF; " +
+                        "INSERT OR REPLACE INTO settings (key, value) VALUES ('device.id', 'dev-mac-001'), ('device.name', 'MacBook'); " +
+                        "UPDATE devices SET device_id = 'dev-mac-001', name = 'MacBook', platform = 'macos' WHERE is_local = 1; " +
+                        "UPDATE apps SET device_id = 'dev-mac-001', bundle_id = 'com.apple.Safari'; PRAGMA foreign_keys = ON;");
+        var winDb = rig.NewDb("win.db", (@"c:\windows\notepad.exe", 1761980000, 1761983600));
+        rig.Exec(winDb, "PRAGMA foreign_keys = OFF; " +
+                        "INSERT OR REPLACE INTO settings (key, value) VALUES ('device.id', 'dev-win-001'), ('device.name', 'Desktop PC'), " +
+                        "('sync.enabled', 'true'), ('sync.folder', '" + syncFolder.Replace("'", "''") + "'); " +
+                        "UPDATE devices SET device_id = 'dev-win-001', name = 'Desktop PC', platform = 'windows' WHERE is_local = 1; " +
+                        "UPDATE apps SET device_id = 'dev-win-001'; PRAGMA foreign_keys = ON;");
+
+        var now = DateTimeOffset.Parse("2026-11-01T12:00:00Z");
+        SyncWriter.Write(macDb, syncFolder, now, "1.0.0");
+
+        var log = new List<string>();
+        using var winHost = new SyncHost(winDb, TimeZoneInfo.Utc, () => now, log.Add);
+
+        winHost.Check();
+        log.Count(l => l.Contains("imported snapshot")).Should().Be(1);
+        var lastImport = AppSettings.ForFile(winDb).Get(Setting.SyncLastImportUtc);
+        var usage = rig.Scalar<long>(winDb, "SELECT SUM(seconds) FROM daily_usage");
+        var fingerprint = rig.Fingerprint(winDb);
+
+        now = now.AddSeconds(15);
+        for (var i = 0; i < 20; i++) winHost.Check();
+
+        log.Count(l => l.Contains("imported snapshot")).Should().Be(1);
+        AppSettings.ForFile(winDb).Get(Setting.SyncLastImportUtc).Should().Be(lastImport);
+        AppSettings.ForFile(winDb).Get(Setting.SyncState).Should().Be("synced");
+        rig.Scalar<long>(winDb, "SELECT SUM(seconds) FROM daily_usage").Should().Be(usage);
+        rig.Fingerprint(winDb).Should().Be(fingerprint);
+
+        // A re-exported file imports again
+        rig.Exec(macDb, "UPDATE sessions SET end_utc = end_utc + 60, last_seen_utc = last_seen_utc + 60");
+        now = now.AddMinutes(1);
+        SyncWriter.Write(macDb, syncFolder, now, "1.0.0");
+        winHost.Check();
+        log.Count(l => l.Contains("imported snapshot")).Should().Be(2);
+    }
+
+    [Fact]
     public void Discovery_window_transitions_to_no_other_device_after_10_minutes()
     {
         using var rig = new BackupTestRig();

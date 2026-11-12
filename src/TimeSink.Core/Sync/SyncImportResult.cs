@@ -16,7 +16,8 @@ public enum SyncStatus
     Failed,
     EncryptionKeyMissing,
     EncryptionKeyWrong,
-    RemoteNotEncrypted
+    RemoteNotEncrypted,
+    Unchanged
 }
 
 /// <summary>
