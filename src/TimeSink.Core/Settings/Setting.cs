@@ -115,6 +115,7 @@ public static class Setting
     public static readonly Setting<bool> SyncEncrypted = Switch("sync.encrypted", false);
     public static readonly Setting<string?> SyncFolder = Text("sync.folder");
     public static readonly Setting<string?> SyncState = Text("sync.state");
+    public static readonly Setting<string?> SyncLastError = Text("sync.last_error");
     public static readonly Setting<long> SyncLastExportUtc = Count("sync.lastExportUtc");
     public static readonly Setting<long> SyncLastImportUtc = Count("sync.lastImportUtc");
     public static readonly Setting<long> SyncEnabledUtc = Count("sync.enabledUtc");
@@ -136,6 +137,7 @@ public static class Setting
         public const string EncryptionKeyMissing = "encryption_key_missing";
         public const string EncryptionKeyWrong = "encryption_key_wrong";
         public const string RemoteNotEncrypted = "remote_not_encrypted";
+        public const string ExportFailed = "export_failed";
     }
 
     public static readonly Setting<string?> AlertsSent = Text("alerts.sent");
@@ -153,6 +155,6 @@ public static class Setting
         Startup, WeekStartsOn, PauseOnSleep, CountWhenLocked, MinSessionSeconds, SuggestApps, SteamAutoTrack,
         Theme, Accent, Compact, AppIcon, GoalAlerts, WeeklySummary, BackupMode,
         LastTab, LastYearView, AllLayout, InstantOpen, GamesOnly, BackupLastUtc, BackupFolder, AlertsSent, AlertsWeeklyLast, SteamIconsRepaired,
-        SyncEnabled, SyncEncrypted, SyncFolder, SyncState, SyncLastExportUtc, SyncLastImportUtc, SyncEnabledUtc, DeviceScope, DeviceId, DeviceName, ShortDeviceNames, WrappedGroupByPlatform,
+        SyncEnabled, SyncEncrypted, SyncFolder, SyncState, SyncLastError, SyncLastExportUtc, SyncLastImportUtc, SyncEnabledUtc, DeviceScope, DeviceId, DeviceName, ShortDeviceNames, WrappedGroupByPlatform,
     ];
 }
