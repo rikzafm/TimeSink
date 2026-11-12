@@ -32,7 +32,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             processProvider = NSWorkspaceProcessProvider()
             powerHub = MacPowerEventHub()
             iconCache = MacIconCache(db: database)
-            syncHost = SyncHost(db: database, timeZone: .current)
+            syncHost = SyncHost(dbPath: dbPath, key: database.key, timeZone: .current)
             appState = AppState(db: database, syncHost: syncHost)
             syncHost.start()
             library.repairMissingIcons(iconCache: iconCache, localDeviceId: appState.localDeviceId)
