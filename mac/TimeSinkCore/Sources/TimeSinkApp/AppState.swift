@@ -568,8 +568,9 @@ public final class AppState: ObservableObject {
             self.syncFolder = (try db.scalarText("SELECT value FROM settings WHERE key = 'sync.folder';")) ?? ""
             self.syncState = (try db.scalarText("SELECT value FROM settings WHERE key = 'sync.state';")) ?? ""
             let lastExp = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'sync.last_export_utc';")) ?? 0
-            let lastImp = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'sync.last_import_utc';")) ?? 0
-            self.lastSyncUtc = max(lastExp, lastImp)
+            // Other device's file time (when it wrote the file we last read), not when we read it.
+            let lastRemoteFile = (try? db.scalarInt("SELECT CAST(strftime('%s', MAX(last_file_utc)) AS INTEGER) FROM devices WHERE is_local = 0;")) ?? 0
+            self.lastSyncUtc = max(lastExp, lastRemoteFile)
             self.lastExportUtc = lastExp
             self.syncLastError = (try? db.scalarText("SELECT value FROM settings WHERE key = 'sync.last_error';")) ?? ""
             self.exportStale = self.syncEnabled && !self.syncFolder.isEmpty
