@@ -655,4 +655,87 @@ final class SyncTests: XCTestCase {
         XCTAssertEqual(try main.scalarInt("SELECT COUNT(*) FROM sessions WHERE app_id = \(appId);"), Int64(written))
         XCTAssertEqual(try main.scalarInt("SELECT COUNT(*) FROM apps WHERE device_id = 'remote-pc-1';"), 1)
     }
+
+    // MARK: - Export failure visibility (sync-reliability ticket 03)
+
+    private func setFolderWritable(_ folder: String, _ writable: Bool) throws {
+        try FileManager.default.setAttributes([.posixPermissions: writable ? 0o755 : 0o555], ofItemAtPath: folder)
+    }
+
+    func testReadOnlyFolderMarksExportFailedAndRecovers() throws {
+        try XCTSkipIf(geteuid() == 0, "root ignores directory permissions")
+        let dir = try makeTempDir("sync-exportfail")
+        let folder = (dir as NSString).appendingPathComponent("sync")
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        defer {
+            try? setFolderWritable(folder, true)
+            try? FileManager.default.removeItem(atPath: dir)
+        }
+        let main = try makeLocalFileDb(in: dir, deviceId: "local-mac-1")
+        try enableSync(db: main, folder: folder)
+        let host = SyncHost(dbPath: main.path, key: main.key)
+        host.exportRetryDelay = 3600   // keep the automatic retry out of this test
+
+        try setFolderWritable(folder, false)
+        host.performSync()
+
+        XCTAssertEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "export_failed")
+        let lastError = try main.scalarText("SELECT value FROM settings WHERE key = 'sync.last_error';") ?? ""
+        XCTAssertFalse(lastError.isEmpty)
+        XCTAssertFalse(lastError.contains(dir), "last_error must not leak paths")
+        XCTAssertEqual(host.getDeviceStatus(), .exportFailed)
+
+        try setFolderWritable(folder, true)
+        host.performSync()
+
+        XCTAssertNotEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "export_failed")
+        XCTAssertNotEqual(host.getDeviceStatus(), .exportFailed)
+        let cleared = try main.scalarText("SELECT value FROM settings WHERE key = 'sync.last_error';") ?? ""
+        XCTAssertEqual(cleared, "")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: (folder as NSString).appendingPathComponent("local-mac-1.tssync")))
+    }
+
+    func testExportFailureRetriesWithoutUserAction() throws {
+        try XCTSkipIf(geteuid() == 0, "root ignores directory permissions")
+        let dir = try makeTempDir("sync-exportretry")
+        let folder = (dir as NSString).appendingPathComponent("sync")
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        defer {
+            try? setFolderWritable(folder, true)
+            try? FileManager.default.removeItem(atPath: dir)
+        }
+        let main = try makeLocalFileDb(in: dir, deviceId: "local-mac-1")
+        try enableSync(db: main, folder: folder)
+        let host = SyncHost(dbPath: main.path, key: main.key)
+        host.exportRetryDelay = 0.3
+        let target = (folder as NSString).appendingPathComponent("local-mac-1.tssync")
+
+        try setFolderWritable(folder, false)
+        host.performSync()
+        XCTAssertEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "export_failed")
+
+        try setFolderWritable(folder, true)
+        let deadline = Date().addingTimeInterval(5)
+        while !FileManager.default.fileExists(atPath: target) && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: target), "retry must export without another performSync call")
+        XCTAssertNotEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "export_failed")
+    }
+
+    func testExportStalenessThreshold() {
+        let now: Int64 = 1_000_000
+        XCTAssertFalse(SyncExportHealth.isStale(lastExportUtc: 0, now: now), "never exported is not 'stale'")
+        XCTAssertFalse(SyncExportHealth.isStale(lastExportUtc: now - 14 * 60, now: now))
+        XCTAssertFalse(SyncExportHealth.isStale(lastExportUtc: now - 15 * 60, now: now))
+        XCTAssertTrue(SyncExportHealth.isStale(lastExportUtc: now - 15 * 60 - 1, now: now))
+    }
+
+    func testShortErrorTextHasNoPathsOrQuotes() {
+        let err = NSError(domain: NSCocoaErrorDomain, code: 513, userInfo: [NSFilePathErrorKey: "/Users/me/OneDrive/sync", NSLocalizedDescriptionKey: "can't write /Users/me/OneDrive/sync"])
+        let text = SyncExportHealth.shortErrorText(err)
+        XCTAssertFalse(text.isEmpty)
+        XCTAssertFalse(text.contains("/"))
+        XCTAssertFalse(text.contains("'"))
+    }
 }
