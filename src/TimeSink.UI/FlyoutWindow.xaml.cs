@@ -284,15 +284,14 @@ public partial class FlyoutWindow : Window
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
-                var v = r.GetValue(0)?.ToString();
-                long secs;
-                if (long.TryParse(v, out var n)) secs = n;
-                else if (DateTimeOffset.TryParse(v, out var dto)) secs = dto.ToUnixTimeSeconds();
-                else continue;
+                var secs = DeviceIdentity.ParseStoredTime(r.GetValue(0))?.ToUnixTimeSeconds() ?? 0;
                 if (secs > newest) newest = secs;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            StartupTrace.Log($"flyout: reading last_file_utc failed: {ex.Message}");
+        }
         return newest;
     }
 

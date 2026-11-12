@@ -1162,17 +1162,7 @@ public sealed partial class SettingsView
         catch { return false; }
     }
 
-    private static DateTimeOffset? SafeParseDate(object? val)
-    {
-        if (val is null or DBNull) return null;
-        if (val is long l) return DateTimeOffset.FromUnixTimeSeconds(l);
-        if (val is int i) return DateTimeOffset.FromUnixTimeSeconds(i);
-        var str = val.ToString();
-        if (string.IsNullOrWhiteSpace(str)) return null;
-        if (long.TryParse(str, out var unixSecs)) return DateTimeOffset.FromUnixTimeSeconds(unixSecs);
-        if (DateTimeOffset.TryParse(str, out var dto)) return dto;
-        return null;
-    }
+    private static DateTimeOffset? SafeParseDate(object? val) => DeviceIdentity.ParseStoredTime(val);
 
     private IReadOnlyList<DeviceRecord> ReadDevices()
     {

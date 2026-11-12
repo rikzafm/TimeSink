@@ -146,7 +146,7 @@ public static class HistoryDeleter
         using var cmd = c.CreateCommand();
         cmd.CommandText = "PRAGMA busy_timeout=5000";
         cmd.ExecuteNonQuery();
-        cmd.CommandText = "DELETE FROM sessions; DELETE FROM daily_usage; DELETE FROM icons; DELETE FROM settings WHERE key LIKE 'sync.imported.%';";
+        cmd.CommandText = "DELETE FROM sessions; DELETE FROM daily_usage; DELETE FROM icons; DELETE FROM settings WHERE key LIKE '" + Sync.SyncReader.FingerprintKeyLike + "';";
         cmd.ExecuteNonQuery();
         tx.Commit();
     }

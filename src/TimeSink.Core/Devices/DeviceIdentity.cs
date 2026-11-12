@@ -89,6 +89,19 @@ public static class DeviceIdentity
         return new DeviceRecord(id, name, platform, true, firstSeen, lastImport, lastFile, state);
     }
 
+    /// <summary>Parses a stored device timestamp: unix seconds (long or text) or an ISO date. Null when empty or unreadable.</summary>
+    public static DateTimeOffset? ParseStoredTime(object? val)
+    {
+        if (val is null or DBNull) return null;
+        if (val is long l) return DateTimeOffset.FromUnixTimeSeconds(l);
+        if (val is int i) return DateTimeOffset.FromUnixTimeSeconds(i);
+        var str = val.ToString();
+        if (string.IsNullOrWhiteSpace(str)) return null;
+        if (long.TryParse(str, out var unixSecs)) return DateTimeOffset.FromUnixTimeSeconds(unixSecs);
+        if (DateTimeOffset.TryParse(str, out var dto)) return dto;
+        return null;
+    }
+
     public static void RenameLocalDevice(Db db, string newName)
     {
         if (string.IsNullOrWhiteSpace(newName))
@@ -122,7 +135,7 @@ public static class DeviceIdentity
     public static void ForgetDevice(Db db, string deviceId)
     {
         using var cmd = db.Connection.CreateCommand();
-        cmd.CommandText = "UPDATE devices SET state = 'forgotten' WHERE device_id = $id; DELETE FROM settings WHERE key = 'sync.imported.' || $id;";
+        cmd.CommandText = $"UPDATE devices SET state = 'forgotten' WHERE device_id = $id; DELETE FROM settings WHERE key = '{Sync.SyncReader.FingerprintKeyPrefix}' || $id;";
         cmd.Parameters.AddWithValue("$id", deviceId);
         cmd.ExecuteNonQuery();
     }
@@ -133,12 +146,12 @@ public static class DeviceIdentity
         using (var cmd = db.Connection.CreateCommand())
         {
             cmd.Transaction = tx;
-            cmd.CommandText = """
+            cmd.CommandText = $"""
                 DELETE FROM sessions WHERE app_id IN (SELECT id FROM apps WHERE device_id = $id);
                 DELETE FROM daily_usage WHERE app_id IN (SELECT id FROM apps WHERE device_id = $id);
                 DELETE FROM apps WHERE device_id = $id;
                 DELETE FROM devices WHERE device_id = $id;
-                DELETE FROM settings WHERE key = 'sync.imported.' || $id;
+                DELETE FROM settings WHERE key = '{Sync.SyncReader.FingerprintKeyPrefix}' || $id;
                 """;
             cmd.Parameters.AddWithValue("$id", deviceId);
             cmd.ExecuteNonQuery();
