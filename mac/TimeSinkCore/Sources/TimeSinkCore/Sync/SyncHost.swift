@@ -29,7 +29,12 @@ public final class SyncHost: @unchecked Sendable {
     private var folderSource: DispatchSourceFileSystemObject?
     private var folderFileDescriptor: Int32 = -1
     private let lock = NSLock()
-    private var isPausedDueToEncryptionError: Bool = false
+    // An encryption failure skips only that file until its retry fingerprint (file stamp, passphrase, sync.encrypted)
+    // changes. A skipped file was never imported, so it gets no `sync.imported.*` fingerprint and no unchangedStamps entry.
+    private struct RetrySkip { let fingerprint: String; let status: SyncStatus; let message: String? }
+    private var retrySkips: [String: RetrySkip] = [:]    // guarded by `retryLock` (cleared from other threads)
+    private let retryLock = NSLock()
+    private var loggedStatus: [String: String] = [:]     // guarded by `lock`
     private var unchangedStamps: [String: String] = [:]
     private var fingerprintCount: Int64 = -1
 
@@ -119,7 +124,7 @@ public final class SyncHost: @unchecked Sendable {
     }
 
     public func start() {
-        isPausedDueToEncryptionError = false
+        clearRetrySkips()
         guard isEnabled, let folder = syncFolder, !folder.isEmpty else { return }
         setupWatcher(folder: folder)
 
@@ -152,25 +157,54 @@ public final class SyncHost: @unchecked Sendable {
     }
 
     public func restart() {
-        isPausedDueToEncryptionError = false
+        clearRetrySkips()
         stop()
         start()
     }
 
     public func syncNow() {
-        isPausedDueToEncryptionError = false
+        clearRetrySkips()
         DispatchQueue.global(qos: .utility).async { [weak self] in
             self?.performSync()
+        }
+    }
+
+    private func clearRetrySkips() {
+        retryLock.lock()
+        retrySkips.removeAll()
+        retryLock.unlock()
+    }
+
+    private func retrySkip(for path: String) -> RetrySkip? {
+        retryLock.lock()
+        defer { retryLock.unlock() }
+        return retrySkips[path]
+    }
+
+    private func setRetrySkip(_ skip: RetrySkip?, for path: String) {
+        retryLock.lock()
+        retrySkips[path] = skip
+        retryLock.unlock()
+    }
+
+    /// Must be called with `lock` held. One log line per change of status for a file.
+    private func logStatusOnce(_ path: String, key: String, _ text: String) {
+        if loggedStatus[path] == key { return }
+        loggedStatus[path] = key
+        NSLog("%@", text)
+    }
+
+    private static func encryptionStateString(_ status: SyncStatus) -> String {
+        switch status {
+        case .encryptionKeyMissing: return "encryption_key_missing"
+        case .encryptionKeyWrong: return "encryption_key_wrong"
+        default: return "remote_not_encrypted"
         }
     }
 
     public func performSync() {
         lock.lock()
         defer { lock.unlock() }
-
-        if isPausedDueToEncryptionError {
-            return
-        }
 
         guard isEnabled, let folder = syncFolder, !folder.isEmpty else { return }
         let fm = FileManager.default
@@ -224,6 +258,10 @@ public final class SyncHost: @unchecked Sendable {
                 fingerprintCount = fpCount
             }
 
+            // In-memory only; changes when the stored passphrase or the sync.encrypted setting changes.
+            let passFingerprint = String((try? keyManager.getSyncPassphrase())?.hashValue ?? 0)
+            let encryptedSetting = (try db.scalarText("SELECT value FROM settings WHERE key = 'sync.encrypted';")) ?? ""
+
             for file in files where file.hasSuffix(SyncWriter.extension) && !file.hasSuffix(".tmp") {
                 let fullPath = (folder as NSString).appendingPathComponent(file)
                 let baseName = (file as NSString).deletingPathExtension
@@ -235,16 +273,36 @@ public final class SyncHost: @unchecked Sendable {
                 let stamp = "\(attrs?[.size] ?? 0):\((attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)"
                 if unchangedStamps[fullPath] == stamp { continue }
 
+                // Retry fingerprint: skip a file that failed on encryption until it, the passphrase or sync.encrypted changes.
+                let retryFp = "\(stamp)|\(passFingerprint)|\(encryptedSetting)"
+                if let skip = retrySkip(for: fullPath) {
+                    if skip.fingerprint == retryFp {
+                        if encryptionError == nil { encryptionError = skip.status }
+                        continue   // keep scanning the other files
+                    }
+                    setRetrySkip(nil, for: fullPath)
+                }
+
                 let result = try SyncReader.import(syncFile: fullPath, db: db, timeZone: timeZone, keyManager: keyManager)
                 if result.status == .unchanged {
                     unchangedStamps[fullPath] = stamp
+                    loggedStatus[fullPath] = nil
                 } else if result.status == .success {
                     importSucceeded = true
+                    loggedStatus[fullPath] = nil
                 } else if result.status == .encryptionKeyMissing ||
                            result.status == .encryptionKeyWrong ||
                            result.status == .remoteNotEncrypted {
-                    encryptionError = result.status
-                    break
+                    // Not imported, so no `sync.imported.*` fingerprint is recorded for it (SyncReader only writes one on success).
+                    if encryptionError == nil { encryptionError = result.status }
+                    setRetrySkip(RetrySkip(fingerprint: retryFp, status: result.status, message: result.message), for: fullPath)
+                    logStatusOnce(fullPath, key: "\(result.status.rawValue)|\(retryFp)",
+                                  "sync: \(file): \(result.status.rawValue) (\(result.message ?? ""))")
+                } else if result.status == .badHash || result.status == .newerFormat ||
+                           result.status == .deviceForgotten || result.status == .conflictCopy ||
+                           result.status == .failed {
+                    logStatusOnce(fullPath, key: "\(result.status.rawValue)|\(stamp)",
+                                  "sync: \(file): \(result.status.rawValue) (\(result.message ?? ""))")
                 }
             }
 
@@ -257,20 +315,10 @@ public final class SyncHost: @unchecked Sendable {
             needsReconnect = true
         }
 
-        // 3. Update sync.state in settings and pause retries on encryption error
+        // 3. Update sync.state. Encryption trouble outranks a failed export; neither stops the other half from running.
         let stateStr: String
         if let err = encryptionError {
-            self.isPausedDueToEncryptionError = true
-            switch err {
-            case .encryptionKeyMissing:
-                stateStr = "encryption_key_missing"
-            case .encryptionKeyWrong:
-                stateStr = "encryption_key_wrong"
-            case .remoteNotEncrypted:
-                stateStr = "remote_not_encrypted"
-            default:
-                stateStr = "failed"
-            }
+            stateStr = SyncHost.encryptionStateString(err)
         } else if exportError != nil {
             stateStr = "export_failed"
         } else {

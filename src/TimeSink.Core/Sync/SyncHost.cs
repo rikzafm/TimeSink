@@ -40,6 +40,13 @@ public sealed class SyncHost : IDisposable
     private long _fingerprintCount = -1;
     private readonly Dictionary<string, FileStamp> _unchangedFiles = new(StringComparer.OrdinalIgnoreCase);
 
+    // Encryption failures skip only their own file until its retry fingerprint changes. A file in here was NOT imported,
+    // so it never gets a `sync.imported.*` fingerprint and never lands in _unchangedFiles.
+    private sealed record RetrySkip(string Fingerprint, SyncStatus Status, string? Message);
+    private readonly Dictionary<string, RetrySkip> _retrySkips = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _loggedStatus = new(StringComparer.OrdinalIgnoreCase);
+    private string? _loggedExportError;
+
     private sealed record FileStamp(long Length, DateTime LastWriteUtc)
     {
         public static FileStamp? Of(string path)
@@ -77,6 +84,7 @@ public sealed class SyncHost : IDisposable
         lock (_gate)
         {
             _backoffUntil = DateTimeOffset.MinValue;
+            _retrySkips.Clear();
         }
         CheckSafe(forceExport: true);
     }
@@ -129,6 +137,7 @@ public sealed class SyncHost : IDisposable
             var appsChanged = HasAppsChanged(db, localDeviceId, out var appsFingerprint);
             var exportDue = forceExport || _lastExportUtc == DateTimeOffset.MinValue || (now - _lastExportUtc >= _exportInterval && sessionsChanged) || appsChanged;
 
+            string? exportError = null;
             if (exportDue)
             {
                 try
@@ -139,12 +148,18 @@ public sealed class SyncHost : IDisposable
                     _lastMaxLastSeen = maxLastSeen;
                     _lastAppsFingerprint = appsFingerprint;
                     db.SetSetting(Setting.SyncLastExportUtc.Key, now.ToUnixTimeSeconds().ToString());
+                    _loggedExportError = null;
                     _log?.Invoke($"sync: exported local snapshot ({count} sessions)");
                 }
                 catch (Exception ex)
                 {
-                    HandleError(ex, "export");
-                    return;
+                    // An export failure must not block the import pass below.
+                    exportError = ShortError(ex);
+                    if (_loggedExportError != exportError)
+                    {
+                        _loggedExportError = exportError;
+                        _log?.Invoke($"sync error (export): {ex.GetType().Name}: {ex.Message}");
+                    }
                 }
             }
 
@@ -158,13 +173,25 @@ public sealed class SyncHost : IDisposable
                 _fingerprintCount = fingerprintCount;
             }
             bool placeholderDetected = false;
+            string? encryptionState = null;
+            string? importError = null;
+            var passHash = PassphraseFingerprint();
+            var encryptedSetting = settings.Get(Setting.SyncEncrypted);
 
             try
             {
                 var files = Directory.GetFiles(folder, "*" + SyncWriter.Extension);
                 foreach (var file in files)
                 {
-                    if (SyncReader.IsConflictCopy(file)) continue;
+                    var name = Path.GetFileName(file);
+                    // Our own export: never import it (Import would try the current passphrase on it before noticing it is ours).
+                    if (string.Equals(Path.GetFileNameWithoutExtension(file), localDeviceId, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (SyncReader.IsConflictCopy(file))
+                    {
+                        LogStatusOnce(file, "ConflictCopy", $"sync: cloud conflict copy ignored: {name}");
+                        continue;
+                    }
 
                     if (SyncReader.IsPlaceholder(file))
                     {
@@ -176,7 +203,24 @@ public sealed class SyncHost : IDisposable
                     if (stamp is not null && _unchangedFiles.TryGetValue(file, out var seen) && seen == stamp)
                         continue;
 
+                    var retryFp = stamp is null ? null : $"{stamp.Length}:{stamp.LastWriteUtc.Ticks}|{passHash}|{encryptedSetting}";
+                    if (retryFp is not null && _retrySkips.TryGetValue(file, out var skip))
+                    {
+                        if (skip.Fingerprint == retryFp)
+                        {
+                            encryptionState ??= EncryptionStateOf(skip.Status);
+                            importError ??= skip.Message;
+                            continue;
+                        }
+                        _retrySkips.Remove(file);
+                    }
+
                     var result = SyncReader.Import(file, _dbPath, _zone, _keyManager);
+                    if (result.Status is not (SyncStatus.EncryptionKeyMissing or SyncStatus.EncryptionKeyWrong or SyncStatus.RemoteNotEncrypted))
+                        _retrySkips.Remove(file);
+                    if (result.Status is SyncStatus.Success or SyncStatus.Unchanged)
+                        _loggedStatus.Remove(file);
+
                     if (result.Status == SyncStatus.Unchanged)
                     {
                         if (stamp is not null) _unchangedFiles[file] = stamp;
@@ -185,7 +229,7 @@ public sealed class SyncHost : IDisposable
                     {
                         anyRemoteFound = true;
                         db.SetSetting(Setting.SyncLastImportUtc.Key, now.ToUnixTimeSeconds().ToString());
-                        _log?.Invoke($"sync: imported snapshot {Path.GetFileName(file)} (+{result.AppsAdded} apps, +{result.SessionsAdded} sessions, {result.SessionsUpdated} updated)");
+                        _log?.Invoke($"sync: imported snapshot {name} (+{result.AppsAdded} apps, +{result.SessionsAdded} sessions, {result.SessionsUpdated} updated)");
                     }
                     else if (result.Status == SyncStatus.Pending)
                     {
@@ -193,28 +237,27 @@ public sealed class SyncHost : IDisposable
                     }
                     else if (result.Status == SyncStatus.ThirdDeviceIgnored)
                     {
-                        _log?.Invoke($"sync: third device snapshot ignored: {Path.GetFileName(file)}");
+                        _log?.Invoke($"sync: third device snapshot ignored: {name}");
                     }
-                    else if (result.Status == SyncStatus.EncryptionKeyMissing)
+                    else if (result.Status is SyncStatus.EncryptionKeyMissing or SyncStatus.EncryptionKeyWrong or SyncStatus.RemoteNotEncrypted)
                     {
-                        db.SetSetting(Setting.SyncState.Key, "encryption_key_missing");
-                        lock (_gate) { _backoffUntil = DateTimeOffset.MaxValue; }
-                        _log?.Invoke($"sync: snapshot encrypted but key missing: {Path.GetFileName(file)}");
-                        return;
+                        encryptionState ??= EncryptionStateOf(result.Status);
+                        importError ??= result.Message;
+                        if (retryFp is not null) _retrySkips[file] = new RetrySkip(retryFp, result.Status, result.Message);
+                        var text = result.Status switch
+                        {
+                            SyncStatus.EncryptionKeyMissing => $"sync: snapshot encrypted but key missing: {name}",
+                            SyncStatus.EncryptionKeyWrong => $"sync: passphrase failed decryption: {name}",
+                            _ => $"sync: remote file {name} is not encrypted while local expects encryption",
+                        };
+                        LogStatusOnce(file, result.Status + "|" + retryFp, text);
                     }
-                    else if (result.Status == SyncStatus.EncryptionKeyWrong)
+                    else if (result.Status != SyncStatus.SelfFile)
                     {
-                        db.SetSetting(Setting.SyncState.Key, "encryption_key_wrong");
-                        lock (_gate) { _backoffUntil = DateTimeOffset.MaxValue; }
-                        _log?.Invoke($"sync: passphrase failed decryption: {Path.GetFileName(file)}");
-                        return;
-                    }
-                    else if (result.Status == SyncStatus.RemoteNotEncrypted)
-                    {
-                        db.SetSetting(Setting.SyncState.Key, "remote_not_encrypted");
-                        lock (_gate) { _backoffUntil = DateTimeOffset.MaxValue; }
-                        _log?.Invoke($"sync: remote file {Path.GetFileName(file)} is not encrypted while local expects encryption");
-                        return;
+                        // BadHash, NewerFormat, DeviceForgotten, ConflictCopy, Failed: one line per change of status or file.
+                        LogStatusOnce(file, result.Status + "|" + (stamp is null ? "" : $"{stamp.Length}:{stamp.LastWriteUtc.Ticks}"),
+                            $"sync: {name}: {result.Status}" + (string.IsNullOrEmpty(result.Message) ? "" : $" ({result.Message})"));
+                        if (result.Status != SyncStatus.DeviceForgotten) importError ??= result.Message ?? result.Status.ToString();
                     }
                 }
             }
@@ -236,13 +279,49 @@ public sealed class SyncHost : IDisposable
                 }
             }
 
-            // 3. Update sync state and check 10-minute discovery window
-            UpdateSyncState(db, now, anyRemoteFound, placeholderDetected);
+            // 3. Update sync state: encryption trouble outranks a failed export, which outranks the normal states.
+            if (encryptionState is not null)
+                db.SetSetting(Setting.SyncState.Key, encryptionState);
+            else if (exportError is not null)
+                db.SetSetting(Setting.SyncState.Key, Setting.SyncStates.ExportFailed);
+            else
+                UpdateSyncState(db, now, anyRemoteFound, placeholderDetected);
+
+            var lastError = exportError ?? importError;
+            if (lastError is not null) db.SetSetting(Setting.SyncLastError.Key, lastError);
+            else if (!string.IsNullOrEmpty(db.GetSetting(Setting.SyncLastError.Key))) db.SetSetting(Setting.SyncLastError.Key, "");
         }
         finally
         {
             Interlocked.Exchange(ref _executing, 0);
         }
+    }
+
+    private static string EncryptionStateOf(SyncStatus status) => status switch
+    {
+        SyncStatus.EncryptionKeyMissing => Setting.SyncStates.EncryptionKeyMissing,
+        SyncStatus.EncryptionKeyWrong => Setting.SyncStates.EncryptionKeyWrong,
+        _ => Setting.SyncStates.RemoteNotEncrypted,
+    };
+
+    private static string ShortError(Exception ex) => ex.GetType().Name + ": " + ex.Message.Split('\n')[0].Trim();
+
+    /// <summary>In-memory only: changes when the stored passphrase changes, without exposing it.</summary>
+    private string PassphraseFingerprint()
+    {
+        try
+        {
+            var p = (_keyManager ?? Db.KeyManager).GetSyncPassphrase();
+            return string.IsNullOrEmpty(p) ? "" : Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(p)));
+        }
+        catch { return "?"; }
+    }
+
+    private void LogStatusOnce(string file, string key, string text)
+    {
+        if (_loggedStatus.TryGetValue(file, out var last) && last == key) return;
+        _loggedStatus[file] = key;
+        _log?.Invoke(text);
     }
 
     private static long CountFingerprints(Db db)
