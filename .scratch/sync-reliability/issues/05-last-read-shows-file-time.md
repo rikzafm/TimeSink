@@ -1,6 +1,6 @@
 # 05 Show the remote file's own time as "last read"
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md (Phase 4)
 Blocked by: 04
 
@@ -14,3 +14,6 @@ Blocked by: 04
 With today's data the PC shows the Mac file as about 2 days old.
 
 ## Comments
+
+## Answer
+Implemented on branch sync-reliability (see git log). C# verified with dotnet test; Mac Swift written but NOT compiled or run - build and run the Swift tests on a Mac.

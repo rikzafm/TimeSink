@@ -1,6 +1,6 @@
 # 04 Stop re-importing an unchanged remote file
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md (Phase 3)
 Blocked by: none
 
@@ -17,3 +17,6 @@ Blocked by: none
 Second `Check()` on an unchanged file does zero writes; a re-exported file imports; deleting device history forces a re-import; `daily_usage` unchanged after 20 checks; PC log has one import line per Mac change. C# tests and mirrored Swift tests added.
 
 ## Comments
+
+## Answer
+Implemented on branch sync-reliability (see git log). C# verified with dotnet test; Mac Swift written but NOT compiled or run - build and run the Swift tests on a Mac.

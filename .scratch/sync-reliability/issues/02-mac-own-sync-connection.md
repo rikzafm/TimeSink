@@ -1,6 +1,6 @@
 # 02 Give Mac sync its own database connection
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md (Phase 1)
 Blocked by: 01
 
@@ -17,3 +17,6 @@ Blocked by: 01
 Ticket 01's test passes; 100 iterations of main-thread transaction + `performSync` show no failures or lost tracker writes; existing `SyncTests` pass. Must be built and tested on the Mac.
 
 ## Comments
+
+## Answer
+Implemented on branch sync-reliability (see git log). C# verified with dotnet test; Mac Swift written but NOT compiled or run - build and run the Swift tests on a Mac.

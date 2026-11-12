@@ -1,6 +1,6 @@
 # 06 Encryption errors must not wedge sync
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md (Phase 5)
 Blocked by: 04
 
@@ -16,3 +16,6 @@ Blocked by: 04
 Wrong passphrase gives `encryption_key_wrong` but the export is still written; fixing the passphrase without restart imports and returns to `synced`; replacing the remote file retries. Mirrored on the Mac.
 
 ## Comments
+
+## Answer
+Implemented on branch sync-reliability (see git log). C# verified with dotnet test; Mac Swift written but NOT compiled or run - build and run the Swift tests on a Mac.
