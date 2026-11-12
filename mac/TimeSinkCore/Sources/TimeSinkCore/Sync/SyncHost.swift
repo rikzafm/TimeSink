@@ -13,7 +13,15 @@ public enum SyncDeviceStatus: String, Sendable, Equatable {
 }
 
 public final class SyncHost: @unchecked Sendable {
-    private let db: SQLiteDatabase
+    // `sharedDb` is set by init(db:) (in-memory tests): one connection does everything.
+    // Otherwise (init(dbPath:)) sync owns a private connection, `syncDb`, opened lazily under `lock`,
+    // so ATTACH/BEGIN here can never interleave with the tracker/UI connection.
+    private let sharedDb: SQLiteDatabase?
+    private let dbPath: String?
+    private let dbKey: Data?
+    private var syncDb: SQLiteDatabase?   // guarded by `lock`
+    private var readDb: SQLiteDatabase?   // settings reads from other threads; guarded by `readLock`
+    private let readLock = NSLock()
     private let timeZone: TimeZone
     private let keyManager: KeyManagerProtocol
     private var timer: Timer?
@@ -35,9 +43,57 @@ public final class SyncHost: @unchecked Sendable {
         timeZone: TimeZone = .current,
         keyManager: KeyManagerProtocol = KeychainKeyManager.shared
     ) {
-        self.db = db
+        self.sharedDb = db
+        self.dbPath = nil
+        self.dbKey = nil
         self.timeZone = timeZone
         self.keyManager = keyManager
+    }
+
+    /// Sync runs on its own connection to the database file at `dbPath`; the schema must already be migrated.
+    public init(
+        dbPath: String,
+        key: Data?,
+        timeZone: TimeZone = .current,
+        keyManager: KeyManagerProtocol = KeychainKeyManager.shared
+    ) {
+        self.sharedDb = nil
+        self.dbPath = dbPath
+        self.dbKey = key
+        self.timeZone = timeZone
+        self.keyManager = keyManager
+    }
+
+    /// Must be called with `lock` held.
+    private func syncConnection() throws -> SQLiteDatabase {
+        if let shared = sharedDb { return shared }
+        if let existing = syncDb { return existing }
+        guard let path = dbPath else { throw SQLiteError.generic("SyncHost has no database") }
+        let conn = try SQLiteDatabase(path: path, key: dbKey)
+        syncDb = conn
+        return conn
+    }
+
+    /// Drops the private connection (and any leaked attach/transaction); reopened on the next run.
+    /// Must be called with `lock` held.
+    private func resetSyncConnection() {
+        guard sharedDb == nil else { return }
+        syncDb?.close()
+        syncDb = nil
+    }
+
+    private func settingsConnection() -> SQLiteDatabase? {
+        if let shared = sharedDb { return shared }
+        readLock.lock()
+        defer { readLock.unlock() }
+        if readDb == nil, let path = dbPath {
+            do {
+                readDb = try SQLiteDatabase(path: path, key: dbKey)
+            } catch {
+                NSLog("SyncHost settings connection error: \(error)")
+            }
+        }
+        return readDb
     }
 
     deinit {
@@ -45,11 +101,13 @@ public final class SyncHost: @unchecked Sendable {
     }
 
     public var isEnabled: Bool {
-        (try? db.scalarText("SELECT value FROM settings WHERE key = 'sync.enabled';"))?.lowercased() == "true"
+        guard let db = settingsConnection() else { return false }
+        return (try? db.scalarText("SELECT value FROM settings WHERE key = 'sync.enabled';"))?.lowercased() == "true"
     }
 
     public var syncFolder: String? {
-        try? db.scalarText("SELECT value FROM settings WHERE key = 'sync.folder';")
+        guard let db = settingsConnection() else { return nil }
+        return try? db.scalarText("SELECT value FROM settings WHERE key = 'sync.folder';")
     }
 
     public func start() {
@@ -110,6 +168,15 @@ public final class SyncHost: @unchecked Sendable {
         let fm = FileManager.default
         guard fm.fileExists(atPath: folder) else { return }
 
+        let db: SQLiteDatabase
+        do {
+            db = try syncConnection()
+        } catch {
+            NSLog("SyncHost connection error: \(error)")
+            return
+        }
+        var needsReconnect = false
+
         DispatchQueue.main.async { [weak self] in
             self?.onSyncStarted?()
         }
@@ -125,6 +192,7 @@ public final class SyncHost: @unchecked Sendable {
             try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.last_export_utc', '\(nowUnix)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
         } catch {
             NSLog("SyncWriter error: \(error)")
+            needsReconnect = true
         }
 
         // 2. Scan and import other devices' snapshots
@@ -156,6 +224,7 @@ public final class SyncHost: @unchecked Sendable {
             }
         } catch {
             NSLog("SyncReader scan error: \(error)")
+            needsReconnect = true
         }
 
         // 3. Update sync.state in settings and pause retries on encryption error
@@ -187,6 +256,9 @@ public final class SyncHost: @unchecked Sendable {
         }
         try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.state', '\(stateStr)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
 
+        // A thrown error may have left an attach or transaction open; start clean next run.
+        if needsReconnect { resetSyncConnection() }
+
         // 4. Notify on main thread
         DispatchQueue.main.async { [weak self] in
             self?.onSyncCompleted?()
@@ -196,6 +268,7 @@ public final class SyncHost: @unchecked Sendable {
     public func getDeviceStatus() -> SyncDeviceStatus {
         guard isEnabled else { return .disabled }
         guard let folder = syncFolder, !folder.isEmpty else { return .disabled }
+        guard let db = settingsConnection() else { return .disabled }
 
         let currentState = (try? db.scalarText("SELECT value FROM settings WHERE key = 'sync.state';")) ?? ""
         if currentState == "encryption_key_missing" {

@@ -202,7 +202,7 @@ public final class SQLiteDatabase: @unchecked Sendable {
     }
 
     public func transaction<T>(_ block: () throws -> T) throws -> T {
-        try exec("BEGIN TRANSACTION;")
+        try exec("BEGIN IMMEDIATE TRANSACTION;")
         do {
             let result = try block()
             try exec("COMMIT;")
@@ -210,6 +210,20 @@ public final class SQLiteDatabase: @unchecked Sendable {
         } catch {
             try? exec("ROLLBACK;")
             throw error
+        }
+    }
+
+    /// Detaches `alias` if it is still attached (e.g. leaked by an earlier failed run).
+    public func detachIfAttached(_ alias: String) throws {
+        var names: [String] = []
+        do {
+            let stmt = try prepare("PRAGMA database_list;")
+            while try stmt.step() {
+                if let name = stmt.columnText(at: 1) { names.append(name) }
+            }
+        }
+        if names.contains(where: { $0.caseInsensitiveCompare(alias) == .orderedSame }) {
+            try exec("DETACH DATABASE \(alias);")
         }
     }
 

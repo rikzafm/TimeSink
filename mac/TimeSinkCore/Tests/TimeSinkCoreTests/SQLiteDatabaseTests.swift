@@ -85,4 +85,32 @@ final class SQLiteDatabaseTests: XCTestCase {
         let db = try SQLiteDatabase.inMemory()
         XCTAssertThrowsError(try db.exec("SELECT * FROM non_existent_table;"))
     }
+
+    func testTransactionTakesWriteLockImmediately() throws {
+        let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("txn-lock-\(UUID().uuidString).db")
+        defer {
+            for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + suffix) }
+        }
+        let key = Data(repeating: 0x11, count: 32)
+        let a = try SQLiteDatabase(path: path, key: key)
+        let b = try SQLiteDatabase(path: path, key: key)
+        try a.exec("CREATE TABLE t (v INTEGER);")
+        try b.exec("PRAGMA busy_timeout = 0;")
+
+        // Inside a.transaction nothing has been written yet; BEGIN IMMEDIATE must still hold the write lock.
+        try a.transaction {
+            XCTAssertThrowsError(try b.exec("BEGIN IMMEDIATE;"))
+        }
+        // Lock released after commit.
+        try b.exec("BEGIN IMMEDIATE;")
+        try b.exec("ROLLBACK;")
+    }
+
+    func testDetachIfAttachedRemovesLeftoverAliasOnly() throws {
+        let db = try SQLiteDatabase.inMemory()
+        try db.detachIfAttached("snap") // not attached: no-op, no throw
+        try db.exec("ATTACH DATABASE ':memory:' AS snap;")
+        try db.detachIfAttached("snap")
+        XCTAssertNoThrow(try db.exec("ATTACH DATABASE ':memory:' AS snap;"))
+    }
 }

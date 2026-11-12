@@ -222,6 +222,7 @@ public enum SyncWriter {
         sqlite3_close_v2(validHandle)
 
         // Attach snapshotDb to sourceDb with appropriate key
+        try sourceDb.detachIfAttached("snap")
         let escapedSnapPath = snapshotDbPath.replacingOccurrences(of: "'", with: "''")
         if let passphrase = passphrase, !passphrase.isEmpty {
             let escPass = passphrase.replacingOccurrences(of: "'", with: "''")
@@ -230,7 +231,11 @@ public enum SyncWriter {
             try sourceDb.exec("ATTACH DATABASE '\(escapedSnapPath)' AS snap KEY '';")
         }
         defer {
-            try? sourceDb.exec("DETACH DATABASE snap;")
+            do {
+                try sourceDb.exec("DETACH DATABASE snap;")
+            } catch {
+                NSLog("SyncWriter detach snap failed: \(error)")
+            }
         }
 
         let escapedDev = localDeviceId.replacingOccurrences(of: "'", with: "''")

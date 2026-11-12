@@ -209,6 +209,7 @@ public enum SyncReader {
         var sessionsSkipped = 0
 
         let escapedExtractedPath = extractedDbPath.replacingOccurrences(of: "'", with: "''")
+        try db.detachIfAttached("src")
         if let passphrase = passphrase, !passphrase.isEmpty {
             let escPass = passphrase.replacingOccurrences(of: "'", with: "''")
             try db.exec("ATTACH DATABASE '\(escapedExtractedPath)' AS src KEY '\(escPass)';")
@@ -216,7 +217,11 @@ public enum SyncReader {
             try db.exec("ATTACH DATABASE '\(escapedExtractedPath)' AS src KEY '';")
         }
         defer {
-            try? db.exec("DETACH DATABASE src;")
+            do {
+                try db.exec("DETACH DATABASE src;")
+            } catch {
+                NSLog("SyncReader detach src failed: \(error)")
+            }
         }
 
         try db.transaction {
