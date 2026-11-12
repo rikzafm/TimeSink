@@ -258,8 +258,9 @@ public partial class FlyoutWindow : Window
         }
 
         var lastExport = settings.Get(Setting.SyncLastExportUtc);
-        var lastImport = settings.Get(Setting.SyncLastImportUtc);
-        var lastSyncUtc = Math.Max(lastExport, lastImport);
+        // Newest remote file we actually read (its own time), not when we last looked at it.
+        var lastRemoteFile = NewestRemoteFileUtc();
+        var lastSyncUtc = Math.Max(lastExport, lastRemoteFile);
 
         if (lastSyncUtc <= 0)
         {
@@ -270,6 +271,28 @@ public partial class FlyoutWindow : Window
 
         FooterSyncText.Text = TimeAgo(lastSyncUtc);
         FooterSyncButton.SetResourceReference(ForegroundProperty, "Brush.TextMuted");
+    }
+
+    private long NewestRemoteFileUtc()
+    {
+        long newest = 0;
+        try
+        {
+            using var conn = Db.CreateConnection(_dbPath, Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT last_file_utc FROM devices WHERE is_local = 0 AND last_file_utc IS NOT NULL;";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var secs = DeviceIdentity.ParseStoredTime(r.GetValue(0))?.ToUnixTimeSeconds() ?? 0;
+                if (secs > newest) newest = secs;
+            }
+        }
+        catch (Exception ex)
+        {
+            StartupTrace.Log($"flyout: reading last_file_utc failed: {ex.Message}");
+        }
+        return newest;
     }
 
     private async Task OnFooterSyncClickedAsync()

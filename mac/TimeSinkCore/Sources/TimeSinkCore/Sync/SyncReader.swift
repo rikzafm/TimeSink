@@ -7,6 +7,24 @@ import SQLite3
 #endif
 
 public enum SyncReader {
+    /// Settings key holding the fingerprint ("<hash>:<createdUtc>") of the last imported file of a remote device.
+    public static func fingerprintKey(deviceId: String) -> String {
+        fingerprintKeyPrefix + deviceId
+    }
+
+    public static let fingerprintKeyPrefix = "sync.imported."
+    /// SQL LIKE pattern matching every fingerprint row.
+    public static let fingerprintKeyLike = fingerprintKeyPrefix + "%"
+
+    private static func fingerprint(of manifest: SyncManifest) -> String {
+        "\(manifest.hash):\(manifest.createdUtc)"
+    }
+
+    /// Forget every recorded import fingerprint so the next sync re-imports (passphrase or encryption change).
+    public static func clearFingerprints(db: SQLiteDatabase) {
+        try? db.exec("DELETE FROM settings WHERE key LIKE '\(fingerprintKeyLike)';")
+    }
+
     public static func isConflictCopy(filePath: String) -> Bool {
         let name = (filePath as NSString).lastPathComponent
         let pattern = #"(\(\d+\)| - Copy|-conflict-|\.sync-conflict-|conflicted copy)"#
@@ -135,6 +153,15 @@ public enum SyncReader {
         let manifestData = try Data(contentsOf: URL(fileURLWithPath: extractedManifestPath))
         let manifest = try JSONDecoder().decode(SyncManifest.self, from: manifestData)
 
+        // Already imported this exact file and the remote device is still active: nothing to do.
+        let fpKey = fingerprintKey(deviceId: manifest.deviceId).replacingOccurrences(of: "'", with: "''")
+        let escDeviceId = manifest.deviceId.replacingOccurrences(of: "'", with: "''")
+        let storedFingerprint = try db.scalarText("SELECT value FROM settings WHERE key = '\(fpKey)';")
+        if storedFingerprint == fingerprint(of: manifest),
+           try db.scalarText("SELECT state FROM devices WHERE device_id = '\(escDeviceId)';") == "active" {
+            return SyncImportResult(status: .unchanged)
+        }
+
         let snapData = try Data(contentsOf: URL(fileURLWithPath: extractedDbPath))
         let hashBytes = SHA256.hash(data: snapData)
         let computedHash = hashBytes.map { String(format: "%02x", $0) }.joined()
@@ -209,6 +236,7 @@ public enum SyncReader {
         var sessionsSkipped = 0
 
         let escapedExtractedPath = extractedDbPath.replacingOccurrences(of: "'", with: "''")
+        try db.detachIfAttached("src")
         if let passphrase = passphrase, !passphrase.isEmpty {
             let escPass = passphrase.replacingOccurrences(of: "'", with: "''")
             try db.exec("ATTACH DATABASE '\(escapedExtractedPath)' AS src KEY '\(escPass)';")
@@ -216,7 +244,11 @@ public enum SyncReader {
             try db.exec("ATTACH DATABASE '\(escapedExtractedPath)' AS src KEY '';")
         }
         defer {
-            try? db.exec("DETACH DATABASE src;")
+            do {
+                try db.exec("DETACH DATABASE src;")
+            } catch {
+                NSLog("SyncReader detach src failed: \(error)")
+            }
         }
 
         try db.transaction {
@@ -239,6 +271,12 @@ public enum SyncReader {
             try devStmt.bind(text: nowIso, at: 4)
             try devStmt.bind(text: fileUtcIso, at: 5)
             _ = try devStmt.step()
+
+            // Record the fingerprint in the same transaction so a rolled-back import never stores it
+            let fpStmt = try db.prepare("INSERT INTO main.settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+            try fpStmt.bind(text: fingerprintKey(deviceId: manifest.deviceId), at: 1)
+            try fpStmt.bind(text: fingerprint(of: manifest), at: 2)
+            _ = try fpStmt.step()
 
             // 2. Map & insert apps
             try db.exec("CREATE TEMP TABLE idmap (src_id INTEGER PRIMARY KEY, dst_id INTEGER NOT NULL);")

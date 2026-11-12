@@ -78,6 +78,10 @@ public final class AppState: ObservableObject {
     @Published public var syncFolder: String = ""
     @Published public var syncState: String = ""
     @Published public var lastSyncUtc: Int64 = 0
+    @Published public var lastExportUtc: Int64 = 0
+    @Published public var syncLastError: String = ""
+    /// Sync is on, the folder exists, and our own export is older than 15 minutes.
+    @Published public var exportStale: Bool = false
     @Published public var isSyncing: Bool = false
     @Published public var lastBackupUtc: Int64 = 0
     @Published public var openAtLogin: Bool = false
@@ -564,8 +568,14 @@ public final class AppState: ObservableObject {
             self.syncFolder = (try db.scalarText("SELECT value FROM settings WHERE key = 'sync.folder';")) ?? ""
             self.syncState = (try db.scalarText("SELECT value FROM settings WHERE key = 'sync.state';")) ?? ""
             let lastExp = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'sync.last_export_utc';")) ?? 0
-            let lastImp = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'sync.last_import_utc';")) ?? 0
-            self.lastSyncUtc = max(lastExp, lastImp)
+            // Other device's file time (when it wrote the file we last read), not when we read it.
+            let lastRemoteFile = (try? db.scalarInt("SELECT CAST(strftime('%s', MAX(last_file_utc)) AS INTEGER) FROM devices WHERE is_local = 0;")) ?? 0
+            self.lastSyncUtc = max(lastExp, lastRemoteFile)
+            self.lastExportUtc = lastExp
+            self.syncLastError = (try? db.scalarText("SELECT value FROM settings WHERE key = 'sync.last_error';")) ?? ""
+            self.exportStale = self.syncEnabled && !self.syncFolder.isEmpty
+                && FileManager.default.fileExists(atPath: self.syncFolder)
+                && SyncExportHealth.isStale(lastExportUtc: lastExp, now: Int64(Date().timeIntervalSince1970))
             self.lastBackupUtc = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'backup.last_utc';")) ?? 0
             self.openAtLogin = LoginItemManager.shared.isEnabled
             let sdn = (try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.shortDeviceNames)';"))
@@ -695,6 +705,7 @@ public final class AppState: ObservableObject {
         guard !trimmed.isEmpty else { return }
         try KeychainKeyManager.shared.setSyncPassphrase(trimmed)
         try db.exec("INSERT INTO settings (key, value) VALUES ('sync.encrypted', 'true') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        SyncReader.clearFingerprints(db: db)
         if syncState == "encryption_key_missing" || syncState == "encryption_key_wrong" {
             try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.state', 'synced') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
         }
@@ -711,6 +722,7 @@ public final class AppState: ObservableObject {
     public func clearSyncPassphrase() throws {
         try KeychainKeyManager.shared.clearSyncPassphrase()
         try db.exec("INSERT INTO settings (key, value) VALUES ('sync.encrypted', 'false') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        SyncReader.clearFingerprints(db: db)
         self.syncEncrypted = false
         self.hasSyncPassphrase = false
         loadSettings()
@@ -820,6 +832,7 @@ public final class AppState: ObservableObject {
             let stmt = try db.prepare("UPDATE devices SET state = 'forgotten' WHERE device_id = ?;")
             try stmt.bind(text: deviceId, at: 1)
             _ = try stmt.step()
+            try db.exec("DELETE FROM settings WHERE key = '\(SyncReader.fingerprintKey(deviceId: deviceId).replacingOccurrences(of: "'", with: "''"))';")
             loadDeviceInfo()
             refresh()
         } catch {}
@@ -833,6 +846,7 @@ public final class AppState: ObservableObject {
                 try db.exec("DELETE FROM icons WHERE app_id IN (SELECT id FROM apps WHERE device_id = '\(deviceId)');")
                 try db.exec("DELETE FROM apps WHERE device_id = '\(deviceId)';")
                 try db.exec("DELETE FROM devices WHERE device_id = '\(deviceId)';")
+                try db.exec("DELETE FROM settings WHERE key = '\(SyncReader.fingerprintKey(deviceId: deviceId).replacingOccurrences(of: "'", with: "''"))';")
             }
             let acc = UsageAccumulator(store: SQLiteSessionStore(db: db), timeZone: .current)
             try acc.rebuildAll()

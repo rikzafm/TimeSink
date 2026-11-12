@@ -711,6 +711,7 @@ public sealed partial class SettingsView
                 details.Children.Add(line1);
 
                 string line2String;
+                string? staleHint = null;
                 if (d.IsLocal)
                 {
                     line2String = lastExport > 0 ? $"Wrote its file {TimeAgo(lastExport)}" : "Ready to write file";
@@ -719,10 +720,12 @@ public sealed partial class SettingsView
                 {
                     line2String = "Sync paused · forgotten";
                 }
-                else if (d.LastImportUtc.HasValue)
+                else if (d.LastFileUtc.HasValue)
                 {
                     var hours = GetDeviceHours(d.DeviceId);
-                    line2String = $"Read its file {TimeAgo(d.LastImportUtc.Value.ToUnixTimeSeconds())} · {hours}h";
+                    var fileText = RemoteFileText.Describe(d.LastFileUtc.Value.ToUnixTimeSeconds(), DateTimeOffset.UtcNow);
+                    line2String = $"{fileText.Line} · {hours}h";
+                    staleHint = fileText.StaleHint;
                 }
                 else if (syncState == "pending")
                 {
@@ -738,6 +741,15 @@ public sealed partial class SettingsView
                 line2.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
                 line2.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
                 details.Children.Add(line2);
+
+                if (staleHint != null)
+                {
+                    var hintText = new TextBlock { Text = staleHint, Margin = new Thickness(0, 1, 0, 0) };
+                    hintText.SetResourceReference(TextBlock.StyleProperty, "Caption");
+                    hintText.SetResourceReference(TextBlock.FontSizeProperty, "Double.FontSize.Small");
+                    hintText.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextMuted");
+                    details.Children.Add(hintText);
+                }
 
                 Grid.SetColumn(details, 1);
                 rowGrid.Children.Add(details);
@@ -1150,17 +1162,7 @@ public sealed partial class SettingsView
         catch { return false; }
     }
 
-    private static DateTimeOffset? SafeParseDate(object? val)
-    {
-        if (val is null or DBNull) return null;
-        if (val is long l) return DateTimeOffset.FromUnixTimeSeconds(l);
-        if (val is int i) return DateTimeOffset.FromUnixTimeSeconds(i);
-        var str = val.ToString();
-        if (string.IsNullOrWhiteSpace(str)) return null;
-        if (long.TryParse(str, out var unixSecs)) return DateTimeOffset.FromUnixTimeSeconds(unixSecs);
-        if (DateTimeOffset.TryParse(str, out var dto)) return dto;
-        return null;
-    }
+    private static DateTimeOffset? SafeParseDate(object? val) => DeviceIdentity.ParseStoredTime(val);
 
     private IReadOnlyList<DeviceRecord> ReadDevices()
     {

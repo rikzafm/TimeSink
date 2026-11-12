@@ -245,6 +245,8 @@ public sealed class SharedFixtureTests
 
             var fingerprintAfterFirst = rig.Fingerprint(dstDb);
 
+            // The unchanged file is now short-circuited by the fingerprint; clear it to exercise the merge itself.
+            rig.Exec(dstDb, "DELETE FROM settings WHERE key LIKE 'sync.imported.%'");
             var res2 = TimeSink.Core.Sync.SyncReader.Import(file, dstDb, TimeZoneInfo.Utc);
             res2.Status.Should().Be(TimeSink.Core.Sync.SyncStatus.Success);
             res2.AppsAdded.Should().Be(0);

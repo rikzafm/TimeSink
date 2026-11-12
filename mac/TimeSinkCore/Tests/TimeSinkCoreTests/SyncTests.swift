@@ -59,12 +59,54 @@ final class SyncTests: XCTestCase {
         let sessionsCount = (try dbPC.scalarInt("SELECT COUNT(*) FROM sessions;")) ?? 0
         XCTAssertEqual(sessionsCount, 1)
 
-        // Idempotent re-import
+        // Unchanged file is skipped via the fingerprint
+        let unchanged = try SyncReader.import(syncFile: snapPath, db: dbPC)
+        XCTAssertEqual(unchanged.status, .unchanged)
+
+        // Idempotent re-import (fingerprint cleared so the merge itself runs)
+        SyncReader.clearFingerprints(db: dbPC)
         let res2 = try SyncReader.import(syncFile: snapPath, db: dbPC)
         XCTAssertEqual(res2.status, .success)
         XCTAssertEqual(res2.appsAdded, 0)
         XCTAssertEqual(res2.sessionsAdded, 0)
         XCTAssertEqual(res2.sessionsSkipped, 1)
+    }
+
+    func testUnchangedRemoteFileIsSkippedUntilHistoryDeleted() throws {
+        let dbMac = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: dbMac)
+        let macId = try dbMac.scalarText("SELECT device_id FROM devices LIMIT 1;") ?? "mac-1"
+        let macAppLib = MacAppLibrary(db: dbMac)
+        let safariId = try macAppLib.trackApp(
+            exePath: "/Applications/Safari.app",
+            displayName: "Safari",
+            category: "Browser",
+            deviceId: macId
+        )
+        try dbMac.exec("INSERT INTO sessions (id, app_id, start_utc, end_utc, last_seen_utc, end_reason) VALUES (1, \(safariId), 1000, 2000, 2000, 'exit');")
+
+        let tempFolder = (NSTemporaryDirectory() as NSString).appendingPathComponent("sync-unchanged-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(atPath: tempFolder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: tempFolder) }
+        let snapPath = try SyncWriter.write(db: dbMac, syncFolder: tempFolder)
+
+        let dbPC = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: dbPC)
+        try dbPC.exec("UPDATE settings SET value = 'pc-remote-2' WHERE key = 'device.id'; UPDATE devices SET device_id = 'pc-remote-2', name = 'Gaming PC', platform = 'windows';")
+
+        XCTAssertEqual(try SyncReader.import(syncFile: snapPath, db: dbPC).status, .success)
+        XCTAssertEqual(try SyncReader.import(syncFile: snapPath, db: dbPC).status, .unchanged)
+
+        // Deleting the device history clears the fingerprint and forces a re-import
+        try dbPC.exec("DELETE FROM sessions; DELETE FROM daily_usage; DELETE FROM apps WHERE device_id = '\(macId)'; DELETE FROM devices WHERE device_id = '\(macId)'; DELETE FROM settings WHERE key = 'sync.imported.\(macId)';")
+        let again = try SyncReader.import(syncFile: snapPath, db: dbPC)
+        XCTAssertEqual(again.status, .success)
+        XCTAssertEqual(again.sessionsAdded, 1)
+
+        // DataExport.deleteAllHistory clears fingerprints
+        try DataExport.deleteAllHistory(db: dbPC, confirmation: "DELETE")
+        let remaining = (try dbPC.scalarInt("SELECT COUNT(*) FROM settings WHERE key LIKE 'sync.imported.%';")) ?? -1
+        XCTAssertEqual(remaining, 0)
     }
 
     func testConflictCopyAndPlaceholderIgnored() throws {
@@ -468,5 +510,331 @@ final class SyncTests: XCTestCase {
         XCTAssertEqual(macKind, 5)
         XCTAssertEqual(macUpdatedUtc, updateTime)
     }
-}
 
+    // MARK: - Own sync connection (sync-reliability ticket 02)
+
+    private static let testKey = Data(repeating: 0x11, count: 32)
+
+    private func makeLocalFileDb(in dir: String, deviceId: String) throws -> SQLiteDatabase {
+        let db = try SQLiteDatabase(path: (dir as NSString).appendingPathComponent("local.db"), key: Self.testKey)
+        try Migrator.apply(to: db)
+        try db.exec("""
+            UPDATE settings SET value = '\(deviceId)' WHERE key = 'device.id';
+            UPDATE devices SET device_id = '\(deviceId)', name = 'Local Mac', platform = 'macos';
+            """)
+        return db
+    }
+
+    private func enableSync(db: SQLiteDatabase, folder: String) throws {
+        try db.exec("INSERT INTO settings (key, value) VALUES ('sync.enabled', 'true'), ('sync.folder', '\(folder)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+    }
+
+    /// Writes a remote device's .tssync into `folder` with `sessionCount` sessions.
+    @discardableResult
+    private func writeRemoteFile(folder: String, deviceId: String = "remote-pc-1", sessionCount: Int = 1,
+                                 keyManager: KeyManagerProtocol = KeychainKeyManager.shared) throws -> String {
+        let remote = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: remote)
+        try remote.exec("""
+            UPDATE settings SET value = '\(deviceId)' WHERE key = 'device.id';
+            UPDATE devices SET device_id = '\(deviceId)', name = 'Remote PC', platform = 'windows';
+            """)
+        let appId = try MacAppLibrary(db: remote).trackApp(
+            exePath: "C:\\Games\\game.exe", displayName: "Game", category: "Game", deviceId: deviceId)
+        try remote.exec("""
+            WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < \(sessionCount))
+            INSERT INTO sessions (app_id, start_utc, end_utc, last_seen_utc, end_reason)
+            SELECT \(appId), 1000 + n * 10, 1005 + n * 10, 1005 + n * 10, 'exit' FROM c;
+            """)
+        return try SyncWriter.write(db: remote, syncFolder: folder, keyManager: keyManager)
+    }
+
+    private func makeTempDir(_ prefix: String) throws -> String {
+        let dir = (NSTemporaryDirectory() as NSString).appendingPathComponent("\(prefix)-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    func testWriteRecoversFromLeakedSnapAlias() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+        let folder = try makeTempDir("sync-leak-out")
+        defer { try? FileManager.default.removeItem(atPath: folder) }
+
+        // Simulate what a failed DETACH used to leave behind.
+        try db.exec("ATTACH DATABASE ':memory:' AS snap;")
+
+        let first = try SyncWriter.write(db: db, syncFolder: folder)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: first))
+        try FileManager.default.removeItem(atPath: first)
+        let second = try SyncWriter.write(db: db, syncFolder: folder)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: second))
+    }
+
+    func testImportRecoversFromLeakedSrcAlias() throws {
+        let folder = try makeTempDir("sync-leak-in")
+        defer { try? FileManager.default.removeItem(atPath: folder) }
+        let file = try writeRemoteFile(folder: folder)
+
+        let local = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: local)
+        try local.exec("ATTACH DATABASE ':memory:' AS src;")
+
+        let res = try SyncReader.import(syncFile: file, db: local)
+        XCTAssertEqual(res.status, .success)
+        XCTAssertEqual(res.sessionsAdded, 1)
+    }
+
+    /// Phase 0.3: a transaction open on the UI/tracker connection must not wedge export.
+    func testExportSurvivesOpenTransactionOnMainConnection() throws {
+        let dir = try makeTempDir("sync-wedge")
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let folder = (dir as NSString).appendingPathComponent("sync")
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+
+        let main = try makeLocalFileDb(in: dir, deviceId: "local-mac-1")
+        try enableSync(db: main, folder: folder)
+        let host = SyncHost(dbPath: main.path, key: main.key)
+        let target = (folder as NSString).appendingPathComponent("local-mac-1.tssync")
+
+        try main.exec("BEGIN;")
+        _ = try main.scalarInt("SELECT COUNT(*) FROM apps;")
+        let g1 = DispatchGroup()
+        DispatchQueue.global().async(group: g1) { host.performSync() }
+        g1.wait()
+        try main.exec("COMMIT;")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: target))
+
+        try FileManager.default.removeItem(atPath: target)
+        let g2 = DispatchGroup()
+        DispatchQueue.global().async(group: g2) { host.performSync() }
+        g2.wait()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: target), "second export must succeed")
+    }
+
+    func testImportOnSyncConnectionChangesDataVersionOnMainConnection() throws {
+        let dir = try makeTempDir("sync-dataversion")
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let folder = (dir as NSString).appendingPathComponent("sync")
+        let main = try makeLocalFileDb(in: dir, deviceId: "local-mac-1")
+        try enableSync(db: main, folder: folder)
+        try writeRemoteFile(folder: folder)
+
+        let store = SQLiteSessionStore(db: main)
+        let before = store.dataVersion
+        XCTAssertNotNil(before)
+
+        SyncHost(dbPath: main.path, key: main.key).performSync()
+
+        XCTAssertNotEqual(store.dataVersion, before)
+        XCTAssertEqual(try main.scalarInt("SELECT COUNT(*) FROM apps WHERE device_id = 'remote-pc-1';"), 1)
+    }
+
+    /// 100 main-thread transactions racing performSync (export + import): no failures, no lost writes.
+    func testMainTransactionsAndPerformSyncLoopLoseNothing() throws {
+        let dir = try makeTempDir("sync-loop")
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let folder = (dir as NSString).appendingPathComponent("sync")
+        let main = try makeLocalFileDb(in: dir, deviceId: "local-mac-1")
+        try enableSync(db: main, folder: folder)
+        try writeRemoteFile(folder: folder)
+        let appId = try MacAppLibrary(db: main).trackApp(
+            exePath: "/Applications/Safari.app", displayName: "Safari", category: "Browser", deviceId: "local-mac-1")
+        let host = SyncHost(dbPath: main.path, key: main.key)
+
+        for i in 0..<100 {
+            let group = DispatchGroup()
+            DispatchQueue.global().async(group: group) { host.performSync() }
+            try main.transaction {
+                try main.exec("INSERT INTO sessions (app_id, start_utc, end_utc, last_seen_utc, end_reason) VALUES (\(appId), \(1000 + i * 10), \(1005 + i * 10), \(1005 + i * 10), 'exit');")
+            }
+            group.wait()
+        }
+        host.performSync()
+
+        XCTAssertEqual(try main.scalarInt("SELECT COUNT(*) FROM sessions WHERE app_id = \(appId);"), 100)
+
+        // The last export must carry every tracker write (an export wedged at any point would not).
+        let target = (folder as NSString).appendingPathComponent("local-mac-1.tssync")
+        let verify = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: verify)
+        try verify.exec("""
+            UPDATE settings SET value = 'verify-pc' WHERE key = 'device.id';
+            UPDATE devices SET device_id = 'verify-pc', name = 'Verify', platform = 'windows';
+            """)
+        let res = try SyncReader.import(syncFile: target, db: verify)
+        XCTAssertEqual(res.status, .success)
+        XCTAssertEqual(try verify.scalarInt("SELECT COUNT(*) FROM sessions;"), 100)
+    }
+
+    /// A large import must not surface SQLITE_BUSY to tracker-style writes on the main connection.
+    func testLargeImportDoesNotFailMainConnectionWrites() throws {
+        let dir = try makeTempDir("sync-busy")
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let folder = (dir as NSString).appendingPathComponent("sync")
+        let main = try makeLocalFileDb(in: dir, deviceId: "local-mac-1")
+        try enableSync(db: main, folder: folder)
+        try writeRemoteFile(folder: folder, sessionCount: 20000)
+        let appId = try MacAppLibrary(db: main).trackApp(
+            exePath: "/Applications/Safari.app", displayName: "Safari", category: "Browser", deviceId: "local-mac-1")
+        let host = SyncHost(dbPath: main.path, key: main.key)
+
+        let group = DispatchGroup()
+        DispatchQueue.global().async(group: group) { host.performSync() }
+
+        var written = 0
+        var failures: [String] = []
+        while group.wait(timeout: .now()) == .timedOut {
+            do {
+                try main.exec("INSERT INTO sessions (app_id, start_utc, end_utc, last_seen_utc, end_reason) VALUES (\(appId), \(1000 + written * 10), \(1005 + written * 10), \(1005 + written * 10), 'exit');")
+                written += 1
+            } catch {
+                failures.append("\(error)")
+            }
+            Thread.sleep(forTimeInterval: 0.002)
+        }
+
+        XCTAssertEqual(failures, [])
+        XCTAssertEqual(try main.scalarInt("SELECT COUNT(*) FROM sessions WHERE app_id = \(appId);"), Int64(written))
+        XCTAssertEqual(try main.scalarInt("SELECT COUNT(*) FROM apps WHERE device_id = 'remote-pc-1';"), 1)
+    }
+
+    // MARK: - Export failure visibility (sync-reliability ticket 03)
+
+    private func setFolderWritable(_ folder: String, _ writable: Bool) throws {
+        try FileManager.default.setAttributes([.posixPermissions: writable ? 0o755 : 0o555], ofItemAtPath: folder)
+    }
+
+    func testReadOnlyFolderMarksExportFailedAndRecovers() throws {
+        try XCTSkipIf(geteuid() == 0, "root ignores directory permissions")
+        let dir = try makeTempDir("sync-exportfail")
+        let folder = (dir as NSString).appendingPathComponent("sync")
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        defer {
+            try? setFolderWritable(folder, true)
+            try? FileManager.default.removeItem(atPath: dir)
+        }
+        let main = try makeLocalFileDb(in: dir, deviceId: "local-mac-1")
+        try enableSync(db: main, folder: folder)
+        let host = SyncHost(dbPath: main.path, key: main.key)
+        host.exportRetryDelay = 3600   // keep the automatic retry out of this test
+
+        try setFolderWritable(folder, false)
+        host.performSync()
+
+        XCTAssertEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "export_failed")
+        let lastError = try main.scalarText("SELECT value FROM settings WHERE key = 'sync.last_error';") ?? ""
+        XCTAssertFalse(lastError.isEmpty)
+        XCTAssertFalse(lastError.contains(dir), "last_error must not leak paths")
+        XCTAssertEqual(host.getDeviceStatus(), .exportFailed)
+
+        try setFolderWritable(folder, true)
+        host.performSync()
+
+        XCTAssertNotEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "export_failed")
+        XCTAssertNotEqual(host.getDeviceStatus(), .exportFailed)
+        let cleared = try main.scalarText("SELECT value FROM settings WHERE key = 'sync.last_error';") ?? ""
+        XCTAssertEqual(cleared, "")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: (folder as NSString).appendingPathComponent("local-mac-1.tssync")))
+    }
+
+    // MARK: - Encryption errors do not wedge sync (sync-reliability ticket 06)
+
+    /// Not compiled or run on Windows. Local expects encryption but the remote file is plain: the file is skipped
+    /// (no import fingerprint), and flipping the setting recovers on the next performSync without restart().
+    func testEncryptionErrorSkipsOnlyThatFileAndRecoversWithoutRestart() throws {
+        let dir = try makeTempDir("sync-encrecover")
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let folder = (dir as NSString).appendingPathComponent("sync")
+        let main = try makeLocalFileDb(in: dir, deviceId: "local-mac-1")
+        try enableSync(db: main, folder: folder)
+        let keys = InMemoryKeyManager()   // never the real Keychain, which may hold a passphrase on a dev machine
+        try writeRemoteFile(folder: folder, keyManager: keys)
+        try main.exec("INSERT INTO settings (key, value) VALUES ('sync.encrypted', 'true') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        let host = SyncHost(dbPath: main.path, key: main.key, keyManager: keys)
+
+        host.performSync()
+        XCTAssertEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "remote_not_encrypted")
+        XCTAssertEqual(try main.scalarInt("SELECT COUNT(*) FROM settings WHERE key LIKE 'sync.imported.%';"), 0,
+                       "a file that was not imported must not be fingerprinted")
+
+        host.performSync()   // paused state must not stick; still skipped, state unchanged
+        XCTAssertEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "remote_not_encrypted")
+
+        try main.exec("UPDATE settings SET value = 'false' WHERE key = 'sync.encrypted';")
+        host.performSync()   // no restart(), no syncNow()
+
+        XCTAssertEqual(try main.scalarInt("SELECT COUNT(*) FROM apps WHERE device_id = 'remote-pc-1';"), 1)
+        XCTAssertEqual(try main.scalarInt("SELECT COUNT(*) FROM settings WHERE key LIKE 'sync.imported.%';"), 1)
+        XCTAssertEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "synced")
+    }
+
+    func testExportFailureRetriesWithoutUserAction() throws {
+        try XCTSkipIf(geteuid() == 0, "root ignores directory permissions")
+        let dir = try makeTempDir("sync-exportretry")
+        let folder = (dir as NSString).appendingPathComponent("sync")
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        defer {
+            try? setFolderWritable(folder, true)
+            try? FileManager.default.removeItem(atPath: dir)
+        }
+        let main = try makeLocalFileDb(in: dir, deviceId: "local-mac-1")
+        try enableSync(db: main, folder: folder)
+        let host = SyncHost(dbPath: main.path, key: main.key)
+        host.exportRetryDelay = 0.3
+        let target = (folder as NSString).appendingPathComponent("local-mac-1.tssync")
+
+        try setFolderWritable(folder, false)
+        host.performSync()
+        XCTAssertEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "export_failed")
+
+        try setFolderWritable(folder, true)
+        let deadline = Date().addingTimeInterval(5)
+        while !FileManager.default.fileExists(atPath: target) && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: target), "retry must export without another performSync call")
+        XCTAssertNotEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "export_failed")
+    }
+
+    func testExportStalenessThreshold() {
+        let now: Int64 = 1_000_000
+        XCTAssertFalse(SyncExportHealth.isStale(lastExportUtc: 0, now: now), "never exported is not 'stale'")
+        XCTAssertFalse(SyncExportHealth.isStale(lastExportUtc: now - 14 * 60, now: now))
+        XCTAssertFalse(SyncExportHealth.isStale(lastExportUtc: now - 15 * 60, now: now))
+        XCTAssertTrue(SyncExportHealth.isStale(lastExportUtc: now - 15 * 60 - 1, now: now))
+    }
+
+    func testShortErrorTextHasNoPathsOrQuotes() {
+        let err = NSError(domain: NSCocoaErrorDomain, code: 513, userInfo: [NSFilePathErrorKey: "/Users/me/OneDrive/sync", NSLocalizedDescriptionKey: "can't write /Users/me/OneDrive/sync"])
+        let text = SyncExportHealth.shortErrorText(err)
+        XCTAssertFalse(text.isEmpty)
+        XCTAssertFalse(text.contains("/"))
+        XCTAssertFalse(text.contains("'"))
+    }
+
+    /// Bug 6 pin (mirrors SyncEncryptionRecoveryTests on the PC): the Mac encrypts when `sync.encrypted` is true OR a sync
+    /// passphrase exists, the PC only when `sync.encrypted` is true. This documents the Mac half so the follow-up ticket flips it.
+    /// Uses InMemoryKeyManager, so no keychain is touched and nothing needs skipping.
+    func testDocumentsCurrentMismatchMacEncryptsWhenPassphraseExistsEvenIfSyncEncryptedIsOff() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try Migrator.apply(to: db)
+        let folder = try makeTempDir("sync-bug6-pin")
+        defer { try? FileManager.default.removeItem(atPath: folder) }
+        let keys = InMemoryKeyManager(initialSyncPassphrase: "has-passphrase")
+        XCTAssertNotEqual((try db.scalarText("SELECT value FROM settings WHERE key = 'sync.encrypted';"))?.lowercased(), "true")
+
+        let path = try SyncWriter.write(db: db, syncFolder: folder, keyManager: keys)
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        proc.arguments = ["-p", path, SyncManifest.entryName]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        try proc.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        proc.waitUntilExit()
+        let manifest = try JSONDecoder().decode(SyncManifest.self, from: data)
+        XCTAssertTrue(manifest.encrypted, "current Mac rule; the PC would write false here")
+    }
+}
