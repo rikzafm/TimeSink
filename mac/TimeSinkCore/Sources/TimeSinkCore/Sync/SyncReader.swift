@@ -9,8 +9,12 @@ import SQLite3
 public enum SyncReader {
     /// Settings key holding the fingerprint ("<hash>:<createdUtc>") of the last imported file of a remote device.
     public static func fingerprintKey(deviceId: String) -> String {
-        "sync.imported.\(deviceId)"
+        fingerprintKeyPrefix + deviceId
     }
+
+    public static let fingerprintKeyPrefix = "sync.imported."
+    /// SQL LIKE pattern matching every fingerprint row.
+    public static let fingerprintKeyLike = fingerprintKeyPrefix + "%"
 
     private static func fingerprint(of manifest: SyncManifest) -> String {
         "\(manifest.hash):\(manifest.createdUtc)"
@@ -18,7 +22,7 @@ public enum SyncReader {
 
     /// Forget every recorded import fingerprint so the next sync re-imports (passphrase or encryption change).
     public static func clearFingerprints(db: SQLiteDatabase) {
-        try? db.exec("DELETE FROM settings WHERE key LIKE 'sync.imported.%';")
+        try? db.exec("DELETE FROM settings WHERE key LIKE '\(fingerprintKeyLike)';")
     }
 
     public static func isConflictCopy(filePath: String) -> Bool {
