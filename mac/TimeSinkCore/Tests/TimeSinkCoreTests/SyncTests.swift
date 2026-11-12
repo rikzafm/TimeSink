@@ -531,7 +531,8 @@ final class SyncTests: XCTestCase {
 
     /// Writes a remote device's .tssync into `folder` with `sessionCount` sessions.
     @discardableResult
-    private func writeRemoteFile(folder: String, deviceId: String = "remote-pc-1", sessionCount: Int = 1) throws -> String {
+    private func writeRemoteFile(folder: String, deviceId: String = "remote-pc-1", sessionCount: Int = 1,
+                                 keyManager: KeyManagerProtocol = KeychainKeyManager.shared) throws -> String {
         let remote = try SQLiteDatabase(path: ":memory:")
         try Migrator.apply(to: remote)
         try remote.exec("""
@@ -545,7 +546,7 @@ final class SyncTests: XCTestCase {
             INSERT INTO sessions (app_id, start_utc, end_utc, last_seen_utc, end_reason)
             SELECT \(appId), 1000 + n * 10, 1005 + n * 10, 1005 + n * 10, 'exit' FROM c;
             """)
-        return try SyncWriter.write(db: remote, syncFolder: folder)
+        return try SyncWriter.write(db: remote, syncFolder: folder, keyManager: keyManager)
     }
 
     private func makeTempDir(_ prefix: String) throws -> String {
@@ -747,9 +748,10 @@ final class SyncTests: XCTestCase {
         let folder = (dir as NSString).appendingPathComponent("sync")
         let main = try makeLocalFileDb(in: dir, deviceId: "local-mac-1")
         try enableSync(db: main, folder: folder)
-        try writeRemoteFile(folder: folder)
+        let keys = InMemoryKeyManager()   // never the real Keychain, which may hold a passphrase on a dev machine
+        try writeRemoteFile(folder: folder, keyManager: keys)
         try main.exec("INSERT INTO settings (key, value) VALUES ('sync.encrypted', 'true') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
-        let host = SyncHost(dbPath: main.path, key: main.key)
+        let host = SyncHost(dbPath: main.path, key: main.key, keyManager: keys)
 
         host.performSync()
         XCTAssertEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "remote_not_encrypted")

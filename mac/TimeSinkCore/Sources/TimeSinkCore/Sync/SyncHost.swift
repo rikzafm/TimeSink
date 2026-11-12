@@ -352,6 +352,8 @@ public final class SyncHost: @unchecked Sendable {
         } else if exportError != nil {
             stateStr = SyncStates.exportFailed
         } else {
+            // No encryption error this pass: drop a stale sticky encryption state, or getDeviceStatus() would read it back.
+            try? db.exec("UPDATE settings SET value = 'pending' WHERE key = 'sync.state' AND value IN ('encryption_key_missing', 'encryption_key_wrong', 'remote_not_encrypted');")
             let status = getDeviceStatus()
             switch status {
             case .noOtherFound: stateStr = "no_other_device"
