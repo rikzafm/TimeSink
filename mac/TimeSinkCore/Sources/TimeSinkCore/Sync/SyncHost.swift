@@ -10,6 +10,7 @@ public enum SyncDeviceStatus: String, Sendable, Equatable {
     case encryptionKeyMissing = "Passphrase required"
     case encryptionKeyWrong = "Passphrase mismatch"
     case remoteNotEncrypted = "Remote device unencrypted"
+    case exportFailed = "Couldn't write sync file"
 }
 
 public final class SyncHost: @unchecked Sendable {
@@ -29,6 +30,11 @@ public final class SyncHost: @unchecked Sendable {
     private var folderFileDescriptor: Int32 = -1
     private let lock = NSLock()
     private var isPausedDueToEncryptionError: Bool = false
+
+    // Export failure retry: one quick retry after `exportRetryDelay`, then the 5-minute timer.
+    var exportRetryDelay: TimeInterval = 30
+    private var exportFailureStreak = 0                  // guarded by `lock`
+    private var exportRetryItem: DispatchWorkItem?
 
     // Watcher debouncing & loop prevention
     private let debounceQueue = DispatchQueue(label: "com.timesink.sync.debounce", qos: .utility)
@@ -183,6 +189,7 @@ public final class SyncHost: @unchecked Sendable {
 
         var importSucceeded = false
         var encryptionError: SyncStatus? = nil
+        var exportError: String? = nil
 
         // 1. Export local snapshot
         do {
@@ -190,9 +197,17 @@ public final class SyncHost: @unchecked Sendable {
             self.lastLocalWriteUtc = Date().timeIntervalSince1970
             let nowUnix = Int64(Date().timeIntervalSince1970)
             try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.last_export_utc', '\(nowUnix)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+            exportFailureStreak = 0
+            // Drop the stale failure marker so getDeviceStatus() does not read it back.
+            try? db.exec("UPDATE settings SET value = 'pending' WHERE key = 'sync.state' AND value = 'export_failed'; DELETE FROM settings WHERE key = 'sync.last_error';")
         } catch {
             NSLog("SyncWriter error: \(error)")
             needsReconnect = true
+            let short = SyncExportHealth.shortErrorText(error)
+            exportError = short
+            try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.last_error', '\(short)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+            exportFailureStreak += 1
+            if exportFailureStreak == 1 { scheduleExportRetry() }
         }
 
         // 2. Scan and import other devices' snapshots
@@ -241,6 +256,8 @@ public final class SyncHost: @unchecked Sendable {
             default:
                 stateStr = "failed"
             }
+        } else if exportError != nil {
+            stateStr = "export_failed"
         } else {
             let status = getDeviceStatus()
             switch status {
@@ -252,6 +269,7 @@ public final class SyncHost: @unchecked Sendable {
             case .encryptionKeyMissing: stateStr = "encryption_key_missing"
             case .encryptionKeyWrong: stateStr = "encryption_key_wrong"
             case .remoteNotEncrypted: stateStr = "remote_not_encrypted"
+            case .exportFailed: stateStr = "export_failed"
             }
         }
         try? db.exec("INSERT INTO settings (key, value) VALUES ('sync.state', '\(stateStr)') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
@@ -277,6 +295,8 @@ public final class SyncHost: @unchecked Sendable {
             return .encryptionKeyWrong
         } else if currentState == "remote_not_encrypted" {
             return .remoteNotEncrypted
+        } else if currentState == "export_failed" {
+            return .exportFailed
         }
 
         let fm = FileManager.default
@@ -345,7 +365,19 @@ public final class SyncHost: @unchecked Sendable {
         source.resume()
     }
 
+    /// Called with `lock` held after the first failed export of a streak.
+    private func scheduleExportRetry() {
+        exportRetryItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            self?.performSync()
+        }
+        exportRetryItem = item
+        debounceQueue.asyncAfter(deadline: .now() + exportRetryDelay, execute: item)
+    }
+
     private func stopWatcher() {
+        exportRetryItem?.cancel()
+        exportRetryItem = nil
         debounceWorkItem?.cancel()
         debounceWorkItem = nil
 

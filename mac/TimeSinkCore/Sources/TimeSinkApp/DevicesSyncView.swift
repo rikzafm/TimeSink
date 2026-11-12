@@ -144,6 +144,44 @@ public struct DevicesSyncView: View {
                         .card(fill: Tokens.warnBg, border: alertColor)
                     }
 
+                    // Diagnostic Banner for export failure
+                    if state.syncState == "export_failed" {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 13))
+                                .foregroundColor(ThemeColors.danger)
+                                .padding(.top, 2)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Couldn't write sync file")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(ThemeColors.danger)
+
+                                Text("Other devices won't see new activity from this Mac until this is fixed. TimeSink will keep retrying."
+                                     + (state.syncLastError.isEmpty ? "" : " (\(state.syncLastError))"))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(ThemeColors.textDim)
+                                    .lineSpacing(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Button(action: handleSyncNow) {
+                                Text("Retry")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(ThemeColors.background)
+                                    .padding(.horizontal, 12)
+                                    .frame(height: 28)
+                                    .background(ThemeColors.danger)
+                                    .cornerRadius(7)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isSyncing)
+                        }
+                        .padding(12)
+                        .card(fill: Tokens.warnBg, border: ThemeColors.danger)
+                    }
+
                     // 1.5. Sync Encryption Card
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .center) {
@@ -514,6 +552,12 @@ public struct DevicesSyncView: View {
                     .font(.system(size: 11))
                     .foregroundColor(ThemeColors.textMuted)
                     .lineLimit(1)
+                if dev.isLocal && state.exportStale {
+                    Text("Last wrote its file \(timeAgo(state.lastExportUtc))")
+                        .font(.system(size: 11))
+                        .foregroundColor(ThemeColors.warning)
+                        .lineLimit(1)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -554,6 +598,8 @@ public struct DevicesSyncView: View {
     private func deviceStatus(dev: DeviceRow, index: Int, activeRemoteCount: Int) -> StatusInfo {
         if dev.state == "forgotten" {
             return StatusInfo(text: "Forgotten", color: ThemeColors.textMuted)
+        } else if dev.isLocal && state.syncState == "export_failed" {
+            return StatusInfo(text: "Couldn't write file", color: ThemeColors.danger)
         } else if dev.isLocal {
             return StatusInfo(text: "Up to date", color: ThemeColors.deviceA)
         } else if activeRemoteCount > 1 && index >= 2 {

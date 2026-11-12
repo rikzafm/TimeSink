@@ -78,6 +78,10 @@ public final class AppState: ObservableObject {
     @Published public var syncFolder: String = ""
     @Published public var syncState: String = ""
     @Published public var lastSyncUtc: Int64 = 0
+    @Published public var lastExportUtc: Int64 = 0
+    @Published public var syncLastError: String = ""
+    /// Sync is on, the folder exists, and our own export is older than 15 minutes.
+    @Published public var exportStale: Bool = false
     @Published public var isSyncing: Bool = false
     @Published public var lastBackupUtc: Int64 = 0
     @Published public var openAtLogin: Bool = false
@@ -566,6 +570,11 @@ public final class AppState: ObservableObject {
             let lastExp = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'sync.last_export_utc';")) ?? 0
             let lastImp = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'sync.last_import_utc';")) ?? 0
             self.lastSyncUtc = max(lastExp, lastImp)
+            self.lastExportUtc = lastExp
+            self.syncLastError = (try? db.scalarText("SELECT value FROM settings WHERE key = 'sync.last_error';")) ?? ""
+            self.exportStale = self.syncEnabled && !self.syncFolder.isEmpty
+                && FileManager.default.fileExists(atPath: self.syncFolder)
+                && SyncExportHealth.isStale(lastExportUtc: lastExp, now: Int64(Date().timeIntervalSince1970))
             self.lastBackupUtc = (try? db.scalarInt("SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'backup.last_utc';")) ?? 0
             self.openAtLogin = LoginItemManager.shared.isEnabled
             let sdn = (try? db.scalarText("SELECT value FROM settings WHERE key = '\(SettingKeys.shortDeviceNames)';"))
