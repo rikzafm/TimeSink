@@ -521,11 +521,11 @@ public struct DevicesSyncView: View {
 
     private func statusLine(_ dev: DeviceRow) -> String {
         if dev.isLocal {
-            return state.lastSyncUtc > 0 ? "Wrote its file \(timeAgo(state.lastSyncUtc))" : "Ready to write file"
+            return state.lastExportUtc > 0 ? "Wrote its file \(timeAgo(state.lastExportUtc))" : "Ready to write file"
         }
         if dev.state == "forgotten" { return "Sync paused · forgotten" }
-        if let imp = dev.lastImportUtc {
-            return "Read its file \(timeAgo(imp)) · \(Formatters.grouped(dev.totalHours))h"
+        if let file = dev.lastFileUtc {
+            return "\(remoteFileText(file)) · \(Formatters.grouped(dev.totalHours))h"
         }
         return state.syncFolder.contains("OneDrive") ? "Waiting for OneDrive to download its file" : "Waiting for its file to download"
     }
@@ -552,6 +552,12 @@ public struct DevicesSyncView: View {
                     .font(.system(size: 11))
                     .foregroundColor(ThemeColors.textMuted)
                     .lineLimit(1)
+                if !dev.isLocal && dev.state != "forgotten", let file = dev.lastFileUtc, let hint = staleHint(file) {
+                    Text(hint)
+                        .font(.system(size: 11))
+                        .foregroundColor(ThemeColors.textMuted)
+                        .lineLimit(1)
+                }
                 if dev.isLocal && state.exportStale {
                     Text("Last wrote its file \(timeAgo(state.lastExportUtc))")
                         .font(.system(size: 11))
@@ -644,6 +650,26 @@ public struct DevicesSyncView: View {
             syncNowState = "Sync now"
             isSyncing = false
         }
+    }
+
+    /// Mirrors C# RemoteFileText.Describe line (src/TimeSink.Core/Sync/RemoteFileText.cs).
+    private func remoteFileText(_ fileUtc: Int64) -> String {
+        guard fileUtc > 0 else { return "File not read yet" }
+        let age = max(0, Int64(Date().timeIntervalSince1970) - fileUtc)
+        if age < 60 { return "File from just now" }
+        if age < 3600 { return "File from \(age / 60) min ago" }
+        if age < 86400 { return "File from \(age / 3600) h ago" }
+        let days = age / 86400
+        return days == 1 ? "File from 1 day ago" : "File from \(days) days ago"
+    }
+
+    /// Neutral hint (not an error) when the other device's file is 24 h or older.
+    private func staleHint(_ fileUtc: Int64) -> String? {
+        guard fileUtc > 0, Int64(Date().timeIntervalSince1970) - fileUtc >= 86400 else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MMM d"
+        return "Other device hasn't synced since " + f.string(from: Date(timeIntervalSince1970: TimeInterval(fileUtc)))
     }
 
     private func timeAgo(_ utcSeconds: Int64) -> String {
