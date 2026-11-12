@@ -737,6 +737,36 @@ final class SyncTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: (folder as NSString).appendingPathComponent("local-mac-1.tssync")))
     }
 
+    // MARK: - Encryption errors do not wedge sync (sync-reliability ticket 06)
+
+    /// Not compiled or run on Windows. Local expects encryption but the remote file is plain: the file is skipped
+    /// (no import fingerprint), and flipping the setting recovers on the next performSync without restart().
+    func testEncryptionErrorSkipsOnlyThatFileAndRecoversWithoutRestart() throws {
+        let dir = try makeTempDir("sync-encrecover")
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let folder = (dir as NSString).appendingPathComponent("sync")
+        let main = try makeLocalFileDb(in: dir, deviceId: "local-mac-1")
+        try enableSync(db: main, folder: folder)
+        try writeRemoteFile(folder: folder)
+        try main.exec("INSERT INTO settings (key, value) VALUES ('sync.encrypted', 'true') ON CONFLICT(key) DO UPDATE SET value = excluded.value;")
+        let host = SyncHost(dbPath: main.path, key: main.key)
+
+        host.performSync()
+        XCTAssertEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "remote_not_encrypted")
+        XCTAssertEqual(try main.scalarInt("SELECT COUNT(*) FROM settings WHERE key LIKE 'sync.imported.%';"), 0,
+                       "a file that was not imported must not be fingerprinted")
+
+        host.performSync()   // paused state must not stick; still skipped, state unchanged
+        XCTAssertEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "remote_not_encrypted")
+
+        try main.exec("UPDATE settings SET value = 'false' WHERE key = 'sync.encrypted';")
+        host.performSync()   // no restart(), no syncNow()
+
+        XCTAssertEqual(try main.scalarInt("SELECT COUNT(*) FROM apps WHERE device_id = 'remote-pc-1';"), 1)
+        XCTAssertEqual(try main.scalarInt("SELECT COUNT(*) FROM settings WHERE key LIKE 'sync.imported.%';"), 1)
+        XCTAssertEqual(try main.scalarText("SELECT value FROM settings WHERE key = 'sync.state';"), "synced")
+    }
+
     func testExportFailureRetriesWithoutUserAction() throws {
         try XCTSkipIf(geteuid() == 0, "root ignores directory permissions")
         let dir = try makeTempDir("sync-exportretry")
