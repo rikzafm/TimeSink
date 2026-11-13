@@ -666,7 +666,7 @@ public partial class TodayView : UserControl, ILiveView
             stripA = new SessionStrip
             {
                 Height = 3,
-                Segments = row.Sessions.Select(s => IsLocalDevice(s.DeviceId) ? (r.DayFraction(s.StartUtc), r.DayFraction(s.EndUtc)) : (0.0, 0.0)).ToList(),
+                Segments = row.Sessions.Select(s => IsLocalDevice(s.DeviceId) && !IsBlip(s) ? (r.DayFraction(s.StartUtc), r.DayFraction(s.EndUtc)) : (0.0, 0.0)).ToList(),
             };
             stripA.SetResourceReference(SessionStrip.SegmentBrushProperty, "Brush.DeviceA");
             stripA.SetResourceReference(SessionStrip.TrackBrushProperty, "Brush.BorderSoft");
@@ -675,7 +675,7 @@ public partial class TodayView : UserControl, ILiveView
             {
                 Height = 3,
                 Margin = new Thickness(0, 2, 0, 0),
-                Segments = row.Sessions.Select(s => !IsLocalDevice(s.DeviceId) ? (r.DayFraction(s.StartUtc), r.DayFraction(s.EndUtc)) : (0.0, 0.0)).ToList(),
+                Segments = row.Sessions.Select(s => !IsLocalDevice(s.DeviceId) && !IsBlip(s) ? (r.DayFraction(s.StartUtc), r.DayFraction(s.EndUtc)) : (0.0, 0.0)).ToList(),
             };
             stripB.SetResourceReference(SessionStrip.SegmentBrushProperty, "Brush.DeviceB");
             stripB.SetResourceReference(SessionStrip.TrackBrushProperty, "Brush.BorderSoft");
@@ -689,7 +689,7 @@ public partial class TodayView : UserControl, ILiveView
             var singleStrip = new SessionStrip
             {
                 Margin = new Thickness(0, 8, 0, 0),
-                Segments = row.Sessions.Select(s => (r.DayFraction(s.StartUtc), r.DayFraction(s.EndUtc))).ToList(),
+                Segments = row.Sessions.Select(s => IsBlip(s) ? (0.0, 0.0) : (r.DayFraction(s.StartUtc), r.DayFraction(s.EndUtc))).ToList(),
             };
             singleStrip.SetResourceReference(SessionStrip.SegmentBrushProperty, appBrush);
             singleStrip.SetResourceReference(SessionStrip.TrackBrushProperty, "Brush.BorderSoft");
@@ -806,6 +806,9 @@ public partial class TodayView : UserControl, ILiveView
         _rowViews[row.AppId] = (time, status, row);
         return card;
     }
+
+    // Blips are not drawn (decision 149); their slot stays so segment indexes still match row.Sessions.
+    private static bool IsBlip(TodaySession s) => s.Seconds < TimeSink.Core.Usage.RowDetails.MinShownSessionSeconds;
 
     private UIElement BuildDetails(TodayResult r, TodayAppRow row, string appBrush, SessionLink link)
     {
