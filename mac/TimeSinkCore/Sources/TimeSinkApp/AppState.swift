@@ -1236,6 +1236,16 @@ extension AppState {
         onClosePopover?()
     }
 
+    /// Called when the popover opens: always land on today's entry.
+    public func resetToToday() {
+        showingSettings = false
+        showingAddApp = false
+        selectedAppDetailId = nil
+        daysBack = 0
+        selectedTab = .today
+        refresh()
+    }
+
     public func switchToTab(_ tab: AppTab) {
         showingSettings = false
         showingAddApp = false

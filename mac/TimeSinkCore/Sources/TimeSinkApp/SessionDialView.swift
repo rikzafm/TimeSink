@@ -48,12 +48,11 @@ public struct SessionDialView: View {
     public let nowUtc: Int64
     public let isAllScope: Bool
     public let localDeviceId: String
-    @Binding public var activeSessionIndex: Int?
+    @Binding public var hoveredSessionIndex: Int?
+    @Binding public var pinnedSessionIndex: Int?
     public var onOpenSettings: (() -> Void)? = nil
     public var onOpenDetail: (() -> Void)? = nil
 
-    @State private var hoveredSessionIndex: Int? = nil
-    @State private var pinnedSessionIndex: Int? = nil
 
     public init(
         appRow: TodayAppRow,
@@ -62,7 +61,8 @@ public struct SessionDialView: View {
         nowUtc: Int64,
         isAllScope: Bool,
         localDeviceId: String = "",
-        activeSessionIndex: Binding<Int?>? = nil,
+        hoveredSessionIndex: Binding<Int?>? = nil,
+        pinnedSessionIndex: Binding<Int?>? = nil,
         onOpenSettings: (() -> Void)? = nil,
         onOpenDetail: (() -> Void)? = nil
     ) {
@@ -72,7 +72,8 @@ public struct SessionDialView: View {
         self.nowUtc = nowUtc
         self.isAllScope = isAllScope
         self.localDeviceId = localDeviceId
-        self._activeSessionIndex = activeSessionIndex ?? .constant(nil)
+        self._hoveredSessionIndex = hoveredSessionIndex ?? .constant(nil)
+        self._pinnedSessionIndex = pinnedSessionIndex ?? .constant(nil)
         self.onOpenSettings = onOpenSettings
         self.onOpenDetail = onOpenDetail
     }
@@ -182,9 +183,6 @@ public struct SessionDialView: View {
         }
         .padding(.top, 4)
         .padding(.horizontal, 4)
-        .onChange(of: effectiveActive) { _, newActive in
-            activeSessionIndex = newActive
-        }
     }
 
     private var actionPill: some View {

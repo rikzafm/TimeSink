@@ -5,7 +5,15 @@ public struct TodayTabView: View {
     @ObservedObject var state: AppState
 
     @State private var selectedHour: Int? = nil
-    @State private var activeSessions: [Int64: Int] = [:]
+    @State private var hoveredSessions: [Int64: Int] = [:]
+    @State private var pinnedSessions: [Int64: Int] = [:]
+    @State private var stripTip: StripTip? = nil
+
+    private struct StripTip: Equatable {
+        let appId: Int64
+        let text: String
+        let x: CGFloat
+    }
 
     public init(state: AppState) {
         self.state = state
@@ -196,19 +204,24 @@ public struct TodayTabView: View {
     @ViewBuilder
     private func appRow(_ row: TodayAppRow, result: TodayResult) -> some View {
         let expanded = isExpanded(row, result: result)
-        let activeIdx = activeSessions[row.appId]
+        let activeIdx = hoveredSessions[row.appId] ?? pinnedSessions[row.appId]
         let isMultiDev = state.showsDeviceSplit && (row.deviceSeconds?.count ?? 0) > 1
-        let rowActiveBinding = Binding<Int?>(
-            get: { activeSessions[row.appId] },
-            set: { activeSessions[row.appId] = $0 }
+        let hoverBinding = Binding<Int?>(
+            get: { hoveredSessions[row.appId] },
+            set: { hoveredSessions[row.appId] = $0 }
         )
+        let pinBinding = Binding<Int?>(
+            get: { pinnedSessions[row.appId] },
+            set: { pinnedSessions[row.appId] = $0 }
+        )
+        let toggleRow = {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                state.todayExpandedAppId = expanded ? nil : row.appId
+            }
+        }
 
         VStack(spacing: 0) {
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    state.todayExpandedAppId = expanded ? nil : row.appId
-                }
-            }) {
+            do {
                 HStack(spacing: 12) {
                     AppTile(name: row.name, png: state.iconCache.getCachedIcon(forAppId: row.appId))
                     VStack(alignment: .leading, spacing: 0) {
@@ -224,13 +237,13 @@ public struct TodayTabView: View {
                             .font(.system(size: 10))
                             .foregroundColor((row.isRunning || remoteRunningSession(row) != nil) ? ThemeColors.accent : ThemeColors.textMuted)
 
-                        timelines(row, result: result, expanded: expanded, activeSession: activeIdx).padding(.top, 4)
+                        timelines(row, result: result, expanded: expanded, activeSession: activeIdx, toggleRow: toggleRow).padding(.top, 4)
                     }
                 }
                 .frame(height: isMultiDev ? 54 : 50)
                 .contentShape(Rectangle())
+                .onTapGesture { toggleRow() }
             }
-            .buttonStyle(.plain)
 
             if expanded {
                 SessionDialView(
@@ -240,7 +253,8 @@ public struct TodayTabView: View {
                     nowUtc: effectiveNowUtc,
                     isAllScope: state.showsDeviceSplit,
                     localDeviceId: state.localDeviceId,
-                    activeSessionIndex: rowActiveBinding,
+                    hoveredSessionIndex: hoverBinding,
+                    pinnedSessionIndex: pinBinding,
                     onOpenSettings: {
                         state.todayEditingAppId = row.appId
                     },
@@ -256,17 +270,36 @@ public struct TodayTabView: View {
     }
 
     @ViewBuilder
-    private func timelines(_ row: TodayAppRow, result: TodayResult, expanded: Bool, activeSession: Int?) -> some View {
+    private func timelines(_ row: TodayAppRow, result: TodayResult, expanded: Bool, activeSession: Int?, toggleRow: @escaping () -> Void) -> some View {
         let shown = RowDetails.shownSessions(row)
         let isMultiDev = state.showsDeviceSplit && (row.deviceSeconds?.count ?? 0) > 1
         if isMultiDev {
             VStack(spacing: 2) {
-                strip(row.sessions.filter { state.isLocalDevice($0.deviceId) }, allShown: shown, result: result, color: ThemeColors.deviceA, height: 3, activeSession: activeSession)
-                strip(row.sessions.filter { !state.isLocalDevice($0.deviceId) }, allShown: shown, result: result, color: ThemeColors.deviceB, height: 3, activeSession: activeSession)
+                strip(row.sessions.filter { state.isLocalDevice($0.deviceId) }, allShown: shown, result: result, color: ThemeColors.deviceA, height: 3, activeSession: activeSession, row: row, toggleRow: toggleRow)
+                strip(row.sessions.filter { !state.isLocalDevice($0.deviceId) }, allShown: shown, result: result, color: ThemeColors.deviceB, height: 3, activeSession: activeSession, row: row, toggleRow: toggleRow)
             }
         } else {
-            strip(row.sessions, allShown: shown, result: result, color: Tokens.appColor(row.name), height: 4, activeSession: activeSession)
+            strip(row.sessions, allShown: shown, result: result, color: Tokens.appColor(row.name), height: 4, activeSession: activeSession, row: row, toggleRow: toggleRow)
         }
+    }
+
+    private func tipText(_ s: TodaySession) -> String {
+        let end = s.isOpen ? "now" : Formatters.clock12(s.endUtc)
+        return "\(Formatters.clock12(s.fullStartUtc)) – \(end) · \(Formatters.paddedHM(s.fullSeconds))"
+    }
+
+    /// Segment under x (with a few points of slop, as on Windows), nearest wins.
+    private func segmentIndex(_ sessions: [TodaySession], at x: CGFloat, width: CGFloat, height: CGFloat, result: TodayResult) -> Int? {
+        let day = CGFloat(max(1, result.dayEndUtc - result.dayStartUtc))
+        var best: Int? = nil
+        var bestGap = CGFloat.greatestFiniteMagnitude
+        for (i, s) in sessions.enumerated() where s.endUtc > s.startUtc {
+            let x0 = min(max(CGFloat(s.startUtc - result.dayStartUtc) / day, 0), 1) * width
+            let x1 = max(x0 + height, min(max(CGFloat(s.endUtc - result.dayStartUtc) / day, 0), 1) * width)
+            let gap = x < x0 ? x0 - x : (x > x1 ? x - x1 : 0)
+            if gap <= 4 && gap < bestGap { best = i; bestGap = gap }
+        }
+        return best
     }
 
     private func strip(
@@ -275,7 +308,9 @@ public struct TodayTabView: View {
         result: TodayResult,
         color: Color,
         height: CGFloat,
-        activeSession: Int?
+        activeSession: Int?,
+        row: TodayAppRow,
+        toggleRow: @escaping () -> Void
     ) -> some View {
         GeometryReader { geo in
             let day = CGFloat(max(1, result.dayEndUtc - result.dayStartUtc))
@@ -286,12 +321,60 @@ public struct TodayTabView: View {
                     let isDim = activeSession != nil && shownIdx != activeSession
                     RoundedRectangle(cornerRadius: 2)
                         .fill(color)
-                        .frame(width: max(3, geo.size.width * CGFloat(s.seconds) / day))
+                        .frame(width: max(height, geo.size.width * CGFloat(s.seconds) / day))
                         .offset(x: geo.size.width * CGFloat(max(0, s.startUtc - result.dayStartUtc)) / day)
                         .opacity(isDim ? 0.35 : 1.0)
                 }
             }
+            .frame(height: height)
+            .frame(maxHeight: .infinity, alignment: .center)
+            .padding(.vertical, 0)
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let loc):
+                    if let i = segmentIndex(sessions, at: loc.x, width: geo.size.width, height: height, result: result) {
+                        let s = sessions[i]
+                        hoveredSessions[row.appId] = allShown.firstIndex(of: s)
+                        stripTip = StripTip(appId: row.appId, text: tipText(s), x: loc.x)
+                    } else {
+                        hoveredSessions[row.appId] = nil
+                        if stripTip?.appId == row.appId { stripTip = nil }
+                    }
+                case .ended:
+                    hoveredSessions[row.appId] = nil
+                    if stripTip?.appId == row.appId { stripTip = nil }
+                }
+            }
+            .onTapGesture(coordinateSpace: .local) { loc in
+                // A click off the segments falls through to the row, which toggles it.
+                guard let i = segmentIndex(sessions, at: loc.x, width: geo.size.width, height: height, result: result) else {
+                    toggleRow()
+                    return
+                }
+                let at = allShown.firstIndex(of: sessions[i])
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    state.todayExpandedAppId = row.appId
+                }
+                pinnedSessions[row.appId] = (pinnedSessions[row.appId] == at) ? nil : at
+            }
+            .overlay(alignment: .topLeading) {
+                if let tip = stripTip, tip.appId == row.appId {
+                    Text(tip.text)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(ThemeColors.textPrimary)
+                        .fixedSize()
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(ThemeColors.surface))
+                        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(ThemeColors.border, lineWidth: 1))
+                        .offset(x: min(tip.x + 8, max(0, geo.size.width - 150)), y: -26)
+                        .allowsHitTesting(false)
+                }
+            }
         }
-        .frame(height: height)
+        .frame(height: height + 8)
+        .padding(.vertical, -4)
+        .zIndex(1)
     }
 }

@@ -65,6 +65,7 @@ public final class StatusBarController: NSObject, NSPopoverDelegate {
 
     private func showPopover() {
         guard let button = statusItem.button else { return }
+        appState?.resetToToday()
         appState?.startLiveUpdates()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
