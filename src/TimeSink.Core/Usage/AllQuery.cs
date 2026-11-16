@@ -41,10 +41,10 @@ public static class AllQuery
         });
 
         var loaded = window.Segments(0, includeRetired: true);
+        // Per-app numbers count runs: Merged apps open together are one opening and their time counts once.
         var segs = new List<UsageSeg>();
-        foreach (var seg in loaded)
+        foreach (var seg in UsageDays.Runs(loaded))
         {
-            if (seg.End <= seg.Start) continue;
             var group = groups[seg.Group];
             group.Sessions++;
             group.LastUsed = Math.Max(group.LastUsed, seg.End);

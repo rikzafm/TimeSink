@@ -150,6 +150,20 @@ public sealed class WeekQueryTests : IDisposable
         r.Apps.Should().ContainSingle().Which.Should().Match<WeekAppRow>(a => a.Name == "Main" && a.Seconds == 5400);
     }
 
+    [Fact]
+    public void Merged_apps_open_at_the_same_time_count_the_time_once()
+    {
+        var f = new WeekFixture();
+        using var _ = f;
+        var main = f.AddApp("Main");
+        var alias = f.AddApp("Alias");
+        f.Session(main, Unix(2026, 3, 11, 9), Unix(2026, 3, 11, 10));
+        f.Session(alias, Unix(2026, 3, 11, 9, 30), Unix(2026, 3, 11, 10, 30));
+        f.Exec($"UPDATE apps SET canonical_id = {main} WHERE id = {alias}");
+        var r = Q.Week(f.DbPath, Now, TimeZoneInfo.Utc, WeekStart.Mon);
+        r.Apps.Should().ContainSingle().Which.Seconds.Should().Be(5400);
+    }
+
     private static readonly TimeZoneInfo Eastern = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
 
     [Fact]

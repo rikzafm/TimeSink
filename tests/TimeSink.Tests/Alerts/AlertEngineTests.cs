@@ -40,8 +40,14 @@ public sealed class AlertEngineTests : IDisposable
         cmd.ExecuteNonQuery();
     }
 
-    private void Usage(long app, string day, long seconds) =>
-        Sql($"INSERT INTO daily_usage(app_id, day, seconds) VALUES({app}, '{day}', {seconds}) ON CONFLICT(app_id, day) DO UPDATE SET seconds = {seconds}");
+    /// <summary>The app ran for <paramref name="seconds"/> on the local <paramref name="day"/>, starting at <paramref name="hour"/>; a second call for the same start replaces the first.</summary>
+    private void Usage(long app, string day, long seconds, int hour = 0, TimeZoneInfo? zone = null)
+    {
+        var local = DateTime.ParseExact(day, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture).AddHours(hour);
+        var start = new DateTimeOffset(local, (zone ?? TimeZoneInfo.Utc).GetUtcOffset(local)).ToUnixTimeSeconds();
+        Sql($"DELETE FROM sessions WHERE app_id = {app} AND start_utc = {start}");
+        Sql($"INSERT INTO sessions(app_id, start_utc, end_utc, last_seen_utc, end_reason) VALUES({app}, {start}, {start + seconds}, {start + seconds}, 'exit')");
+    }
 
     private void Goal(long? app, string kind, long seconds) =>
         Sql($"INSERT OR REPLACE INTO goals(app_id, kind, seconds_per_day) VALUES({(app is null ? "NULL" : app.ToString())}, '{kind}', {seconds})");
@@ -51,7 +57,7 @@ public sealed class AlertEngineTests : IDisposable
     [Fact]
     public void Nothing_is_due_without_goals()
     {
-        Usage(_chrome, "2026-03-11", 99999);
+        Usage(_chrome, "2026-03-11", 40000);
         _engine.Check(At(11, 14)).Should().BeEmpty();
     }
 
@@ -116,13 +122,39 @@ public sealed class AlertEngineTests : IDisposable
         Sql($"UPDATE apps SET canonical_id = {_chrome} WHERE id = {alias}");
         Goal(_chrome, "limit", 3600);
         Usage(_chrome, "2026-03-11", 1800);
-        Usage(alias, "2026-03-11", 1800);
+        Usage(alias, "2026-03-11", 1800, hour: 1);
         _engine.Check(At(11, 14)).Should().ContainSingle();
 
         Goal(_code, "limit", 60);
         Usage(_code, "2026-03-11", 600);
         _db.SetAppState(_code, "retired", 1);
         _engine.Check(At(11, 15)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Merged_apps_open_at_the_same_time_count_the_time_once()
+    {
+        // A launcher and its game, merged and open together for 40 minutes: 40 minutes, not 80.
+        var alias = _db.InsertApp(@"c:\chrome2.exe", "Chrome Beta", 0);
+        Sql($"UPDATE apps SET canonical_id = {_chrome} WHERE id = {alias}");
+        Goal(_chrome, "limit", 3600);
+        Goal(null, "limit", 3600);
+        Usage(_chrome, "2026-03-11", 2400);
+        Usage(alias, "2026-03-11", 2400);
+        _engine.Check(At(11, 14)).Should().BeEmpty();
+
+        Usage(alias, "2026-03-11", 3600); // the game stays open: an hour in all
+        _engine.Check(At(11, 15)).Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void An_app_still_open_counts_to_now()
+    {
+        Goal(_chrome, "limit", 3600);
+        var start = At(11, 13).ToUnixTimeSeconds();
+        Sql($"INSERT INTO sessions(app_id, start_utc, end_utc, last_seen_utc, end_reason) VALUES({_chrome}, {start}, NULL, {start}, NULL)");
+        _engine.Check(At(11, 13, 59)).Should().BeEmpty();
+        _engine.Check(At(11, 14)).Should().ContainSingle();
     }
 
     [Fact]
@@ -143,10 +175,10 @@ public sealed class AlertEngineTests : IDisposable
     public void Usage_on_other_days_does_not_count_and_the_switch_turns_alerts_off()
     {
         Goal(_chrome, "limit", 3600);
-        Usage(_chrome, "2026-03-10", 99999);
+        Usage(_chrome, "2026-03-10", 40000);
         _engine.Check(At(11, 14)).Should().BeEmpty();
 
-        Usage(_chrome, "2026-03-11", 99999);
+        Usage(_chrome, "2026-03-11", 40000);
         _db.SetSetting("alerts.goals", "false");
         _engine.Check(At(11, 14)).Should().BeEmpty();
         _db.SetSetting("alerts.goals", "true");
@@ -158,7 +190,7 @@ public sealed class AlertEngineTests : IDisposable
     {
         var ny = TimeZoneInfo.FindSystemTimeZoneById(OperatingSystem.IsWindows() ? "Eastern Standard Time" : "America/New_York");
         Goal(_chrome, "limit", 3600);
-        Usage(_chrome, "2026-03-11", 7200);
+        Usage(_chrome, "2026-03-11", 7200, zone: ny);
         // 2026-03-12 02:00 UTC is still Mar 11 in New York (22:00 EDT).
         new AlertEngine(_db, ny).Check(At(12, 2)).Should().HaveCount(1);
     }
@@ -171,7 +203,7 @@ public sealed class AlertEngineTests : IDisposable
         Usage(_chrome, "2026-03-02", 3600);
         Usage(_chrome, "2026-03-04", 7200);
         Usage(_code, "2026-03-04", 1800);
-        Usage(_chrome, "2026-03-09", 99999); // the new week: not part of the recap
+        Usage(_chrome, "2026-03-09", 40000); // the new week: not part of the recap
     }
 
     [Fact]
@@ -210,7 +242,7 @@ public sealed class AlertEngineTests : IDisposable
         _db.SetSetting("alerts.weekly", "true");
         LastWeek();
         _engine.Check(At(9, 9)).Should().ContainSingle();
-        _engine.Check(At(16, 9)).Should().ContainSingle(); // recap of Mar 9-15 (99999 s on the 9th)
+        _engine.Check(At(16, 9)).Should().ContainSingle(); // recap of Mar 9-15 (40000 s on the 9th)
         _engine.Check(At(23, 9)).Should().BeEmpty();       // Mar 16-22: no time
     }
 

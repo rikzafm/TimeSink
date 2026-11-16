@@ -116,4 +116,16 @@ public sealed class AllQueryTests : IDisposable
         r.Totals.Should().Be(new AllTotals(0, 0, 0));
         r.Apps.Should().HaveCount(5).And.OnlyContain(a => a.Seconds == 0 && a.Share == 0 && a.FirstTracked == null && a.BestMonth == null);
     }
+
+    [Fact]
+    public void Merged_apps_open_at_the_same_time_count_the_time_once()
+    {
+        // Chrome ran Feb 12 10:00-20:00; its merged app ran 12:00-22:00 the same day: one 12 h opening, not 20 h.
+        _f.Exec("INSERT INTO apps(id, canonical_id, exe_path, display_name, added_utc) VALUES (900, " + _f.Chrome + ", 'c:\\chrome-beta.exe', 'Chrome Beta', 0)");
+        _f.Session(900, U(2026, 2, 12, 12), U(2026, 2, 12, 22));
+        var chrome = Run().Apps.Single(a => a.Name == "Chrome");
+        (chrome.Seconds, chrome.DaysUsed, chrome.SessionCount).Should().Be((98400 + 7200, 8, 7));
+        chrome.LongestSessionSeconds.Should().Be(43200);
+        chrome.BestMonth.Should().Be(new AllBestMonth(2026, 2, 61200 + 7200));
+    }
 }

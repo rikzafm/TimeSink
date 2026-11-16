@@ -203,7 +203,7 @@ Lower-case drive letter, resolve `\\?\` prefix, expand 8.3 names, resolve enviro
 
 ### 6.4 Overlap rules
 * Ten Chrome processes = **one** session (per app, not per process).
-* Merged apps (`canonical_id`) remain separate sessions; only reports union them by canonical id by **summing** (as with all "combined" figures).
+* Merged apps (`canonical_id`) remain separate sessions; reports put them under the canonical id, and time they are open together on one device counts **once** (decision 204).
 
 ### 6.5 Daily usage cache
 `daily_usage` is derived. Provide `UsageAccumulator.RebuildAll()` that recomputes from `sessions` (used after restore/merge and by a hidden "Repair" command). Unit-test that incremental accumulation equals a full rebuild.

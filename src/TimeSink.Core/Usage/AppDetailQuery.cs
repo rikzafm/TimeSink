@@ -35,7 +35,8 @@ public static class AppDetailQuery
         var exe = Path.GetFileName(app.ExePath.Replace('\\', '/'));
         var background = app.Background;
 
-        var segs = window.Segments(0, includeRetired: true).Where(s => s.Group == appId && s.End > s.Start).ToList();
+        // Runs, not Sessions: Merged apps open together are one opening and their time counts once.
+        var segs = UsageDays.Runs(window.Segments(0, includeRetired: true).Where(s => s.Group == appId));
 
         var daySeconds = new Dictionary<DateOnly, long>();
         var daySessions = new Dictionary<DateOnly, int>();

@@ -49,7 +49,8 @@ public static class WrappedQuery
         var segs = window.Segments(windowStart, endOfYearUtc);
         var windowed = segs.Select(s => s with { Start = Math.Max(s.Start, windowStart), End = Math.Min(s.End, maxUtc) }).ToList();
         var months = new MonthRollup(windowed, zone, maxUtc, onSinceUtc, gamesOnly); // app-seconds per month (the window)
-        foreach (var sl in UsageDays.Slices(windowed, zone))
+        var runSlices = UsageDays.Slices(UsageDays.Runs(windowed), zone).ToList(); // a group's overlapping sessions count once
+        foreach (var sl in runSlices)
         {
             var len = sl.End - sl.Start;
             if (sl.Day.Year != year) continue;
@@ -117,8 +118,8 @@ public static class WrappedQuery
                 devTops[k] = BuildGroupTop(v);
         }
 
-        // One entry per app group: its single longest session that ended this year (a session counts whole, as in All).
-        var longest = UsageRank.Rank(segs.Where(s => s.End > yearStart && !UsageRank.IsBackground(apps, s.Group))
+        // One entry per app group: its single longest opening that ended this year (it counts whole, as in All).
+        var longest = UsageRank.Rank(UsageDays.Runs(segs).Where(s => s.End > yearStart && !UsageRank.IsBackground(apps, s.Group))
             .GroupBy(s => s.Group).Select(g => { var m = g.OrderByDescending(s => s.End - s.Start).First(); return new WrappedApp(g.Key, UsageRank.NameOf(apps, g.Key), m.End - m.Start, DeviceId: m.DeviceId); })
             .Where(a => a.Seconds > 0), apps, a => a.AppId, a => a.Seconds)
             .Take(PodiumSize).ToList();
@@ -145,7 +146,7 @@ public static class WrappedQuery
         if (busiest is { } bm)
         {
             delta = Change.Between(busiestSecs, months.AppSeconds(new MonthKey(year, bm).Prev));
-            foreach (var sl in UsageDays.Slices(windowed, zone))
+            foreach (var sl in runSlices)
                 if (sl.Day.Year == year && sl.Day.Month == bm)
                     busiestMonthDevice[sl.Seg.DeviceId] = busiestMonthDevice.GetValueOrDefault(sl.Seg.DeviceId) + (sl.End - sl.Start);
         }

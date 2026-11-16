@@ -19,7 +19,7 @@ The Tracked app that absorbs the history of one or more Merged apps and is the o
 _Avoid_: Keeper, canonical app, primary app
 
 **Merged app**:
-An app folded into a Main app, so its running time counts under the Main app. It can be unmerged or promoted to Main app. A Merged app whose Main app is retired or gone counts as its own group.
+An app folded into a Main app, so its running time counts under the Main app; time it is open together with the Main app or another of its Merged apps counts once. It can be unmerged or promoted to Main app. A Merged app whose Main app is retired or gone counts as its own group.
 _Avoid_: Alias, child app, duplicate
 
 **Background app**:

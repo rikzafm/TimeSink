@@ -171,4 +171,15 @@ public sealed class MonthQueryTests : IDisposable
         // Local Mar 4 = Mar 3 14:00Z .. Mar 4 14:00Z: uptime from Code 14:00Z to Chrome's end 02:00Z.
         Day(March(zone: plus10), 4).Seconds.Should().Be(12 * 3600);
     }
+
+    [Fact]
+    public void Merged_apps_open_at_the_same_time_count_the_time_once()
+    {
+        var alias = _f.Chrome + 100;
+        _f.Exec($"INSERT INTO apps(id, exe_path, display_name, added_utc, canonical_id) VALUES({alias}, 'c:\\\\chrome2.exe', 'Chrome2', {U(2026, 1, 1, 0)}, {_f.Chrome})");
+        _f.Session(alias, U(2026, 3, 2, 10), U(2026, 3, 2, 13)); // Chrome itself ran 09:00-12:00
+        var r = March();
+        Day(r, 2).Apps.Single(a => a.Name == "Chrome").Seconds.Should().Be(14400);
+        r.TopApps.Single(a => a.Name == "Chrome").Seconds.Should().Be(37200 + 3600);
+    }
 }

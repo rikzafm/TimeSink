@@ -2,7 +2,8 @@ namespace TimeSink.Core.Usage;
 
 /// <summary>
 /// The segments of a window rolled up by calendar month (decision 146): app-seconds per app group and PC uptime per
-/// month, both cut into Local days first so a session over midnight or a month end counts on each side. The two measures
+/// month, both cut into Local days first so a session over midnight or a month end counts on each side. A group's
+/// overlapping sessions count once (<see cref="UsageDays.Runs"/>). The two measures
 /// stay apart because the views use them differently (decision 125): uptime for the month totals, app-seconds for the
 /// per-app shares and for Wrapped's busiest month. Months with no time are empty, not missing.
 /// </summary>
@@ -15,7 +16,7 @@ internal sealed class MonthRollup
 
     public MonthRollup(List<UsageSeg> segs, TimeZoneInfo zone, long nowUtc, long? onSinceUtc, bool gamesOnly, string? localDeviceId = null)
     {
-        foreach (var slice in UsageDays.Slices(segs, zone))
+        foreach (var slice in UsageDays.Slices(UsageDays.Runs(segs), zone))
         {
             var key = MonthKey.Of(slice.Day);
             if (!_groups.TryGetValue(key, out var groups)) _groups[key] = groups = [];

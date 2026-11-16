@@ -98,4 +98,41 @@ public sealed class UsageDaysTests
         var s = Seg(U(2026, 3, 7, 20), U(2026, 3, 9, 9));
         Assert.Equal(s.End - s.Start, Cut(Ny, s).Sum(x => x.End - x.Start));
     }
+
+    private static UsageSeg On(string device, long start, long end, long app, long group = 1) => new(group, app, start, end, false, false, device);
+
+    [Fact]
+    public void Runs_count_a_groups_overlapping_sessions_on_one_device_once()
+    {
+        // A launcher and its game, merged: open together 10:00 to 12:00, the game alone until 13:00.
+        var runs = UsageDays.Runs([On("pc", U(2026, 5, 4, 10), U(2026, 5, 4, 12), app: 1), On("pc", U(2026, 5, 4, 10), U(2026, 5, 4, 13), app: 2)]);
+        var run = Assert.Single(runs);
+        Assert.Equal((1L, U(2026, 5, 4, 10), U(2026, 5, 4, 13), "pc"), (run.Group, run.Start, run.End, run.DeviceId));
+    }
+
+    [Fact]
+    public void Runs_keep_sessions_that_only_touch_apart_and_stay_open_while_a_member_is()
+    {
+        var runs = UsageDays.Runs([On("pc", U(2026, 5, 4, 10), U(2026, 5, 4, 11), app: 1), On("pc", U(2026, 5, 4, 11), U(2026, 5, 4, 12), app: 1),
+            On("pc", U(2026, 5, 4, 14), U(2026, 5, 4, 16), app: 1), On("pc", U(2026, 5, 4, 15), U(2026, 5, 4, 15, 30), app: 2) with { Open = true }]);
+        Assert.Equal([3600L, 3600L, 7200L], runs.Select(r => r.End - r.Start));
+        Assert.Equal([false, false, true], runs.Select(r => r.Open));
+    }
+
+    [Fact]
+    public void Runs_do_not_join_other_groups_or_other_devices()
+    {
+        var runs = UsageDays.Runs([On("pc", U(2026, 5, 4, 10), U(2026, 5, 4, 12), app: 1), On("mac", U(2026, 5, 4, 11), U(2026, 5, 4, 13), app: 2),
+            On("pc", U(2026, 5, 4, 10), U(2026, 5, 4, 12), app: 3, group: 3)]);
+        Assert.Equal(3, runs.Count);
+        Assert.Equal(3 * 7200L, runs.Sum(r => r.End - r.Start));
+    }
+
+    [Fact]
+    public void Per_day_group_seconds_count_overlapping_merged_sessions_once()
+    {
+        var days = UsageDays.PerDayGroup([On("pc", U(2026, 5, 4, 23), U(2026, 5, 5, 1), app: 1), On("pc", U(2026, 5, 4, 23), U(2026, 5, 5, 2), app: 2)], TimeZoneInfo.Utc);
+        Assert.Equal(3600L, days[new DateOnly(2026, 5, 4)][1]);
+        Assert.Equal(7200L, days[new DateOnly(2026, 5, 5)][1]);
+    }
 }

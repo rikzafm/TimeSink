@@ -41,4 +41,14 @@ public sealed class MonthRollupTests
         rollup.AppSeconds(new MonthKey(2026, 3)).Should().Be(7200);
         rollup.Uptime(new MonthKey(2026, 3)).Should().Be(3600);
     }
+
+    [Fact]
+    public void A_groups_sessions_open_at_once_count_once()
+    {
+        // Merged apps share a group: the launcher 09:00-11:00 and the game 09:00-12:00 are three hours, not five.
+        var rollup = new MonthRollup([new UsageSeg(1, 1, At(2026, 3, 2, 9), At(2026, 3, 2, 11), false, false), new UsageSeg(1, 2, At(2026, 3, 2, 9), At(2026, 3, 2, 12), false, false)],
+            Utc, At(2026, 4, 5, 0), null, false);
+
+        rollup.Groups(new MonthKey(2026, 3)).Should().Equal(new Dictionary<long, long> { [1] = 10800 });
+    }
 }

@@ -17,11 +17,35 @@ internal static class UsageDays
     /// <summary>Seconds of <paramref name="s"/> inside [a, b), for a window that is not a Local day.</summary>
     public static long Overlap(UsageSeg s, long a, long b) => Math.Max(0, Math.Min(s.End, b) - Math.Max(s.Start, a));
 
-    /// <summary>Seconds per group on each Local day the Sessions touch.</summary>
+    /// <summary>
+    /// The stretches a group was open on one device, in start order: Sessions of the same group and device that overlap
+    /// are one run, so Merged apps running together (a launcher and its game) count the time once and are one opening.
+    /// Sessions that only touch stay apart, and other devices keep their own runs (decision 168: time across devices adds).
+    /// Every per-app amount is summed over runs; PC uptime still reads the Sessions themselves, for their sleep closes.
+    /// A run carries the app id of its first Session and is open while any of its Sessions is.
+    /// </summary>
+    public static List<UsageSeg> Runs(IEnumerable<UsageSeg> segs)
+    {
+        var runs = new List<UsageSeg>();
+        foreach (var g in segs.Where(s => s.End > s.Start).GroupBy(s => (s.Group, s.DeviceId)))
+        {
+            var first = runs.Count;
+            foreach (var s in g.OrderBy(s => s.Start).ThenBy(s => s.End))
+            {
+                if (runs.Count > first && s.Start < runs[^1].End)
+                    runs[^1] = runs[^1] with { End = Math.Max(runs[^1].End, s.End), Open = runs[^1].Open || s.Open };
+                else
+                    runs.Add(s with { Sleep = false, Off = false });
+            }
+        }
+        return runs.OrderBy(r => r.Start).ToList();
+    }
+
+    /// <summary>Seconds per group on each Local day the Sessions touch, a group's overlapping Sessions counted once (<see cref="Runs"/>).</summary>
     public static Dictionary<DateOnly, Dictionary<long, long>> PerDayGroup(IEnumerable<UsageSeg> segs, TimeZoneInfo zone)
     {
         var days = new Dictionary<DateOnly, Dictionary<long, long>>();
-        foreach (var sl in Slices(segs, zone))
+        foreach (var sl in Slices(Runs(segs), zone))
         {
             if (!days.TryGetValue(sl.Day, out var groups)) days[sl.Day] = groups = new Dictionary<long, long>();
             groups[sl.Seg.Group] = groups.GetValueOrDefault(sl.Seg.Group) + (sl.End - sl.Start);

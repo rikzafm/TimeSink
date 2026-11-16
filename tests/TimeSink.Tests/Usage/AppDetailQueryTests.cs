@@ -123,4 +123,19 @@ public sealed class AppDetailQueryTests : IDisposable
         Run(9999).Should().BeNull();
         Run(_f.Mus + 1).Should().BeNull(); // the fixture's retired "Old" app is inserted right after Mus
     }
+
+    [Fact]
+    public void Merged_apps_open_at_the_same_time_are_one_opening_counted_once()
+    {
+        // Chrome ran Feb 12 10:00-20:00; Mus, merged into it, ran 12:00-22:00 the same day.
+        _f.Exec($"UPDATE apps SET canonical_id = {_f.Chrome} WHERE id = {_f.Mus}");
+        _f.Exec($"DELETE FROM sessions WHERE app_id = {_f.Mus}");
+        _f.Session(_f.Mus, U(2026, 2, 12, 12), U(2026, 2, 12, 22));
+        var r = Run(_f.Chrome)!;
+        r.TotalSeconds.Should().Be(98400 + 7200);
+        r.SessionCount.Should().Be(7);
+        r.LongestSessionSeconds.Should().Be(43200);
+        var day = r.Days.Single(x => x.Date == new DateOnly(2026, 2, 12));
+        (day.Seconds, day.Sessions).Should().Be((43200, 1));
+    }
 }
